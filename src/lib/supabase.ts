@@ -9,8 +9,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(
-  supabaseUrl || 'https://tlrbjhmxokredsiwvof.supabase.co',
-  supabaseAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRscmJqaG14b2tyZmVkc2l3dm9mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5NzI0MDgsImV4cCI6MjA5MzU0ODQwOH0.L2iniw0YldKoJ8zS01KgWA_Frv_HG5pdJj9eiRcOdu0',
+  supabaseUrl || 'https://nheujyknkqeimgpdfyiw.supabase.co',
+  supabaseAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZXVqeWtua3FlaW1ncGRmeWl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMzM2ODIsImV4cCI6MjA5NjkwOTY4Mn0.5j_CYqyjCNY1tGozklqY4iUnQh3HLpFBw8EiNeu05Dw',
 );
 
 async function urlToBase64(url: string): Promise<string> {
