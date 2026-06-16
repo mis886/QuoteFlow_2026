@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { Customer, Site, Contact } from '../lib/types';
+import { Customer, Site, Contact, NextOrder } from '../lib/types';
 import { generateId } from '../lib/utils';
 import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
 
@@ -142,6 +142,11 @@ export function NewCustomer() {
   const [sites, setSites] = useState<Site[]>([
     { id: 'S1', name: 'Main Office', city: '', contacts: [{ id: 'C1', name: '', role: 'Purchase', email: '', isPrimary: true }] }
   ]);
+  const [creditLimit, setCreditLimit] = useState<string>('');
+  const [nextOrder1, setNextOrder1] = useState<NextOrder>({ product: '' });
+  const [nextOrder2, setNextOrder2] = useState<NextOrder>({ product: '' });
+  const [crossSellOpportunities, setCrossSellOpportunities] = useState('');
+  const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [parsePreview, setParsePreview] = useState<Record<number, ReturnType<typeof parseMixedAddress> | null>>({});
 
@@ -165,6 +170,11 @@ export function NewCustomer() {
         setGstin(cust.gstin || '');
         setPan(cust.pan || '');
         setSites(cust.sites || []);
+        setCreditLimit(cust.creditLimit != null ? String(cust.creditLimit) : '');
+        setNextOrder1(cust.nextOrder1 ?? { product: '' });
+        setNextOrder2(cust.nextOrder2 ?? { product: '' });
+        setCrossSellOpportunities(cust.crossSellOpportunities || '');
+        setNotes(cust.notes || '');
       }
     } else if (loadedFor.current !== '__new__') {
       loadedFor.current = '__new__';
@@ -206,7 +216,12 @@ export function NewCustomer() {
     if (!validate()) return;
     const cust: Customer = {
       id, code: code.trim().toUpperCase(), name: name.trim(),
-      seg, inco, curr, pay, gstin: gstin.trim().toUpperCase(), pan: pan.trim().toUpperCase() || undefined, sites
+      seg, inco, curr, pay, gstin: gstin.trim().toUpperCase(), pan: pan.trim().toUpperCase() || undefined, sites,
+      creditLimit: creditLimit !== '' ? Number(creditLimit) : undefined,
+      nextOrder1: nextOrder1.product ? nextOrder1 : undefined,
+      nextOrder2: nextOrder2.product ? nextOrder2 : undefined,
+      crossSellOpportunities: crossSellOpportunities.trim() || undefined,
+      notes: notes.trim() || undefined,
     };
     if (editId) await updateCustomer(editId, cust);
     else await addCustomer(cust);
@@ -338,6 +353,14 @@ export function NewCustomer() {
                 className={inputCls} placeholder="e.g. 30 days net"
               />
             </div>
+
+            <div>
+              <label className={labelCls}>Credit Limit (₹)</label>
+              <input
+                type="number" value={creditLimit} onChange={e => setCreditLimit(e.target.value)}
+                className={inputCls} placeholder="e.g. 500000" min="0"
+              />
+            </div>
           </div>
         </div>
 
@@ -376,6 +399,12 @@ export function NewCustomer() {
                     onChange={e => updateSite(sIdx, 'state', e.target.value)}
                     placeholder="State"
                     className="bg-white border border-g300 rounded px-2 py-1 text-xs w-28 outline-none focus:border-red-mrt"
+                  />
+                  <input
+                    type="text" value={site.pincode || ''}
+                    onChange={e => updateSite(sIdx, 'pincode', e.target.value)}
+                    placeholder="Pincode"
+                    className="bg-white border border-g300 rounded px-2 py-1 text-xs font-mono w-24 outline-none focus:border-red-mrt"
                   />
                   <input
                     type="text" value={site.gstin || ''}
@@ -569,6 +598,68 @@ export function NewCustomer() {
                 No sites added yet. Click "Add New Site" to begin.
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Row 3: Next Expected Orders */}
+        <div className="bg-white border border-g200 rounded-[3px] p-5 space-y-4">
+          <div className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-red-mrt pb-2 border-b border-g200">
+            Next Expected Orders
+          </div>
+          <p className="text-[11px] text-g400">Anticipated upcoming purchase — product, quantity, and expected date.</p>
+          {([{ label: 'Order 1', val: nextOrder1, set: setNextOrder1 }, { label: 'Order 2', val: nextOrder2, set: setNextOrder2 }] as const).map(({ label, val, set }) => (
+            <div key={label} className="grid grid-cols-12 gap-3 items-end">
+              <div className="col-span-5">
+                <label className={labelCls}>{label} — Product</label>
+                <input
+                  type="text" value={val.product}
+                  onChange={e => set(prev => ({ ...prev, product: e.target.value }))}
+                  className={inputCls} placeholder="e.g. Spiral Wound Gaskets DN150"
+                />
+              </div>
+              <div className="col-span-3">
+                <label className={labelCls}>Qty</label>
+                <input
+                  type="number" value={val.qty ?? ''}
+                  onChange={e => set(prev => ({ ...prev, qty: e.target.value ? Number(e.target.value) : undefined }))}
+                  className={inputCls} placeholder="0" min="0"
+                />
+              </div>
+              <div className="col-span-4">
+                <label className={labelCls}>Expected Date</label>
+                <input
+                  type="date" value={val.date ?? ''}
+                  onChange={e => set(prev => ({ ...prev, date: e.target.value || undefined }))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Row 4: Notes & Cross-sell */}
+        <div className="grid grid-cols-2 gap-[14px]">
+          <div className="bg-white border border-g200 rounded-[3px] p-5 space-y-3">
+            <div className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-red-mrt pb-2 border-b border-g200">
+              Cross-Sell Opportunities
+            </div>
+            <textarea
+              value={crossSellOpportunities}
+              onChange={e => setCrossSellOpportunities(e.target.value)}
+              placeholder="e.g. Expand to valve packing, RTJ gaskets..."
+              className="w-full font-sans text-sm bg-g50 border border-g300 rounded-[3px] p-2 outline-none focus:border-red-mrt h-24 resize-none transition-all focus:bg-white"
+            />
+          </div>
+          <div className="bg-white border border-g200 rounded-[3px] p-5 space-y-3">
+            <div className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-red-mrt pb-2 border-b border-g200">
+              Internal Notes
+            </div>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Any internal notes about this customer..."
+              className="w-full font-sans text-sm bg-g50 border border-g300 rounded-[3px] p-2 outline-none focus:border-red-mrt h-24 resize-none transition-all focus:bg-white"
+            />
           </div>
         </div>
 

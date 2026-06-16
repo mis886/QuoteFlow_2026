@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { Customer, DataStore, Enquiry, Order, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus } from '../lib/types';
+import type { Customer, Site, Contact, DataStore, Enquiry, Order, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus } from '../lib/types';
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
@@ -391,7 +391,7 @@ const mapEnquiryToDB = (e: any) => {
         supabase.from('enquiries').select('*').order('recv', { ascending: false }),
         supabase.from('quotes').select('*').order('date', { ascending: false }),
         supabase.from('orders').select('*').order('po_date', { ascending: false }),
-        supabase.from('customers').select('*').order('name'),
+        supabase.from('customers').select('*').order('company_name'),
         supabase.from('followups').select('*'),
         supabase.from('app_settings').select('*').eq('id', 'config').single(),
         supabase.from('authorized_signatories').select('*').order('name'),
@@ -510,31 +510,134 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  const mapCustomerFromDB = (c: any): Customer => ({
-    ...c,
-    sites: Array.isArray(c.sites) ? c.sites.map((s: any) => ({
-      ...s,
-      contacts: Array.isArray(s.contacts) ? s.contacts : [],
-    })) : [],
-    ratingPayment: c.rating_payment ?? 0,
-    ratingOrders: c.rating_orders ?? 0,
-    ratingTrend: c.rating_trend ?? 0,
-    nextOrders: c.next_orders ?? [],
-    tier: c.tier ?? 'New',
-    turnover: c.turnover ?? 0,
-    revenue: c.revenue ?? 0,
-    rating_payment: undefined,
-    rating_orders: undefined,
-    rating_trend: undefined,
-    next_orders: undefined,
-  });
+  const mapCustomerFromDB = (c: any): Customer => {
+    // Build a single primary site from the flat DB address + 3 contact columns
+    const contacts: Contact[] = [];
+    if (c.primary_contact_name || c.primary_contact_email) {
+      contacts.push({ id: 'C1', name: c.primary_contact_name || '', role: c.primary_contact_designation || '', email: c.primary_contact_email || '', phone: c.primary_contact_phone || '', isPrimary: true });
+    }
+    if (c.contact2_name || c.contact2_email) {
+      contacts.push({ id: 'C2', name: c.contact2_name || '', role: c.contact2_designation || '', email: c.contact2_email || '', phone: c.contact2_phone || '' });
+    }
+    if (c.contact3_name || c.contact3_email) {
+      contacts.push({ id: 'C3', name: c.contact3_name || '', role: c.contact3_designation || '', email: c.contact3_email || '', phone: c.contact3_phone || '' });
+    }
+    if (contacts.length === 0) {
+      contacts.push({ id: 'C1', name: '', role: 'Purchase', email: '', isPrimary: true });
+    }
+
+    const primarySite: Site = {
+      id: 'S1',
+      name: 'Main Office',
+      city: c.city || '',
+      state: c.state || '',
+      address: c.billing_address || '',
+      fullAddress: c.billing_address || '',
+      pincode: c.pincode || '',
+      gstin: c.gstin || '',
+      isPrimary: true,
+      contacts,
+    };
+
+    const nextOrder1 = c.next_order_product1
+      ? { product: c.next_order_product1, qty: c.next_order_qty1 ?? undefined, date: c.next_order_date1 || undefined }
+      : undefined;
+    const nextOrder2 = c.next_order_product2
+      ? { product: c.next_order_product2, qty: c.next_order_qty2 ?? undefined, date: c.next_order_date2 || undefined }
+      : undefined;
+
+    return {
+      id: c.customer_id,
+      code: c.customer_id,
+      name: c.company_name || '',
+      seg: c.industry_segment || '',
+      gstin: c.gstin || '',
+      inco: c.incoterms || 'Ex-Works',
+      curr: c.currency || 'INR',
+      pay: c.payment_terms || '',
+      tier: c.tier ?? 'New',
+      turnover: c.last_fy_turnover ?? 0,
+      revenue: c.revenue_ytd ?? 0,
+      ratingPayment: c.payment_rating ?? 0,
+      ratingOrders: c.orders_rating ?? 0,
+      ratingTrend: c.trend_rating ?? 0,
+      overallRating: c.overall_rating ?? undefined,
+      creditLimit: c.credit_limit ?? undefined,
+      crossSellOpportunities: c.cross_sell_opportunities || '',
+      notes: c.notes || '',
+      totalQuotes: c.total_quotes ?? 0,
+      createdBy: c.created_by || '',
+      nextOrder1,
+      nextOrder2,
+      nextOrders: [nextOrder1?.product, nextOrder2?.product].filter(Boolean) as string[],
+      sites: [primarySite],
+    };
+  };
 
   const mapCustomerToDB = (c: Partial<Customer>) => {
-    const obj: any = { ...c };
-    if ('ratingPayment' in c) { obj.rating_payment = c.ratingPayment; delete obj.ratingPayment; }
-    if ('ratingOrders' in c)  { obj.rating_orders  = c.ratingOrders;  delete obj.ratingOrders;  }
-    if ('ratingTrend' in c)   { obj.rating_trend   = c.ratingTrend;   delete obj.ratingTrend;   }
-    if ('nextOrders' in c)    { obj.next_orders    = c.nextOrders;    delete obj.nextOrders;    }
+    const primarySite = c.sites?.[0];
+    const contacts = primarySite?.contacts ?? [];
+    const [c1, c2, c3] = contacts;
+
+    const obj: any = {};
+    if ('id' in c || 'code' in c) obj.customer_id = c.id ?? c.code;
+    if ('name' in c)   obj.company_name  = c.name;
+    if ('seg' in c)    obj.industry_segment = c.seg;
+    if ('gstin' in c)  obj.gstin         = c.gstin;
+    if ('inco' in c)   obj.incoterms     = c.inco;
+    if ('curr' in c)   obj.currency      = c.curr;
+    if ('pay' in c)    obj.payment_terms  = c.pay;
+    if ('tier' in c)   obj.tier          = (c.tier === 'New') ? null : c.tier;
+    if ('turnover' in c)      obj.last_fy_turnover = c.turnover;
+    if ('revenue' in c)       obj.revenue_ytd      = c.revenue;
+    if ('ratingPayment' in c) obj.payment_rating   = c.ratingPayment;
+    if ('ratingOrders' in c)  obj.orders_rating    = c.ratingOrders;
+    if ('ratingTrend' in c)   obj.trend_rating     = c.ratingTrend;
+    if ('creditLimit' in c)   obj.credit_limit     = c.creditLimit;
+    if ('crossSellOpportunities' in c) obj.cross_sell_opportunities = c.crossSellOpportunities;
+    if ('notes' in c)  obj.notes = c.notes;
+    if ('createdBy' in c) obj.created_by = c.createdBy;
+
+    // Primary site → flat address columns
+    if (primarySite) {
+      obj.city            = primarySite.city;
+      obj.state           = primarySite.state;
+      obj.billing_address = primarySite.fullAddress || primarySite.address;
+      obj.pincode         = primarySite.pincode;
+    }
+
+    // Flat contact columns
+    if (c1 !== undefined) {
+      obj.primary_contact_name        = c1?.name;
+      obj.primary_contact_designation = c1?.role;
+      obj.primary_contact_email       = c1?.email;
+      obj.primary_contact_phone       = c1?.phone;
+    }
+    if (c2 !== undefined) {
+      obj.contact2_name        = c2?.name;
+      obj.contact2_designation = c2?.role;
+      obj.contact2_email       = c2?.email;
+      obj.contact2_phone       = c2?.phone;
+    }
+    if (c3 !== undefined) {
+      obj.contact3_name        = c3?.name;
+      obj.contact3_designation = c3?.role;
+      obj.contact3_email       = c3?.email;
+      obj.contact3_phone       = c3?.phone;
+    }
+
+    // Next orders
+    if ('nextOrder1' in c) {
+      obj.next_order_product1 = c.nextOrder1?.product ?? null;
+      obj.next_order_qty1     = c.nextOrder1?.qty ?? null;
+      obj.next_order_date1    = c.nextOrder1?.date ?? null;
+    }
+    if ('nextOrder2' in c) {
+      obj.next_order_product2 = c.nextOrder2?.product ?? null;
+      obj.next_order_qty2     = c.nextOrder2?.qty ?? null;
+      obj.next_order_date2    = c.nextOrder2?.date ?? null;
+    }
+
     return obj;
   };
 
@@ -549,7 +652,7 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const updateCustomer = async (id: string, updates: Partial<Customer>) => {
-    const { error } = await supabase.from('customers').update(mapCustomerToDB(updates)).eq('id', id);
+    const { error } = await supabase.from('customers').update(mapCustomerToDB(updates)).eq('customer_id', id);
     if (!error) {
       setData(prev => ({
         ...prev,
@@ -562,7 +665,7 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteCustomer = async (id: string) => {
-    const { error } = await supabase.from('customers').delete().eq('id', id);
+    const { error } = await supabase.from('customers').delete().eq('customer_id', id);
     if (!error) {
       setData(prev => ({
         ...prev,

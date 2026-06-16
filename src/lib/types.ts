@@ -71,8 +71,15 @@ export interface Site {
   transporter?: string;
   leadTimeNote?: string;
   gstin?: string;
+  pincode?: string;
   isPrimary?: boolean;
   contacts: Contact[];
+}
+
+export interface NextOrder {
+  product: string;
+  qty?: number;
+  date?: string; // ISO date YYYY-MM-DD
 }
 
 export interface Attachment {
@@ -215,26 +222,34 @@ export interface BankAccount {
   updated_at?: string;
 }
 
-export type CustomerTier = 'New' | 'Bronze' | 'Silver' | 'Gold';
+export type CustomerTier = 'New' | 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
 
 export interface Customer {
-  id: string;
-  code: string;
-  name: string;
-  seg: string;
+  id: string;            // = customer_id in DB
+  code: string;          // same as id (customer_id)
+  name: string;          // company_name
+  seg: string;           // industry_segment
   gstin: string;
   pan?: string;
-  inco: string;
-  curr: string;
-  pay: string;
-  sites: Site[];
+  inco: string;          // incoterms
+  curr: string;          // currency
+  pay: string;           // payment_terms
+  sites: Site[];         // primary site maps to city/billing_address/state/pincode + contacts
   tier?: CustomerTier;
-  turnover?: number;          // annual FY turnover in INR
-  revenue?: number;           // total revenue from this customer
-  ratingPayment?: number;     // 0–10, weight 30%
-  ratingOrders?: number;      // 0–10, weight 40%
-  ratingTrend?: number;       // 0–10, weight 30%
-  nextOrders?: string[];      // predicted next products
+  turnover?: number;     // last_fy_turnover
+  revenue?: number;      // revenue_ytd
+  ratingPayment?: number;    // payment_rating
+  ratingOrders?: number;     // orders_rating
+  ratingTrend?: number;      // trend_rating
+  overallRating?: number;    // overall_rating (DB computed, read-only)
+  creditLimit?: number;      // credit_limit
+  nextOrder1?: NextOrder;    // next_order_product1 / qty1 / date1
+  nextOrder2?: NextOrder;    // next_order_product2 / qty2 / date2
+  crossSellOpportunities?: string;
+  notes?: string;
+  totalQuotes?: number;  // total_quotes (read-only from DB)
+  createdBy?: string;    // created_by
+  nextOrders?: string[]; // derived display list (product names from nextOrder1/2)
 }
 
 export interface FollowUpLog {
