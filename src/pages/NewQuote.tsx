@@ -274,11 +274,11 @@ export function NewQuote() {
         setContactManual(!enq.contactId && !!(enq.contact || enq.email));
         const cr = data.customers.find(c => c.name === enq.cust);
         if (cr) { const ci = cr.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(cr.curr || 'INR'); setPay(cr.pay || '30 days'); }
-        setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '40169930', unitPrice: 0, gst: 18, total: 0 })));
+        setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '', unitPrice: 0, gst: 18, total: 0 })));
       }
     } else {
       setQuoteId(generateId('MRT', data.quotes.map(q => q.id)));
-      setItems([{ seq: 1, desc: '', mat: '', hsn: '40169930', qty: 1, uom: 'pcs', packing: '', packingType: '', unitPrice: 0, gst: 18, total: 0 }]);
+      setItems([{ seq: 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', unitPrice: 0, gst: 18, total: 0 }]);
       if (custParam) {
         setCustName(custParam);
         const cr = data.customers.find(c => c.name === custParam);
@@ -353,7 +353,7 @@ export function NewQuote() {
     }
     setItems(ni);
   };
-  const addItem = () => setItems([...items, { seq: items.length + 1, desc: '', mat: '', hsn: '40169930', qty: 1, uom: 'pcs', packing: '', packingType: '', unitPrice: 0, gst: 18, total: 0, rateAsPerWeight: '', rateOverride: false, rateText: '' }]);
+  const addItem = () => setItems([...items, { seq: items.length + 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', unitPrice: 0, gst: 18, total: 0, rateAsPerWeight: '', rateOverride: false, rateText: '' }]);
   const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 }))); };
 
   // Copy items from an existing quote
@@ -441,7 +441,7 @@ export function NewQuote() {
         const desc = mm[4].trim();
         const unitPrice = parsePrice(mm[5]);
         if (desc.length < 3 || tncKeywords.test(desc)) continue;
-        results.push({ seq, desc, mat: '', hsn: '40169930', qty, uom, unitPrice, gst: 18, total: qty * unitPrice });
+        results.push({ seq, desc, mat: '', hsn: '', qty, uom, unitPrice, gst: 18, total: qty * unitPrice });
         continue;
       }
 
@@ -472,7 +472,7 @@ export function NewQuote() {
         .trim();
       if (!desc || desc.length < 3) continue;
 
-      results.push({ seq, desc, mat: '', hsn: '40169930', qty, uom, unitPrice, gst: 18, total: qty * unitPrice });
+      results.push({ seq, desc, mat: '', hsn: '', qty, uom, unitPrice, gst: 18, total: qty * unitPrice });
     }
 
     return results;
@@ -654,7 +654,7 @@ export function NewQuote() {
                 setContactManual(!enq.contactId && !!(enq.contact || enq.email));
                 const cr = data.customers.find(c => c.name === enq.cust);
                 if (cr) { const ci = cr.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(cr.curr || 'INR'); setPay(cr.pay || '30 days'); }
-                setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '40169930', unitPrice: 0, gst: 18, total: 0 })));
+                setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '', unitPrice: 0, gst: 18, total: 0 })));
               }
             }} className="flex-1">
               Create New Anyway
