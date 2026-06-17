@@ -15,7 +15,7 @@ function computeRating(c: Customer): number {
   const p = (c.ratingPayment ?? 0) * 3;
   const o = (c.ratingOrders  ?? 0) * 4;
   const t = (c.ratingTrend   ?? 0) * 3;
-  return p + o + t;
+  return Math.round((p + o + t) * 10) / 10;
 }
 
 function hasMixedContent(text: string) {
