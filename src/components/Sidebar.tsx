@@ -53,7 +53,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         ) : (
           <div className="flex flex-col justify-center min-w-0">
             {logoError ? (
-              <span className="font-serif font-bold text-[13px] text-red-mrt tracking-tight whitespace-nowrap">Himalaya Terpenes Pvt Ltd</span>
+              <span className="font-serif font-bold text-[15px] text-red-mrt tracking-tight whitespace-nowrap">Himalaya Terpenes Pvt Ltd</span>
             ) : (
               <img
                 src="/mangla-logo.png"
