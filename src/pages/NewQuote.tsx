@@ -971,22 +971,22 @@ export function NewQuote() {
                         <tr key={item.seq} className="hover:bg-g50/50">
                           <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{item.seq}</td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" list="qt-desc-list" value={item.desc} placeholder="Product name / description"
+                            <input type="text" list="qt-desc-list" value={item.desc}
                               onChange={e => { updateItem(idx, 'desc', e.target.value); setErrors({ ...errors, items: '' }); }}
-                              className={`w-full bg-transparent outline-none text-[12px] font-sans placeholder:text-g300 ${errors.items && !item.desc ? 'text-red-mrt' : 'text-blk'}`} />
+                              className={`w-full bg-transparent outline-none text-[12px] font-sans ${errors.items && !item.desc ? 'text-red-mrt' : 'text-blk'}`} />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" list="qt-hsn-list" title="HSN Code" value={item.hsn} placeholder="e.g. 2905" onChange={e => updateItem(idx, 'hsn', e.target.value)} className="w-full bg-transparent outline-none font-mono text-[11px] text-blk placeholder:text-g300" />
+                            <input type="text" list="qt-hsn-list" title="HSN Code" value={item.hsn} onChange={e => updateItem(idx, 'hsn', e.target.value)} className="w-full bg-transparent outline-none font-mono text-[11px] text-blk" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="number" min="1" value={item.qty || ''} placeholder="0" onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '' }); }}
-                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center placeholder:text-g300 ${errors.items && Number(item.qty) <= 0 ? 'text-red-mrt' : 'text-blk'}`} />
+                            <input type="number" min="1" value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '' }); }}
+                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center ${errors.items && Number(item.qty) <= 0 ? 'text-red-mrt' : 'text-blk'}`} />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" value={item.packing || ''} placeholder="e.g. 12 pcs/box" onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" />
+                            <input type="text" value={item.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" value={item.packingType || ''} placeholder="e.g. Carton" onChange={e => updateItem(idx, 'packingType', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" />
+                            <input type="text" value={item.packingType || ''} onChange={e => updateItem(idx, 'packingType', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" value={item.rateAsPerWeight || ''} placeholder="e.g. ₹120/kg" onChange={e => updateItem(idx, 'rateAsPerWeight', e.target.value)}
