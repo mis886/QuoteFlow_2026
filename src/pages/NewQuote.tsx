@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, localDateStr, fmtDate } from '../lib/utils';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus } from '../lib/types';
+import { PRODUCT_HSN, PRODUCT_NAMES } from '../lib/products';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { generateQuotePDF } from '../lib/pdfGenerator';
@@ -126,6 +127,7 @@ export function NewQuote() {
 
   const descSuggestions = useMemo(() =>
     [...new Set([
+      ...PRODUCT_NAMES,
       ...data.enquiries.flatMap(e => e.items.map(i => i.desc)),
       ...data.quotes.flatMap(q => q.items.map(i => i.desc)),
     ].filter(Boolean))].sort(), [data.enquiries, data.quotes]);
@@ -972,7 +974,14 @@ export function NewQuote() {
                           <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{item.seq}</td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" list="qt-desc-list" value={item.desc}
-                              onChange={e => { updateItem(idx, 'desc', e.target.value); setErrors({ ...errors, items: '' }); }}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const ni = [...items];
+                                ni[idx] = { ...ni[idx], desc: val };
+                                if (val in PRODUCT_HSN) ni[idx] = { ...ni[idx], hsn: PRODUCT_HSN[val] };
+                                setItems(ni);
+                                setErrors({ ...errors, items: '' });
+                              }}
                               className={`w-full bg-transparent outline-none text-[12px] font-sans ${errors.items && !item.desc ? 'text-red-mrt' : 'text-blk'}`} />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
