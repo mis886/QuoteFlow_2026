@@ -333,10 +333,11 @@ export function getThisWeekRange(): { start: Date; end: Date } {
   return { start, end };
 }
 
-export const generateId = (prefix: string, existingIds: string[]) => {
+export const generateId = (prefix: string, existingIds: (string | undefined | null)[]) => {
   const yr = new Date().getFullYear();
   let maxNum = 0;
   for (const id of existingIds) {
+    if (!id) continue;
     const match = id.match(new RegExp(`${prefix}-\\d+-(\\d+)`));
     if (match) {
       const num = parseInt(match[1], 10);

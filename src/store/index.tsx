@@ -511,7 +511,6 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const mapCustomerFromDB = (c: any): Customer => {
-    // Build a single primary site from the flat DB address + 3 contact columns
     const contacts: Contact[] = [];
     if (c.primary_contact_name || c.primary_contact_email) {
       contacts.push({ id: 'C1', name: c.primary_contact_name || '', role: c.primary_contact_designation || '', email: c.primary_contact_email || '', phone: c.primary_contact_phone || '', isPrimary: true });
