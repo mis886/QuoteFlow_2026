@@ -995,29 +995,29 @@ export function NewQuote() {
                             <input type="text" value={item.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <select value={item.packingType || ''} onChange={e => updateItem(idx, 'packingType', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk appearance-none cursor-pointer">
-                              <option value=""></option>
-                              <option>Empty Barrels</option>
-                              <option>NEW PVC ( PRINTED )</option>
-                              <option>NEW PVC ( PLANE ) 8.2KG sample</option>
-                              <option>NEW PVC ( PLANE ) 8.2 KG</option>
-                              <option>NEW PVC ( PLANE ) 9.5 KG</option>
-                              <option>Used NEW PVC ( PLANE ) TERPI</option>
-                              <option>NEW GI(Silver) (Plane) 22 kg</option>
-                              <option>NEW GI(Silver) (Lining) 22 kg</option>
-                              <option>NEW GI(Silver) (Lining) OLD UN</option>
-                              <option>New MS Black epoxy</option>
-                              <option>New MS Black epoxy USED</option>
-                              <option>New MS Black epoxy REJECTED</option>
-                              <option>New MS Black epoxy OLD UN</option>
-                              <option>New Cans Terpineol</option>
-                              <option>Used barrels of thermic MS</option>
-                              <option>MS BARRELS FOR PITCH</option>
-                              <option>Hdpe washed</option>
-                              <option>Hdpe unwashed</option>
-                              <option>IBC Box USED</option>
-                              <option>IBC Box NEW</option>
-                              <option>wooden pallets4</option>
+                            <select value={item.packingType || ''} onChange={e => updateItem(idx, 'packingType', e.target.value)} className="w-full bg-[#1a1a1a] text-white outline-none text-[12px] font-sans appearance-none cursor-pointer rounded-none">
+                              <option value="" className="bg-[#1a1a1a] text-white"></option>
+                              <option className="bg-[#1a1a1a] text-white">Empty Barrels</option>
+                              <option className="bg-[#1a1a1a] text-white">NEW PVC ( PRINTED )</option>
+                              <option className="bg-[#1a1a1a] text-white">NEW PVC ( PLANE ) 8.2KG sample</option>
+                              <option className="bg-[#1a1a1a] text-white">NEW PVC ( PLANE ) 8.2 KG</option>
+                              <option className="bg-[#1a1a1a] text-white">NEW PVC ( PLANE ) 9.5 KG</option>
+                              <option className="bg-[#1a1a1a] text-white">Used NEW PVC ( PLANE ) TERPI</option>
+                              <option className="bg-[#1a1a1a] text-white">NEW GI(Silver) (Plane) 22 kg</option>
+                              <option className="bg-[#1a1a1a] text-white">NEW GI(Silver) (Lining) 22 kg</option>
+                              <option className="bg-[#1a1a1a] text-white">NEW GI(Silver) (Lining) OLD UN</option>
+                              <option className="bg-[#1a1a1a] text-white">New MS Black epoxy</option>
+                              <option className="bg-[#1a1a1a] text-white">New MS Black epoxy USED</option>
+                              <option className="bg-[#1a1a1a] text-white">New MS Black epoxy REJECTED</option>
+                              <option className="bg-[#1a1a1a] text-white">New MS Black epoxy OLD UN</option>
+                              <option className="bg-[#1a1a1a] text-white">New Cans Terpineol</option>
+                              <option className="bg-[#1a1a1a] text-white">Used barrels of thermic MS</option>
+                              <option className="bg-[#1a1a1a] text-white">MS BARRELS FOR PITCH</option>
+                              <option className="bg-[#1a1a1a] text-white">Hdpe washed</option>
+                              <option className="bg-[#1a1a1a] text-white">Hdpe unwashed</option>
+                              <option className="bg-[#1a1a1a] text-white">IBC Box USED</option>
+                              <option className="bg-[#1a1a1a] text-white">IBC Box NEW</option>
+                              <option className="bg-[#1a1a1a] text-white">wooden pallets4</option>
                             </select>
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
