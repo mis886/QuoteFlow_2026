@@ -101,6 +101,7 @@ export function NewQuote() {
   const [searchParams, setSearchParams] = useSearchParams();
   const enqRef = searchParams.get('enqRef');
   const editId = searchParams.get('id');
+  const custParam = searchParams.get('cust');
   const navigate = useNavigate();
   const { data, addQuote, updateQuote, updateEnquiry, addCustomer, addSignatory, stampName } = useAppStore();
 
@@ -215,7 +216,7 @@ export function NewQuote() {
 
   // Auto-load default signatory
   useEffect(() => {
-    if (editId || enqRef || authName) return;
+    if (editId || enqRef || custParam || authName) return;
     const def = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
     if (def) { setAuthName(def.name); setAuthDesignation(def.designation); setAuthPhone(def.phone); setSelectedSigId(def.id); }
   }, [data.signatories, editId, enqRef]);
@@ -225,7 +226,7 @@ export function NewQuote() {
   // duplicate dialog switches this page into editing the existing quote).
   const initedFor = useRef<string | null>(null);
   useEffect(() => {
-    const target = editId ? `id:${editId}` : enqRef ? `enq:${enqRef}` : 'new';
+    const target = editId ? `id:${editId}` : enqRef ? `enq:${enqRef}` : custParam ? `cust:${custParam}` : 'new';
     if (initedFor.current === target) return;
     initedFor.current = target;
     if (editId) {
@@ -278,9 +279,25 @@ export function NewQuote() {
     } else {
       setQuoteId(generateId('MRT', data.quotes.map(q => q.id)));
       setItems([{ seq: 1, desc: '', mat: '', hsn: '40169930', qty: 1, uom: 'pcs', packing: '', packingType: '', unitPrice: 0, gst: 18, total: 0 }]);
+      if (custParam) {
+        setCustName(custParam);
+        const cr = data.customers.find(c => c.name === custParam);
+        if (cr) {
+          const ci = cr.inco || 'EXW - Ex Works';
+          if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); }
+          setCurr(cr.curr || 'INR');
+          setPay(cr.pay || '30 days');
+          const ps = (cr.sites ?? []).find((s: any) => s.isPrimary) || (cr.sites ?? [])[0];
+          if (ps) {
+            setSiteId(ps.id);
+            const pc = (ps.contacts ?? []).find((ct: any) => ct.isPrimary) || (ps.contacts ?? [])[0];
+            if (pc) { setContactId(pc.id); setContact(pc.name); setEmail(pc.email); setPhone(pc.phone || ''); }
+          }
+        }
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editId, enqRef]);
+  }, [editId, enqRef, custParam]);
 
   // Auto-load default unit
   useEffect(() => {
