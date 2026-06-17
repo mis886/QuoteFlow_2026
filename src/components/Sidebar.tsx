@@ -49,15 +49,15 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         collapsed ? "px-0 py-3.5 justify-center h-[57px]" : "px-4 py-3.5 gap-3 h-[57px]"
       )}>
         {collapsed ? (
-          <span className="font-serif font-bold text-[13px] text-red-mrt tracking-wide">M</span>
+          <span className="font-serif font-bold text-[13px] text-red-mrt tracking-wide">HT</span>
         ) : (
           <>
             {logoError ? (
-              <span className="font-serif font-bold text-[15px] text-red-mrt tracking-wide">MANGLA</span>
+              <span className="font-serif font-bold text-[10px] text-red-mrt tracking-wide leading-tight">Himalaya Terpenes<br />Pvt Ltd</span>
             ) : (
               <img
                 src="/mangla-logo.png"
-                alt="Mangla"
+                alt="Himalaya Terpenes Pvt Ltd"
                 className="h-8"
                 onError={() => setLogoError(true)}
               />
