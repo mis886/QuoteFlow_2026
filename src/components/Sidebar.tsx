@@ -53,7 +53,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         ) : (
           <>
             {logoError ? (
-              <span className="font-serif font-bold text-[10px] text-red-mrt tracking-wide leading-tight">Himalaya Terpenes<br />Pvt Ltd</span>
+              <span className="font-serif font-bold text-[13px] text-red-mrt tracking-wide leading-tight">Himalaya Terpenes<br />Pvt Ltd</span>
             ) : (
               <img
                 src="/mangla-logo.png"
