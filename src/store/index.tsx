@@ -510,16 +510,23 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
+  const fixPhone = (v: any): string => {
+    if (v == null) return '';
+    const s = String(v).trim();
+    if (/^[0-9.]+[eE][+\-]?[0-9]+$/.test(s)) return String(Math.round(Number(s)));
+    return s;
+  };
+
   const mapCustomerFromDB = (c: any): Customer => {
     const contacts: Contact[] = [];
     if (c.primary_contact_name || c.primary_contact_email) {
-      contacts.push({ id: 'C1', name: c.primary_contact_name || '', role: c.primary_contact_designation || '', email: c.primary_contact_email || '', phone: c.primary_contact_phone || '', isPrimary: true });
+      contacts.push({ id: 'C1', name: c.primary_contact_name || '', role: c.primary_contact_designation || '', email: c.primary_contact_email || '', phone: fixPhone(c.primary_contact_phone), isPrimary: true });
     }
     if (c.contact2_name || c.contact2_email) {
-      contacts.push({ id: 'C2', name: c.contact2_name || '', role: c.contact2_designation || '', email: c.contact2_email || '', phone: c.contact2_phone || '' });
+      contacts.push({ id: 'C2', name: c.contact2_name || '', role: c.contact2_designation || '', email: c.contact2_email || '', phone: fixPhone(c.contact2_phone) });
     }
     if (c.contact3_name || c.contact3_email) {
-      contacts.push({ id: 'C3', name: c.contact3_name || '', role: c.contact3_designation || '', email: c.contact3_email || '', phone: c.contact3_phone || '' });
+      contacts.push({ id: 'C3', name: c.contact3_name || '', role: c.contact3_designation || '', email: c.contact3_email || '', phone: fixPhone(c.contact3_phone) });
     }
     if (contacts.length === 0) {
       contacts.push({ id: 'C1', name: '', role: 'Purchase', email: '', isPrimary: true });
