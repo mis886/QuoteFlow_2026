@@ -51,9 +51,9 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         {collapsed ? (
           <span className="font-serif font-bold text-[13px] text-red-mrt tracking-wide">HT</span>
         ) : (
-          <>
+          <div className="flex flex-col justify-center min-w-0">
             {logoError ? (
-              <span className="font-serif font-bold text-[13px] text-red-mrt tracking-wide leading-tight">Himalaya Terpenes<br />Pvt Ltd</span>
+              <span className="font-serif font-bold text-[13px] text-red-mrt tracking-tight whitespace-nowrap">Himalaya Terpenes Pvt Ltd</span>
             ) : (
               <img
                 src="/mangla-logo.png"
@@ -62,11 +62,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
                 onError={() => setLogoError(true)}
               />
             )}
-            <div className="w-px h-7 bg-g200" />
-            <div className="font-mono text-[8px] font-bold tracking-[2.5px] uppercase text-g500 leading-tight">
-              EQ System<br />v2.0
-            </div>
-          </>
+            <span className="font-mono text-[7.5px] font-bold tracking-[2px] uppercase text-g400 mt-0.5">EQ System v2.0</span>
+          </div>
         )}
       </div>
 
