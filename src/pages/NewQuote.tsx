@@ -1224,9 +1224,13 @@ export function NewQuote() {
                   {items.map(item => (
                     <tr key={item.seq} className="border-b border-g200 last:border-0">
                       <td className="px-4 py-2 font-mono text-g400 text-[10px] w-8">{item.seq}</td>
-                      <td className="px-4 py-2 text-blk">{item.desc || <span className="text-g300 italic">No description</span>}</td>
-                      <td className="px-4 py-2 text-g500">{item.mat}</td>
-                      <td className="px-4 py-2 text-g500 text-right w-24">{item.qty} {item.uom}</td>
+                      <td className="px-4 py-2 text-blk">
+                        {item.desc || <span className="text-g300 italic">No description</span>}
+                        {(item.packing || item.packingType) && (
+                          <span className="block text-[10px] text-g400 mt-0.5">{[item.packing, item.packingType].filter(Boolean).join(' · ')}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-g500 text-right w-16">{item.qty}</td>
                       <td className="px-4 py-2 font-mono text-right w-36">
                         {item.rateOverride
                           ? <span className="text-red-mrt font-bold">{item.rateText?.trim() || 'Regret'}</span>
