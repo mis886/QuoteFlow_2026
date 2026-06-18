@@ -545,11 +545,14 @@ const mapEnquiryToDB = (e: any) => {
       contacts,
     };
 
+    const toNum = (v: any, fallback = 0) => v != null && v !== '' ? Number(v) || fallback : fallback;
+    const toNumOrUndef = (v: any) => v != null && v !== '' ? Number(v) || undefined : undefined;
+
     const nextOrder1 = c.next_order_product1
-      ? { product: c.next_order_product1, qty: c.next_order_qty1 ?? undefined, date: c.next_order_date1 || undefined }
+      ? { product: c.next_order_product1, qty: toNumOrUndef(c.next_order_qty1), date: c.next_order_date1 || undefined }
       : undefined;
     const nextOrder2 = c.next_order_product2
-      ? { product: c.next_order_product2, qty: c.next_order_qty2 ?? undefined, date: c.next_order_date2 || undefined }
+      ? { product: c.next_order_product2, qty: toNumOrUndef(c.next_order_qty2), date: c.next_order_date2 || undefined }
       : undefined;
 
     return {
@@ -562,16 +565,16 @@ const mapEnquiryToDB = (e: any) => {
       curr: c.currency || 'INR',
       pay: c.payment_terms || '',
       tier: c.tier ?? 'New',
-      turnover: c.last_fy_turnover ?? 0,
-      revenue: c.revenue_ytd ?? 0,
-      ratingPayment: c.payment_rating ?? 0,
-      ratingOrders: c.orders_rating ?? 0,
-      ratingTrend: c.trend_rating ?? 0,
-      overallRating: c.overall_rating ?? undefined,
-      creditLimit: c.credit_limit ?? undefined,
+      turnover: toNum(c.last_fy_turnover),
+      revenue: toNum(c.revenue_ytd),
+      ratingPayment: toNum(c.payment_rating),
+      ratingOrders: toNum(c.orders_rating),
+      ratingTrend: toNum(c.trend_rating),
+      overallRating: toNumOrUndef(c.overall_rating),
+      creditLimit: toNumOrUndef(c.credit_limit),
       crossSellOpportunities: c.cross_sell_opportunities || '',
       notes: c.notes || '',
-      totalQuotes: c.total_quotes ?? 0,
+      totalQuotes: toNum(c.total_quotes),
       createdBy: c.created_by || '',
       nextOrder1,
       nextOrder2,
