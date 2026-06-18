@@ -567,9 +567,9 @@ const mapEnquiryToDB = (e: any) => {
       tier: c.tier ?? 'New',
       turnover: toNum(c.last_fy_turnover),
       revenue: toNum(c.revenue_ytd),
-      ratingPayment: toNum(c.payment_rating),
-      ratingOrders: toNum(c.orders_rating),
-      ratingTrend: toNum(c.trend_rating),
+      ratingPayment: toNum(c.payment_rating) * 10,
+      ratingOrders:  toNum(c.orders_rating)  * 10,
+      ratingTrend:   toNum(c.trend_rating)   * 10,
       overallRating: toNumOrUndef(c.overall_rating),
       creditLimit: toNumOrUndef(c.credit_limit),
       crossSellOpportunities: c.cross_sell_opportunities || '',
@@ -599,9 +599,9 @@ const mapEnquiryToDB = (e: any) => {
     if ('tier' in c)   obj.tier          = (c.tier === 'New') ? null : c.tier;
     if ('turnover' in c)      obj.last_fy_turnover = c.turnover;
     if ('revenue' in c)       obj.revenue_ytd      = c.revenue;
-    if ('ratingPayment' in c) obj.payment_rating   = c.ratingPayment;
-    if ('ratingOrders' in c)  obj.orders_rating    = c.ratingOrders;
-    if ('ratingTrend' in c)   obj.trend_rating     = c.ratingTrend;
+    if ('ratingPayment' in c) obj.payment_rating = (c.ratingPayment ?? 0) / 10;
+    if ('ratingOrders'  in c) obj.orders_rating  = (c.ratingOrders  ?? 0) / 10;
+    if ('ratingTrend'   in c) obj.trend_rating   = (c.ratingTrend   ?? 0) / 10;
     if ('creditLimit' in c)   obj.credit_limit     = c.creditLimit;
     if ('crossSellOpportunities' in c) obj.cross_sell_opportunities = c.crossSellOpportunities;
     if ('notes' in c)  obj.notes = c.notes;
