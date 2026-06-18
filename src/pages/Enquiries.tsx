@@ -8,7 +8,7 @@ import { EnqStatus } from '../lib/types';
 
 export function Enquiries() {
   const store = useAppStore();
-  const { data, globalSearchQuery, setGlobalSearchQuery, openDetailPanel, openAttachmentModal } = store;
+  const { data, globalSearchQuery, setGlobalSearchQuery, openDetailPanel, openAttachmentModal, deleteEnquiry } = store;
   const { globalDateRange, setGlobalDateRange } = store as any;
   const navigate = useNavigate();
   const [tab, setTab] = useState<'All' | 'Open' | EnqStatus>('All');
@@ -267,6 +267,9 @@ export function Enquiries() {
                             <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('enquiry', e.id); }}>Detail</Button>
                             {!e.qRef && <Button size="sm" variant="ghost" onClick={(ev) => { ev.stopPropagation(); navigate(`/quotes/new?enqRef=${e.id}`); }}>Quote</Button>}
                             <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openAttachmentModal('enquiry', e.id); }}>Docs</Button>
+                            {e.status === 'New' && (
+                              <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id); }}>Delete</Button>
+                            )}
                           </div>
                         </td>
                       </tr>
