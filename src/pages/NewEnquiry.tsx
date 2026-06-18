@@ -14,7 +14,7 @@ export function NewEnquiry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
-  const { data, addEnquiry, updateEnquiry, addCustomer, stampName } = useAppStore();
+  const { data, addEnquiry, updateEnquiry, addCustomer, stampName, refreshData } = useAppStore();
   const [isSaving, setIsSaving] = useState(false);
 
   // ── Unsaved-changes guard ──
@@ -347,6 +347,7 @@ export function NewEnquiry() {
       }
 
       setDirty(false);   // persisted — no longer unsaved
+      await refreshData();
       if (andQuote) navigate(`/quotes/new?enqRef=${enqId}`);
       else navigate('/enquiries');
     } catch (error: any) {
