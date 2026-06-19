@@ -840,7 +840,20 @@ export function NewQuote() {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Payment Terms</label>
-                    <input type="text" value={pay} onChange={e => setPay(e.target.value)} className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt" />
+                    <select value={pay} onChange={e => setPay(e.target.value)} className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt bg-white appearance-none cursor-pointer">
+                      <option>3 Days</option>
+                      <option>7 Days</option>
+                      <option>14 Days</option>
+                      <option>30 Days Net</option>
+                      <option>45 Days</option>
+                      <option>60 Days</option>
+                      <option>90 Days</option>
+                      <option>120 Days</option>
+                      <option>50% Advance, 50% on Delivery</option>
+                      <option>100% Advance</option>
+                      <option>LC at Sight</option>
+                      <option>Advance</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Currency</label>
