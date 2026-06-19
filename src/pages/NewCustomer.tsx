@@ -187,6 +187,10 @@ export function NewCustomer() {
     [...new Set(data.customers.map(c => c.seg).filter(Boolean) as string[])].sort(),
     [data.customers]
   );
+  const editSegRef = useRef<string>('');
+  useEffect(() => {
+    if (editId && editSegRef.current) setSeg(editSegRef.current);
+  }, [segOptions, editId]);
 
   const [id, setId] = useState('');
   const [code, setCode] = useState('');
@@ -221,6 +225,7 @@ export function NewCustomer() {
         setId(cust.id);
         setCode(cust.code);
         setName(cust.name);
+        editSegRef.current = cust.seg || '';
         setSeg(cust.seg || '');
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
@@ -341,6 +346,7 @@ export function NewCustomer() {
               <label className={labelCls}>Segment</label>
               <select title="Segment" value={seg} onChange={e => setSeg(e.target.value)} className={inputCls}>
                 <option value=""></option>
+                {seg && !segOptions.includes(seg) && <option value={seg}>{seg}</option>}
                 {segOptions.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
