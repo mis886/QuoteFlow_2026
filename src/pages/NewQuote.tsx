@@ -16,17 +16,14 @@ import { Copy, Upload, X, AlertCircle } from 'lucide-react';
 const STEPS = ['Form', 'Preview'];
 
 type TncState = {
-  delivery: string; leadTime: string; pnf: string;
-  freight: string; payment: string; validity: string; taxes: string;
+  leadTime: string; freight: string; payment: string; validity: string; taxes: string;
 };
 
 const defaultTnc = (): TncState => ({
-  delivery: 'Ex-works, Meerut',
-  leadTime: '3-4 weeks from receipt of PO',
-  pnf: 'Extra @ 2%',
-  freight: 'Courier charges extra at actuals',
-  payment: '30 days',
-  validity: localDateStr(new Date(Date.now() + 30 * 86400000)),
+  leadTime: '',
+  freight: '',
+  payment: '',
+  validity: '',
   taxes: 'GST Extra as applicable, 18% at present',
 });
 
@@ -221,8 +218,7 @@ export function NewQuote() {
   // Collect unique historical values per T&C field from all saved quotes
   const tncSuggestions = useMemo(() => {
     const acc: Record<keyof TncState, Set<string>> = {
-      delivery: new Set(), leadTime: new Set(), pnf: new Set(),
-      freight: new Set(), payment: new Set(), validity: new Set(), taxes: new Set(),
+      leadTime: new Set(), freight: new Set(), payment: new Set(), validity: new Set(), taxes: new Set(),
     };
     for (const q of data.quotes) {
       if (!q.terms) continue;
@@ -375,19 +371,10 @@ export function NewQuote() {
     } else { if (sites.length === 1) setSiteId(sites[0].id); }
   }, [custName, siteId, contactId, contactManual, data.customers, editId]);
 
-  // T&C auto-fill: always re-derives delivery/pnf/freight from incoterms, payment
-  // from pay, validity from validity — so changing the select is always instant.
-  // leadTime and taxes are never overwritten (user-only fields).
+  // T&C auto-fill: payment from Payment Terms, validity from Valid Until date.
   useEffect(() => {
-    const sel = inco === 'OVERRIDE' ? customInco : inco;
-    let delivery = 'Ex-works, Meerut', pnf = 'Extra @ 2%', freight = 'Courier charges extra at actuals';
-    if (sel.includes('FOR') && sel.toLowerCase().includes('transport godown')) { delivery = 'FOR, Your Transport Godown'; pnf = 'Included'; freight = 'Up to transport godown'; }
-    else if (sel.includes('FOR')) { delivery = 'FOR, Your Works'; pnf = 'Included'; freight = 'Included up to your works'; }
-    else if (sel.includes('FOB')) { delivery = 'FOB Port of Loading'; pnf = 'Included'; freight = "Buyer's account from port"; }
-    else if (sel.includes('CIF') || sel.includes('CIP')) { delivery = 'CIF/CIP Destination'; pnf = 'Included'; freight = 'Included up to destination'; }
-    else if (sel.includes('DDP') || sel.includes('DAP')) { delivery = 'Door Delivery, Customer Site'; pnf = 'Included'; freight = 'Included'; }
-    setTnc(p => ({ ...p, delivery, pnf, freight, payment: pay, validity: fmtDate(validity) }));
-  }, [inco, customInco, pay, validity]);
+    setTnc(p => ({ ...p, payment: pay, validity: fmtDate(validity) }));
+  }, [pay, validity]);
 
   // Item helpers
   const updateItem = (idx: number, field: keyof QuoteItem, value: any) => {
@@ -1223,20 +1210,32 @@ export function NewQuote() {
                       </tr>
                     </thead>
                     <tbody>
-                      {([['delivery','Delivery Point'],['leadTime','Lead Time'],['pnf','Packing & Fwd'],['freight','Freight'],['payment','Payment'],['validity','Validity'],['taxes','Taxes']] as [keyof TncState, string][]).map(([key, label], idx) => (
-                        <tr key={key} className="border-b border-g200 last:border-0">
+                      {([['leadTime','Lead Time'],['freight','Freight']] as [keyof TncState, string][]).map(([key, label], idx) => (
+                        <tr key={key} className="border-b border-g200">
                           <td className="border border-g200 px-2 py-1 font-mono text-[9px] text-g400 text-center">{idx + 1}</td>
                           <td className="border border-g200 px-2 py-1 font-bold text-g600 whitespace-nowrap text-[11px]">{label}</td>
                           <td className="border border-g200 px-1 py-0.5">
-                            <TncComboCell
-                              label={label}
-                              value={tnc[key]}
-                              suggestions={tncSuggestions[key]}
-                              onChange={v => setTncField(key, v)}
-                            />
+                            <TncComboCell label={label} value={tnc[key]} suggestions={tncSuggestions[key]} onChange={v => setTncField(key, v)} />
                           </td>
                         </tr>
                       ))}
+                      <tr className="border-b border-g200">
+                        <td className="border border-g200 px-2 py-1 font-mono text-[9px] text-g400 text-center">3</td>
+                        <td className="border border-g200 px-2 py-1 font-bold text-g600 whitespace-nowrap text-[11px]">Payment</td>
+                        <td className="border border-g200 px-2 py-[5px] text-[12px] text-g500 bg-g50">{tnc.payment}</td>
+                      </tr>
+                      <tr className="border-b border-g200">
+                        <td className="border border-g200 px-2 py-1 font-mono text-[9px] text-g400 text-center">4</td>
+                        <td className="border border-g200 px-2 py-1 font-bold text-g600 whitespace-nowrap text-[11px]">Validity</td>
+                        <td className="border border-g200 px-2 py-[5px] text-[12px] text-g500 bg-g50">{tnc.validity}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-g200 px-2 py-1 font-mono text-[9px] text-g400 text-center">5</td>
+                        <td className="border border-g200 px-2 py-1 font-bold text-g600 whitespace-nowrap text-[11px]">Taxes</td>
+                        <td className="border border-g200 px-1 py-0.5">
+                          <TncComboCell label="Taxes" value={tnc.taxes} suggestions={tncSuggestions.taxes} onChange={v => setTncField('taxes', v)} />
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -1368,7 +1367,7 @@ export function NewQuote() {
                 <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-g500 pb-2 border-b border-g200 mb-3">Terms & Conditions</div>
                 <table className="w-full text-[11px] border-collapse">
                   <tbody>
-                    {([['Delivery',tnc.delivery],['Lead Time',tnc.leadTime],['P&F',tnc.pnf],['Freight',tnc.freight],['Payment',tnc.payment],['Validity',tnc.validity],['Taxes',tnc.taxes]] as [string,string][]).map(([label, val], i) => (
+                    {([['Lead Time',tnc.leadTime],['Freight',tnc.freight],['Payment',tnc.payment],['Validity',tnc.validity],['Taxes',tnc.taxes]] as [string,string][]).map(([label, val], i) => (
                       <tr key={label} className="border-b border-g200 last:border-0">
                         <td className="pr-1.5 py-1 font-mono text-[9px] text-g400 w-4 align-top">{i + 1}</td>
                         <td className="pr-3 py-1 font-bold text-g600 whitespace-nowrap align-top">{label}</td>
