@@ -43,6 +43,32 @@ const INCO_OPTIONS = [
   'CPT - Carriage Paid To',
 ];
 
+const PAY_OPTIONS = [
+  '3 Days', '7 Days', '14 Days', '30 Days Net', '45 Days', '60 Days',
+  '90 Days', '120 Days', '50% Advance, 50% on Delivery', '100% Advance',
+  'LC at Sight', 'Advance',
+];
+
+const normalizePayTerms = (raw: string | undefined): string => {
+  if (!raw) return '';
+  const lower = raw.toLowerCase().trim();
+  const exact = PAY_OPTIONS.find(o => o.toLowerCase() === lower);
+  if (exact) return exact;
+  if (/100.*adv|adv.*100/.test(lower)) return '100% Advance';
+  if (/50.*adv|adv.*50/.test(lower)) return '50% Advance, 50% on Delivery';
+  if (/lc|sight/.test(lower)) return 'LC at Sight';
+  if (/120/.test(lower)) return '120 Days';
+  if (/90/.test(lower)) return '90 Days';
+  if (/60/.test(lower)) return '60 Days';
+  if (/45/.test(lower)) return '45 Days';
+  if (/30/.test(lower)) return '30 Days Net';
+  if (/14/.test(lower)) return '14 Days';
+  if (/7/.test(lower)) return '7 Days';
+  if (/3/.test(lower)) return '3 Days';
+  if (/adv/.test(lower)) return 'Advance';
+  return '';
+};
+
 function TncComboCell({ value, suggestions, onChange, label, standalone }: {
   value: string;
   suggestions: string[];
@@ -155,7 +181,7 @@ export function NewQuote() {
   const [inco, setInco] = useState('EXW - Ex Works');
   const [customInco, setCustomInco] = useState('');
   const [curr, setCurr] = useState('INR');
-  const [pay, setPay] = useState('30 days');
+  const [pay, setPay] = useState('30 Days Net');
   const [unitId, setUnitId] = useState('');
   const [custEnquiryDocNo, setCustEnquiryDocNo] = useState('');
   const [authName, setAuthName] = useState('');
@@ -234,7 +260,7 @@ export function NewQuote() {
         setCustName(q.cust);
         const savedInco = q.inco || 'EXW - Ex Works';
         if (INCO_OPTIONS.includes(savedInco)) { setInco(savedInco); } else { setInco('OVERRIDE'); setCustomInco(savedInco); }
-        setCurr(q.curr || 'INR'); setPay(q.pay || '30 days');
+        setCurr(q.curr || 'INR'); setPay(normalizePayTerms(q.pay) || '30 Days Net');
         setAuthName(q.authorizedPerson?.name || ''); setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
         setQuoteStatus(q.status);
         if (q.unitId) setUnitId(q.unitId);
@@ -270,7 +296,7 @@ export function NewQuote() {
         // If the enquiry had no contactId the details were typed manually — preserve them
         setContactManual(!enq.contactId && !!(enq.contact || enq.email));
         const cr = data.customers.find(c => c.name === enq.cust);
-        if (cr) { const ci = cr.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(cr.curr || 'INR'); setPay(cr.pay || '30 days'); }
+        if (cr) { const ci = cr.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
         setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '', unitPrice: 0, gst: 18, total: 0 })));
       }
     } else {
@@ -283,7 +309,7 @@ export function NewQuote() {
           const ci = cr.inco || 'EXW - Ex Works';
           if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); }
           setCurr(cr.curr || 'INR');
-          setPay(cr.pay || '30 days');
+          setPay(normalizePayTerms(cr.pay) || '30 Days Net');
           const ps = (cr.sites ?? []).find((s: any) => s.isPrimary) || (cr.sites ?? [])[0];
           if (ps) {
             setSiteId(ps.id);
@@ -308,7 +334,7 @@ export function NewQuote() {
     if (!custName) return;
     const customer = data.customers.find(c => c.name === custName);
     if (!customer) return;
-    if (!editId) { const ci = customer.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(customer.curr || 'INR'); setPay(customer.pay || '30 days'); }
+    if (!editId) { const ci = customer.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(customer.curr || 'INR'); setPay(normalizePayTerms(customer.pay) || '30 Days Net'); }
     const sites = customer.sites ?? [];
     if (siteId) {
       const site = sites.find(s => s.id === siteId);
@@ -650,7 +676,7 @@ export function NewQuote() {
                 setContact(enq.contact); setEmail(enq.email);
                 setContactManual(!enq.contactId && !!(enq.contact || enq.email));
                 const cr = data.customers.find(c => c.name === enq.cust);
-                if (cr) { const ci = cr.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(cr.curr || 'INR'); setPay(cr.pay || '30 days'); }
+                if (cr) { const ci = cr.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
                 setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '', unitPrice: 0, gst: 18, total: 0 })));
               }
             }} className="flex-1">
