@@ -225,8 +225,8 @@ export function NewCustomer() {
         setPan(cust.pan || '');
         setSites(cust.sites || []);
         setCreditLimit(cust.creditLimit != null ? String(cust.creditLimit) : '');
-        setNextOrder1(cust.nextOrder1 ?? { product: '' });
-        setNextOrder2(cust.nextOrder2 ?? { product: '' });
+        setNextOrder1({ product: cust.nextOrder1?.product || '' });
+        setNextOrder2({ product: cust.nextOrder2?.product || '' });
         setCrossSellOpportunities(cust.crossSellOpportunities || '');
         setNotes(cust.notes || '');
       }
