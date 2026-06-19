@@ -5,6 +5,9 @@ import { generateId, localDateStr, localDateTimeStr } from '../lib/utils';
 import { Enquiry, LineItem, Urgency } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
+import { ProductSearch } from '../components/ProductSearch';
+import { OptionSearch } from '../components/OptionSearch';
+import { BILLING_HSN, PACKING_TYPES } from '../lib/products';
 
 import { uploadToS3 } from '../lib/s3';
 import { parseRfqPdf } from '../lib/rfqParser';
@@ -31,15 +34,6 @@ export function NewEnquiry() {
   const confirmLeave = () =>
     !dirty || window.confirm('You have unsaved changes. Leave without saving?');
 
-  const descSuggestions = useMemo(() =>
-    [...new Set(data.enquiries.flatMap(e => e.items.map(i => i.desc)).filter(Boolean))].sort(),
-    [data.enquiries]);
-  const matSuggestions = useMemo(() =>
-    [...new Set(data.enquiries.flatMap(e => e.items.map(i => i.mat)).filter(Boolean))].sort(),
-    [data.enquiries]);
-  const drwgSuggestions = useMemo(() =>
-    [...new Set(data.enquiries.flatMap(e => e.items.map(i => i.drwg ?? '').filter(Boolean)))].sort(),
-    [data.enquiries]);
 
   const [date, setDate] = useState(localDateTimeStr(new Date()));
   const [src, setSrc] = useState('');
@@ -105,7 +99,7 @@ export function NewEnquiry() {
   };
 
   const [items, setItems] = useState<LineItem[]>([
-    { seq: 1, desc: '', mat: '', qty: 1, uom: 'pcs', drwg: '' }
+    { seq: 1, desc: '', mat: '', qty: 0, uom: 'pcs', drwg: '', hsn: '', packing: '', packingType: '' }
   ]);
   
   const [enqId, setEnqId] = useState('');
@@ -223,7 +217,7 @@ export function NewEnquiry() {
   };
 
   const addItem = () => {
-    setItems([...items, { seq: items.length + 1, desc: '', mat: '', qty: 1, uom: 'pcs', drwg: '' }]);
+    setItems([...items, { seq: items.length + 1, desc: '', mat: '', qty: 0, uom: 'pcs', drwg: '', hsn: '', packing: '', packingType: '' }]);
   };
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 })));
@@ -502,50 +496,67 @@ export function NewEnquiry() {
             <div className="bg-white border border-g200">
               <div className="p-[11px_18px] border-b border-g200"><span className="font-mono text-[9px] font-bold tracking-[2.5px] uppercase text-g500">Line Items <span className="text-red-mrt">*</span></span></div>
               <div className="p-[10px_12px]">
-                <datalist id="enq-desc-list">{descSuggestions.map(s => <option key={s} value={s} />)}</datalist>
-                <datalist id="enq-mat-list">{matSuggestions.map(s => <option key={s} value={s} />)}</datalist>
-                <datalist id="enq-drwg-list">{drwgSuggestions.map(s => <option key={s} value={s} />)}</datalist>
-                <datalist id="enq-uom-list"><option value="pcs"/><option value="sets"/><option value="pairs"/><option value="nos"/><option value="lot"/><option value="kg"/><option value="grams"/><option value="tonnes"/><option value="litre"/><option value="ml"/><option value="metre"/><option value="mm"/><option value="ft"/><option value="sqm"/><option value="sqft"/><option value="rolls"/><option value="sheets"/><option value="boxes"/></datalist>
                 <div className="overflow-x-auto">
                   {errors.items && <div className="text-red-mrt text-[11px] font-medium mb-2">{errors.items}</div>}
                   <table className="w-full border-collapse border border-g400 text-[12px]">
                     <thead className="bg-g100">
                       <tr>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-left border border-g400 w-6">#</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-2 py-1.5 text-left border border-g400 min-w-[200px]">Description *</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-left border border-g400 w-[110px]">Material / Grade</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-2 py-1.5 text-center border border-g400 w-14">Qty *</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-center border border-g400 w-[88px]">UOM</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-left border border-g400 w-24">Dwg Ref</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400">Product Name *</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28 whitespace-nowrap">No of Barrels</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Total Qty</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-48">Packing Type</th>
                         <th className="w-8 border border-g400"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((item, idx) => (
-                        <tr key={item.seq} className="hover:bg-g50/50">
-                          <td className="px-2 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{item.seq}</td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle">
-                            <input type="text" list="enq-desc-list" placeholder="e.g. PHE Gaskets" value={item.desc} onChange={e => { updateItem(idx, 'desc', e.target.value); setErrors({...errors, items: ''}) }} className={`w-full bg-transparent outline-none text-[12px] font-sans placeholder:text-g300 ${errors.items && !item.desc ? 'text-red-mrt' : 'text-blk'}`} />
-                          </td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle">
-                            <input type="text" list="enq-mat-list" placeholder="e.g. NBR 70 Shore A" value={item.mat} onChange={e => updateItem(idx, 'mat', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" />
-                          </td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle text-center">
-                            <input type="number" min="1" value={item.qty || ""} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({...errors, items: ''}) }} className={`w-full bg-transparent outline-none font-mono text-[12px] text-center placeholder:text-g300 ${errors.items && Number(item.qty) <= 0 ? 'text-red-mrt' : 'text-blk'}`} placeholder="0" />
-                          </td>
-                          <td className="px-1 py-[3px] border border-g400 align-middle">
-                            <input list="enq-uom-list" value={item.uom} onChange={e => updateItem(idx, 'uom', e.target.value)} placeholder="uom" className="w-full bg-g50 border border-g300 rounded-[3px] px-1.5 py-[3px] font-mono text-[11px] text-blk outline-none cursor-pointer focus:border-red-mrt focus:bg-white transition-colors" />
-                          </td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle">
-                            <input type="text" list="enq-drwg-list" placeholder="Dwg no." value={item.drwg} onChange={e => updateItem(idx, 'drwg', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" />
-                          </td>
-                          <td className="px-1 py-[5px] border border-g400 align-middle">
-                            <button type="button" onClick={() => removeItem(idx)} disabled={items.length === 1} className="text-g400 hover:text-red-mrt p-1 transition-colors disabled:opacity-30" title="Remove">
-                              <svg viewBox="0 0 16 16" width="13" height="13" className="fill-current"><path d="M5.5 1h5v1h-5V1zM3 3v1h10V3H3zm1 2v9h8V5H4zm2 1h1v7H6V6zm3 0h1v7H9V6z"/></svg>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {items.map((item, idx) => {
+                        const packingNum = parseFloat(item.packing || '');
+                        const totalQty = item.qty > 0 && packingNum > 0 ? item.qty * packingNum : null;
+                        return (
+                          <tr key={item.seq} className="hover:bg-g50/50">
+                            <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{item.seq}</td>
+                            <td className="px-3 py-[5px] border border-g400 align-middle">
+                              <ProductSearch
+                                value={item.desc}
+                                onChange={(desc, hsn) => {
+                                  const ni = [...items];
+                                  const resolvedHsn = !desc ? '' : (hsn ?? (desc in BILLING_HSN ? BILLING_HSN[desc] : undefined));
+                                  ni[idx] = { ...ni[idx], desc, ...(resolvedHsn !== undefined ? { hsn: resolvedHsn } : {}) };
+                                  setItems(ni);
+                                  setErrors({ ...errors, items: '' });
+                                }}
+                                error={!!(errors.items && !item.desc)}
+                              />
+                            </td>
+                            <td className="px-3 py-[5px] border border-g400 align-middle">
+                              <input type="number" min="0" value={item.qty || ''} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} className="w-full bg-transparent outline-none font-mono text-[12px] text-center text-blk" placeholder="0" />
+                            </td>
+                            <td className="px-3 py-[5px] border border-g400 align-middle">
+                              <input type="text" value={item.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk text-center" placeholder="—" />
+                            </td>
+                            <td className="px-3 py-[5px] border border-g400 align-middle bg-g100 text-center">
+                              {totalQty !== null
+                                ? <span className="font-mono text-[11px] text-g500">{totalQty}</span>
+                                : <span className="text-g300 text-[11px]">—</span>}
+                            </td>
+                            <td className="px-3 py-[5px] border border-g400 align-middle">
+                              <OptionSearch
+                                options={PACKING_TYPES}
+                                value={item.packingType || ''}
+                                onChange={val => updateItem(idx, 'packingType', val)}
+                                placeholder="Packing type…"
+                              />
+                            </td>
+                            <td className="px-1 py-[5px] border border-g400 align-middle">
+                              <button type="button" onClick={() => removeItem(idx)} disabled={items.length === 1} className="text-g400 hover:text-red-mrt p-1 transition-colors disabled:opacity-30" title="Remove">
+                                <svg viewBox="0 0 16 16" width="13" height="13" className="fill-current"><path d="M5.5 1h5v1h-5V1zM3 3v1h10V3H3zm1 2v9h8V5H4zm2 1h1v7H6V6zm3 0h1v7H9V6z"/></svg>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

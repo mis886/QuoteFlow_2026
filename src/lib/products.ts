@@ -297,3 +297,25 @@ export const BILLING_HSN: Record<string, string> = {
 };
 
 export const BILLING_NAMES = Object.keys(BILLING_HSN).sort();
+
+export const PACKING_TYPES = [
+  'Empty Barrels',
+  'NEW PVC (PRINTED)',
+  'NEW PVC (PLANE) 8.2KG sample',
+  'NEW PVC (PLANE) 8.2 KG',
+  'NEW PVC (PLANE) 9.5 KG',
+  'Used NEW PVC (PLANE) TERPI',
+  'NEW GI(Silver) (Plane) 22 kg',
+  'NEW GI(Silver) (Lining) 22 kg',
+  'NEW GI(Silver) (Lining) OLD UN',
+  'New MS Black epoxy',
+  'New MS Black epoxy USED',
+  'New MS Black epoxy REJECTED',
+  'New MS Black epoxy OLD UN',
+  'New Cans Terpineol',
+  'Used barrels of thermic MS',
+  'MS BARRELS FOR PITCH',
+  'Hdpe washed',
+  'Hdpe unwashed',
+  'IBC Box USED',
+];

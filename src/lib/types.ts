@@ -10,6 +10,9 @@ export interface LineItem {
   qty: number;
   uom: string;
   drwg?: string;
+  hsn?: string;
+  packing?: string;
+  packingType?: string;
 }
 
 export interface QuoteItem extends LineItem {
@@ -17,8 +20,6 @@ export interface QuoteItem extends LineItem {
   unitPrice: number;
   gst: number;
   total: number;
-  packing?: string;
-  packingType?: string;
   rateAsPerWeight?: string;   // text shown in "Rate as per Weight" column
   rateOverride?: boolean;     // when true, rate cell shows rateText (or "Regret") instead of numeric
   rateText?: string;          // custom text for rate cell when rateOverride is on

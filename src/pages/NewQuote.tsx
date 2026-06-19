@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, localDateStr, fmtDate } from '../lib/utils';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus } from '../lib/types';
-import { BILLING_HSN } from '../lib/products';
+import { BILLING_HSN, PACKING_TYPES } from '../lib/products';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
 import { Button } from '../components/ui';
@@ -31,28 +31,6 @@ const defaultTnc = (): TncState => ({
 });
 
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
-
-const PACKING_TYPES = [
-  'Empty Barrels',
-  'NEW PVC (PRINTED)',
-  'NEW PVC (PLANE) 8.2KG sample',
-  'NEW PVC (PLANE) 8.2 KG',
-  'NEW PVC (PLANE) 9.5 KG',
-  'Used NEW PVC (PLANE) TERPI',
-  'NEW GI(Silver) (Plane) 22 kg',
-  'NEW GI(Silver) (Lining) 22 kg',
-  'NEW GI(Silver) (Lining) OLD UN',
-  'New MS Black epoxy',
-  'New MS Black epoxy USED',
-  'New MS Black epoxy REJECTED',
-  'New MS Black epoxy OLD UN',
-  'New Cans Terpineol',
-  'Used barrels of thermic MS',
-  'MS BARRELS FOR PITCH',
-  'Hdpe washed',
-  'Hdpe unwashed',
-  'IBC Box USED',
-];
 
 const INCO_OPTIONS = [
   'EXW',
