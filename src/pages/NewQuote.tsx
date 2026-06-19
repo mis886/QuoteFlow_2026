@@ -953,6 +953,7 @@ export function NewQuote() {
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-32 whitespace-nowrap">No of Barrels *</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24 whitespace-nowrap">Total Qty</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Packing Type</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-28">Rate as per Weight</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Unit Rate ({curr === 'INR' ? '₹' : curr})</th>
@@ -989,6 +990,9 @@ export function NewQuote() {
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" value={item.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk" />
+                          </td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle bg-g100 text-center">
+                            {(() => { const p = parseFloat(item.packing || ''); const t = item.qty * p; return (p > 0 && item.qty > 0) ? <span className="font-mono text-[11px] text-g500">{Number.isInteger(t) ? t : t}</span> : <span className="text-g300 text-[11px]">—</span>; })()}
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <select value={item.packingType || ''} onChange={e => updateItem(idx, 'packingType', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk appearance-none cursor-pointer">
