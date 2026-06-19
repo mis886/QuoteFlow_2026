@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
+import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { Customer, Site, Contact, NextOrder } from '../lib/types';
 import { generateId } from '../lib/utils';
@@ -187,10 +188,15 @@ export function NewCustomer() {
     [...new Set(data.customers.map(c => c.seg).filter(Boolean) as string[])].sort(),
     [data.customers]
   );
-  const editSegRef = useRef<string>('');
   useEffect(() => {
-    if (editId && editSegRef.current) setSeg(editSegRef.current);
-  }, [segOptions, editId]);
+    if (!editId) return;
+    supabase
+      .from('customers')
+      .select('industry_segment')
+      .eq('customer_id', editId)
+      .single()
+      .then(({ data: row }) => { if (row != null) setSeg(row.industry_segment || ''); });
+  }, [editId]);
 
   const [id, setId] = useState('');
   const [code, setCode] = useState('');
@@ -225,7 +231,6 @@ export function NewCustomer() {
         setId(cust.id);
         setCode(cust.code);
         setName(cust.name);
-        editSegRef.current = cust.seg || '';
         setSeg(cust.seg || '');
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
