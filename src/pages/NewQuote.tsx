@@ -379,14 +379,18 @@ export function NewQuote() {
   // Item helpers
   const updateItem = (idx: number, field: keyof QuoteItem, value: any) => {
     const ni = [...items]; (ni[idx] as any)[field] = value;
-    if (field === 'qty' || field === 'unitPrice' || field === 'priceBasisConv') {
+    if (field === 'qty' || field === 'unitPrice' || field === 'priceBasisConv' || field === 'packing') {
+      const packingNum = parseFloat(ni[idx].packing || '') || 0;
+      const totalQty = Number(ni[idx].qty) * (packingNum || 1);
       const conv = Number(ni[idx].priceBasisConv) || 1;
-      ni[idx].total = Number(ni[idx].qty) * conv * Number(ni[idx].unitPrice);
+      ni[idx].total = totalQty * conv * Number(ni[idx].unitPrice);
     }
     // Clear conv when priceBasis is cleared
     if (field === 'priceBasis' && !value) {
       ni[idx].priceBasisConv = undefined;
-      ni[idx].total = Number(ni[idx].qty) * Number(ni[idx].unitPrice);
+      const packingNum = parseFloat(ni[idx].packing || '') || 0;
+      const totalQty = Number(ni[idx].qty) * (packingNum || 1);
+      ni[idx].total = totalQty * Number(ni[idx].unitPrice);
     }
     setItems(ni);
   };
