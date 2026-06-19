@@ -1232,8 +1232,8 @@ export function NewQuote() {
                       <tr>
                         <td className="border border-g200 px-2 py-1 font-mono text-[9px] text-g400 text-center">5</td>
                         <td className="border border-g200 px-2 py-1 font-bold text-g600 whitespace-nowrap text-[11px]">Taxes</td>
-                        <td className="border border-g200 px-1 py-0.5">
-                          <TncComboCell label="Taxes" value={tnc.taxes} suggestions={tncSuggestions.taxes} onChange={v => setTncField('taxes', v)} />
+                        <td className="border border-g200 px-2 py-[5px] bg-g50">
+                          <input type="text" value={tnc.taxes} onChange={e => setTncField('taxes', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-g500" />
                         </td>
                       </tr>
                     </tbody>

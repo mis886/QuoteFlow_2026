@@ -534,7 +534,7 @@ export function NewEnquiry() {
                               <input type="number" min="0" value={item.qty || ''} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} className="w-full bg-transparent outline-none font-mono text-[12px] text-center text-blk" placeholder="0" />
                             </td>
                             <td className="px-3 py-[5px] border border-g400 align-middle">
-                              <input type="text" value={item.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk text-center" placeholder="—" />
+                              <input type="text" value={item.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk text-center" />
                             </td>
                             <td className="px-3 py-[5px] border border-g400 align-middle bg-g100 text-center">
                               {totalQty !== null
