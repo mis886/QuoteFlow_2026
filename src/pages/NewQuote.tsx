@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, localDateStr, fmtDate } from '../lib/utils';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus } from '../lib/types';
-import { PRODUCT_HSN, PRODUCT_NAMES } from '../lib/products';
+import { BILLING_HSN, BILLING_NAMES } from '../lib/products';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { generateQuotePDF } from '../lib/pdfGenerator';
@@ -127,7 +127,7 @@ export function NewQuote() {
 
   const descSuggestions = useMemo(() =>
     [...new Set([
-      ...PRODUCT_NAMES,
+      ...BILLING_NAMES,
       ...data.enquiries.flatMap(e => e.items.map(i => i.desc)),
       ...data.quotes.flatMap(q => q.items.map(i => i.desc)),
     ].filter(Boolean))].sort(), [data.enquiries, data.quotes]);
@@ -978,7 +978,7 @@ export function NewQuote() {
                                 const val = e.target.value;
                                 const ni = [...items];
                                 ni[idx] = { ...ni[idx], desc: val };
-                                if (val in PRODUCT_HSN) ni[idx] = { ...ni[idx], hsn: PRODUCT_HSN[val] };
+                                if (val in BILLING_HSN) ni[idx] = { ...ni[idx], hsn: BILLING_HSN[val] };
                                 setItems(ni);
                                 setErrors({ ...errors, items: '' });
                               }}
