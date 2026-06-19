@@ -125,12 +125,6 @@ export function NewQuote() {
   const confirmLeave = () =>
     !dirty || window.confirm('You have unsaved changes. Leave without saving?');
 
-  const descSuggestions = useMemo(() =>
-    [...new Set([
-      ...BILLING_NAMES,
-      ...data.enquiries.flatMap(e => e.items.map(i => i.desc)),
-      ...data.quotes.flatMap(q => q.items.map(i => i.desc)),
-    ].filter(Boolean))].sort(), [data.enquiries, data.quotes]);
   const hsnSuggestions = useMemo(() =>
     [...new Set(data.quotes.flatMap(q => q.items.map(i => i.hsn ?? '')).filter(Boolean))].sort(),
     [data.quotes]);
@@ -950,7 +944,6 @@ export function NewQuote() {
                 </div>
               )}
               <div className="overflow-x-auto">
-                <datalist id="qt-desc-list">{descSuggestions.map(s => <option key={s} value={s} />)}</datalist>
                 <datalist id="qt-hsn-list">{hsnSuggestions.map(s => <option key={s} value={s} />)}</datalist>
                   <table className="w-full border-collapse border border-g400 text-[12px]">
                     <thead className="bg-g100">
@@ -973,7 +966,7 @@ export function NewQuote() {
                         <tr key={item.seq} className="hover:bg-g50/50">
                           <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{item.seq}</td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" list="qt-desc-list" value={item.desc}
+                            <select value={item.desc}
                               onChange={e => {
                                 const val = e.target.value;
                                 const ni = [...items];
@@ -982,7 +975,10 @@ export function NewQuote() {
                                 setItems(ni);
                                 setErrors({ ...errors, items: '' });
                               }}
-                              className={`w-full bg-transparent outline-none text-[12px] font-sans ${errors.items && !item.desc ? 'text-red-mrt' : 'text-blk'}`} />
+                              className={`w-full bg-transparent outline-none text-[12px] font-sans appearance-none cursor-pointer ${errors.items && !item.desc ? 'text-red-mrt' : 'text-blk'}`}>
+                              <option value=""></option>
+                              {BILLING_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
+                            </select>
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" list="qt-hsn-list" title="HSN Code" value={item.hsn} onChange={e => updateItem(idx, 'hsn', e.target.value)} className="w-full bg-transparent outline-none font-mono text-[11px] text-blk" />

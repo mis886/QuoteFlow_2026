@@ -245,7 +245,7 @@ export const BILLING_HSN: Record<string, string> = {
   'Turpentine': '38059090',
   'Delta Carene': '29029090',
   'Dipentene': '29029010',
-  'Fenchone': '29142990',
+  'Fenchone': '29061990',
   'Gamma Terpinene': '29061990',
   'Rosin': '38061010',
   'Gum Rosin': '38061090',
