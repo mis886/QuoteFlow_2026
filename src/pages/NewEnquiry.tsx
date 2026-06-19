@@ -99,7 +99,7 @@ export function NewEnquiry() {
   };
 
   const [items, setItems] = useState<LineItem[]>([
-    { seq: 1, desc: '', mat: '', qty: 0, uom: 'pcs', drwg: '', hsn: '', packing: '', packingType: '' }
+    { seq: 1, desc: '', mat: '', qty: 1, uom: 'pcs', drwg: '', hsn: '', packing: '', packingType: '' }
   ]);
   
   const [enqId, setEnqId] = useState('');
@@ -217,7 +217,7 @@ export function NewEnquiry() {
   };
 
   const addItem = () => {
-    setItems([...items, { seq: items.length + 1, desc: '', mat: '', qty: 0, uom: 'pcs', drwg: '', hsn: '', packing: '', packingType: '' }]);
+    setItems([...items, { seq: items.length + 1, desc: '', mat: '', qty: 1, uom: 'pcs', drwg: '', hsn: '', packing: '', packingType: '' }]);
   };
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 })));

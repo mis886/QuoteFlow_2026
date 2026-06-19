@@ -313,7 +313,7 @@ export function NewQuote() {
       // Duplicate guard: warn if this enquiry was already converted to a quote
       const existing = data.quotes.find(q => q.enqRef === enqRef);
       if (existing) { setDupQuoteAlert({ existingId: existing.id }); return; }
-      setQuoteId(generateId('MRT', data.quotes.map(q => q.id)));
+      setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
       const enq = data.enquiries.find(e => e.id === enqRef);
       if (enq) {
         setCustName(enq.cust); if (enq.siteId) setSiteId(enq.siteId); if (enq.contactId) setContactId(enq.contactId);
@@ -327,7 +327,7 @@ export function NewQuote() {
         setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '', unitPrice: 0, gst: 18, total: 0 })));
       }
     } else {
-      setQuoteId(generateId('MRT', data.quotes.map(q => q.id)));
+      setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
       setItems([{ seq: 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', unitPrice: 0, gst: 18, total: 0 }]);
       if (custParam) {
         setCustName(custParam);
@@ -696,7 +696,7 @@ export function NewQuote() {
             </Button>
             <Button variant="secondary" onClick={() => {
               setDupQuoteAlert(null);
-              setQuoteId(generateId('MRT', data.quotes.map(q => q.id)));
+              setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
               const enq = data.enquiries.find(e => e.id === enqRef);
               if (enq) {
                 setCustName(enq.cust); if (enq.siteId) setSiteId(enq.siteId); if (enq.contactId) setContactId(enq.contactId);
@@ -911,7 +911,7 @@ export function NewQuote() {
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Currency</label>
                     <select value={curr} onChange={e => setCurr(e.target.value)} className={selectCls + ' font-bold'}>
-                      <option>INR</option><option>USD</option><option>EUR</option><option>GBP</option>
+                      <option>INR</option><option>USD</option>
                     </select>
                   </div>
                 </div>
