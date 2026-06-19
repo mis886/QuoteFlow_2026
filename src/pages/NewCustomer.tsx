@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -59,6 +59,19 @@ const normalizePayTerms = (raw: string | undefined): string => {
   if (/3/.test(lower)) return '3 Days';
   if (/adv/.test(lower)) return 'Advance';
   return '';
+};
+
+const SEG_OPTIONS = [
+  'Bhimseni Kapoor', 'Camphor', 'Dhoop & Agarbatti', 'Lubricants', 'Mehandi', 'Misc',
+  'Paints', 'Perfume & Fragrance', 'Pharma', 'Phenyl', 'Pine Oil Trader',
+  'Resin Mfg', 'Rosin Trader', 'Rubber / Rubber Trader', 'Sodium Acetate',
+  'Textile Auxiliaries', 'Trader',
+];
+
+const normalizeSeg = (raw: string | undefined | null): string => {
+  if (!raw) return '';
+  const lower = raw.toLowerCase().trim();
+  return SEG_OPTIONS.find(o => o.toLowerCase() === lower) || '';
 };
 
 function hasMixedContent(text: string) {
@@ -184,10 +197,6 @@ export function NewCustomer() {
   const editId = searchParams.get('id');
   const navigate = useNavigate();
   const { data, addCustomer, updateCustomer } = useAppStore();
-  const segOptions = useMemo(() =>
-    [...new Set(data.customers.map(c => c.seg).filter(Boolean) as string[])].sort(),
-    [data.customers]
-  );
   useEffect(() => {
     if (!editId) return;
     supabase
@@ -195,7 +204,9 @@ export function NewCustomer() {
       .select('industry_segment')
       .eq('customer_id', editId)
       .single()
-      .then(({ data: row }) => { if (row != null) setSeg(row.industry_segment || ''); });
+      .then(({ data: row }) => {
+        if (row != null) setSeg(normalizeSeg(row.industry_segment) || row.industry_segment || '');
+      });
   }, [editId]);
 
   const [id, setId] = useState('');
@@ -231,7 +242,7 @@ export function NewCustomer() {
         setId(cust.id);
         setCode(cust.code);
         setName(cust.name);
-        setSeg(cust.seg || '');
+        setSeg(normalizeSeg(cust.seg) || cust.seg || '');
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
         setPay(normalizePayTerms(cust.pay) || cust.pay || '30 Days Net');
@@ -351,8 +362,8 @@ export function NewCustomer() {
               <label className={labelCls}>Segment</label>
               <select title="Segment" value={seg} onChange={e => setSeg(e.target.value)} className={inputCls}>
                 <option value=""></option>
-                {seg && !segOptions.includes(seg) && <option value={seg}>{seg}</option>}
-                {segOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                {seg && !SEG_OPTIONS.includes(seg) && <option value={seg}>{seg}</option>}
+                {SEG_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
