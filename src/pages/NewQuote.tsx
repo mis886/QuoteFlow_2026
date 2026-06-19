@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, localDateStr, fmtDate } from '../lib/utils';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus } from '../lib/types';
-import { BILLING_HSN, BILLING_NAMES } from '../lib/products';
+import { BILLING_HSN } from '../lib/products';
+import { ProductSearch } from '../components/ProductSearch';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { generateQuotePDF } from '../lib/pdfGenerator';
@@ -1032,22 +1033,28 @@ export function NewQuote() {
                         <tr key={item.seq} className="hover:bg-g50/50">
                           <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{item.seq}</td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <select value={item.desc}
-                              onChange={e => {
-                                const val = e.target.value;
+                            <ProductSearch
+                              value={item.desc}
+                              onChange={(desc, hsn) => {
                                 const ni = [...items];
-                                ni[idx] = { ...ni[idx], desc: val };
-                                if (val in BILLING_HSN) ni[idx] = { ...ni[idx], hsn: BILLING_HSN[val] };
+                                const resolvedHsn = !desc ? '' : (hsn ?? (desc in BILLING_HSN ? BILLING_HSN[desc] : undefined));
+                                ni[idx] = { ...ni[idx], desc, ...(resolvedHsn !== undefined ? { hsn: resolvedHsn } : {}) };
                                 setItems(ni);
                                 setErrors({ ...errors, items: '' });
                               }}
-                              className={`w-full bg-transparent outline-none text-[12px] font-sans appearance-none cursor-pointer ${errors.items && !item.desc ? 'text-red-mrt' : 'text-blk'}`}>
-                              <option value=""></option>
-                              {BILLING_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
-                            </select>
+                              error={!!(errors.items && !item.desc)}
+                            />
                           </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" list="qt-hsn-list" title="HSN Code" value={item.hsn} onChange={e => updateItem(idx, 'hsn', e.target.value)} className="w-full bg-transparent outline-none font-mono text-[11px] text-blk" />
+                          <td className={`px-3 py-[5px] border border-g400 align-middle${item.desc in BILLING_HSN ? ' bg-g100' : ''}`}>
+                            <input
+                              type="text"
+                              list={item.desc in BILLING_HSN ? undefined : 'qt-hsn-list'}
+                              title="HSN Code"
+                              value={item.hsn}
+                              readOnly={item.desc in BILLING_HSN}
+                              onChange={e => updateItem(idx, 'hsn', e.target.value)}
+                              className={`w-full bg-transparent outline-none font-mono text-[11px] ${item.desc in BILLING_HSN ? 'text-g500 cursor-default select-none' : 'text-blk'}`}
+                            />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="number" min="1" value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '' }); }}
