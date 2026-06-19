@@ -31,17 +31,41 @@ const defaultTnc = (): TncState => ({
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
 
 const INCO_OPTIONS = [
-  'EXW - Ex Works',
-  'FOR - Free On Rail (Your Works)',
-  'FOR - Free On Rail (Your Transport Godown)',
-  'FOB - Free On Board',
-  'CIF - Cost, Insurance & Freight',
-  'CIP - Carriage and Insurance Paid To',
-  'DAP - Delivered At Place',
-  'DDP - Delivered Duty Paid',
-  'FCA - Free Carrier',
-  'CPT - Carriage Paid To',
+  'EXW',
+  'FOB',
+  'CIF',
+  'CFR',
+  'DAP',
+  'DDP',
+  'FCA',
+  'Ex Bhiwandi Warehouse',
+  'Ex Bhiwandi Warehouse Self Pickup',
+  'Ex Factory Warehouse',
+  'Delivered',
+  'Free Delivery till Transport',
+  'Ex-Port',
 ];
+
+const normalizeInco = (raw: string | undefined): string => {
+  if (!raw) return '';
+  const lower = raw.toLowerCase().trim();
+  const exact = INCO_OPTIONS.find(o => o.toLowerCase() === lower);
+  if (exact) return exact;
+  if (/bhiwandi.*self|self.*pickup/.test(lower)) return 'Ex Bhiwandi Warehouse Self Pickup';
+  if (/bhiwandi/.test(lower)) return 'Ex Bhiwandi Warehouse';
+  if (/ex.*factory|factory.*wh/.test(lower)) return 'Ex Factory Warehouse';
+  if (/free.*del|del.*transport/.test(lower)) return 'Free Delivery till Transport';
+  if (/delivered/.test(lower)) return 'Delivered';
+  if (/ex.*port/.test(lower)) return 'Ex-Port';
+  if (/^exw|ex.?work/.test(lower)) return 'EXW';
+  if (/^fob/.test(lower)) return 'FOB';
+  if (/^cif/.test(lower)) return 'CIF';
+  if (/^cfr|^c&f/.test(lower)) return 'CFR';
+  if (/^dap/.test(lower)) return 'DAP';
+  if (/^ddp/.test(lower)) return 'DDP';
+  if (/^fca/.test(lower)) return 'FCA';
+  return '';
+};
 
 const PAY_OPTIONS = [
   '3 Days', '7 Days', '14 Days', '30 Days Net', '45 Days', '60 Days',
@@ -178,7 +202,7 @@ export function NewQuote() {
     el.addEventListener('focusout', handler);
     return () => el.removeEventListener('focusout', handler);
   }, []);
-  const [inco, setInco] = useState('EXW - Ex Works');
+  const [inco, setInco] = useState('EXW');
   const [customInco, setCustomInco] = useState('');
   const [curr, setCurr] = useState('INR');
   const [pay, setPay] = useState('30 Days Net');
@@ -258,8 +282,9 @@ export function NewQuote() {
         if (q.enqRef) setLinkedEnqRef(q.enqRef);
         setQuoteId(q.id); setDate(q.date); setValidity(q.validity || '');
         setCustName(q.cust);
-        const savedInco = q.inco || 'EXW - Ex Works';
-        if (INCO_OPTIONS.includes(savedInco)) { setInco(savedInco); } else { setInco('OVERRIDE'); setCustomInco(savedInco); }
+        const savedInco = q.inco || '';
+        const _ni = normalizeInco(savedInco);
+        setInco(_ni || 'OVERRIDE'); setCustomInco(_ni ? '' : savedInco);
         setCurr(q.curr || 'INR'); setPay(normalizePayTerms(q.pay) || '30 Days Net');
         setAuthName(q.authorizedPerson?.name || ''); setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
         setQuoteStatus(q.status);
@@ -296,7 +321,7 @@ export function NewQuote() {
         // If the enquiry had no contactId the details were typed manually — preserve them
         setContactManual(!enq.contactId && !!(enq.contact || enq.email));
         const cr = data.customers.find(c => c.name === enq.cust);
-        if (cr) { const ci = cr.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
+        if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
         setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '', unitPrice: 0, gst: 18, total: 0 })));
       }
     } else {
@@ -306,8 +331,8 @@ export function NewQuote() {
         setCustName(custParam);
         const cr = data.customers.find(c => c.name === custParam);
         if (cr) {
-          const ci = cr.inco || 'EXW - Ex Works';
-          if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); }
+          const ci = cr.inco || '';
+          { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); }
           setCurr(cr.curr || 'INR');
           setPay(normalizePayTerms(cr.pay) || '30 Days Net');
           const ps = (cr.sites ?? []).find((s: any) => s.isPrimary) || (cr.sites ?? [])[0];
@@ -334,7 +359,7 @@ export function NewQuote() {
     if (!custName) return;
     const customer = data.customers.find(c => c.name === custName);
     if (!customer) return;
-    if (!editId) { const ci = customer.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(customer.curr || 'INR'); setPay(normalizePayTerms(customer.pay) || '30 Days Net'); }
+    if (!editId) { const ci = customer.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(customer.curr || 'INR'); setPay(normalizePayTerms(customer.pay) || '30 Days Net'); }
     const sites = customer.sites ?? [];
     if (siteId) {
       const site = sites.find(s => s.id === siteId);
@@ -676,7 +701,7 @@ export function NewQuote() {
                 setContact(enq.contact); setEmail(enq.email);
                 setContactManual(!enq.contactId && !!(enq.contact || enq.email));
                 const cr = data.customers.find(c => c.name === enq.cust);
-                if (cr) { const ci = cr.inco || 'EXW - Ex Works'; if (INCO_OPTIONS.includes(ci)) { setInco(ci); } else { setInco('OVERRIDE'); setCustomInco(ci); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
+                if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
                 setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '', unitPrice: 0, gst: 18, total: 0 })));
               }
             }} className="flex-1">
