@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
@@ -183,11 +183,15 @@ export function NewCustomer() {
   const editId = searchParams.get('id');
   const navigate = useNavigate();
   const { data, addCustomer, updateCustomer } = useAppStore();
+  const segOptions = useMemo(() =>
+    [...new Set(data.customers.map(c => c.seg).filter(Boolean) as string[])].sort(),
+    [data.customers]
+  );
 
   const [id, setId] = useState('');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [seg, setSeg] = useState('Power / Nuclear');
+  const [seg, setSeg] = useState('');
   const [inco, setInco] = useState('EXW');
   const [curr, setCurr] = useState('INR');
   const [pay, setPay] = useState('30 Days Net');
@@ -217,7 +221,7 @@ export function NewCustomer() {
         setId(cust.id);
         setCode(cust.code);
         setName(cust.name);
-        setSeg(cust.seg || 'Power / Nuclear');
+        setSeg(cust.seg || '');
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
         setPay(normalizePayTerms(cust.pay) || cust.pay || '30 Days Net');
@@ -336,14 +340,8 @@ export function NewCustomer() {
             <div>
               <label className={labelCls}>Segment</label>
               <select title="Segment" value={seg} onChange={e => setSeg(e.target.value)} className={inputCls}>
-                <option>Power / Nuclear</option>
-                <option>Sugar</option>
-                <option>Chemical</option>
-                <option>Valve OEM</option>
-                <option>PHE OEM</option>
-                <option>Defence</option>
-                <option>Export</option>
-                <option>General</option>
+                <option value=""></option>
+                {segOptions.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
