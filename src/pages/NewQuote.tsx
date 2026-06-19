@@ -5,6 +5,7 @@ import { generateId, formatINR, localDateStr, fmtDate } from '../lib/utils';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus } from '../lib/types';
 import { BILLING_HSN } from '../lib/products';
 import { ProductSearch } from '../components/ProductSearch';
+import { OptionSearch } from '../components/OptionSearch';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { generateQuotePDF } from '../lib/pdfGenerator';
@@ -30,6 +31,28 @@ const defaultTnc = (): TncState => ({
 });
 
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
+
+const PACKING_TYPES = [
+  'Empty Barrels',
+  'NEW PVC (PRINTED)',
+  'NEW PVC (PLANE) 8.2KG sample',
+  'NEW PVC (PLANE) 8.2 KG',
+  'NEW PVC (PLANE) 9.5 KG',
+  'Used NEW PVC (PLANE) TERPI',
+  'NEW GI(Silver) (Plane) 22 kg',
+  'NEW GI(Silver) (Lining) 22 kg',
+  'NEW GI(Silver) (Lining) OLD UN',
+  'New MS Black epoxy',
+  'New MS Black epoxy USED',
+  'New MS Black epoxy REJECTED',
+  'New MS Black epoxy OLD UN',
+  'New Cans Terpineol',
+  'Used barrels of thermic MS',
+  'MS BARRELS FOR PITCH',
+  'Hdpe washed',
+  'Hdpe unwashed',
+  'IBC Box USED',
+];
 
 const INCO_OPTIONS = [
   'EXW',
@@ -1067,30 +1090,12 @@ export function NewQuote() {
                             {(() => { const p = parseFloat(item.packing || ''); const t = item.qty * p; return (p > 0 && item.qty > 0) ? <span className="font-mono text-[11px] text-g500">{Number.isInteger(t) ? t : t}</span> : <span className="text-g300 text-[11px]">—</span>; })()}
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <select value={item.packingType || ''} onChange={e => updateItem(idx, 'packingType', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk appearance-none cursor-pointer">
-                              <option value=""></option>
-                              <option>Empty Barrels</option>
-                              <option>NEW PVC ( PRINTED )</option>
-                              <option>NEW PVC ( PLANE ) 8.2KG sample</option>
-                              <option>NEW PVC ( PLANE ) 8.2 KG</option>
-                              <option>NEW PVC ( PLANE ) 9.5 KG</option>
-                              <option>Used NEW PVC ( PLANE ) TERPI</option>
-                              <option>NEW GI(Silver) (Plane) 22 kg</option>
-                              <option>NEW GI(Silver) (Lining) 22 kg</option>
-                              <option>NEW GI(Silver) (Lining) OLD UN</option>
-                              <option>New MS Black epoxy</option>
-                              <option>New MS Black epoxy USED</option>
-                              <option>New MS Black epoxy REJECTED</option>
-                              <option>New MS Black epoxy OLD UN</option>
-                              <option>New Cans Terpineol</option>
-                              <option>Used barrels of thermic MS</option>
-                              <option>MS BARRELS FOR PITCH</option>
-                              <option>Hdpe washed</option>
-                              <option>Hdpe unwashed</option>
-                              <option>IBC Box USED</option>
-                              <option>IBC Box NEW</option>
-                              <option>wooden pallets4</option>
-                            </select>
+                            <OptionSearch
+                              options={PACKING_TYPES}
+                              value={item.packingType || ''}
+                              onChange={val => updateItem(idx, 'packingType', val)}
+                              placeholder="Packing type…"
+                            />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" value={item.rateAsPerWeight || ''} placeholder="e.g. ₹120/kg" onChange={e => updateItem(idx, 'rateAsPerWeight', e.target.value)}
