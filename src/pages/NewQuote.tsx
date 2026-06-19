@@ -928,7 +928,7 @@ export function NewQuote() {
                       <div key={i} className="flex gap-3 text-[11px] px-2 py-1 bg-white rounded border border-amber-100">
                         <span className="font-mono text-g400 w-4 shrink-0">{it.seq}.</span>
                         <span className="flex-1 truncate text-blk">{it.desc}</span>
-                        <span className="text-g500 shrink-0">Qty: {it.qty}</span>
+                        <span className="text-g500 shrink-0">Barrels: {it.qty}</span>
                         <span className="text-g500 font-mono shrink-0">₹{it.unitPrice.toLocaleString('en-IN')}</span>
                       </div>
                     ))}
@@ -951,7 +951,7 @@ export function NewQuote() {
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400">Product Name</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-16">Qty *</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-16">No of Barrels *</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Packing Type</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-28">Rate as per Weight</th>
