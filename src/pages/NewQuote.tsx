@@ -1071,7 +1071,7 @@ export function NewQuote() {
                       <tr className="border-b border-g200 bg-g50/50">
                         <td colSpan={8} className="px-3 py-2 text-right">
                           <div className="flex flex-col items-end gap-0.5">
-                            <span className="text-[11px] font-bold text-blk">Insurance (₹)</span>
+                            <span className="text-[11px] text-g500">Insurance (₹)</span>
                             <button type="button" onClick={() => setInsurance(Math.round(subTotal * 0.0015 * 100) / 100)} className="text-[9px] text-blue-500 hover:text-blue-700 hover:underline leading-none">Apply 0.15%</button>
                           </div>
                         </td>
