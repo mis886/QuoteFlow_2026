@@ -34,7 +34,7 @@ async function getAccessToken(silent = false): Promise<string> {
 
   await loadScript('https://accounts.google.com/gsi/client');
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
-  if (!clientId) throw new Error('VITE_GOOGLE_CLIENT_ID is not set in .env');
+  if (!clientId) throw new Error('Email feature requires Google OAuth configuration. Please contact your administrator (VITE_GOOGLE_CLIENT_ID must be set in Cloudflare Pages environment variables).');
 
   return new Promise((resolve, reject) => {
     const client = window.google.accounts.oauth2.initTokenClient({

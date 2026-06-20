@@ -598,8 +598,9 @@ export function NewQuote() {
     try {
       const qData = await persistQuote(statusOverride);
       if (qData) { setDirty(false); navigate('/quotes'); }
-    } catch {
-      setErrors({ global: 'Failed to save. Please check your connection.' });
+    } catch (e: any) {
+      console.error('Save failed:', e);
+      setErrors({ global: `Failed to save: ${e?.message || e?.details || 'Unknown error — check browser console for details.'}` });
     } finally { setIsSaving(false); }
   };
 
@@ -615,8 +616,9 @@ export function NewQuote() {
       const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
       const sig = unitSig ?? data.signatories.find((s: any) => s.is_default);
       generateQuotePDF(qData, data.customers.find(c => c.name === custName), data.settings, sig, true, unit);
-    } catch {
-      setErrors({ global: 'Failed to generate PDF. Please check your connection.' });
+    } catch (e: any) {
+      console.error('PDF generation failed:', e);
+      setErrors({ global: `Failed to generate PDF: ${e?.message || e?.details || 'Unknown error — check browser console for details.'}` });
     } finally { setIsSaving(false); }
   };
 
@@ -631,8 +633,9 @@ export function NewQuote() {
       const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
       const sig = unitSig ?? data.signatories.find((s: any) => s.is_default);
       await downloadQuoteDOCX(qData, data.customers.find(c => c.name === custName), data.settings, sig, unit);
-    } catch {
-      setErrors({ global: 'Failed to generate DOCX. Please check your connection.' });
+    } catch (e: any) {
+      console.error('DOCX generation failed:', e);
+      setErrors({ global: `Failed to generate DOCX: ${e?.message || e?.details || 'Unknown error — check browser console for details.'}` });
     } finally { setIsSaving(false); }
   };
 
