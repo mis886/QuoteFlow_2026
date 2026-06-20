@@ -521,7 +521,11 @@ export function NewQuote() {
 
   const subTotal = items.reduce((s, i) => s + i.total, 0);
   const gstTotal = items.reduce((s, i) => s + i.total * i.gst / 100, 0);
-  const grandTotal = subTotal + insurance + gstTotal;
+  const grandTotal = curr === 'INR' ? subTotal + insurance + gstTotal : subTotal;
+  const sym = curr === 'USD' ? '$' : '₹';
+  const fmtAmt = (v: number) => curr === 'USD'
+    ? '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : formatINR(v);
 
   const validateStep1 = () => {
     const e: Record<string, string> = {};
@@ -1014,9 +1018,9 @@ export function NewQuote() {
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24 whitespace-nowrap">Total Qty</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Packing Type</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Price Basis</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Unit Rate ({curr === 'INR' ? '₹' : curr})</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-20">GST %</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Amount ({curr === 'INR' ? '₹' : curr})</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Unit Rate ({sym})</th>
+                        {curr === 'INR' && <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-20">GST %</th>}
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Amount ({sym})</th>
                         <th className="w-8 border border-g400"></th>
                       </tr>
                     </thead>
@@ -1095,12 +1099,14 @@ export function NewQuote() {
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <select value={item.gst} onChange={e => updateItem(idx, 'gst', Number(e.target.value))} className="w-full bg-transparent outline-none text-[12px] text-center font-mono text-blk appearance-none cursor-pointer">
-                              <option value={18}>18%</option><option value={12}>12%</option><option value={5}>5%</option><option value={0}>0%</option>
-                            </select>
-                          </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] font-bold text-blk">{formatINR(item.total)}</td>
+                          {curr === 'INR' && (
+                            <td className="px-3 py-[5px] border border-g400 align-middle">
+                              <select value={item.gst} onChange={e => updateItem(idx, 'gst', Number(e.target.value))} className="w-full bg-transparent outline-none text-[12px] text-center font-mono text-blk appearance-none cursor-pointer">
+                                <option value={18}>18%</option><option value={12}>12%</option><option value={5}>5%</option><option value={0}>0%</option>
+                              </select>
+                            </td>
+                          )}
+                          <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] font-bold text-blk">{fmtAmt(item.total)}</td>
                           <td className="px-1 py-[5px] border border-g400 align-middle">
                             <button type="button" onClick={() => removeItem(idx)} className="text-g400 hover:text-red-mrt p-1 transition-colors disabled:opacity-30" title="Remove">
                               <svg viewBox="0 0 16 16" width="13" height="13" className="fill-current"><path d="M5.5 1h5v1h-5V1zM3 3v1h10V3H3zm1 2v9h8V5H4zm2 1h1v7H6V6zm3 0h1v7H9V6z" /></svg>
@@ -1112,27 +1118,31 @@ export function NewQuote() {
                     <tfoot>
                       <tr className="border-t border-g200 bg-g50/50">
                         <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
-                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(subTotal)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{fmtAmt(subTotal)}</td>
                         <td></td>
                       </tr>
-                      <tr className="border-b border-g200 bg-g50/50">
-                        <td colSpan={8} className="px-3 py-2 text-right">
-                          <div className="flex flex-col items-end gap-0.5">
-                            <span className="text-[11px] text-g500">Insurance (₹)</span>
-                            <button type="button" onClick={() => setInsurance(Math.round(subTotal * 0.0015 * 100) / 100)} className="text-[9px] text-blue-500 hover:text-blue-700 hover:underline leading-none">Apply 0.15%</button>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(insurance)}</td>
-                        <td></td>
-                      </tr>
-                      <tr className="border-b border-g200 bg-g50/50">
-                        <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
-                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(gstTotal)}</td>
-                        <td></td>
-                      </tr>
+                      {curr === 'INR' && (
+                        <tr className="border-b border-g200 bg-g50/50">
+                          <td colSpan={8} className="px-3 py-2 text-right">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className="text-[11px] text-g500">Insurance (₹)</span>
+                              <button type="button" onClick={() => setInsurance(Math.round(subTotal * 0.0015 * 100) / 100)} className="text-[9px] text-blue-500 hover:text-blue-700 hover:underline leading-none">Apply 0.15%</button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{fmtAmt(insurance)}</td>
+                          <td></td>
+                        </tr>
+                      )}
+                      {curr === 'INR' && (
+                        <tr className="border-b border-g200 bg-g50/50">
+                          <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
+                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{fmtAmt(gstTotal)}</td>
+                          <td></td>
+                        </tr>
+                      )}
                       <tr className="bg-[#1e293b]">
                         <td colSpan={8} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Grand Total</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{formatINR(grandTotal)}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{fmtAmt(grandTotal)}</td>
                         <td className="bg-[#1e293b]"></td>
                       </tr>
                     </tfoot>
@@ -1319,7 +1329,7 @@ export function NewQuote() {
             <div className="bg-white border border-g200 rounded-[3px]">
               <div className="p-[11px_16px] border-b border-g200 flex justify-between items-center">
                 <span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600">{items.length} Line Item{items.length !== 1 ? 's' : ''}</span>
-                <span className="font-mono text-[12px] font-bold text-red-mrt">{formatINR(grandTotal)}</span>
+                <span className="font-mono text-[12px] font-bold text-red-mrt">{fmtAmt(grandTotal)}</span>
               </div>
               <table className="w-full text-[12px]">
                 <tbody>
@@ -1337,7 +1347,7 @@ export function NewQuote() {
                         {item.rateOverride
                           ? <span className="text-red-mrt font-bold">{item.rateText?.trim() || 'Regret'}</span>
                           : <span>
-                              {formatINR(item.unitPrice)}
+                              {fmtAmt(item.unitPrice)}
                               {item.priceBasis && item.priceBasis !== item.uom && (
                                 <span className="block text-[9px] text-g400 font-normal">
                                   per {item.priceBasis}{item.priceBasisConv ? ` · 1 ${item.uom}=${item.priceBasisConv} ${item.priceBasis}` : ''}
@@ -1346,17 +1356,17 @@ export function NewQuote() {
                             </span>
                         }
                       </td>
-                      <td className="px-4 py-2 font-mono font-bold text-right w-28 text-blk">{item.rateOverride ? '—' : formatINR(item.total)}</td>
+                      <td className="px-4 py-2 font-mono font-bold text-right w-28 text-blk">{item.rateOverride ? '—' : fmtAmt(item.total)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <div className="flex justify-end p-4">
                 <div className="w-[240px] text-[12px] space-y-1.5">
-                  <div className="flex justify-between text-g500"><span>Sub-Total</span><span className="font-mono">{formatINR(subTotal)}</span></div>
-                  {insurance > 0 && <div className="flex justify-between text-g500"><span>Insurance</span><span className="font-mono">{formatINR(insurance)}</span></div>}
-                  <div className="flex justify-between text-g500"><span>GST</span><span className="font-mono">{formatINR(gstTotal)}</span></div>
-                  <div className="flex justify-between font-bold text-blk border-t border-g200 pt-2 text-[14px]"><span>Grand Total</span><span className="font-mono text-red-mrt">{formatINR(grandTotal)}</span></div>
+                  <div className="flex justify-between text-g500"><span>Sub-Total</span><span className="font-mono">{fmtAmt(subTotal)}</span></div>
+                  {curr === 'INR' && insurance > 0 && <div className="flex justify-between text-g500"><span>Insurance</span><span className="font-mono">{fmtAmt(insurance)}</span></div>}
+                  {curr === 'INR' && <div className="flex justify-between text-g500"><span>GST</span><span className="font-mono">{fmtAmt(gstTotal)}</span></div>}
+                  <div className="flex justify-between font-bold text-blk border-t border-g200 pt-2 text-[14px]"><span>Grand Total</span><span className="font-mono text-red-mrt">{fmtAmt(grandTotal)}</span></div>
                 </div>
               </div>
             </div>
