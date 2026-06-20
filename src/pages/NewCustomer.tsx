@@ -246,8 +246,9 @@ export function NewCustomer() {
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
         setPay(normalizePayTerms(cust.pay) || cust.pay || '30 Days Net');
-        setGstin(cust.gstin || '');
-        setPan(cust.pan || '');
+        const loadedGstin = cust.gstin || '';
+        setGstin(loadedGstin);
+        setPan(cust.pan || (loadedGstin.length === 15 ? loadedGstin.substring(2, 12) : ''));
         setSites(cust.sites || []);
         setCreditLimit(cust.creditLimit != null ? String(cust.creditLimit) : '');
         setNextOrder1({ product: cust.nextOrder1?.product || '' });

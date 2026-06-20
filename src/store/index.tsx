@@ -593,32 +593,32 @@ const mapEnquiryToDB = (e: any) => {
     if ('name' in c)   obj.company_name  = c.name;
     if ('seg' in c)    obj.industry_segment = c.seg;
     if ('gstin' in c)  obj.gstin         = c.gstin;
-    if ('pan' in c)    obj.pan           = c.pan;
+    if ('pan' in c)    obj.pan           = c.pan ?? null;
     if ('inco' in c)   obj.incoterms     = c.inco;
     if ('curr' in c)   obj.currency      = c.curr;
     if ('pay' in c)    obj.payment_terms  = c.pay;
     if ('tier' in c)   obj.tier          = (c.tier === 'New') ? null : c.tier;
-    if ('turnover' in c)      obj.last_fy_turnover = c.turnover;
-    if ('revenue' in c)       obj.revenue_ytd      = c.revenue;
+    if ('turnover' in c)      obj.last_fy_turnover = c.turnover ?? null;
+    if ('revenue' in c)       obj.revenue_ytd      = c.revenue ?? null;
     if ('ratingPayment' in c) obj.payment_rating = (c.ratingPayment ?? 0) / 10;
     if ('ratingOrders'  in c) obj.orders_rating  = (c.ratingOrders  ?? 0) / 10;
     if ('ratingTrend'   in c) obj.trend_rating   = (c.ratingTrend   ?? 0) / 10;
-    if ('creditLimit' in c)   obj.credit_limit     = c.creditLimit;
-    if ('crossSellOpportunities' in c) obj.cross_sell_opportunities = c.crossSellOpportunities;
-    if ('notes' in c)  obj.notes = c.notes;
+    if ('creditLimit' in c)   obj.credit_limit   = c.creditLimit ?? null;
+    if ('crossSellOpportunities' in c) obj.cross_sell_opportunities = c.crossSellOpportunities ?? null;
+    if ('notes' in c)  obj.notes = c.notes ?? null;
     if ('createdBy' in c) obj.created_by = c.createdBy;
 
     // Primary site → flat address columns
     if (primarySite) {
-      obj.site_name            = primarySite.name;
-      obj.city                 = primarySite.city;
-      obj.state                = primarySite.state;
-      obj.billing_address      = primarySite.fullAddress || primarySite.address;
-      obj.pincode              = primarySite.pincode;
-      obj.site_gstin           = primarySite.gstin;
-      obj.dispatch_address     = primarySite.dispatchAddress;
-      obj.preferred_transporter = primarySite.transporter;
-      obj.lead_time_note       = primarySite.leadTimeNote;
+      obj.site_name             = primarySite.name || null;
+      obj.city                  = primarySite.city || null;
+      obj.state                 = primarySite.state || null;
+      obj.billing_address       = primarySite.fullAddress || primarySite.address || null;
+      obj.pincode               = primarySite.pincode || null;
+      obj.site_gstin            = primarySite.gstin ?? null;
+      obj.dispatch_address      = primarySite.dispatchAddress ?? null;
+      obj.preferred_transporter = primarySite.transporter ?? null;
+      obj.lead_time_note        = primarySite.leadTimeNote ?? null;
     }
 
     // Flat contact columns
