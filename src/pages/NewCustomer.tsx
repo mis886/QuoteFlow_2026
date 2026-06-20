@@ -370,7 +370,16 @@ export function NewCustomer() {
             <div>
               <label className={labelCls}>Company GSTIN</label>
               <input
-                type="text" value={gstin} onChange={e => setGstin(e.target.value.toUpperCase())}
+                type="text" value={gstin}
+                onChange={e => {
+                  const val = e.target.value.toUpperCase();
+                  setGstin(val);
+                  if (val.length === 15) {
+                    setPan(val.slice(2, 12));
+                  } else {
+                    setPan('');
+                  }
+                }}
                 className={inputCls + ' font-mono uppercase'}
                 placeholder="27AABCF5171D1ZW"
                 maxLength={15}

@@ -530,13 +530,16 @@ const mapEnquiryToDB = (e: any) => {
 
     const primarySite: Site = {
       id: 'S1',
-      name: 'Main Office',
+      name: c.site_name || 'Main Office',
       city: c.city || '',
       state: c.state || '',
       address: c.billing_address || '',
       fullAddress: c.billing_address || '',
+      dispatchAddress: c.dispatch_address || '',
+      transporter: c.preferred_transporter || '',
+      leadTimeNote: c.lead_time_note || '',
       pincode: c.pincode || '',
-      gstin: c.gstin || '',
+      gstin: c.site_gstin || '',
       isPrimary: true,
       contacts,
     };
@@ -557,6 +560,7 @@ const mapEnquiryToDB = (e: any) => {
       name: c.company_name || '',
       seg: c.industry_segment || '',
       gstin: c.gstin || '',
+      pan: c.pan || '',
       inco: c.incoterms || 'Ex-Works',
       curr: c.currency || 'INR',
       pay: c.payment_terms || '',
@@ -589,6 +593,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('name' in c)   obj.company_name  = c.name;
     if ('seg' in c)    obj.industry_segment = c.seg;
     if ('gstin' in c)  obj.gstin         = c.gstin;
+    if ('pan' in c)    obj.pan           = c.pan;
     if ('inco' in c)   obj.incoterms     = c.inco;
     if ('curr' in c)   obj.currency      = c.curr;
     if ('pay' in c)    obj.payment_terms  = c.pay;
@@ -605,10 +610,15 @@ const mapEnquiryToDB = (e: any) => {
 
     // Primary site → flat address columns
     if (primarySite) {
-      obj.city            = primarySite.city;
-      obj.state           = primarySite.state;
-      obj.billing_address = primarySite.fullAddress || primarySite.address;
-      obj.pincode         = primarySite.pincode;
+      obj.site_name            = primarySite.name;
+      obj.city                 = primarySite.city;
+      obj.state                = primarySite.state;
+      obj.billing_address      = primarySite.fullAddress || primarySite.address;
+      obj.pincode              = primarySite.pincode;
+      obj.site_gstin           = primarySite.gstin;
+      obj.dispatch_address     = primarySite.dispatchAddress;
+      obj.preferred_transporter = primarySite.transporter;
+      obj.lead_time_note       = primarySite.leadTimeNote;
     }
 
     // Flat contact columns
