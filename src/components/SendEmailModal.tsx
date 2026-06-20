@@ -37,6 +37,8 @@ interface QuoteProps extends BaseProps { mode: 'quote'; doc: Quote; }
 interface OrderProps extends BaseProps { mode: 'order'; doc: Order; relatedQuote?: Quote; }
 type Props = QuoteProps | OrderProps;
 
+const OAUTH_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
 // ── component ─────────────────────────────────────────────────────────────────
 export function SendEmailModal(props: Props) {
   const { customer, siteId, onClose, onSent } = props;
@@ -254,6 +256,13 @@ export function SendEmailModal(props: Props) {
               </div>
             </div>
 
+            {/* OAuth not configured notice */}
+            {!OAUTH_CONFIGURED && (
+              <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_13px] text-[11.5px] text-amber-800 font-medium">
+                Email sending requires Google OAuth configuration. Contact your administrator to set up <code className="font-mono text-[10.5px] bg-amber-100 px-1 rounded">VITE_GOOGLE_CLIENT_ID</code> in Cloudflare Pages environment variables.
+              </div>
+            )}
+
             {/* Error */}
             {status === 'error' && (
               <div className="bg-red-50 border border-red-200 rounded-[3px] p-[9px_13px] text-[11.5px] text-red-mrt font-medium">
@@ -264,7 +273,7 @@ export function SendEmailModal(props: Props) {
             {/* Footer */}
             <div className="flex items-center justify-end gap-3 pt-2 border-t border-g200">
               <Button type="button" variant="secondary" onClick={onClose} disabled={status === 'sending'}>Cancel</Button>
-              <Button type="submit" variant="primary" disabled={status === 'sending'}>
+              <Button type="submit" variant="primary" disabled={status === 'sending' || !OAUTH_CONFIGURED}>
                 {status === 'sending'
                   ? <><Loader2 size={13} className="animate-spin mr-1.5" />Sending…</>
                   : <><Send size={13} className="stroke-[2.5px] mr-1.5" />Send Email</>}
