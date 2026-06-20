@@ -122,12 +122,10 @@ export async function downloadQuoteDOCX(
     ? (quote as any).authorizedPerson
     : defaultSignatory ?? { name: 'Akash Gupta', designation: 'Rubber Technologist' };
 
-  const showRateWt = quote.items.some(i => !!(i as any).rateAsPerWeight?.trim());
-
   // Column widths in DXA (1 inch = 1440 DXA). Usable ≈ 8640 DXA for 0.65" margins on A4
   const PAGE_W = 8640;
-  const wSno = 480, wQty = 700, wPer = 560, wRateWt = 900, wRate = 960, wPerUnit = 560;
-  const wPart = PAGE_W - wSno - wQty - (showRateWt ? wRateWt : 0) - wRate - wPerUnit;
+  const wSno = 480, wQty = 700, wRate = 960, wPerUnit = 560;
+  const wPart = PAGE_W - wSno - wQty - wRate - wPerUnit;
 
   const itemRows = quote.items.map(i => {
     const rateText = (i as any).rateOverride
@@ -139,7 +137,6 @@ export async function downloadQuoteDOCX(
       tdCell(String(i.seq), wSno, AlignmentType.CENTER),
       tdCell(i.qty + ' ' + (i.uom || 'nos.'), wQty, AlignmentType.CENTER),
       tdCell(i.desc + (i.mat ? ' - ' + i.mat : ''), wPart),
-      ...(showRateWt ? [tdCell((i as any).rateAsPerWeight || '—', wRateWt, AlignmentType.CENTER)] : []),
       tdCell(rateText, wRate, AlignmentType.RIGHT, { color: isRegret ? C_RED : undefined, bold: isRegret }),
       tdCell(perUnit, wPerUnit, AlignmentType.CENTER),
     ];
@@ -226,7 +223,6 @@ export async function downloadQuoteDOCX(
                 thCell('S. No.', wSno),
                 thCell('Quantity', wQty),
                 thCell('Particulars', wPart),
-                ...(showRateWt ? [thCell('Rate as per Weigh', wRateWt)] : []),
                 thCell(`Rates (${quote.curr})`, wRate, AlignmentType.RIGHT),
                 thCell('Per', wPerUnit),
               ],

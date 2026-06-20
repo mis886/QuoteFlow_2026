@@ -324,7 +324,7 @@ export function NewQuote() {
       }
     } else {
       setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
-      setItems([{ seq: 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', unitPrice: 0, gst: 18, total: 0 }]);
+      setItems([{ seq: 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', priceBasis: 'Per kg', unitPrice: 0, gst: 18, total: 0 }]);
       if (custParam) {
         setCustName(custParam);
         const cr = data.customers.find(c => c.name === custParam);
@@ -394,7 +394,7 @@ export function NewQuote() {
     }
     setItems(ni);
   };
-  const addItem = () => setItems([...items, { seq: items.length + 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', unitPrice: 0, gst: 18, total: 0, rateAsPerWeight: '', rateOverride: false, rateText: '' }]);
+  const addItem = () => setItems([...items, { seq: items.length + 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', priceBasis: 'Per kg', unitPrice: 0, gst: 18, total: 0, rateOverride: false, rateText: '' }]);
   const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 }))); };
 
   // Copy items from an existing quote
@@ -1013,7 +1013,7 @@ export function NewQuote() {
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24 whitespace-nowrap">Total Qty</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Packing Type</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-28">Rate as per Weight</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Price Basis</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Unit Rate ({curr === 'INR' ? '₹' : curr})</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-20">GST %</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Amount ({curr === 'INR' ? '₹' : curr})</th>
@@ -1066,9 +1066,11 @@ export function NewQuote() {
                               placeholder="Packing type…"
                             />
                           </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" value={item.rateAsPerWeight || ''} placeholder="e.g. ₹120/kg" onChange={e => updateItem(idx, 'rateAsPerWeight', e.target.value)}
-                              className="w-full bg-transparent outline-none font-mono text-[11px] text-blk placeholder:text-g300" />
+                          <td className="px-1 py-[3px] border border-g400 align-middle">
+                            <select value={item.priceBasis || 'Per kg'} onChange={e => updateItem(idx, 'priceBasis', e.target.value)}
+                              className="w-full bg-transparent outline-none font-sans text-[11px] text-blk text-center cursor-pointer">
+                              {['Per kg','Per MT','Per Ltr','Per KL','Per Unit','Per Drum','Per Can'].map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
                           </td>
                           <td className="px-[6px] py-[5px] border border-g400 align-middle">
                             <div className="flex items-center gap-1">

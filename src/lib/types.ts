@@ -20,7 +20,6 @@ export interface QuoteItem extends LineItem {
   unitPrice: number;
   gst: number;
   total: number;
-  rateAsPerWeight?: string;   // text shown in "Rate as per Weight" column
   rateOverride?: boolean;     // when true, rate cell shows rateText (or "Regret") instead of numeric
   rateText?: string;          // custom text for rate cell when rateOverride is on
   priceBasis?: string;        // unit the rate is quoted per (e.g. "Mtr") — when different from qty UOM
