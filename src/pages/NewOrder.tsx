@@ -173,7 +173,12 @@ export function NewOrder() {
         if (q.enqRef) setLinkedEnqRef(q.enqRef);
         setOrderId(generateId('ORD', data.orders.map(o => o.id)));
         setCustName(q.cust); setAuthName(q.authorizedPerson?.name || '');
-        if (q.siteId) setSiteId(q.siteId);
+        if (q.siteId) {
+          setSiteId(q.siteId);
+          const qCust = data.customers.find(c => c.name === q.cust);
+          const qSite = (qCust?.sites ?? []).find((s: any) => s.id === q.siteId);
+          if (qSite) setShipAddr((qSite as any).dispatchAddress || (qSite as any).fullAddress || qSite.address || '');
+        }
         if (q.contactId) setContactId(q.contactId);
         if (q.contact) setContact(q.contact);
         if (q.email) setEmail(q.email);
@@ -211,6 +216,9 @@ export function NewOrder() {
         if (contactId && !contactManual) {
           const ct = contacts.find((c: any) => c.id === contactId);
           if (ct) { setContact(ct.name); setEmail(ct.email); setPhone(ct.phone || ''); }
+        } else if (!editOrderId && !contactId && !contactManual && contacts.length > 0) {
+          const firstCt = contacts[0];
+          setContactId(firstCt.id); setContact(firstCt.name); setEmail(firstCt.email || ''); setPhone(firstCt.phone || '');
         }
       }
     } else { if (sites.length === 1) setSiteId(sites[0].id); }
@@ -475,7 +483,12 @@ export function NewOrder() {
                 if (q.enqRef) setLinkedEnqRef(q.enqRef);
                 setOrderId(generateId('ORD', data.orders.map(o => o.id)));
                 setCustName(q.cust); setAuthName(q.authorizedPerson?.name || '');
-                if ((q as any).siteId) setSiteId((q as any).siteId);
+                if ((q as any).siteId) {
+                  setSiteId((q as any).siteId);
+                  const qCust2 = data.customers.find(c => c.name === q.cust);
+                  const qSite2 = (qCust2?.sites ?? []).find((s: any) => s.id === (q as any).siteId);
+                  if (qSite2) setShipAddr((qSite2 as any).dispatchAddress || (qSite2 as any).fullAddress || qSite2.address || '');
+                }
                 if ((q as any).contactId) setContactId((q as any).contactId);
                 if ((q as any).contact) setContact((q as any).contact);
                 if ((q as any).email) setEmail((q as any).email);
