@@ -324,6 +324,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('items' in o) obj.items = o.items;
     if ('adjustments' in o) obj.adjustments = o.adjustments || [];
     if ('inco' in o) obj.inco = o.inco;
+    if ('curr' in o) obj.curr = o.curr;
     if ('authorizedPerson' in o) obj.authorized_person = o.authorizedPerson;
     if ('terms' in o) obj.terms = o.terms;
     if ('attachments' in o) obj.attachments = o.attachments;

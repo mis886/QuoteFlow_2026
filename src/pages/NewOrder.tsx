@@ -33,6 +33,33 @@ const OPTIONAL_TNC_CLAUSES = [
 
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
 
+const INCO_OPTIONS = [
+  'EXW', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP', 'FCA',
+  'Ex Bhiwandi Warehouse', 'Ex Bhiwandi Warehouse Self Pickup',
+  'Ex Factory Warehouse', 'Delivered', 'Free Delivery till Transport', 'Ex-Port',
+];
+
+const normalizeInco = (raw: string | undefined): string => {
+  if (!raw) return '';
+  const lower = raw.toLowerCase().trim();
+  const exact = INCO_OPTIONS.find(o => o.toLowerCase() === lower);
+  if (exact) return exact;
+  if (/bhiwandi.*self|self.*pickup/.test(lower)) return 'Ex Bhiwandi Warehouse Self Pickup';
+  if (/bhiwandi/.test(lower)) return 'Ex Bhiwandi Warehouse';
+  if (/ex.*factory|factory.*wh/.test(lower)) return 'Ex Factory Warehouse';
+  if (/free.*del|del.*transport/.test(lower)) return 'Free Delivery till Transport';
+  if (/delivered/.test(lower)) return 'Delivered';
+  if (/ex.*port/.test(lower)) return 'Ex-Port';
+  if (/^exw|ex.?work/.test(lower)) return 'EXW';
+  if (/^fob/.test(lower)) return 'FOB';
+  if (/^cif/.test(lower)) return 'CIF';
+  if (/^cfr|^c&f/.test(lower)) return 'CFR';
+  if (/^dap/.test(lower)) return 'DAP';
+  if (/^ddp/.test(lower)) return 'DDP';
+  if (/^fca/.test(lower)) return 'FCA';
+  return '';
+};
+
 export function NewOrder() {
   const [searchParams, setSearchParams] = useSearchParams();
   const quoteRef = searchParams.get('quoteRef');
@@ -57,8 +84,9 @@ export function NewOrder() {
   const [existingPoFileName, setExistingPoFileName] = useState<string | null>(null);
   const [poDate, setPoDate] = useState(localDateStr(new Date()));
   const [dlvDate, setDlvDate] = useState(localDateStr(new Date(Date.now() + 30 * 86400000)));
-  const [dlvTerms, setDlvTerms] = useState('EXW - Ex Works');
-  const [customDlvTerms, setCustomDlvTerms] = useState('');
+  const [inco, setInco] = useState('EXW');
+  const [customInco, setCustomInco] = useState('');
+  const [curr, setCurr] = useState('INR');
   const [dlvPriority, setDlvPriority] = useState('Standard');
   const [shipAddr, setShipAddr] = useState('');
   const [contact, setContact] = useState('');
@@ -132,6 +160,8 @@ export function NewOrder() {
         if (o.enqRef) setLinkedEnqRef(o.enqRef);
         else if (o.quoteRef) { const q = data.quotes.find(x => x.id === o.quoteRef); if (q?.enqRef) setLinkedEnqRef(q.enqRef); }
         setOrderId(o.id); setPoNo(o.poNo); setPoDate(o.poDate); setDlvDate(o.dlvDate);
+        if (o.inco) { const _n = normalizeInco(o.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : o.inco); }
+        setCurr(o.curr || 'INR');
         setCustName(o.cust); setAuthName(o.authorizedPerson?.name || '');
         setAuthDesignation(o.authorizedPerson?.designation || ''); setAuthPhone(o.authorizedPerson?.phone || '');
         setOrderStatus(o.status as OrderStatus); setCustomTerms(parseQuoteTerms(o.terms)); setItems(o.items);
@@ -182,6 +212,8 @@ export function NewOrder() {
         // Preserve manual contact if quote had no contactId
         setContactManual(!q.contactId && !!(q.contact || q.email));
         setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
+        if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
+        setCurr(q.curr || 'INR');
         setCustomTerms(parseQuoteTerms(q.terms));
         setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
       }
@@ -198,8 +230,11 @@ export function NewOrder() {
     const customer = data.customers.find(c => c.name === custName);
     if (!customer) return;
     if (!editOrderId) {
-      setDlvTerms(customer.inco || 'EXW - Ex Works');
-      if (!priceBasis) setPriceBasis(customer.inco || '');
+      const ci = customer.inco || '';
+      const _n = normalizeInco(ci);
+      setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || ''));
+      setCurr(customer.curr || 'INR');
+      if (!priceBasis) setPriceBasis(ci || '');
     }
     const sites = customer.sites ?? [];
     if (siteId) {
@@ -218,16 +253,16 @@ export function NewOrder() {
     } else { if (sites.length === 1) setSiteId(sites[0].id); }
   }, [custName, siteId, contactId, contactManual, data.customers, editOrderId, quoteRef]);
 
-  // T&C from delivery terms
+  // T&C from incoterms
   useEffect(() => {
     if (editOrderId) return;
-    const sel = dlvTerms === 'OVERRIDE' ? customDlvTerms : dlvTerms;
+    const sel = inco === 'OVERRIDE' ? customInco : inco;
     let t = '';
     if (sel.includes('EXW')) t = '1. Delivery: Ex-Works, Meerut.\n2. Packing & Forwarding: Extra @ 2%.\n3. Freight: To be paid by the buyer.\n4. Payment: As per agreement.\n5. Taxes: GST 18% extra as applicable.';
     else if (sel.includes('FOB')) t = '1. Delivery: FOB Port of Loading.\n2. Packing & Forwarding: Included.\n3. Freight: Payable by buyer from port.\n4. Payment: As per agreement.';
     else if (sel.includes('DDP') || sel.includes('DAP') || sel.includes('CIF')) t = `1. Delivery: ${sel} Destination.\n2. Insurance & Freight: Included.\n3. Taxes/Duties: As per quotation.\n4. Payment: As per agreement.`;
     if (t && !customTerms) setCustomTerms(t);
-  }, [dlvTerms, customDlvTerms, editOrderId]);
+  }, [inco, customInco, editOrderId]);
 
   // ── Unsaved-changes guard ──
   // `dirty` flips true on the first edit after the form hydrates, and is cleared
@@ -268,13 +303,13 @@ export function NewOrder() {
   const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 }))); };
 
   const subTotal = items.reduce((s, i) => s + i.total, 0);
-  const insurance = Math.round(subTotal * 0.0015 * 100) / 100;
-  const itemGst  = items.reduce((s, i) => s + i.total * i.gst / 100, 0);
-  const maxGstRate = maxItemGstRate(items);
+  const insurance = curr === 'INR' ? Math.round(subTotal * 0.0015 * 100) / 100 : 0;
+  const itemGst  = curr === 'INR' ? items.reduce((s, i) => s + i.total * i.gst / 100, 0) : 0;
+  const maxGstRate = curr === 'INR' ? maxItemGstRate(items) : 0;
   const adj = resolveAdjustments(adjustments, subTotal, itemGst, maxGstRate);
   const adjLines = adj.lines;
-  const insuranceGst = Math.round(insurance * (maxGstRate || 18) / 100 * 100) / 100;
-  const gstTotal = adj.gstTotal + insuranceGst;
+  const insuranceGst = curr === 'INR' ? Math.round(insurance * (maxGstRate || 18) / 100 * 100) / 100 : 0;
+  const gstTotal = curr === 'INR' ? adj.gstTotal + insuranceGst : 0;
   const grandTotal = subTotal + insurance + adj.preNet + gstTotal + adj.postNet;
 
   // Adjustment row helpers
@@ -323,7 +358,8 @@ export function NewOrder() {
     poNo: poNo.trim(), poDate, dlvDate,
     status: editOrderId ? orderStatus : 'Processing',
     value: grandTotal,
-    inco: dlvTerms === 'OVERRIDE' ? customDlvTerms : dlvTerms,
+    inco: inco === 'OVERRIDE' ? customInco : inco,
+    curr,
     items, adjustments,
     poFileName: existingPoFileName || undefined,
     authorizedPerson: { name: authName, designation: authDesignation, phone: authPhone },
@@ -707,18 +743,23 @@ export function NewOrder() {
               </div>
 
               <div className="col-span-4 bg-white border border-g200">
-                <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600 p-[11px_16px] border-b border-g200">Delivery</div>
+                <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600 p-[11px_16px] border-b border-g200">Delivery / Trading Terms</div>
                 <div className="p-[12px_16px] flex flex-col gap-[10px]">
                   <div>
-                    <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Delivery Terms</label>
-                    <select title="Delivery terms" value={dlvTerms} onChange={e => setDlvTerms(e.target.value)} className={selectCls}>
-                      <option>EXW - Ex Works</option><option>FOB - Free On Board</option>
-                      <option>CIF - Cost, Insurance & Freight</option><option>CIP - Carriage and Insurance Paid To</option>
-                      <option>DAP - Delivered At Place</option><option>DDP - Delivered Duty Paid</option>
-                      <option>FCA - Free Carrier</option><option>CPT - Carriage Paid To</option>
-                      <option value="OVERRIDE">Override...</option>
+                    <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Incoterms</label>
+                    <select title="Incoterms" value={inco} onChange={e => { const v = e.target.value; setInco(v); if (v !== 'OVERRIDE') setCustomInco(''); }} className={selectCls}>
+                      {INCO_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                      <option value="OVERRIDE">Other / Override...</option>
                     </select>
-                    {dlvTerms === 'OVERRIDE' && <input type="text" value={customDlvTerms} placeholder="Specify custom terms..." onChange={e => setCustomDlvTerms(e.target.value)} className="w-full mt-2 font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt" />}
+                    {inco === 'OVERRIDE' && (
+                      <input type="text" value={customInco} placeholder="Specify custom incoterm..." onChange={e => setCustomInco(e.target.value)} className="w-full mt-2 font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt" />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Currency</label>
+                    <select value={curr} onChange={e => setCurr(e.target.value)} className={selectCls + ' font-bold'}>
+                      <option>INR</option><option>USD</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Shipping Address</label>
@@ -752,9 +793,9 @@ export function NewOrder() {
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24 whitespace-nowrap">Total Qty</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Packing Type</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Price Basis</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Unit Rate (₹)</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-20">GST %</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Amount (₹)</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Unit Rate ({curr === 'USD' ? '$' : '₹'})</th>
+                        {curr === 'INR' && <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-20">GST %</th>}
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Amount ({curr === 'USD' ? '$' : '₹'})</th>
                         <th className="w-8 border border-g400"></th>
                       </tr>
                     </thead>
@@ -832,11 +873,13 @@ export function NewOrder() {
                               )}
                             </div>
                           </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <select title="GST rate" value={item.gst} onChange={e => updateItem(idx, 'gst', Number(e.target.value))} className="w-full bg-transparent outline-none text-[12px] text-center font-mono text-blk appearance-none cursor-pointer">
-                              <option value={18}>18%</option><option value={12}>12%</option><option value={5}>5%</option><option value={0}>0%</option>
-                            </select>
-                          </td>
+                          {curr === 'INR' && (
+                            <td className="px-3 py-[5px] border border-g400 align-middle">
+                              <select title="GST rate" value={item.gst} onChange={e => updateItem(idx, 'gst', Number(e.target.value))} className="w-full bg-transparent outline-none text-[12px] text-center font-mono text-blk appearance-none cursor-pointer">
+                                <option value={18}>18%</option><option value={12}>12%</option><option value={5}>5%</option><option value={0}>0%</option>
+                              </select>
+                            </td>
+                          )}
                           <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] font-bold text-blk">{formatINR(item.total)}</td>
                           <td className="px-1 py-[5px] border border-g400 align-middle">
                             <button type="button" onClick={() => removeItem(idx)} disabled={items.length === 1} className="text-g400 hover:text-red-mrt p-1 transition-colors disabled:opacity-30" title="Remove">
@@ -848,18 +891,20 @@ export function NewOrder() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-g200 bg-g50/50">
-                        <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
+                        <td colSpan={curr === 'INR' ? 9 : 8} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
                         <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(subTotal)}</td>
                         <td></td>
                       </tr>
-                      <tr className="border-b border-g200 bg-g50/50">
-                        <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">Insurance (0.15%)</td>
-                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(insurance)}</td>
-                        <td></td>
-                      </tr>
+                      {curr === 'INR' && (
+                        <tr className="border-b border-g200 bg-g50/50">
+                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">Insurance (0.15%)</td>
+                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(insurance)}</td>
+                          <td></td>
+                        </tr>
+                      )}
                       {adjLines.filter(l => l.taxable).map(l => (
                         <tr key={l.id} className="bg-g50/50">
-                          <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
+                          <td colSpan={curr === 'INR' ? 9 : 8} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
                             {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
                           </td>
                           <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
@@ -868,21 +913,23 @@ export function NewOrder() {
                           <td></td>
                         </tr>
                       ))}
-                      {(adj.preNet !== 0 || insurance > 0) && (
+                      {curr === 'INR' && (adj.preNet !== 0 || insurance > 0) && (
                         <tr className="bg-g50/50">
-                          <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
+                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
                           <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk border-t border-g100">{formatINR(subTotal + insurance + adj.preNet)}</td>
                           <td></td>
                         </tr>
                       )}
-                      <tr className="border-b border-g200 bg-g50/50">
-                        <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
-                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(gstTotal)}</td>
-                        <td></td>
-                      </tr>
+                      {curr === 'INR' && (
+                        <tr className="border-b border-g200 bg-g50/50">
+                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
+                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(gstTotal)}</td>
+                          <td></td>
+                        </tr>
+                      )}
                       {adjLines.filter(l => !l.taxable).map(l => (
                         <tr key={l.id} className="bg-g50/50">
-                          <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">
+                          <td colSpan={curr === 'INR' ? 9 : 8} className="px-3 py-2 text-right text-[11px] text-g500">
                             {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
                           </td>
                           <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
@@ -892,7 +939,7 @@ export function NewOrder() {
                         </tr>
                       ))}
                       <tr className="bg-[#1e293b]">
-                        <td colSpan={8} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
+                        <td colSpan={curr === 'INR' ? 9 : 8} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
                         <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{formatINR(grandTotal)}</td>
                         <td className="bg-[#1e293b]"></td>
                       </tr>
@@ -1180,7 +1227,8 @@ export function NewOrder() {
               <div className="bg-white border border-g200 rounded-[3px] p-4">
                 <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt pb-2 border-b border-g200 mb-3">Delivery</div>
                 <div className="text-[12px] space-y-1.5">
-                  <div className="flex justify-between"><span className="text-g500">Terms</span><span>{dlvTerms === 'OVERRIDE' ? customDlvTerms : dlvTerms}</span></div>
+                  <div className="flex justify-between"><span className="text-g500">Incoterms</span><span>{inco === 'OVERRIDE' ? customInco : inco}</span></div>
+                  <div className="flex justify-between"><span className="text-g500">Currency</span><span className="font-bold">{curr}</span></div>
                   <div className="flex justify-between"><span className="text-g500">Priority</span><span>{dlvPriority}</span></div>
                   {(poFile || existingPoFileName) && <div className="flex justify-between"><span className="text-g500">PO Doc</span><span className="text-green-600 text-[11px]">✓ Attached</span></div>}
                 </div>
@@ -1215,15 +1263,15 @@ export function NewOrder() {
               <div className="flex justify-end p-4">
                 <div className="w-[300px] text-[12px] space-y-1.5">
                   <div className="flex justify-between text-g500"><span>Sub-Total</span><span className="font-mono">{formatINR(subTotal)}</span></div>
-                  <div className="flex justify-between text-g500"><span>Insurance (0.15%)</span><span className="font-mono">{formatINR(insurance)}</span></div>
+                  {curr === 'INR' && <div className="flex justify-between text-g500"><span>Insurance (0.15%)</span><span className="font-mono">{formatINR(insurance)}</span></div>}
                   {adjLines.filter(l => l.taxable).map(l => (
                     <div key={l.id} className="flex justify-between text-g500">
                       <span className="truncate pr-2">{l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}</span>
                       <span className={`font-mono ${l.amount < 0 ? 'text-red-mrt' : ''}`}>{l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}</span>
                     </div>
                   ))}
-                  {(adj.preNet !== 0 || insurance > 0) && <div className="flex justify-between text-g600 border-t border-g100 pt-1"><span>Taxable Value</span><span className="font-mono">{formatINR(subTotal + insurance + adj.preNet)}</span></div>}
-                  <div className="flex justify-between text-g500"><span>GST Total</span><span className="font-mono">{formatINR(gstTotal)}</span></div>
+                  {curr === 'INR' && (adj.preNet !== 0 || insurance > 0) && <div className="flex justify-between text-g600 border-t border-g100 pt-1"><span>Taxable Value</span><span className="font-mono">{formatINR(subTotal + insurance + adj.preNet)}</span></div>}
+                  {curr === 'INR' && <div className="flex justify-between text-g500"><span>GST Total</span><span className="font-mono">{formatINR(gstTotal)}</span></div>}
                   {adjLines.filter(l => !l.taxable).map(l => (
                     <div key={l.id} className="flex justify-between text-g500">
                       <span className="truncate pr-2">{l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}</span>

@@ -163,6 +163,7 @@ export interface Order {
   status: OrderStatus;
   value: number;
   inco?: string;
+  curr?: string;
   items: OrderItem[];
   created_at?: string;
   updated_at?: string;
