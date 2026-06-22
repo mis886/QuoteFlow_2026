@@ -217,8 +217,8 @@ export function NewOrder() {
           const ct = contacts.find((c: any) => c.id === contactId);
           if (ct) { setContact(ct.name); setEmail(ct.email); setPhone(ct.phone || ''); }
         } else if (!editOrderId && !contactId && !contactManual) {
-          const pc = (contacts as any[]).find((ct: any) => ct.isPrimary && ct.name) || (contacts as any[]).find((ct: any) => ct.name);
-          if (pc) { setContactId(pc.id); setContact(pc.name); setEmail(pc.email || ''); setPhone(pc.phone || ''); }
+          const pc = (contacts as any[]).find((ct: any) => ct.isPrimary) || (contacts as any[]).find((ct: any) => ct.email || ct.phone || ct.name) || contacts[0];
+          if (pc && (pc.name || pc.email || pc.phone)) { setContactId(pc.id); setContact(pc.name || ''); setEmail(pc.email || ''); setPhone(pc.phone || ''); }
         }
       }
     } else { if (sites.length === 1) setSiteId(sites[0].id); }
@@ -641,8 +641,8 @@ export function NewOrder() {
                               setSiteId(ps.id);
                               if (!quoteRef && !editOrderId) setShipAddr((ps as any).dispatchAddress || (ps as any).fullAddress || ps.address || '');
                               const contacts = (ps.contacts ?? []) as any[];
-                              const pc = contacts.find((ct: any) => ct.isPrimary && ct.name) || contacts.find((ct: any) => ct.name);
-                              if (pc) { setContactId(pc.id); setContact(pc.name); setEmail(pc.email || ''); setPhone(pc.phone || ''); }
+                              const pc = contacts.find((ct: any) => ct.isPrimary) || contacts.find((ct: any) => ct.email || ct.phone || ct.name) || contacts[0];
+                              if (pc && (pc.name || pc.email || pc.phone)) { setContactId(pc.id); setContact(pc.name || ''); setEmail(pc.email || ''); setPhone(pc.phone || ''); }
                             }
                           }
                         }
