@@ -77,25 +77,26 @@ export function generateQuotePDF(
     y = headerH;
     // GSTIN is already part of the letterhead image — don't stamp it again
   } else {
-    doc.setFont('times', 'bold'); doc.setFontSize(13); doc.setTextColor(0, 0, 0);
-    doc.text('Himalaya TerpenesRubber Technologies' + (unit?.name ? ' — ' + unit.name : ''), mx, 12);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(50, 50, 50);
-    const addrLines = doc.splitTextToSize(unit?.address || '319, Shivaji Road; Vijay Nagar; Meerut (UP) – 250002; India', 95) as string[];
-    addrLines.forEach((line, i) => doc.text(line, rx, 8 + i * 4, { align: 'right' }));
-    doc.text('0121 – 2441966, (M) +91 9760024630', rx, 13, { align: 'right' });
-    doc.text('E-mail: info@himalayaterpene.com', rx, 18, { align: 'right' });
-    doc.text('Website: www.himalayaterpene.com', rx, 23, { align: 'right' });
-    doc.text('GSTIN no.: ' + (unit?.gstin || '09ABMFM1195K1ZP'), rx, 28, { align: 'right' });
+    // Company name — centred, large, bold
+    doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
+    doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, 10, { align: 'center' });
+    // Address + CIN (use unit address when set, else HTPL Mumbai default)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
+    const defaultAddr = '201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022.  |  CIN: U24100MH1999PTC121377';
+    const addrStr = unit?.address ? unit.address : defaultAddr;
+    const addrLns = doc.splitTextToSize(addrStr, cw) as string[];
+    let ay = 19;
+    addrLns.forEach(l => { doc.text(l, pw / 2, ay, { align: 'center' }); ay += 4; });
+    // Contact line
+    doc.text('Tel.: 91-22-2405 6704  |  E-Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, ay + 2, { align: 'center' });
     y = headerH;
   }
 
-  // ── Manufacturer tagline ─────────────────────────────────────────────────
+  // ── Company tagline ──────────────────────────────────────────────────────
   y += 3.5;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(0, 0, 0);
-  const mfrText =
-    'Manufacturers: High Performance Kalrez, FFKM, EPDM, Viton, HNBR, Silicone, Nitrile, Neoprene, Butyl and Natural Rubber Components for Medium ' +
-    'and Heavy Industries | Specialist: Manufacturers of Rubber Gaskets for PHEs and Liners for Butterfly type valves.';
-  (doc.splitTextToSize(mfrText, cw) as string[]).forEach((l) => { doc.text(l, mx, y); y += 3.5; });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(0, 0, 0);
+  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, y, { align: 'center' });
+  y += 3.5;
 
   // ── Ref | Date ───────────────────────────────────────────────────────────
   y += 6;
@@ -352,7 +353,7 @@ export function generateQuotePDF(
     : defaultSignatory || { name: 'Akash Gupta', designation: 'Rubber Technologist', phone: '' };
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
-  const boldPart = 'Himalaya TerpenesRubber Technologies';
+  const boldPart = 'HIMALAYA TERPENES PVT. LTD.';
   doc.text(boldPart, mx, y);
   const boldW = doc.getTextWidth(boldPart);
   doc.setFont('helvetica', 'normal');
@@ -403,25 +404,26 @@ export function generatePIPDF(
     y = headerH;
     // GSTIN is already part of the letterhead image — don't stamp it again
   } else {
-    doc.setFont('times', 'bold'); doc.setFontSize(13); doc.setTextColor(0, 0, 0);
-    doc.text('Himalaya TerpenesRubber Technologies' + (unit?.name ? ' — ' + unit.name : ''), mx, 12);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(50, 50, 50);
-    const addrLines = doc.splitTextToSize(unit?.address || '319, Shivaji Road; Vijay Nagar; Meerut (UP) – 250002; India', 95) as string[];
-    addrLines.forEach((line, i) => doc.text(line, rx, 8 + i * 4, { align: 'right' }));
-    doc.text('0121 – 2441966, (M) +91 9760024630', rx, 13, { align: 'right' });
-    doc.text('E-mail: info@himalayaterpene.com', rx, 18, { align: 'right' });
-    doc.text('Website: www.himalayaterpene.com', rx, 23, { align: 'right' });
-    doc.text('GSTIN no.: ' + (unit?.gstin || '09ABMFM1195K1ZP'), rx, 28, { align: 'right' });
+    // Company name — centred, large, bold
+    doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
+    doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, 10, { align: 'center' });
+    // Address + CIN (use unit address when set, else HTPL Mumbai default)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
+    const defaultAddr = '201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022.  |  CIN: U24100MH1999PTC121377';
+    const addrStr = unit?.address ? unit.address : defaultAddr;
+    const addrLns = doc.splitTextToSize(addrStr, cw) as string[];
+    let ay = 19;
+    addrLns.forEach(l => { doc.text(l, pw / 2, ay, { align: 'center' }); ay += 4; });
+    // Contact line
+    doc.text('Tel.: 91-22-2405 6704  |  E-Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, ay + 2, { align: 'center' });
     y = headerH;
   }
 
-  // ── Manufacturer tagline ─────────────────────────────────────────────────
+  // ── Company tagline ──────────────────────────────────────────────────────
   y += 3.5;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(0, 0, 0);
-  const mfrText =
-    'Manufacturers: High Performance Kalrez, FFKM, EPDM, Viton, HNBR, Silicone, Nitrile, Neoprene, Butyl and Natural Rubber Components for Medium ' +
-    'and Heavy Industries | Specialist: Manufacturers of Rubber Gaskets for PHEs and Liners for Butterfly type valves.';
-  (doc.splitTextToSize(mfrText, cw) as string[]).forEach((l) => { doc.text(l, mx, y); y += 3.5; });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(0, 0, 0);
+  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, y, { align: 'center' });
+  y += 3.5;
 
   // ── PROFORMA INVOICE heading + details ──────────────────────────────────
   y += 6;
@@ -677,7 +679,7 @@ export function generatePIPDF(
     : defaultSignatory || { name: 'Akash Gupta', designation: 'Rubber Technologist', phone: '' };
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
-  const boldPart = 'Himalaya TerpenesRubber Technologies';
+  const boldPart = 'HIMALAYA TERPENES PVT. LTD.';
   doc.text(boldPart, mx, y);
   const boldW = doc.getTextWidth(boldPart);
   doc.setFont('helvetica', 'normal');
