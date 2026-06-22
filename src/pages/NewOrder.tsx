@@ -791,29 +791,11 @@ export function NewOrder() {
                             <input list="ord-uom-list" value={item.uom} onChange={e => updateItem(idx, 'uom', e.target.value)} placeholder="uom" className="w-full bg-g50 border border-g300 rounded-[3px] px-1.5 py-[3px] font-mono text-[11px] text-blk outline-none focus:border-red-mrt focus:bg-white transition-colors" />
                           </td>
                           {/* Rate Per */}
-                          <td className="px-1 py-[3px] border border-g400 align-top">
-                            <input
-                              list="ord-uom-list"
-                              value={item.priceBasis || ''}
-                              onChange={e => updateItem(idx, 'priceBasis', e.target.value)}
-                              placeholder={item.uom || '—'}
-                              title="Rate is per this unit (leave blank = same as UOM)"
-                              className="w-full bg-g50 border border-g300 rounded-[3px] px-1.5 py-[3px] font-mono text-[11px] text-blk outline-none focus:border-red-mrt focus:bg-white transition-colors placeholder:text-g300"
-                            />
-                            {item.priceBasis && item.priceBasis !== item.uom && (
-                              <div className="mt-1 flex items-center gap-0.5">
-                                <span className="font-mono text-[9px] text-g400 shrink-0">1&nbsp;{item.uom}&nbsp;=</span>
-                                <input
-                                  type="number" step="any" min="0"
-                                  value={item.priceBasisConv || ''}
-                                  onChange={e => updateItem(idx, 'priceBasisConv', Number(e.target.value))}
-                                  placeholder="×"
-                                  title={`How many ${item.priceBasis} per 1 ${item.uom}`}
-                                  className="w-10 bg-amber-50 border border-amber-300 rounded-[3px] px-1 py-[2px] font-mono text-[11px] text-blk outline-none focus:border-red-mrt transition-colors placeholder:text-g300 text-center"
-                                />
-                                <span className="font-mono text-[9px] text-g400 shrink-0">{item.priceBasis}</span>
-                              </div>
-                            )}
+                          <td className="px-1 py-[3px] border border-g400 align-middle">
+                            <select value={item.priceBasis || 'Per kg'} onChange={e => updateItem(idx, 'priceBasis', e.target.value)}
+                              className="w-full bg-transparent outline-none font-sans text-[11px] text-blk text-center cursor-pointer">
+                              {['Per kg','Per MT','Per Ltr','Per KL','Per Unit','Per Drum','Per Can'].map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="number" step="any" min="0" value={item.agreedRate || ''} onChange={e => updateItem(idx, 'agreedRate', Number(e.target.value))}
