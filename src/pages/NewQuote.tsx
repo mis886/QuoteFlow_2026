@@ -618,8 +618,7 @@ export function NewQuote() {
       if (!qData) return;
       setDirty(false);
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
-      const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-      const sig = unitSig ?? data.signatories.find((s: any) => s.is_default);
+      const sig = data.signatories.find((s: any) => s.is_default);
       generateQuotePDF(qData, data.customers.find(c => c.name === custName), data.settings, sig, true, unit);
     } catch (e: any) {
       console.error('PDF generation failed:', e);
@@ -635,8 +634,7 @@ export function NewQuote() {
       if (!qData) return;
       setDirty(false);
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
-      const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-      const sig = unitSig ?? data.signatories.find((s: any) => s.is_default);
+      const sig = data.signatories.find((s: any) => s.is_default);
       await downloadQuoteDOCX(qData, data.customers.find(c => c.name === custName), data.settings, sig, unit);
     } catch (e: any) {
       console.error('DOCX generation failed:', e);

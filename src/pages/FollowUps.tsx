@@ -514,8 +514,7 @@ export default function FollowUps() {
   const handleQuotePDF = (quote: Quote) => {
     const cust = data.customers.find(c => c.name === quote.cust);
     const unit = quote.unitId ? data.units.find(u => u.id === quote.unitId) : data.units.find(u => u.is_default);
-    const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-    const sig = unitSig ?? data.signatories.find(s => s.is_default);
+    const sig = data.signatories.find(s => s.is_default);
     generateQuotePDF(quote, cust, data.settings, sig, true, unit);
   };
 
@@ -527,8 +526,7 @@ export default function FollowUps() {
     const bank = order.bankAccountId
       ? data.bankAccounts.find(b => b.id === order.bankAccountId)
       : data.bankAccounts.find(b => b.unit_id === unit?.id && b.is_default);
-    const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-    const sig = unitSig ?? data.signatories.find(s => s.is_default);
+    const sig = data.signatories.find(s => s.is_default);
     generatePIPDF(order, quote, cust, data.settings, sig, true, unit, bank);
   };
 

@@ -430,8 +430,7 @@ export function NewOrder() {
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
       const bank = bankAccountId ? data.bankAccounts.find(b => b.id === bankAccountId)
         : data.bankAccounts.find(b => b.unit_id === unit?.id && b.is_default);
-      const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-      const sig = unitSig ?? data.signatories.find((s: any) => s.is_default);
+      const sig = data.signatories.find((s: any) => s.is_default);
       generatePIPDF(payload, qt, data.customers.find(c => c.name === custName), data.settings, sig, true, unit, bank);
     } catch (err) {
       setErrors({ global: `Failed to generate PI: ${(err as any)?.message || 'Check connection'}` });
@@ -448,8 +447,7 @@ export function NewOrder() {
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
       const bank = bankAccountId ? data.bankAccounts.find(b => b.id === bankAccountId)
         : data.bankAccounts.find(b => b.unit_id === unit?.id && b.is_default);
-      const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-      const sig = unitSig ?? data.signatories.find((s: any) => s.is_default);
+      const sig = data.signatories.find((s: any) => s.is_default);
       await downloadPIDOCX(payload, qt, data.customers.find(c => c.name === custName), data.settings, sig, unit, bank);
     } catch (err) {
       setErrors({ global: `Failed to generate DOCX: ${(err as any)?.message || 'Check connection'}` });

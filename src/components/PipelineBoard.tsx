@@ -500,8 +500,7 @@ function CardDrawer({ card, onClose, onCreateQuote }: { card: BoardCard; onClose
     if (!q) return;
     const c = data.customers.find(x => x.name === q.cust);
     const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
-    const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-    const sig = unitSig ?? data.signatories.find(s => s.is_default);
+    const sig = data.signatories.find(s => s.is_default);
     generateQuotePDF(q, c, data.settings, sig, true, unit);
   };
 
@@ -513,8 +512,7 @@ function CardDrawer({ card, onClose, onCreateQuote }: { card: BoardCard; onClose
     const bank = order.bankAccountId
       ? data.bankAccounts.find(b => b.id === order.bankAccountId)
       : data.bankAccounts.find(b => b.unit_id === unit?.id && b.is_default);
-    const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-    const sig = unitSig ?? data.signatories.find(s => s.is_default);
+    const sig = data.signatories.find(s => s.is_default);
     generatePIPDF(order, q, c, data.settings, sig, true, unit, bank);
   };
 

@@ -25,7 +25,7 @@ function fmtShort(iso: string) {
   return utilFmtDate(iso);
 }
 function fmtRate(v: number, sym: string) {
-  return sym.trimEnd() + ' ' + v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace('.', '=');
+  return sym.trimEnd() + ' ' + v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function getCurrSym(curr: string) {
   if (curr === 'USD') return '$';
@@ -118,9 +118,14 @@ export async function downloadQuoteDOCX(
     ?? customer?.sites[0];
   const primaryContact = primarySite?.contacts.find(c => c.isPrimary) ?? primarySite?.contacts[0];
 
-  const person: SigPerson = (quote as any).authorizedPerson?.name
-    ? (quote as any).authorizedPerson
-    : defaultSignatory ?? { name: 'Akash Gupta', designation: 'Rubber Technologist' };
+  const person: SigPerson = defaultSignatory
+    || ((quote as any).authorizedPerson?.name ? (quote as any).authorizedPerson : undefined)
+    || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
+
+  const salutation = (() => {
+    const ln = primaryContact?.name?.trim().split(/\s+/).at(-1);
+    return ln ? `Dear Mr./Ms. ${ln},` : 'Dear Sir/Madam,';
+  })();
 
   // Column widths in DXA (1 inch = 1440 DXA). Usable ≈ 8640 DXA for 0.65" margins on A4
   const PAGE_W = 8640;
@@ -171,14 +176,11 @@ export async function downloadQuoteDOCX(
       properties: { page: { margin: PAGE_MARGIN } },
       children: [
         // ── Company header
-        para([
-          r((unit?.name ? `Himalaya TerpenesRubber Technologies — ${unit.name}` : 'Himalaya TerpenesRubber Technologies'), { bold: true, size: 26 }),
-        ], AlignmentType.LEFT, 20),
-        para([r('319, Shivaji Road, Vijay Nagar, Meerut (UP) – 250002  |  info@himalayaterpene.com  |  www.himalayaterpene.com', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 40),
+        para([r('HIMALAYA TERPENES PVT. LTD.', { bold: true, size: 26 })], AlignmentType.LEFT, 10),
+        para([r('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', { size: 16, color: C_GRAY })], AlignmentType.LEFT, 10),
+        para([r('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 6),
+        para([r('Tel.: 91-22-2405 6704 | E Mail: mum@himalayaterpene.com | Web.: www.himalayaterpene.com', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 40),
         hrPara(),
-
-        // ── Mfr tagline
-        para([r('Manufacturers: High Performance Kalrez, FFKM, EPDM, Viton, HNBR, Silicone, Nitrile, Neoprene, Butyl and Natural Rubber Components for Medium and Heavy Industries | Specialist: Rubber Gaskets for PHEs and Liners for Butterfly Valves.', { size: 13, color: C_GRAY, italics: true })], AlignmentType.LEFT, 100),
 
         // ── Ref + Date
         new Paragraph({
@@ -209,8 +211,8 @@ export async function downloadQuoteDOCX(
           para([r('Reference No.: ' + (quote as any).custEnquiryDocNo, { size: 17 })], AlignmentType.LEFT, 40),
         ] : []),
 
-        // ── Dear Sir
-        para([r('Dear Sir,', { size: 18 })], AlignmentType.LEFT, 60),
+        // ── Salutation
+        para([r(salutation, { size: 18 })], AlignmentType.LEFT, 60),
         para([r('Thank you for your enquiry, we are pleased to submit our offer for the same as under. We hope this is in line with your requirement and your valued order follows soon.', { size: 17 })], AlignmentType.LEFT, 100),
 
         // ── Items table
@@ -270,7 +272,7 @@ export async function downloadQuoteDOCX(
         // ── Sign-off
         para([r('Thanks & Kind Regards,', { size: 18 })], AlignmentType.LEFT, 120),
         para([
-          r('Himalaya TerpenesRubber Technologies', { bold: true, size: 18 }),
+          r('HIMALAYA TERPENES PVT. LTD.', { bold: true, size: 18 }),
           r(` | ${person.name} | ${person.designation}${person.phone ? ' | Tel.: ' + person.phone : ''}`, { size: 18 }),
         ], AlignmentType.LEFT, 0),
       ],
@@ -304,9 +306,14 @@ export async function downloadPIDOCX(
     ?? customer?.sites[0];
   const primaryContact = primarySite?.contacts.find(c => c.isPrimary) ?? primarySite?.contacts[0];
 
-  const person: SigPerson = (order as any).authorizedPerson?.name
-    ? (order as any).authorizedPerson
-    : defaultSignatory ?? { name: 'Akash Gupta', designation: 'Rubber Technologist' };
+  const person: SigPerson = defaultSignatory
+    || ((order as any).authorizedPerson?.name ? (order as any).authorizedPerson : undefined)
+    || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
+
+  const piSalutation = (() => {
+    const ln = primaryContact?.name?.trim().split(/\s+/).at(-1);
+    return ln ? `Dear Mr./Ms. ${ln},` : 'Dear Sir/Madam,';
+  })();
 
   const PAGE_W = 8640;
   const wSno = 400, wQty = 700, wHsn = 760, wRate = 960, wPer = 560, wAmt = 1100;
@@ -388,11 +395,11 @@ export async function downloadPIDOCX(
       properties: { page: { margin: PAGE_MARGIN } },
       children: [
         // ── Header
-        para([r(unit?.name ? `Himalaya TerpenesRubber Technologies — ${unit.name}` : 'Himalaya TerpenesRubber Technologies', { bold: true, size: 26 })], AlignmentType.LEFT, 20),
-        para([r('319, Shivaji Road, Vijay Nagar, Meerut (UP) – 250002  |  info@himalayaterpene.com  |  www.himalayaterpene.com', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 40),
+        para([r('HIMALAYA TERPENES PVT. LTD.', { bold: true, size: 26 })], AlignmentType.LEFT, 10),
+        para([r('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', { size: 16, color: C_GRAY })], AlignmentType.LEFT, 10),
+        para([r('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 6),
+        para([r('Tel.: 91-22-2405 6704 | E Mail: mum@himalayaterpene.com | Web.: www.himalayaterpene.com', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 40),
         hrPara(),
-
-        para([r('Manufacturers: High Performance Kalrez, FFKM, EPDM, Viton, HNBR, Silicone, Nitrile, Neoprene, Butyl and Natural Rubber Components for Medium and Heavy Industries | Specialist: Rubber Gaskets for PHEs and Liners for Butterfly Valves.', { size: 13, color: C_GRAY, italics: true })], AlignmentType.LEFT, 100),
 
         // Ref + Date
         new Paragraph({
@@ -411,8 +418,8 @@ export async function downloadPIDOCX(
           r(`Performa Invoice against your Order No. ${order.poNo || '—'} dtd. ${poDateShort}`, { size: 17 }),
         ], AlignmentType.LEFT, 60),
 
-        // Dear Sir
-        para([r('Dear Sir,', { size: 18 })], AlignmentType.LEFT, 60),
+        // ── Salutation
+        para([r(piSalutation, { size: 18 })], AlignmentType.LEFT, 60),
         para([r('We are sending here with our Performa Invoice. You are requested to kindly deposit the payment with our bank account under intimation to us so that we may be able to provide your material.', { size: 17 })], AlignmentType.LEFT, 100),
 
         // ── Bill To + PO details side by side
@@ -503,7 +510,7 @@ export async function downloadPIDOCX(
         // ── Sign-off
         para([r('Thanks & Kind Regards,', { size: 18 })], AlignmentType.LEFT, 120),
         para([
-          r('Himalaya TerpenesRubber Technologies', { bold: true, size: 18 }),
+          r('HIMALAYA TERPENES PVT. LTD.', { bold: true, size: 18 }),
           r(` | ${person.name} | ${person.designation}${person.phone ? ' | Tel.: ' + person.phone : ''}`, { size: 18 }),
         ], AlignmentType.LEFT, 0),
       ],

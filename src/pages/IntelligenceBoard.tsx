@@ -407,8 +407,7 @@ function CustomerDetail({ stats, allFollowups }: {
                                         onClick={() => {
                                           const cust = data.customers.find(x => x.name === q.cust);
                                           const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
-                                          const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-                                          const sig = unitSig ?? data.signatories.find((s: any) => s.is_default);
+                                          const sig = data.signatories.find((s: any) => s.is_default);
                                           generateQuotePDF(q, cust, data.settings, sig, true, unit);
                                         }}
                                         className="h-6 inline-flex items-center gap-1 px-2 border border-g200 bg-white rounded-[3px] text-[9px] font-medium text-g600 hover:bg-g50 transition-colors"
@@ -953,8 +952,7 @@ function AllQuotationsView({
                                           onClick={() => {
                                             const cust2 = data.customers.find(x => x.name === q.cust);
                                             const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
-                                            const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-                                            const sig = unitSig ?? data.signatories.find((s: any) => s.is_default);
+                                            const sig = data.signatories.find((s: any) => s.is_default);
                                             generateQuotePDF(q, cust2, data.settings, sig, true, unit);
                                           }}
                                           className="h-6 inline-flex items-center gap-1 px-2 border border-g200 bg-white rounded-[3px] text-[9px] font-medium text-g600 hover:bg-g50 transition-colors"

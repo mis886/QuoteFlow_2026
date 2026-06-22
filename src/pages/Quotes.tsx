@@ -262,8 +262,7 @@ export function Quotes() {
                               ev.stopPropagation();
                               const cust = data.customers.find(c => c.name === q.cust);
                               const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
-                              const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-                              const sig = unitSig ?? data.signatories.find(s => s.is_default);
+                              const sig = data.signatories.find(s => s.is_default);
                               generateQuotePDF(q, cust, data.settings, sig, true, unit);
                             }}>PDF</Button>
                             <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openAttachmentModal('quote', q.id); }}>Docs</Button>

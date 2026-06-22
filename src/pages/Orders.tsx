@@ -350,8 +350,7 @@ export function Orders() {
                               const unit = o.unitId ? data.units.find(u => u.id === o.unitId) : data.units.find(u => u.is_default);
                               const bank = o.bankAccountId ? data.bankAccounts.find(b => b.id === o.bankAccountId)
                                 : data.bankAccounts.find(b => b.unit_id === unit?.id && b.is_default);
-                              const unitSig = unit?.signatory_id ? data.signatories.find(s => s.id === unit.signatory_id) : undefined;
-                              const sig = unitSig ?? data.signatories.find(s => s.is_default);
+                              const sig = data.signatories.find(s => s.is_default);
                               generatePIPDF(o, qt, cust, data.settings, sig, true, unit, bank);
                             }}>PI</Button>
                             {false && (
