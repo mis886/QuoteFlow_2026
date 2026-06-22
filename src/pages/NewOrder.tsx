@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate } from '../lib/utils';
@@ -6,7 +6,8 @@ import { OrderItem, Order, AuthorizedSignatory, OrderStatus, OrderAdjustment, Or
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
-import { BILLING_HSN } from '../lib/products';
+import { OptionSearch } from '../components/OptionSearch';
+import { BILLING_HSN, PACKING_TYPES } from '../lib/products';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { downloadPIDOCX } from '../lib/quoteDocx';
 import { uploadToS3 } from '../lib/s3';
@@ -45,11 +46,7 @@ export function NewOrder() {
   const [linkedQuoteRef, setLinkedQuoteRef] = useState<string>(quoteRef || '');
   const [linkedEnqRef, setLinkedEnqRef] = useState<string>('');
 
-  const matSuggestions = useMemo(() =>
-    [...new Set([
-      ...data.enquiries.flatMap(e => e.items.map(i => i.mat)),
-      ...data.orders.flatMap(o => o.items.map(i => i.mat)),
-    ].filter(Boolean))].sort(), [data.enquiries, data.orders]);
+
 
   const [step, setStep] = useState(1);
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -740,14 +737,13 @@ export function NewOrder() {
                 {errors.items && <span className="text-red-mrt text-[11px] font-medium">{errors.items}</span>}
               </div>
               <div className="overflow-x-auto">
-                <datalist id="ord-mat-list">{matSuggestions.map(s => <option key={s} value={s} />)}</datalist>
                 <datalist id="ord-uom-list"><option value="pcs"/><option value="sets"/><option value="pairs"/><option value="nos"/><option value="lot"/><option value="kg"/><option value="grams"/><option value="tonnes"/><option value="litre"/><option value="ml"/><option value="metre"/><option value="mm"/><option value="ft"/><option value="sqm"/><option value="sqft"/><option value="rolls"/><option value="sheets"/><option value="boxes"/></datalist>
                 <table className="w-full border-collapse border border-g400 text-[12px]">
                     <thead className="bg-g100">
                       <tr>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400 min-w-[200px]">Description *</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-[110px]">MOC</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-[110px]">Packing Type</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-[78px]" title="Leave blank to use default HSN">HSN Code</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-14">Qty *</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-[72px]">UOM</th>
@@ -777,7 +773,12 @@ export function NewOrder() {
                             />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" list="ord-mat-list" value={item.mat} onChange={e => updateItem(idx, 'mat', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" />
+                            <OptionSearch
+                              options={PACKING_TYPES}
+                              value={item.mat || ''}
+                              onChange={val => updateItem(idx, 'mat', val)}
+                              placeholder="Packing type…"
+                            />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" value={item.hsn || ''} onChange={e => updateItem(idx, 'hsn', e.target.value)} placeholder="default" className="w-full bg-transparent outline-none font-mono text-[11px] text-center text-blk placeholder:text-g300" />
