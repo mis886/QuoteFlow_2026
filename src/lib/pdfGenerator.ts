@@ -85,7 +85,7 @@ export function generateQuotePDF(
     doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, 16, { align: 'center' });
     // Line 3 — Address + CIN
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
-    const defaultAddr = '201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022.  |  CIN: U24100MH1999PTC121377';
+    const defaultAddr = '201/5 Jogani Industrial Estate, VN Purav Marg Chunabhatti Mumbai 400022';
     const addrStr = unit?.address ? unit.address : defaultAddr;
     const addrLns = doc.splitTextToSize(addrStr, cw) as string[];
     let ay = 22;
@@ -351,9 +351,11 @@ export function generateQuotePDF(
   const settingsSig: SigPerson | undefined = settings?.signatory_name
     ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
     : undefined;
-  const person: SigPerson = quote.authorizedPerson?.name
-    ? quote.authorizedPerson
-    : settingsSig || defaultSignatory || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
+  // Priority: signatories table (is_default) → app_settings legacy fields → per-quote authorizedPerson → hardcoded fallback
+  const person: SigPerson = defaultSignatory
+    || settingsSig
+    || (quote.authorizedPerson?.name ? (quote.authorizedPerson as SigPerson) : undefined)
+    || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
   const boldPart = 'HIMALAYA TERPENES PVT. LTD.';
@@ -415,7 +417,7 @@ export function generatePIPDF(
     doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, 16, { align: 'center' });
     // Line 3 — Address + CIN
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
-    const defaultAddr = '201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022.  |  CIN: U24100MH1999PTC121377';
+    const defaultAddr = '201/5 Jogani Industrial Estate, VN Purav Marg Chunabhatti Mumbai 400022';
     const addrStr = unit?.address ? unit.address : defaultAddr;
     const addrLns = doc.splitTextToSize(addrStr, cw) as string[];
     let ay = 22;
@@ -459,6 +461,13 @@ export function generatePIPDF(
   });
   y += (subLines.length - 1) * 4.5;
 
+  // ── Customer + PO details ────────────────────────────────────────────────
+  const primarySite =
+    (((order as any).siteId ? (customer?.sites ?? []).find((s) => s.id === (order as any).siteId) : undefined))
+    || (customer?.sites ?? []).find((s) => s.isPrimary)
+    || (customer?.sites ?? [])[0];
+  const primaryContact = (primarySite?.contacts ?? []).find((c) => c.isPrimary) || (primarySite?.contacts ?? [])[0];
+
   // ── Dear [Name] letter ───────────────────────────────────────────────────
   y += 7;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
@@ -472,13 +481,7 @@ export function generatePIPDF(
     doc.text(l, mx, y); y += 4.5;
   });
 
-  // ── Customer + PO details ────────────────────────────────────────────────
   y += 4;
-  const primarySite =
-    (((order as any).siteId ? (customer?.sites ?? []).find((s) => s.id === (order as any).siteId) : undefined))
-    || (customer?.sites ?? []).find((s) => s.isPrimary)
-    || (customer?.sites ?? [])[0];
-  const primaryContact = (primarySite?.contacts ?? []).find((c) => c.isPrimary) || (primarySite?.contacts ?? [])[0];
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(0, 0, 0);
   doc.text('Bill To:', mx, y);
@@ -680,9 +683,11 @@ export function generatePIPDF(
   const piSettingsSig: SigPerson | undefined = settings?.signatory_name
     ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
     : undefined;
-  const person: SigPerson = order.authorizedPerson?.name
-    ? order.authorizedPerson
-    : piSettingsSig || defaultSignatory || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
+  // Priority: signatories table (is_default) → app_settings legacy fields → per-order authorizedPerson → hardcoded fallback
+  const person: SigPerson = defaultSignatory
+    || piSettingsSig
+    || (order.authorizedPerson?.name ? (order.authorizedPerson as SigPerson) : undefined)
+    || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
   const boldPart = 'HIMALAYA TERPENES PVT. LTD.';
