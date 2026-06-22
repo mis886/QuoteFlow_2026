@@ -216,6 +216,8 @@ export async function downloadQuoteDOCX(
           para([r('Reference No.: ' + (quote as any).custEnquiryDocNo, { size: 17 })], AlignmentType.LEFT, 40),
         ] : []),
 
+        para([], AlignmentType.LEFT, 0),
+
         // ── Salutation
         para([r(salutation, { size: 18 })], AlignmentType.LEFT, 60),
         para([r('Thank you for your enquiry, we are pleased to submit our offer for the same as under. We hope this is in line with your requirement and your valued order follows soon.', { size: 17 })], AlignmentType.LEFT, 100),
