@@ -348,9 +348,12 @@ export function generateQuotePDF(
     } catch (e) { console.warn('Signature image failed', e); }
   }
 
+  const settingsSig: SigPerson | undefined = settings?.signatory_name
+    ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
+    : undefined;
   const person: SigPerson = quote.authorizedPerson?.name
     ? quote.authorizedPerson
-    : defaultSignatory || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
+    : settingsSig || defaultSignatory || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
   const boldPart = 'HIMALAYA TERPENES PVT. LTD.';
@@ -674,9 +677,12 @@ export function generatePIPDF(
     } catch (e) { console.warn('Signature image failed', e); }
   }
 
+  const piSettingsSig: SigPerson | undefined = settings?.signatory_name
+    ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
+    : undefined;
   const person: SigPerson = order.authorizedPerson?.name
     ? order.authorizedPerson
-    : defaultSignatory || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
+    : piSettingsSig || defaultSignatory || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
   const boldPart = 'HIMALAYA TERPENES PVT. LTD.';

@@ -421,6 +421,9 @@ export interface AppSettings {
   intelligence_pin?: string;
   sheets_webhook_url?: string;
   sheets_drive_folder_id?: string;
+  signatory_name?: string;
+  signatory_title?: string;
+  signatory_phone?: string;
   // Per-lane TAT in days (legacy). Superseded by pipeline_tat_h.
   pipeline_tat?: Partial<Record<BoardLane, number>>;
   // Per-lane TAT in HOURS, editable in Settings. Falls back to pipeline_tat

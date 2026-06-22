@@ -61,6 +61,13 @@ export function Settings() {
   const [syncError, setSyncError] = useState('');
   const [tokenActive, setTokenActive] = useState(false);
 
+  // Default PDF signatory (stored in app_settings)
+  const [sigName, setSigName]   = useState('');
+  const [sigTitle, setSigTitle] = useState('');
+  const [sigPhone, setSigPhone] = useState('');
+  const [sigSaved, setSigSaved] = useState(false);
+  const [isSavingSig, setIsSavingSig] = useState(false);
+
   // Signatory form
   const [showSigForm, setShowSigForm] = useState(false);
   const [newName, setNewName] = useState('');
@@ -108,6 +115,9 @@ export function Settings() {
         : {};
       setPipelineTatH({ ...DEFAULT_STAGE_TAT_H, ...fromDays, ...(s.pipeline_tat_h ?? {}) });
       setPipelineRoles({ ...DEFAULT_STAGE_ROLE, ...(s.pipeline_roles ?? {}) });
+      setSigName(s.signatory_name ?? '');
+      setSigTitle(s.signatory_title ?? '');
+      setSigPhone(s.signatory_phone ?? '');
     });
   }, []);
 
@@ -128,6 +138,9 @@ export function Settings() {
         sheets_drive_folder_id: sheetsDriveFolderId.trim() || undefined,
         pipeline_tat_h: pipelineTatH,
         pipeline_roles: pipelineRoles,
+        signatory_name: sigName.trim() || 'Samata Yadav',
+        signatory_title: sigTitle.trim() || 'CRM',
+        signatory_phone: sigPhone.trim() || '+918657000610',
       });
       if (error) throw error;
       await refreshData();
@@ -138,6 +151,16 @@ export function Settings() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const saveSig = async () => {
+    setIsSavingSig(true);
+    try {
+      await updateSettings({ signatory_name: sigName.trim() || 'Samata Yadav', signatory_title: sigTitle.trim() || 'CRM', signatory_phone: sigPhone.trim() || '+918657000610' });
+      await refreshData();
+      setSigSaved(true);
+      setTimeout(() => setSigSaved(false), 2000);
+    } catch { } finally { setIsSavingSig(false); }
   };
 
   const addSig = async () => {
@@ -242,7 +265,39 @@ export function Settings() {
               Letterhead and signature images are now uploaded per company unit. Manage them under the <strong className="text-g700">Units & Bank</strong> tab.
             </p>
 
-            {/* Signatories */}
+            {/* Default PDF Signatory */}
+            <div className="bg-white border border-g200 rounded-[4px] overflow-hidden">
+              <div className="px-5 py-3 border-b border-g200 bg-g50 flex items-center gap-2">
+                <Star size={12} className="text-g400" />
+                <span className="text-[11px] font-bold tracking-[1.5px] uppercase text-g600">Default PDF Signatory</span>
+              </div>
+              <div className="p-5 space-y-4">
+                <p className="text-[12px] text-g500">Shown in the footer of Quote PDFs and Proforma Invoices when no document-level signatory is selected.</p>
+                <div className="grid grid-cols-3 gap-4">
+                  <Field label="Name">
+                    <input value={sigName} onChange={e => setSigName(e.target.value)} placeholder="Samata Yadav" className={inputCls} />
+                  </Field>
+                  <Field label="Title / Designation">
+                    <input value={sigTitle} onChange={e => setSigTitle(e.target.value)} placeholder="CRM" className={inputCls} />
+                  </Field>
+                  <Field label="Phone">
+                    <input value={sigPhone} onChange={e => setSigPhone(e.target.value)} placeholder="+918657000610" className={inputCls} />
+                  </Field>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={saveSig}
+                    disabled={isSavingSig}
+                    className="h-8 inline-flex items-center gap-1.5 px-4 bg-blk text-white text-[11px] font-semibold rounded-[3px] hover:bg-g700 disabled:opacity-50 transition-colors"
+                  >
+                    {sigSaved ? <><Check size={12} />Saved</> : isSavingSig ? <><RefreshCw size={12} className="animate-spin" />Saving…</> : <><Save size={12} />Save Signatory</>}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Authorized Signatories */}
             <div className="bg-white border border-g200 rounded-[4px] overflow-hidden">
               <div className="px-5 py-3 border-b border-g200 bg-g50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
