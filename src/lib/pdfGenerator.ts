@@ -36,12 +36,12 @@ function getCurrencySymbol(curr: string) {
 
 function fmtRate(value: number, sym: string): string {
   const s = value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return sym.trimEnd() + ' ' + s.replace('.', '=');
+  return sym.trimEnd() + ' ' + s;
 }
 
 function fmtAmount(value: number, sym: string): string {
   const s = value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return sym.trimEnd() + ' ' + s.replace('.', '=');
+  return sym.trimEnd() + ' ' + s;
 }
 
 const TRUST_BLUE: [number, number, number] = [100, 149, 200];
@@ -77,26 +77,23 @@ export function generateQuotePDF(
     y = headerH;
     // GSTIN is already part of the letterhead image — don't stamp it again
   } else {
-    // Company name — centred, large, bold
+    // Line 1 — Company name
     doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
     doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, 10, { align: 'center' });
-    // Address + CIN (use unit address when set, else HTPL Mumbai default)
+    // Line 2 — Product tagline (directly below name)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
+    doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, 16, { align: 'center' });
+    // Line 3 — Address + CIN
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
     const defaultAddr = '201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022.  |  CIN: U24100MH1999PTC121377';
     const addrStr = unit?.address ? unit.address : defaultAddr;
     const addrLns = doc.splitTextToSize(addrStr, cw) as string[];
-    let ay = 19;
+    let ay = 22;
     addrLns.forEach(l => { doc.text(l, pw / 2, ay, { align: 'center' }); ay += 4; });
-    // Contact line
+    // Line 4 — Contact
     doc.text('Tel.: 91-22-2405 6704  |  E-Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, ay + 2, { align: 'center' });
     y = headerH;
   }
-
-  // ── Company tagline ──────────────────────────────────────────────────────
-  y += 3.5;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(0, 0, 0);
-  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, y, { align: 'center' });
-  y += 3.5;
 
   // ── Ref | Date ───────────────────────────────────────────────────────────
   y += 6;
@@ -144,8 +141,8 @@ export function generateQuotePDF(
       addrParts.push(primarySite.fullAddress || primarySite.address || '');
     if (primarySite.city)
       addrParts.push(primarySite.city + (primarySite.state ? ', ' + primarySite.state : ''));
-    addrParts.forEach((part) => {
-      const lines = doc.splitTextToSize(part, cw - 30) as string[];
+    addrParts.filter(p => p.trim()).forEach((part) => {
+      const lines = (doc.splitTextToSize(part, cw - 30) as string[]).filter(l => l.trim());
       lines.forEach((l) => { y += 5; doc.text(l, mx, y); });
     });
     // const quoteGstin = primarySite?.gstin || customer?.gstin;
@@ -159,9 +156,12 @@ export function generateQuotePDF(
     doc.text('Reference No.: ' + quote.custEnquiryDocNo, mx, y);
   }
 
-  // ── Dear Sir + intro ─────────────────────────────────────────────────────
+  // ── Dear [Name] + intro ──────────────────────────────────────────────────
   y += 8;
-  doc.text('Dear Sir,', mx, y);
+  const contactFullName = (quote as any).contact || primaryContact?.name || '';
+  const lastName = contactFullName.trim().split(/\s+/).pop() || '';
+  const salutation = lastName ? `Dear ${lastName},` : 'Dear Sir/Madam,';
+  doc.text(salutation, mx, y);
   y += 6;
   const intro =
     'Thank you for your enquiry, we are pleased to submit our offer for the same as under. ' +
@@ -350,7 +350,7 @@ export function generateQuotePDF(
 
   const person: SigPerson = quote.authorizedPerson?.name
     ? quote.authorizedPerson
-    : defaultSignatory || { name: 'Akash Gupta', designation: 'Rubber Technologist', phone: '' };
+    : defaultSignatory || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
   const boldPart = 'HIMALAYA TERPENES PVT. LTD.';
@@ -404,26 +404,23 @@ export function generatePIPDF(
     y = headerH;
     // GSTIN is already part of the letterhead image — don't stamp it again
   } else {
-    // Company name — centred, large, bold
+    // Line 1 — Company name
     doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
     doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, 10, { align: 'center' });
-    // Address + CIN (use unit address when set, else HTPL Mumbai default)
+    // Line 2 — Product tagline (directly below name)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
+    doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, 16, { align: 'center' });
+    // Line 3 — Address + CIN
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
     const defaultAddr = '201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022.  |  CIN: U24100MH1999PTC121377';
     const addrStr = unit?.address ? unit.address : defaultAddr;
     const addrLns = doc.splitTextToSize(addrStr, cw) as string[];
-    let ay = 19;
+    let ay = 22;
     addrLns.forEach(l => { doc.text(l, pw / 2, ay, { align: 'center' }); ay += 4; });
-    // Contact line
+    // Line 4 — Contact
     doc.text('Tel.: 91-22-2405 6704  |  E-Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, ay + 2, { align: 'center' });
     y = headerH;
   }
-
-  // ── Company tagline ──────────────────────────────────────────────────────
-  y += 3.5;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(0, 0, 0);
-  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, y, { align: 'center' });
-  y += 3.5;
 
   // ── PROFORMA INVOICE heading + details ──────────────────────────────────
   y += 6;
@@ -459,10 +456,13 @@ export function generatePIPDF(
   });
   y += (subLines.length - 1) * 4.5;
 
-  // ── Dear Sir letter ──────────────────────────────────────────────────────
+  // ── Dear [Name] letter ───────────────────────────────────────────────────
   y += 7;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-  doc.text('Dear Sir,', mx, y);
+  const piContactName = (order as any).contact || primaryContact?.name || '';
+  const piLastName = piContactName.trim().split(/\s+/).pop() || '';
+  const piSalutation = piLastName ? `Dear ${piLastName},` : 'Dear Sir/Madam,';
+  doc.text(piSalutation, mx, y);
   y += 5;
   const letterBody = 'We are sending here with our Performa Invoice. You are requested to kindly deposit the payment with our bank account under intimation to us so that we may be able to provide your material.';
   (doc.splitTextToSize(letterBody, cw) as string[]).forEach((l) => {
@@ -676,7 +676,7 @@ export function generatePIPDF(
 
   const person: SigPerson = order.authorizedPerson?.name
     ? order.authorizedPerson
-    : defaultSignatory || { name: 'Akash Gupta', designation: 'Rubber Technologist', phone: '' };
+    : defaultSignatory || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
   const boldPart = 'HIMALAYA TERPENES PVT. LTD.';
