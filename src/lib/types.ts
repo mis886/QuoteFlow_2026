@@ -32,8 +32,10 @@ export interface OrderItem extends LineItem {
   gst: number;
   total: number;
   remarks?: string;
-  priceBasis?: string;     // unit the rate is per (e.g. "Mtr") when different from qty UOM
-  priceBasisConv?: number; // 1 qty-UOM = N priceBasis units (e.g. 1 Nos = 3.2 Mtr)
+  priceBasis?: string;
+  priceBasisConv?: number;
+  rateOverride?: boolean;
+  rateText?: string;
 }
 
 // Extra taxes (VAT/TDS/TCS…) and charges (Freight/P&F…) on an order.

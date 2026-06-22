@@ -183,7 +183,7 @@ export function NewOrder() {
         setContactManual(!q.contactId && !!(q.contact || q.email));
         setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
         setCustomTerms(parseQuoteTerms(q.terms));
-        setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice, remarks: '' })));
+        setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
       }
     } else {
       hydratedKey.current = key;
@@ -250,28 +250,32 @@ export function NewOrder() {
   // Item helpers
   const updateItem = (idx: number, field: keyof OrderItem, value: any) => {
     const ni = [...items]; (ni[idx] as any)[field] = value;
-    if (field === 'qty' || field === 'agreedRate' || field === 'priceBasisConv') {
+    if (field === 'qty' || field === 'agreedRate' || field === 'priceBasisConv' || field === 'packing') {
+      const packingNum = parseFloat(ni[idx].packing || '') || 0;
+      const totalQty = Number(ni[idx].qty) * (packingNum || 1);
       const conv = Number(ni[idx].priceBasisConv) || 1;
-      ni[idx].total = Number(ni[idx].qty) * conv * Number(ni[idx].agreedRate);
+      ni[idx].total = totalQty * conv * Number(ni[idx].agreedRate);
     }
     if (field === 'priceBasis' && !value) {
       ni[idx].priceBasisConv = undefined;
-      ni[idx].total = Number(ni[idx].qty) * Number(ni[idx].agreedRate);
+      const packingNum = parseFloat(ni[idx].packing || '') || 0;
+      const totalQty = Number(ni[idx].qty) * (packingNum || 1);
+      ni[idx].total = totalQty * Number(ni[idx].agreedRate);
     }
     setItems(ni);
   };
-  const addItem = () => setItems([...items, { seq: items.length + 1, desc: '', mat: '', qty: 1, uom: 'pcs', agreedRate: 0, gst: 18, total: 0, remarks: '' }]);
+  const addItem = () => setItems([...items, { seq: items.length + 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', priceBasis: 'Per kg', agreedRate: 0, gst: 18, total: 0 }]);
   const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 }))); };
 
   const subTotal = items.reduce((s, i) => s + i.total, 0);
+  const insurance = Math.round(subTotal * 0.0015 * 100) / 100;
   const itemGst  = items.reduce((s, i) => s + i.total * i.gst / 100, 0);
   const maxGstRate = maxItemGstRate(items);
-  // Taxable charges (P&F, Freight…) add to the base before GST; GST recomputed
-  // on that combined value. Post-GST lines (TDS/TCS) apply after GST.
   const adj = resolveAdjustments(adjustments, subTotal, itemGst, maxGstRate);
   const adjLines = adj.lines;
-  const gstTotal = adj.gstTotal;          // items GST + GST on taxable charges
-  const grandTotal = adj.grand;
+  const insuranceGst = Math.round(insurance * (maxGstRate || 18) / 100 * 100) / 100;
+  const gstTotal = adj.gstTotal + insuranceGst;
+  const grandTotal = subTotal + insurance + adj.preNet + gstTotal + adj.postNet;
 
   // Adjustment row helpers
   const addAdjustment = (kind: OrderAdjustmentKind, label = '') => {
@@ -489,7 +493,7 @@ export function NewOrder() {
                 setContactManual(!(q as any).contactId && !!((q as any).contact || (q as any).email));
                 setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
                 setCustomTerms(parseQuoteTerms(q.terms));
-                setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice, remarks: '' })));
+                setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
               }
             }} className="flex-1">
               Create New Anyway
@@ -737,21 +741,20 @@ export function NewOrder() {
                 {errors.items && <span className="text-red-mrt text-[11px] font-medium">{errors.items}</span>}
               </div>
               <div className="overflow-x-auto">
-                <datalist id="ord-uom-list"><option value="pcs"/><option value="sets"/><option value="pairs"/><option value="nos"/><option value="lot"/><option value="kg"/><option value="grams"/><option value="tonnes"/><option value="litre"/><option value="ml"/><option value="metre"/><option value="mm"/><option value="ft"/><option value="sqm"/><option value="sqft"/><option value="rolls"/><option value="sheets"/><option value="boxes"/></datalist>
                 <table className="w-full border-collapse border border-g400 text-[12px]">
                     <thead className="bg-g100">
                       <tr>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400 min-w-[200px]">Description *</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-[110px]">Packing Type</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-[78px]" title="Leave blank to use default HSN">HSN Code</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-14">Qty *</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-[72px]">UOM</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-[88px]">Rate Per</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-right border border-g400 w-32">Agreed Rate *</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400">Product Name *</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-32 whitespace-nowrap">No of Barrels *</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24 whitespace-nowrap">Total Qty</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Packing Type</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Price Basis</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Unit Rate (₹)</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-20">GST %</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Amount (₹)</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-[110px]">Remarks</th>
                         <th className="w-8 border border-g400"></th>
                       </tr>
                     </thead>
@@ -772,35 +775,62 @@ export function NewOrder() {
                               error={!!(errors.items && !item.desc)}
                             />
                           </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <OptionSearch
-                              options={PACKING_TYPES}
-                              value={item.mat || ''}
-                              onChange={val => updateItem(idx, 'mat', val)}
-                              placeholder="Packing type…"
+                          <td className={`px-3 py-[5px] border border-g400 align-middle${item.desc in BILLING_HSN ? ' bg-g100' : ''}`}>
+                            <input
+                              type="text"
+                              title="HSN Code"
+                              value={item.hsn || ''}
+                              readOnly={item.desc in BILLING_HSN}
+                              onChange={e => updateItem(idx, 'hsn', e.target.value)}
+                              className={`w-full bg-transparent outline-none font-mono text-[11px] ${item.desc in BILLING_HSN ? 'text-g500 cursor-default select-none' : 'text-blk'}`}
                             />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" value={item.hsn || ''} onChange={e => updateItem(idx, 'hsn', e.target.value)} placeholder="default" className="w-full bg-transparent outline-none font-mono text-[11px] text-center text-blk placeholder:text-g300" />
-                          </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle text-center">
                             <input type="number" min="1" value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '' }); }}
-                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center placeholder:text-g300 ${errors.items && Number(item.qty) <= 0 ? 'text-red-mrt' : 'text-blk'}`} placeholder="0" />
+                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center ${errors.items && Number(item.qty) <= 0 ? 'text-red-mrt' : 'text-blk'}`} />
                           </td>
-                          {/* UOM */}
-                          <td className="px-1 py-[3px] border border-g400 align-middle">
-                            <input list="ord-uom-list" value={item.uom} onChange={e => updateItem(idx, 'uom', e.target.value)} placeholder="uom" className="w-full bg-g50 border border-g300 rounded-[3px] px-1.5 py-[3px] font-mono text-[11px] text-blk outline-none focus:border-red-mrt focus:bg-white transition-colors" />
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <input type="text" value={item.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk" />
                           </td>
-                          {/* Rate Per */}
+                          <td className="px-3 py-[5px] border border-g400 align-middle bg-g100 text-center">
+                            {(() => { const p = parseFloat(item.packing || ''); const t = item.qty * p; return (p > 0 && item.qty > 0) ? <span className="font-mono text-[11px] text-g500">{t}</span> : <span className="text-g300 text-[11px]">—</span>; })()}
+                          </td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <OptionSearch
+                              options={PACKING_TYPES}
+                              value={item.packingType || ''}
+                              onChange={val => updateItem(idx, 'packingType', val)}
+                              placeholder="Packing type…"
+                            />
+                          </td>
                           <td className="px-1 py-[3px] border border-g400 align-middle">
                             <select value={item.priceBasis || 'Per kg'} onChange={e => updateItem(idx, 'priceBasis', e.target.value)}
                               className="w-full bg-transparent outline-none font-sans text-[11px] text-blk text-center cursor-pointer">
                               {['Per kg','Per MT','Per Ltr','Per KL','Per Unit','Per Drum','Per Can'].map(o => <option key={o} value={o}>{o}</option>)}
                             </select>
                           </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="number" step="any" min="0" value={item.agreedRate || ''} onChange={e => updateItem(idx, 'agreedRate', Number(e.target.value))}
-                              className="w-full bg-transparent outline-none font-mono text-[12px] text-right text-blk font-bold placeholder:text-g300" placeholder="0.00" />
+                          <td className="px-[6px] py-[5px] border border-g400 align-middle">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={!!item.rateOverride}
+                                onChange={e => updateItem(idx, 'rateOverride', e.target.checked)}
+                                title="Override rate with text"
+                                className="accent-red-600 shrink-0 cursor-pointer"
+                              />
+                              {item.rateOverride ? (
+                                <input
+                                  type="text"
+                                  value={item.rateText || ''}
+                                  placeholder="Regret"
+                                  onChange={e => updateItem(idx, 'rateText', e.target.value)}
+                                  className="flex-1 bg-transparent outline-none font-mono text-[11px] text-red-mrt placeholder:text-g400 min-w-0"
+                                />
+                              ) : (
+                                <input type="number" step="any" min="0" value={item.agreedRate || ''} placeholder="0.00" onChange={e => updateItem(idx, 'agreedRate', Number(e.target.value))}
+                                  className="flex-1 bg-transparent outline-none font-mono text-[12px] text-right text-blk placeholder:text-g300 min-w-0" />
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <select title="GST rate" value={item.gst} onChange={e => updateItem(idx, 'gst', Number(e.target.value))} className="w-full bg-transparent outline-none text-[12px] text-center font-mono text-blk appearance-none cursor-pointer">
@@ -808,9 +838,6 @@ export function NewOrder() {
                             </select>
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] font-bold text-blk">{formatINR(item.total)}</td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" value={item.remarks || ''} onChange={e => updateItem(idx, 'remarks', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" placeholder="Note..." />
-                          </td>
                           <td className="px-1 py-[5px] border border-g400 align-middle">
                             <button type="button" onClick={() => removeItem(idx)} disabled={items.length === 1} className="text-g400 hover:text-red-mrt p-1 transition-colors disabled:opacity-30" title="Remove">
                               <svg viewBox="0 0 16 16" width="13" height="13" className="fill-current"><path d="M5.5 1h5v1h-5V1zM3 3v1h10V3H3zm1 2v9h8V5H4zm2 1h1v7H6V6zm3 0h1v7H9V6z" /></svg>
@@ -821,48 +848,53 @@ export function NewOrder() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-g200 bg-g50/50">
-                        <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">Sub-Total (excl. GST)</td>
+                        <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
                         <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(subTotal)}</td>
-                        <td colSpan={2}></td>
+                        <td></td>
+                      </tr>
+                      <tr className="border-b border-g200 bg-g50/50">
+                        <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">Insurance (0.15%)</td>
+                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(insurance)}</td>
+                        <td></td>
                       </tr>
                       {adjLines.filter(l => l.taxable).map(l => (
                         <tr key={l.id} className="bg-g50/50">
-                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
+                          <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
                             {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
                           </td>
                           <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
                             {l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}
                           </td>
-                          <td colSpan={2}></td>
+                          <td></td>
                         </tr>
                       ))}
-                      {adj.preNet !== 0 && (
+                      {(adj.preNet !== 0 || insurance > 0) && (
                         <tr className="bg-g50/50">
-                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
-                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk border-t border-g100">{formatINR(adj.taxableValue)}</td>
-                          <td colSpan={2}></td>
+                          <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
+                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk border-t border-g100">{formatINR(subTotal + insurance + adj.preNet)}</td>
+                          <td></td>
                         </tr>
                       )}
-                      <tr className="bg-g50/50">
-                        <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">Total GST{maxGstRate ? ` (@ ${maxGstRate}%)` : ''}</td>
+                      <tr className="border-b border-g200 bg-g50/50">
+                        <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
                         <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(gstTotal)}</td>
-                        <td colSpan={2}></td>
+                        <td></td>
                       </tr>
                       {adjLines.filter(l => !l.taxable).map(l => (
                         <tr key={l.id} className="bg-g50/50">
-                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">
+                          <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">
                             {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
                           </td>
                           <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
                             {l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}
                           </td>
-                          <td colSpan={2}></td>
+                          <td></td>
                         </tr>
                       ))}
                       <tr className="bg-[#1e293b]">
-                        <td colSpan={9} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
+                        <td colSpan={8} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
                         <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{formatINR(grandTotal)}</td>
-                        <td colSpan={2} className="bg-[#1e293b]"></td>
+                        <td className="bg-[#1e293b]"></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -1165,16 +1197,15 @@ export function NewOrder() {
                   {items.map(item => (
                     <tr key={item.seq} className="border-b border-g200 last:border-0">
                       <td className="px-4 py-2 font-mono text-g400 text-[10px] w-8">{item.seq}</td>
-                      <td className="px-4 py-2 text-blk">{item.desc || <span className="text-g300 italic">No description</span>}</td>
-                      <td className="px-4 py-2 text-g500">{item.mat}</td>
-                      <td className="px-4 py-2 text-g500 text-right w-24">{item.qty} {item.uom}</td>
+                      <td className="px-4 py-2 text-blk">
+                        {item.desc || <span className="text-g300 italic">No description</span>}
+                        {item.packingType && <span className="block text-[10px] text-g400 mt-0.5">{item.packingType}</span>}
+                      </td>
+                      <td className="px-4 py-2 text-g500 text-right w-24">
+                        {item.qty}{item.packing ? ` × ${item.packing}` : ''} {item.priceBasis || 'Per kg'}
+                      </td>
                       <td className="px-4 py-2 font-mono text-right w-36">
-                        {formatINR(item.agreedRate)}
-                        {item.priceBasis && item.priceBasis !== item.uom && (
-                          <span className="block text-[9px] text-g400 font-normal">
-                            per {item.priceBasis}{item.priceBasisConv ? ` · 1 ${item.uom}=${item.priceBasisConv} ${item.priceBasis}` : ''}
-                          </span>
-                        )}
+                        {item.rateOverride ? <span className="text-red-mrt font-bold">{item.rateText || 'Regret'}</span> : formatINR(item.agreedRate)}
                       </td>
                       <td className="px-4 py-2 font-mono font-bold text-right w-28 text-blk">{formatINR(item.total)}</td>
                     </tr>
@@ -1184,14 +1215,15 @@ export function NewOrder() {
               <div className="flex justify-end p-4">
                 <div className="w-[300px] text-[12px] space-y-1.5">
                   <div className="flex justify-between text-g500"><span>Sub-Total</span><span className="font-mono">{formatINR(subTotal)}</span></div>
+                  <div className="flex justify-between text-g500"><span>Insurance (0.15%)</span><span className="font-mono">{formatINR(insurance)}</span></div>
                   {adjLines.filter(l => l.taxable).map(l => (
                     <div key={l.id} className="flex justify-between text-g500">
                       <span className="truncate pr-2">{l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}</span>
                       <span className={`font-mono ${l.amount < 0 ? 'text-red-mrt' : ''}`}>{l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}</span>
                     </div>
                   ))}
-                  {adj.preNet !== 0 && <div className="flex justify-between text-g600 border-t border-g100 pt-1"><span>Taxable Value</span><span className="font-mono">{formatINR(adj.taxableValue)}</span></div>}
-                  <div className="flex justify-between text-g500"><span>GST</span><span className="font-mono">{formatINR(gstTotal)}</span></div>
+                  {(adj.preNet !== 0 || insurance > 0) && <div className="flex justify-between text-g600 border-t border-g100 pt-1"><span>Taxable Value</span><span className="font-mono">{formatINR(subTotal + insurance + adj.preNet)}</span></div>}
+                  <div className="flex justify-between text-g500"><span>GST Total</span><span className="font-mono">{formatINR(gstTotal)}</span></div>
                   {adjLines.filter(l => !l.taxable).map(l => (
                     <div key={l.id} className="flex justify-between text-g500">
                       <span className="truncate pr-2">{l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}</span>
