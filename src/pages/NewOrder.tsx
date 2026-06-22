@@ -216,9 +216,9 @@ export function NewOrder() {
         if (contactId && !contactManual) {
           const ct = contacts.find((c: any) => c.id === contactId);
           if (ct) { setContact(ct.name); setEmail(ct.email); setPhone(ct.phone || ''); }
-        } else if (!editOrderId && !contactId && !contactManual && contacts.length > 0) {
-          const firstCt = contacts[0];
-          setContactId(firstCt.id); setContact(firstCt.name); setEmail(firstCt.email || ''); setPhone(firstCt.phone || '');
+        } else if (!editOrderId && !contactId && !contactManual) {
+          const pc = (contacts as any[]).find((ct: any) => ct.isPrimary && ct.name) || (contacts as any[]).find((ct: any) => ct.name);
+          if (pc) { setContactId(pc.id); setContact(pc.name); setEmail(pc.email || ''); setPhone(pc.phone || ''); }
         }
       }
     } else { if (sites.length === 1) setSiteId(sites[0].id); }
@@ -629,7 +629,24 @@ export function NewOrder() {
                     <CustomerSearch
                       customers={data.customers}
                       value={custName}
-                      onChange={name => { setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({ ...errors, custName: '' }); }}
+                      onChange={name => {
+                        setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({ ...errors, custName: '' });
+                        // Auto-fill primary site and primary named contact immediately (mirrors enquiry→quote hydration)
+                        if (name) {
+                          const cust = data.customers.find(c => c.name === name);
+                          if (cust) {
+                            const sites = (cust.sites ?? []) as any[];
+                            const ps = sites.find((s: any) => s.isPrimary) || sites[0];
+                            if (ps) {
+                              setSiteId(ps.id);
+                              if (!quoteRef && !editOrderId) setShipAddr((ps as any).dispatchAddress || (ps as any).fullAddress || ps.address || '');
+                              const contacts = (ps.contacts ?? []) as any[];
+                              const pc = contacts.find((ct: any) => ct.isPrimary && ct.name) || contacts.find((ct: any) => ct.name);
+                              if (pc) { setContactId(pc.id); setContact(pc.name); setEmail(pc.email || ''); setPhone(pc.phone || ''); }
+                            }
+                          }
+                        }
+                      }}
                       error={!!errors.custName}
                     />
                     {errors.custName && <p className="text-red-mrt text-[10px] mt-1">{errors.custName}</p>}
