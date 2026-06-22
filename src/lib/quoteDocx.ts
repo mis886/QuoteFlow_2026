@@ -118,7 +118,12 @@ export async function downloadQuoteDOCX(
     ?? customer?.sites[0];
   const primaryContact = primarySite?.contacts.find(c => c.isPrimary) ?? primarySite?.contacts[0];
 
-  const person: SigPerson = defaultSignatory
+  const settingsSig: SigPerson | undefined = settings?.signatory_name
+    ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
+    : undefined;
+  // Priority: app_settings → authorized_signatories is_default → per-quote authorizedPerson → hardcoded fallback
+  const person: SigPerson = settingsSig
+    || defaultSignatory
     || ((quote as any).authorizedPerson?.name ? (quote as any).authorizedPerson : undefined)
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
@@ -306,7 +311,12 @@ export async function downloadPIDOCX(
     ?? customer?.sites[0];
   const primaryContact = primarySite?.contacts.find(c => c.isPrimary) ?? primarySite?.contacts[0];
 
-  const person: SigPerson = defaultSignatory
+  const piSettingsSig: SigPerson | undefined = settings?.signatory_name
+    ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
+    : undefined;
+  // Priority: app_settings → authorized_signatories is_default → per-order authorizedPerson → hardcoded fallback
+  const person: SigPerson = piSettingsSig
+    || defaultSignatory
     || ((order as any).authorizedPerson?.name ? (order as any).authorizedPerson : undefined)
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 

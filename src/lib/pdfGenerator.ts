@@ -351,9 +351,9 @@ export function generateQuotePDF(
   const settingsSig: SigPerson | undefined = settings?.signatory_name
     ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
     : undefined;
-  // Priority: signatories table (is_default) → app_settings legacy fields → per-quote authorizedPerson → hardcoded fallback
-  const person: SigPerson = defaultSignatory
-    || settingsSig
+  // Priority: app_settings → authorized_signatories is_default → per-quote authorizedPerson → hardcoded fallback
+  const person: SigPerson = settingsSig
+    || defaultSignatory
     || (quote.authorizedPerson?.name ? (quote.authorizedPerson as SigPerson) : undefined)
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
@@ -683,9 +683,9 @@ export function generatePIPDF(
   const piSettingsSig: SigPerson | undefined = settings?.signatory_name
     ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
     : undefined;
-  // Priority: signatories table (is_default) → app_settings legacy fields → per-order authorizedPerson → hardcoded fallback
-  const person: SigPerson = defaultSignatory
-    || piSettingsSig
+  // Priority: app_settings → authorized_signatories is_default → per-order authorizedPerson → hardcoded fallback
+  const person: SigPerson = piSettingsSig
+    || defaultSignatory
     || (order.authorizedPerson?.name ? (order.authorizedPerson as SigPerson) : undefined)
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
