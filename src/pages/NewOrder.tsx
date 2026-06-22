@@ -5,6 +5,8 @@ import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustment
 import { OrderItem, Order, AuthorizedSignatory, OrderStatus, OrderAdjustment, OrderAdjustmentKind } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
+import { ProductSearch } from '../components/ProductSearch';
+import { BILLING_HSN } from '../lib/products';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { downloadPIDOCX } from '../lib/quoteDocx';
 import { uploadToS3 } from '../lib/s3';
@@ -43,11 +45,6 @@ export function NewOrder() {
   const [linkedQuoteRef, setLinkedQuoteRef] = useState<string>(quoteRef || '');
   const [linkedEnqRef, setLinkedEnqRef] = useState<string>('');
 
-  const descSuggestions = useMemo(() =>
-    [...new Set([
-      ...data.enquiries.flatMap(e => e.items.map(i => i.desc)),
-      ...data.orders.flatMap(o => o.items.map(i => i.desc)),
-    ].filter(Boolean))].sort(), [data.enquiries, data.orders]);
   const matSuggestions = useMemo(() =>
     [...new Set([
       ...data.enquiries.flatMap(e => e.items.map(i => i.mat)),
@@ -742,44 +739,50 @@ export function NewOrder() {
                 <span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g500">Order Line Items</span>
                 {errors.items && <span className="text-red-mrt text-[11px] font-medium">{errors.items}</span>}
               </div>
-              <div className="p-[10px_12px]">
-                <datalist id="ord-desc-list">{descSuggestions.map(s => <option key={s} value={s} />)}</datalist>
+              <div className="overflow-x-auto">
                 <datalist id="ord-mat-list">{matSuggestions.map(s => <option key={s} value={s} />)}</datalist>
                 <datalist id="ord-uom-list"><option value="pcs"/><option value="sets"/><option value="pairs"/><option value="nos"/><option value="lot"/><option value="kg"/><option value="grams"/><option value="tonnes"/><option value="litre"/><option value="ml"/><option value="metre"/><option value="mm"/><option value="ft"/><option value="sqm"/><option value="sqft"/><option value="rolls"/><option value="sheets"/><option value="boxes"/></datalist>
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse border border-g400 text-[12px]">
+                <table className="w-full border-collapse border border-g400 text-[12px]">
                     <thead className="bg-g100">
                       <tr>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-left border border-g400 w-8">#</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-2 py-1.5 text-left border border-g400 min-w-[200px]">Description *</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-left border border-g400 w-[110px]">MOC</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-center border border-g400 w-[78px]" title="Leave blank to use default HSN">HSN</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-2 py-1.5 text-center border border-g400 w-14">Qty *</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-center border border-g400 w-[72px]">UOM</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-center border border-g400 w-[88px]">Rate Per</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-2 py-1.5 text-right border border-g400 w-32">Agreed Rate *</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-center border border-g400 w-20">GST %</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-right border border-g400 w-28">Total</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-left border border-g400 w-[110px]">Remarks</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400 min-w-[200px]">Description *</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-[110px]">MOC</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-[78px]" title="Leave blank to use default HSN">HSN Code</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-14">Qty *</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-[72px]">UOM</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-[88px]">Rate Per</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-right border border-g400 w-32">Agreed Rate *</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-20">GST %</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Amount (₹)</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-[110px]">Remarks</th>
                         <th className="w-8 border border-g400"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {items.map((item, idx) => (
                         <tr key={item.seq} className="hover:bg-g50/50">
-                          <td className="px-2 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{item.seq}</td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle">
-                            <input type="text" list="ord-desc-list" value={item.desc}
-                              onChange={e => { updateItem(idx, 'desc', e.target.value); setErrors({ ...errors, items: '' }); }}
-                              className={`w-full bg-transparent outline-none text-[12px] font-sans placeholder:text-g300 ${errors.items && !item.desc ? 'text-red-mrt' : 'text-blk'}`} />
+                          <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{item.seq}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <ProductSearch
+                              value={item.desc}
+                              onChange={(desc, hsn) => {
+                                const ni = [...items];
+                                const resolvedHsn = !desc ? '' : (hsn !== undefined ? hsn : (desc in BILLING_HSN ? BILLING_HSN[desc] : undefined));
+                                ni[idx] = { ...ni[idx], desc, ...(resolvedHsn !== undefined ? { hsn: resolvedHsn } : {}) };
+                                setItems(ni);
+                                setErrors({ ...errors, items: '' });
+                              }}
+                              error={!!(errors.items && !item.desc)}
+                            />
                           </td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle">
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" list="ord-mat-list" value={item.mat} onChange={e => updateItem(idx, 'mat', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" />
                           </td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle">
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" value={item.hsn || ''} onChange={e => updateItem(idx, 'hsn', e.target.value)} placeholder="default" className="w-full bg-transparent outline-none font-mono text-[11px] text-center text-blk placeholder:text-g300" />
                           </td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle text-center">
+                          <td className="px-3 py-[5px] border border-g400 align-middle text-center">
                             <input type="number" min="1" value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '' }); }}
                               className={`w-full bg-transparent outline-none font-mono text-[12px] text-center placeholder:text-g300 ${errors.items && Number(item.qty) <= 0 ? 'text-red-mrt' : 'text-blk'}`} placeholder="0" />
                           </td>
@@ -812,17 +815,17 @@ export function NewOrder() {
                               </div>
                             )}
                           </td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle">
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="number" step="any" min="0" value={item.agreedRate || ''} onChange={e => updateItem(idx, 'agreedRate', Number(e.target.value))}
                               className="w-full bg-transparent outline-none font-mono text-[12px] text-right text-blk font-bold placeholder:text-g300" placeholder="0.00" />
                           </td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle">
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
                             <select title="GST rate" value={item.gst} onChange={e => updateItem(idx, 'gst', Number(e.target.value))} className="w-full bg-transparent outline-none text-[12px] text-center font-mono text-blk appearance-none cursor-pointer">
                               <option value={18}>18%</option><option value={12}>12%</option><option value={5}>5%</option><option value={0}>0%</option>
                             </select>
                           </td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] font-bold text-blk">{formatINR(item.total)}</td>
-                          <td className="px-2 py-[5px] border border-g400 align-middle">
+                          <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] font-bold text-blk">{formatINR(item.total)}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" value={item.remarks || ''} onChange={e => updateItem(idx, 'remarks', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" placeholder="Note..." />
                           </td>
                           <td className="px-1 py-[5px] border border-g400 align-middle">
@@ -833,35 +836,58 @@ export function NewOrder() {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t border-g200 bg-g50/50">
+                        <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">Sub-Total (excl. GST)</td>
+                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(subTotal)}</td>
+                        <td colSpan={2}></td>
+                      </tr>
+                      {adjLines.filter(l => l.taxable).map(l => (
+                        <tr key={l.id} className="bg-g50/50">
+                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
+                            {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
+                            {l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}
+                          </td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      ))}
+                      {adj.preNet !== 0 && (
+                        <tr className="bg-g50/50">
+                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
+                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk border-t border-g100">{formatINR(adj.taxableValue)}</td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      )}
+                      <tr className="bg-g50/50">
+                        <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">Total GST{maxGstRate ? ` (@ ${maxGstRate}%)` : ''}</td>
+                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(gstTotal)}</td>
+                        <td colSpan={2}></td>
+                      </tr>
+                      {adjLines.filter(l => !l.taxable).map(l => (
+                        <tr key={l.id} className="bg-g50/50">
+                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">
+                            {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
+                          </td>
+                          <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
+                            {l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}
+                          </td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      ))}
+                      <tr className="bg-[#1e293b]">
+                        <td colSpan={9} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{formatINR(grandTotal)}</td>
+                        <td colSpan={2} className="bg-[#1e293b]"></td>
+                      </tr>
+                    </tfoot>
                   </table>
-                </div>
+              </div>
+              <div className="p-[8px_12px] flex items-start gap-3 flex-wrap">
                 <div className="inline-flex items-center gap-[6px] p-[7px_9px] text-red-mrt cursor-pointer text-[12px] font-semibold border border-dashed border-red-mrt/25 rounded-[3px] transition-colors hover:bg-red-lt" onClick={addItem}>
                   <svg viewBox="0 0 16 16" className="w-[13px] h-[13px] stroke-red-mrt fill-none stroke-2"><path d="M8 3v10M3 8h10"/></svg>
                   Add Another Line Item
-                </div>
-                <div className="mt-3 flex justify-end">
-                  <div className="w-[320px] bg-g50/50 border border-g200 rounded-[3px] p-[10px_14px] space-y-1.5 text-[12px]">
-                    <div className="flex justify-between text-g500"><span>Sub-Total (excl. GST)</span><span className="font-mono font-bold text-blk">{formatINR(subTotal)}</span></div>
-                    {/* Pre-GST charges (P&F, Freight…) — added to taxable value */}
-                    {adjLines.filter(l => l.taxable).map(l => (
-                      <div key={l.id} className="flex justify-between text-g500">
-                        <span className="truncate pr-2">{l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}</span>
-                        <span className={`font-mono font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>{l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}</span>
-                      </div>
-                    ))}
-                    {adj.preNet !== 0 && (
-                      <div className="flex justify-between text-g600 border-t border-g100 pt-1"><span>Taxable Value</span><span className="font-mono font-bold text-blk">{formatINR(adj.taxableValue)}</span></div>
-                    )}
-                    <div className="flex justify-between text-g500"><span>Total GST{maxGstRate ? ` (@ ${maxGstRate}%)` : ''}</span><span className="font-mono font-bold text-blk">{formatINR(gstTotal)}</span></div>
-                    {/* Post-GST lines (TDS/TCS) */}
-                    {adjLines.filter(l => !l.taxable).map(l => (
-                      <div key={l.id} className="flex justify-between text-g500">
-                        <span className="truncate pr-2">{l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}</span>
-                        <span className={`font-mono font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>{l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}</span>
-                      </div>
-                    ))}
-                    <div className="flex justify-between font-bold text-blk border-t border-g200 pt-2 text-[13px]"><span>Order Value</span><span className="font-mono text-red-mrt text-[15px]">{formatINR(grandTotal)}</span></div>
-                  </div>
                 </div>
               </div>
             </div>
