@@ -179,7 +179,7 @@ export function NewQuote() {
     [data.quotes]);
 
   const [step, setStep] = useState(1);
-  const [insurance, setInsurance] = useState(0);
+  // insurance is derived — not user-controlled state
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [dupQuoteAlert, setDupQuoteAlert] = useState<{ existingId: string } | null>(null);
 
@@ -520,6 +520,7 @@ export function NewQuote() {
   };
 
   const subTotal = items.reduce((s, i) => s + i.total, 0);
+  const insurance = curr === 'INR' ? Math.round(subTotal * 0.0015 * 100) / 100 : 0;
   const taxableAmount = curr === 'INR' ? subTotal + insurance : subTotal;
   // GST applies to (subtotal + insurance); scale per-item GST contributions proportionally
   const gstTotal = curr === 'INR' && subTotal > 0
@@ -1130,12 +1131,7 @@ export function NewQuote() {
                       </tr>
                       {curr === 'INR' && (
                         <tr className="border-b border-g200 bg-g50/50">
-                          <td colSpan={8} className="px-3 py-2 text-right">
-                            <div className="flex flex-col items-end gap-0.5">
-                              <span className="text-[11px] text-g500">Insurance (₹)</span>
-                              <button type="button" onClick={() => setInsurance(Math.round(subTotal * 0.0015 * 100) / 100)} className="text-[9px] text-blue-500 hover:text-blue-700 hover:underline leading-none">Apply 0.15%</button>
-                            </div>
-                          </td>
+                          <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">Insurance (0.15%)</td>
                           <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{fmtAmt(insurance)}</td>
                           <td></td>
                         </tr>
@@ -1371,7 +1367,7 @@ export function NewQuote() {
               <div className="flex justify-end p-4">
                 <div className="w-[240px] text-[12px] space-y-1.5">
                   <div className="flex justify-between text-g500"><span>Sub-Total</span><span className="font-mono">{fmtAmt(subTotal)}</span></div>
-                  {curr === 'INR' && insurance > 0 && <div className="flex justify-between text-g500"><span>Insurance</span><span className="font-mono">{fmtAmt(insurance)}</span></div>}
+                  {curr === 'INR' && <div className="flex justify-between text-g500"><span>Insurance (0.15%)</span><span className="font-mono">{fmtAmt(insurance)}</span></div>}
                   {curr === 'INR' && <div className="flex justify-between text-g500"><span>GST</span><span className="font-mono">{fmtAmt(gstTotal)}</span></div>}
                   <div className="flex justify-between font-bold text-blk border-t border-g200 pt-2 text-[14px]"><span>Grand Total</span><span className="font-mono text-red-mrt">{fmtAmt(grandTotal)}</span></div>
                 </div>
