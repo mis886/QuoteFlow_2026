@@ -520,8 +520,12 @@ export function NewQuote() {
   };
 
   const subTotal = items.reduce((s, i) => s + i.total, 0);
-  const gstTotal = items.reduce((s, i) => s + i.total * i.gst / 100, 0);
-  const grandTotal = curr === 'INR' ? subTotal + insurance + gstTotal : subTotal;
+  const taxableAmount = curr === 'INR' ? subTotal + insurance : subTotal;
+  // GST applies to (subtotal + insurance); scale per-item GST contributions proportionally
+  const gstTotal = curr === 'INR' && subTotal > 0
+    ? items.reduce((s, i) => s + i.total * i.gst / 100, 0) * taxableAmount / subTotal
+    : 0;
+  const grandTotal = curr === 'INR' ? taxableAmount + gstTotal : subTotal;
   const sym = curr === 'USD' ? '$' : '₹';
   const fmtAmt = (v: number) => curr === 'USD'
     ? '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
