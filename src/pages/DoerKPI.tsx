@@ -155,7 +155,7 @@ export function DoerKPI() {
   if (roster.length === 0) {
     return (
       <div className="p-8 max-w-2xl">
-        <PageHeader range={range} />
+        <PageHeader range={range} onCloud={() => {}} />
         <div className="mt-6 bg-white rounded-[10px] border border-g200 p-8 text-center">
           <Users size={32} className="mx-auto text-g300 mb-3" />
           <div className="font-sans text-[15px] font-semibold text-blk">No team roster yet</div>
