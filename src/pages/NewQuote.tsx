@@ -259,12 +259,20 @@ export function NewQuote() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [pdfPreview, setPdfPreview] = useState<QuoteItem[] | null>(null);
 
-  // Auto-load default signatory
+  // Auto-load default signatory (app_settings takes priority, matches PDF footer logic)
   useEffect(() => {
-    if (editId || enqRef || custParam || authName) return;
-    const def = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
-    if (def) { setAuthName(def.name); setAuthDesignation(def.designation); setAuthPhone(def.phone); setSelectedSigId(def.id); }
-  }, [data.signatories, editId, enqRef]);
+    if (editId || authName) return;
+    if (data.settings?.signatory_name) {
+      setAuthName(data.settings.signatory_name);
+      setAuthDesignation(data.settings.signatory_title || 'CRM');
+      setAuthPhone(data.settings.signatory_phone || '');
+      const matched = data.signatories.find((s: AuthorizedSignatory) => s.name === data.settings!.signatory_name);
+      if (matched) setSelectedSigId(matched.id);
+    } else {
+      const def = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
+      if (def) { setAuthName(def.name); setAuthDesignation(def.designation); setAuthPhone(def.phone || ''); setSelectedSigId(def.id); }
+    }
+  }, [data.signatories, data.settings, editId]);
 
   // Load / init — runs once per target (editId/enqRef) to avoid wiping unsaved
   // changes on store updates, but re-runs when the target changes (e.g. the
@@ -364,8 +372,15 @@ export function NewQuote() {
       if (site) {
         const contacts = site.contacts ?? [];
         if (contactId && !contactManual) {
-          const ct = contacts.find(c => c.id === contactId);
-          if (ct) { setContact(ct.name); setEmail(ct.email); setPhone(ct.phone || ''); }
+          const ct = contacts.find((c: any) => c.id === contactId);
+          if (ct) { setContact(ct.name || ''); setEmail(ct.email || ''); setPhone(ct.phone || ''); }
+        } else if (!editId && !contactId && !contactManual) {
+          const pc = (contacts as any[]).find((ct: any) => ct.isPrimary)
+            || (contacts as any[]).find((ct: any) => ct.email || ct.phone || ct.name)
+            || contacts[0];
+          if (pc && (pc.name || pc.email || pc.phone)) {
+            setContactId(pc.id); setContact(pc.name || ''); setEmail(pc.email || ''); setPhone(pc.phone || '');
+          }
         }
       }
     } else { if (sites.length === 1) setSiteId(sites[0].id); }

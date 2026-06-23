@@ -165,14 +165,15 @@ export function NewEnquiry() {
       const site = sites.find(s => s.id === siteId);
       if (site) {
         const contacts = site.contacts ?? [];
-        // Only auto-fill when user selected a contact from the dropdown — never
-        // auto-pick primary/first contact, as that overwrites manually typed values.
         if (contactId && !contactManual) {
-          const c = contacts.find(ct => ct.id === contactId);
-          if (c) {
-            setContact(c.name);
-            setEmail(c.email);
-            setPhone(c.phone || '');
+          const c = contacts.find((ct: any) => ct.id === contactId);
+          if (c) { setContact(c.name || ''); setEmail(c.email || ''); setPhone(c.phone || ''); }
+        } else if (!editId && !contactId && !contactManual) {
+          const pc = (contacts as any[]).find((ct: any) => ct.isPrimary)
+            || (contacts as any[]).find((ct: any) => ct.email || ct.phone || ct.name)
+            || contacts[0];
+          if (pc && (pc.name || pc.email || pc.phone)) {
+            setContactId(pc.id); setContact(pc.name || ''); setEmail(pc.email || ''); setPhone(pc.phone || '');
           }
         }
       }
