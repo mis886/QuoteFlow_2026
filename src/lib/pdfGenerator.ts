@@ -172,27 +172,40 @@ export function generateQuotePDF(
   });
 
   // ── Items table ──────────────────────────────────────────────────────────
-  const colParticulars = cw - 15 - 22 - 30 - 18;
+  const wSnoP = 10, wHsnP = 16, wBarrelsP = 16, wPackingP = 13, wTotalQtyP = 15, wPackTypeP = 20, wRateP = 25, wPerP = 18;
+  const wProdNameP = cw - wSnoP - wHsnP - wBarrelsP - wPackingP - wTotalQtyP - wPackTypeP - wRateP - wPerP;
   y += 4;
 
-  const tableHead = [['S. No.', 'Quantity', 'Particulars', 'Rates (' + quote.curr + ')', 'Per']];
+  const tableHead = [['Sr No', 'Product Name', 'HSN Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'Rates (' + quote.curr + ')', 'Per']];
 
-  const tableBody = quote.items.map((i) => {
+  const tableBody = quote.items.map((i, idx) => {
     const rateCell = (i as any).rateOverride
       ? ((i as any).rateText?.trim() || 'Regret')
       : fmtRate(i.unitPrice, sym);
     const perUnit = (i as any).priceBasis?.trim() || i.uom || 'Each';
-    return [i.seq, i.qty + ' ' + (i.uom || 'nos.'), i.desc + (i.mat ? '-' + i.mat : ''), rateCell, perUnit];
+    const productName = (i as any).product_name || (i as any).name || i.desc || '';
+    const hsnCode = String((i as any).hsn_code || '');
+    const noOfBarrels = String((i as any).no_of_barrels ?? (i as any).barrels ?? '');
+    const packing = String((i as any).packing ?? '');
+    const totalQty = (i as any).total_qty != null
+      ? String((i as any).total_qty)
+      : (noOfBarrels && packing ? String(Number(noOfBarrels) * Number(packing)) : '');
+    const packingType = String((i as any).packing_type || '');
+    return [idx + 1, productName, hsnCode, noOfBarrels, packing, totalQty, packingType, rateCell, perUnit];
   });
 
-  const ratesColIdx = 3;
+  const ratesColIdx = 7;
 
   const tableColStyles: Record<number, any> = {
-    0: { cellWidth: 15, halign: 'center' },
-    1: { cellWidth: 22, halign: 'center' },
-    2: { cellWidth: colParticulars },
-    3: { cellWidth: 30, halign: 'right' },
-    4: { cellWidth: 18, halign: 'center' },
+    0: { cellWidth: wSnoP, halign: 'center' },
+    1: { cellWidth: wProdNameP },
+    2: { cellWidth: wHsnP, halign: 'center' },
+    3: { cellWidth: wBarrelsP, halign: 'center' },
+    4: { cellWidth: wPackingP, halign: 'center' },
+    5: { cellWidth: wTotalQtyP, halign: 'center' },
+    6: { cellWidth: wPackTypeP, halign: 'center' },
+    7: { cellWidth: wRateP, halign: 'right' },
+    8: { cellWidth: wPerP, halign: 'center' },
   };
 
   autoTable(doc, {

@@ -134,19 +134,31 @@ export async function downloadQuoteDOCX(
 
   // Column widths in DXA (1 inch = 1440 DXA). Usable ≈ 8640 DXA for 0.65" margins on A4
   const PAGE_W = 8640;
-  const wSno = 480, wQty = 700, wRate = 960, wPerUnit = 560;
-  const wPart = PAGE_W - wSno - wQty - wRate - wPerUnit;
+  const wSno = 400, wHsn = 800, wBarrels = 800, wPacking = 700, wTotalQty = 700, wPackType = 900, wRate = 900, wPerUnit = 700;
+  const wProdName = PAGE_W - wSno - wHsn - wBarrels - wPacking - wTotalQty - wPackType - wRate - wPerUnit;
 
-  const itemRows = quote.items.map(i => {
+  const itemRows = quote.items.map((i, idx) => {
     const rateText = (i as any).rateOverride
       ? ((i as any).rateText?.trim() || 'Regret')
       : fmtRate(i.unitPrice, sym);
     const isRegret = (i as any).rateOverride;
     const perUnit = (i as any).priceBasis?.trim() || i.uom || 'Each';
+    const productName = (i as any).product_name || (i as any).name || i.desc || '';
+    const hsnCode = String((i as any).hsn_code || '');
+    const noOfBarrels = String((i as any).no_of_barrels ?? (i as any).barrels ?? '');
+    const packing = String((i as any).packing ?? '');
+    const totalQty = (i as any).total_qty != null
+      ? String((i as any).total_qty)
+      : (noOfBarrels && packing ? String(Number(noOfBarrels) * Number(packing)) : '');
+    const packingType = String((i as any).packing_type || '');
     const cells = [
-      tdCell(String(i.seq), wSno, AlignmentType.CENTER),
-      tdCell(i.qty + ' ' + (i.uom || 'nos.'), wQty, AlignmentType.CENTER),
-      tdCell(i.desc + (i.mat ? ' - ' + i.mat : ''), wPart),
+      tdCell(String(idx + 1), wSno, AlignmentType.CENTER),
+      tdCell(productName, wProdName),
+      tdCell(hsnCode, wHsn, AlignmentType.CENTER),
+      tdCell(noOfBarrels, wBarrels, AlignmentType.CENTER),
+      tdCell(packing, wPacking, AlignmentType.CENTER),
+      tdCell(totalQty, wTotalQty, AlignmentType.CENTER),
+      tdCell(packingType, wPackType, AlignmentType.CENTER),
       tdCell(rateText, wRate, AlignmentType.RIGHT, { color: isRegret ? C_RED : undefined, bold: isRegret }),
       tdCell(perUnit, wPerUnit, AlignmentType.CENTER),
     ];
@@ -229,9 +241,13 @@ export async function downloadQuoteDOCX(
             new TableRow({
               tableHeader: true,
               children: [
-                thCell('S. No.', wSno),
-                thCell('Quantity', wQty),
-                thCell('Particulars', wPart),
+                thCell('Sr No', wSno),
+                thCell('Product Name', wProdName),
+                thCell('HSN Code', wHsn),
+                thCell('No of Barrels', wBarrels),
+                thCell('Packing', wPacking),
+                thCell('Total Qty', wTotalQty),
+                thCell('Packing Type', wPackType),
                 thCell(`Rates (${quote.curr})`, wRate, AlignmentType.RIGHT),
                 thCell('Per', wPerUnit),
               ],
