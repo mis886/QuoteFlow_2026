@@ -448,15 +448,20 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteEnquiry = async (id: string) => {
-    const { error } = await supabase.from('enquiries').delete().eq('id', id);
-    if (!error) {
+    try {
+      // Null enq_ref on any linked quotes before deleting (FK constraint)
+      const { error: unlinkErr } = await supabase.from('quotes').update({ enq_ref: null }).eq('enq_ref', id);
+      if (unlinkErr) throw unlinkErr;
+      const { error } = await supabase.from('enquiries').delete().eq('id', id);
+      if (error) throw error;
       setData(prev => ({
         ...prev,
-        enquiries: prev.enquiries.filter(e => e.id !== id)
+        enquiries: prev.enquiries.filter(e => e.id !== id),
+        quotes: prev.quotes.map(q => q.enqRef === id ? { ...q, enqRef: '' } : q),
       }));
-    } else {
-      console.error('Error deleting enquiry:', error);
-      throw error;
+    } catch (err: any) {
+      console.error('Error deleting enquiry:', err);
+      alert(`Could not delete enquiry: ${err?.message ?? err}`);
     }
   };
 
