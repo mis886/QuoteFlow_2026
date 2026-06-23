@@ -143,14 +143,12 @@ export async function downloadQuoteDOCX(
       : fmtRate(i.unitPrice, sym);
     const isRegret = (i as any).rateOverride;
     const perUnit = (i as any).priceBasis?.trim() || i.uom || 'Each';
-    const productName = (i as any).product_name || (i as any).name || i.desc || '';
-    const hsnCode = String((i as any).hsn_code || '');
-    const noOfBarrels = String((i as any).no_of_barrels ?? (i as any).barrels ?? '');
-    const packing = String((i as any).packing ?? '');
-    const totalQty = (i as any).total_qty != null
-      ? String((i as any).total_qty)
-      : (noOfBarrels && packing ? String(Number(noOfBarrels) * Number(packing)) : '');
-    const packingType = String((i as any).packing_type || '');
+    const productName = (i as any).product_name || i.desc || '';
+    const hsnCode = i.hsn || (i as any).hsn_code || '';
+    const noOfBarrels = i.qty != null ? String(i.qty) : '';
+    const packing = i.packing || '';
+    const totalQty = (i as any).total_qty != null ? String((i as any).total_qty) : '';
+    const packingType = i.packingType || (i as any).packing_type || '';
     const cells = [
       tdCell(String(idx + 1), wSno, AlignmentType.CENTER),
       tdCell(productName, wProdName),

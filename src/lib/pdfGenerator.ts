@@ -172,7 +172,10 @@ export function generateQuotePDF(
   });
 
   // ── Items table ──────────────────────────────────────────────────────────
-  const wSnoP = 10, wHsnP = 16, wBarrelsP = 16, wPackingP = 13, wTotalQtyP = 15, wPackTypeP = 20, wRateP = 25, wPerP = 18;
+  // Widths sized so all 9 header labels fit on one line at 8pt font.
+  // Fixed: Sr No(10) HSN(16) Barrels(24) Packing(14) TotalQty(16) PackType(22) Rate(22) Per(8) = 132mm
+  // Product Name gets the remainder.
+  const wSnoP = 10, wHsnP = 16, wBarrelsP = 24, wPackingP = 14, wTotalQtyP = 16, wPackTypeP = 22, wRateP = 22, wPerP = 8;
   const wProdNameP = cw - wSnoP - wHsnP - wBarrelsP - wPackingP - wTotalQtyP - wPackTypeP - wRateP - wPerP;
   y += 4;
 
@@ -182,15 +185,16 @@ export function generateQuotePDF(
     const rateCell = (i as any).rateOverride
       ? ((i as any).rateText?.trim() || 'Regret')
       : fmtRate(i.unitPrice, sym);
-    const perUnit = (i as any).priceBasis?.trim() || i.uom || 'Each';
-    const productName = (i as any).product_name || (i as any).name || i.desc || '';
-    const hsnCode = String((i as any).hsn_code || '');
-    const noOfBarrels = String((i as any).no_of_barrels ?? (i as any).barrels ?? '');
-    const packing = String((i as any).packing ?? '');
-    const totalQty = (i as any).total_qty != null
-      ? String((i as any).total_qty)
-      : (noOfBarrels && packing ? String(Number(noOfBarrels) * Number(packing)) : '');
-    const packingType = String((i as any).packing_type || '');
+    // Use TypeScript-typed fields (i.hsn, i.packing, i.packingType) — these are the actual
+    // field names in QuoteItem. Fallback to snake_case variants in case items were stored via
+    // older code paths.
+    const productName = (i as any).product_name || i.desc || '';
+    const hsnCode = i.hsn || (i as any).hsn_code || '';
+    const noOfBarrels = i.qty != null ? String(i.qty) : '';
+    const packing = i.packing || '';
+    const totalQty = (i as any).total_qty != null ? String((i as any).total_qty) : '';
+    const packingType = i.packingType || (i as any).packing_type || '';
+    const perUnit = i.priceBasis?.trim() || i.uom || 'Each';
     return [idx + 1, productName, hsnCode, noOfBarrels, packing, totalQty, packingType, rateCell, perUnit];
   });
 
@@ -217,8 +221,8 @@ export function generateQuotePDF(
       fillColor: TRUST_BLUE,
       textColor: [0, 0, 0],
       fontStyle: 'bold',
-      fontSize: 9,
-      cellPadding: 1.5,
+      fontSize: 8,
+      cellPadding: 1,
       lineColor: HEAD_BORDER,
       lineWidth: 0.5,
       halign: 'center',
