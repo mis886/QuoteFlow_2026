@@ -486,9 +486,19 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteQuote = async (id: string) => {
+    // Unlink any orders that reference this quote (set quote_ref = null, do NOT delete them)
+    const linkedOrderIds = data.orders.filter(o => o.quoteRef === id).map(o => o.id);
+    if (linkedOrderIds.length > 0) {
+      await supabase.from('orders').update({ quote_ref: null }).in('id', linkedOrderIds);
+    }
+    // Delete the quote record (items are a JSON column on the record, removed automatically)
     const { error } = await supabase.from('quotes').delete().eq('id', id);
     if (!error) {
-      setData(prev => ({ ...prev, quotes: prev.quotes.filter(q => q.id !== id) }));
+      setData(prev => ({
+        ...prev,
+        quotes: prev.quotes.filter(q => q.id !== id),
+        orders: prev.orders.map(o => linkedOrderIds.includes(o.id) ? { ...o, quoteRef: undefined } : o),
+      }));
     } else {
       console.error('Error deleting quote:', error);
       throw error;
