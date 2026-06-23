@@ -317,6 +317,9 @@ const mapEnquiryToDB = (e: any) => {
     return obj;
   };
 
+  // Only maps fields that actually exist in the orders table.
+  // Confirmed columns: id, quote_ref, enq_ref, cust, po_no, po_date, dlv_date,
+  // status, value, items, po_filename, site_id, inco, curr (+ created_at/updated_at managed by DB).
   const mapOrderToDB = (o: any) => {
     const obj: any = {};
     if ('id' in o) obj.id = o.id;
@@ -326,9 +329,6 @@ const mapEnquiryToDB = (e: any) => {
     if ('items' in o) obj.items = o.items;
     if ('inco' in o) obj.inco = o.inco;
     if ('curr' in o) obj.curr = o.curr;
-    if ('authorizedPerson' in o) obj.authorized_person = o.authorizedPerson;
-    if ('terms' in o) obj.terms = o.terms;
-    if ('attachments' in o) obj.attachments = o.attachments;
 
     if ('quoteRef' in o) obj.quote_ref = o.quoteRef || null;
     else if ('quote_ref' in o) obj.quote_ref = o.quote_ref || null;
@@ -338,12 +338,6 @@ const mapEnquiryToDB = (e: any) => {
 
     if ('siteId' in o) obj.site_id = o.siteId || null;
     else if ('site_id' in o) obj.site_id = o.site_id || null;
-
-    if ('contactId' in o) obj.contact_id = o.contactId || null;
-    if ('contact' in o) obj.contact = o.contact || null;
-    if ('email' in o) obj.email = o.email || null;
-    if ('phone' in o) obj.contact_phone = o.phone || null;
-    if ('custEnquiryDocNo' in o) obj.cust_enquiry_doc_no = o.custEnquiryDocNo || null;
 
     if ('poNo' in o) obj.po_no = o.poNo;
     else if ('po_no' in o) obj.po_no = o.po_no;
@@ -356,18 +350,6 @@ const mapEnquiryToDB = (e: any) => {
 
     if ('poFileName' in o) obj.po_filename = o.poFileName;
     else if ('po_filename' in o) obj.po_filename = o.po_filename;
-
-    if ('sheetsExportedAt' in o) obj.sheets_exported_at = o.sheetsExportedAt;
-
-    if ('unitId' in o) obj.unit_id = o.unitId || null;
-    if ('bankAccountId' in o) obj.bank_account_id = o.bankAccountId || null;
-    if ('priceBasis' in o) obj.price_basis = o.priceBasis || null;
-    if ('countryOfOrigin' in o) obj.country_of_origin = o.countryOfOrigin || null;
-    if ('eximCode' in o) obj.exim_code = o.eximCode || null;
-    if ('customPoint' in o) obj.custom_point = o.customPoint || null;
-    if ('pan' in o) obj.pan = o.pan || null;
-    if ('hsn' in o) obj.hsn = o.hsn || null;
-    if ('doer' in o) obj.doer = o.doer;
 
     return obj;
   };
