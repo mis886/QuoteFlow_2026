@@ -10,7 +10,8 @@ import { supabase } from '../lib/supabase';
 
 export function Quotes() {
   const store = useAppStore();
-  const { data, globalSearchQuery, setGlobalSearchQuery, openDetailPanel, openAttachmentModal, updateQuote, addFollowUpLog } = store;
+  const { data, user, globalSearchQuery, setGlobalSearchQuery, openDetailPanel, openAttachmentModal, updateQuote, deleteQuote, addFollowUpLog } = store;
+  const canDelete = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
   const { globalDateRange, setGlobalDateRange } = store as any;
   const navigate = useNavigate();
   const [tab, setTab] = useState<'All' | QuoteStatus>('All');
@@ -285,6 +286,17 @@ export function Quotes() {
                                   <Button size="sm" variant="success" onClick={() => navigate(`/orders/new?quoteRef=${q.id}`)} className="btn-order active:scale-95 transition-transform">Order</Button>
                                 );
                               })()
+                            )}
+                            {canDelete && (
+                              <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async (ev) => {
+                                ev.stopPropagation();
+                                const linkedOrder = data.orders.find(o => o.quoteRef === q.id);
+                                if (linkedOrder) {
+                                  if (!confirm(`This quotation has a linked order ${linkedOrder.id}. Delete quotation anyway?`)) return;
+                                }
+                                if (!confirm(`Are you sure you want to delete ${q.id}? This action cannot be undone.`)) return;
+                                await deleteQuote(q.id);
+                              }}>Delete</Button>
                             )}
                           </div>
                         </td>

@@ -30,8 +30,10 @@ interface AppContextType {
   deleteEnquiry: (id: string) => Promise<void>;
   addQuote: (quote: Quote) => Promise<void>;
   updateQuote: (id: string, updates: Partial<Quote>) => Promise<void>;
+  deleteQuote: (id: string) => Promise<void>;
   addOrder: (order: Order) => Promise<void>;
   updateOrder: (id: string, updates: Partial<Order>) => Promise<void>;
+  deleteOrder: (id: string) => Promise<void>;
   addCustomer: (customer: Customer) => Promise<void>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
@@ -483,6 +485,16 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
+  const deleteQuote = async (id: string) => {
+    const { error } = await supabase.from('quotes').delete().eq('id', id);
+    if (!error) {
+      setData(prev => ({ ...prev, quotes: prev.quotes.filter(q => q.id !== id) }));
+    } else {
+      console.error('Error deleting quote:', error);
+      throw error;
+    }
+  };
+
   const addOrder = async (order: Order) => {
     const { error } = await supabase.from('orders').insert([mapOrderToDB(order)]);
     if (!error) {
@@ -503,6 +515,16 @@ const mapEnquiryToDB = (e: any) => {
       }));
     } else {
       console.error('Error updating order:', error);
+      throw error;
+    }
+  };
+
+  const deleteOrder = async (id: string) => {
+    const { error } = await supabase.from('orders').delete().eq('id', id);
+    if (!error) {
+      setData(prev => ({ ...prev, orders: prev.orders.filter(o => o.id !== id) }));
+    } else {
+      console.error('Error deleting order:', error);
       throw error;
     }
   };
@@ -1210,8 +1232,10 @@ const mapEnquiryToDB = (e: any) => {
         deleteEnquiry,
         addQuote,
         updateQuote,
+        deleteQuote,
         addOrder,
         updateOrder,
+        deleteOrder,
         addCustomer,
         updateCustomer,
         deleteCustomer,
