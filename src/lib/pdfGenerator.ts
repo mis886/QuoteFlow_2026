@@ -64,36 +64,19 @@ export function generateQuotePDF(
   const rx = pw - 15.4;
   const cw = rx - mx;
   const sym = getCurrencySymbol(quote.curr);
-  const customHeader = unit?.header_url || settings?.header_url || localStorage.getItem('mrt_header_img');
   const sigImg = unit?.sig_url || settings?.sig_url || localStorage.getItem('mrt_sig_img');
 
-// ── Header ───────────────────────────────────────────────────────────────
-  const headerH = 33;
-  let y: number;
-
-  if (customHeader) {
-    const hFmt = customHeader.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-    try { doc.addImage(customHeader, hFmt, mx, 0, cw, headerH); } catch (e) { console.warn('Header image failed', e); }
-    y = headerH;
-    // GSTIN is already part of the letterhead image — don't stamp it again
-  } else {
-    // Line 1 — Company name
-    doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
-    doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, 10, { align: 'center' });
-    // Line 2 — Product tagline (directly below name)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
-    doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, 16, { align: 'center' });
-    // Line 3 — Address + CIN
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
-    const defaultAddr = '201/5 Jogani Industrial Estate, VN Purav Marg Chunabhatti Mumbai 400022';
-    const addrStr = unit?.address ? unit.address : defaultAddr;
-    const addrLns = doc.splitTextToSize(addrStr, cw) as string[];
-    let ay = 22;
-    addrLns.forEach(l => { doc.text(l, pw / 2, ay, { align: 'center' }); ay += 4; });
-    // Line 4 — Contact
-    doc.text('Tel.: 91-22-2405 6704  |  E-Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, ay + 2, { align: 'center' });
-    y = headerH;
-  }
+  // ── Header (hardcoded text — no letterhead image) ─────────────────────
+  let y = 9;
+  doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
+  doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, y, { align: 'center' }); y += 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(40, 40, 40);
+  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, y, { align: 'center' }); y += 5;
+  doc.setFontSize(7);
+  doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, y, { align: 'center' }); y += 4;
+  doc.text('Tel.: 91-22-2405 6704  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, y, { align: 'center' }); y += 5;
+  doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.4);
+  doc.line(mx, y, rx, y); y += 2;
 
   // ── Ref | Date ───────────────────────────────────────────────────────────
   y += 6;

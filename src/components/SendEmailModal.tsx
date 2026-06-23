@@ -52,36 +52,47 @@ export function SendEmailModal(props: Props) {
   const pdfName = isQuote ? `${docId}.pdf` : `${docId}_PI.pdf`;
 
   const defaultSubject = isQuote
-    ? `Quotation ${docId} — Himalaya TerpenesRubber Technologies`
-    : `Proforma Invoice ${docId} — Himalaya TerpenesRubber Technologies`;
+    ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
+    : `Proforma Invoice ${docId} — HIMALAYA TERPENES PVT. LTD.`;
 
   const totalValue = isQuote
     ? (props.doc as Quote).items.reduce((s, i) => s + i.total, 0)
     : (props.doc as Order).items.reduce((s, i) => s + i.total, 0);
 
-  const sigName = props.defaultSignatory?.name ?? 'Sales Team';
-  const sigDesig = props.defaultSignatory?.designation ? `\n${props.defaultSignatory.designation}` : '';
+  // Signatory: prefer quote's saved authorizedPerson → app_settings → passed defaultSignatory
+  const quoteAuthPerson = isQuote ? (props.doc as any).authorizedPerson : undefined;
+  const settingsSig = props.settings?.signatory_name
+    ? { name: props.settings.signatory_name, designation: props.settings.signatory_title || '' }
+    : undefined;
+  const sigName = quoteAuthPerson?.name || settingsSig?.name || props.defaultSignatory?.name || 'Sales Team';
+  const sigDesig = (quoteAuthPerson?.designation || settingsSig?.designation || props.defaultSignatory?.designation)
+    ? `\n${quoteAuthPerson?.designation || settingsSig?.designation || props.defaultSignatory?.designation}`
+    : '';
 
   const poSubmitLink = '';
   const poLine = '';
 
   const defaultBody = primaryContact
-    ? `Dear ${primaryContact.name},\n\nPlease find attached our ${isQuote ? 'quotation' : 'Proforma Invoice'} ${docId} for the requirements discussed.\n\nTotal value: ${formatINR(totalValue)}${poLine}\n\nLooking forward to your favorable response.\n\nWarm regards,\n${sigName}${sigDesig}\nHimalaya TerpenesRubber Technologies`
-    : `Dear Sir/Madam,\n\nPlease find attached our ${isQuote ? 'quotation' : 'Proforma Invoice'} ${docId}.${poLine}\n\nWarm regards,\n${sigName}${sigDesig}\nHimalaya TerpenesRubber Technologies`;
+    ? `Dear ${primaryContact.name},\n\nPlease find attached our ${isQuote ? 'quotation' : 'Proforma Invoice'} ${docId} for the requirements discussed.\n\nTotal value: ${formatINR(totalValue)}${poLine}\n\nLooking forward to your favorable response.\n\nWarm regards,\n${sigName}${sigDesig}\nHIMALAYA TERPENES PVT. LTD.`
+    : `Dear Sir/Madam,\n\nPlease find attached our ${isQuote ? 'quotation' : 'Proforma Invoice'} ${docId}.${poLine}\n\nWarm regards,\n${sigName}${sigDesig}\nHIMALAYA TERPENES PVT. LTD.`;
 
   const [to, setTo]           = useState(primaryEmail);
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody]       = useState(defaultBody);
   const [toError, setToError] = useState('');
 
-  // Pre-select other site contacts + default CCs. All are removable by the user.
+  // Pre-select other site contacts + default CCs + customer contact email (all removable).
+  const docContactEmail = (props.doc as any).email ?? '';
+  const initialExtraCCs = [
+    ...DEFAULT_CCS,
+    ...(docContactEmail && !DEFAULT_CCS.includes(docContactEmail) && docContactEmail !== primaryEmail ? [docContactEmail] : []),
+  ];
   const [selectedCC, setSelectedCC] = useState<Set<string>>(() => new Set([
     ...siteContacts.filter(c => c.email && c.email !== primaryEmail).map(c => c.email),
-    ...DEFAULT_CCS,
+    ...initialExtraCCs,
   ]));
   const [customCC, setCustomCC] = useState('');
-  // Default CCs start in extraCCs so they appear as toggleable chips
-  const [extraCCs, setExtraCCs] = useState<string[]>(DEFAULT_CCS);
+  const [extraCCs, setExtraCCs] = useState<string[]>(initialExtraCCs);
 
   const [status, setStatus]   = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
