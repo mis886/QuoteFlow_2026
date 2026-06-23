@@ -205,8 +205,8 @@ export function SendEmailModal(props: Props) {
 
               <div className="flex flex-wrap gap-1.5 mb-2">
 
-                {/* Site contacts (excluding To) */}
-                {siteContacts.filter(c => c.email !== to).map(c => (
+                {/* Site contacts (excluding To and any email already shown as an extra CC chip) */}
+                {siteContacts.filter(c => c.email !== to && !extraCCs.includes(c.email)).map(c => (
                   <button key={c.email} type="button" onClick={() => toggleCC(c.email)} className={chipCls(selectedCC.has(c.email))}>
                     {selectedCC.has(c.email) && <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>}
                     <span className="font-medium">{c.name}</span>
