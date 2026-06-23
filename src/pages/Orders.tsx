@@ -373,7 +373,11 @@ export function Orders() {
                               <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async (ev) => {
                                 ev.stopPropagation();
                                 if (!confirm(`Are you sure you want to delete ${o.id}? This action cannot be undone.`)) return;
-                                await deleteOrder(o.id);
+                                try {
+                                  await deleteOrder(o.id);
+                                } catch (err: any) {
+                                  alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
+                                }
                               }}>Delete</Button>
                             )}
                           </div>

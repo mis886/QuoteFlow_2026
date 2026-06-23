@@ -486,21 +486,29 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteQuote = async (id: string) => {
-    // Unlink any orders that reference this quote (set quote_ref = null, do NOT delete them)
+    // 1. Delete follow-up log rows for this quote (FK: followups.quote_id → quotes.id)
+    const { error: fupErr } = await supabase.from('followups').delete().eq('quote_id', id);
+    if (fupErr) { console.error('deleteQuote: followups delete failed', fupErr); throw fupErr; }
+
+    // 2. Unlink orders that reference this quote (FK: orders.quote_ref → quotes.id)
+    //    Orders are preserved — only the link is removed.
     const linkedOrderIds = data.orders.filter(o => o.quoteRef === id).map(o => o.id);
     if (linkedOrderIds.length > 0) {
-      await supabase.from('orders').update({ quote_ref: null }).in('id', linkedOrderIds);
+      const { error: ordErr } = await supabase.from('orders').update({ quote_ref: null }).in('id', linkedOrderIds);
+      if (ordErr) { console.error('deleteQuote: orders unlink failed', ordErr); throw ordErr; }
     }
-    // Delete the quote record (items are a JSON column on the record, removed automatically)
+
+    // 3. Delete the quote record (items are a JSON column, removed automatically)
     const { error } = await supabase.from('quotes').delete().eq('id', id);
     if (!error) {
       setData(prev => ({
         ...prev,
         quotes: prev.quotes.filter(q => q.id !== id),
+        followups: prev.followups.filter((f: any) => f.quote_id !== id),
         orders: prev.orders.map(o => linkedOrderIds.includes(o.id) ? { ...o, quoteRef: undefined } : o),
       }));
     } else {
-      console.error('Error deleting quote:', error);
+      console.error('deleteQuote: quotes delete failed', error);
       throw error;
     }
   };

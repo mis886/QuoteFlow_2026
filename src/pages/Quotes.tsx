@@ -295,7 +295,11 @@ export function Quotes() {
                                   if (!confirm(`This quotation has a linked order ${linkedOrder.id}. Delete quotation anyway?`)) return;
                                 }
                                 if (!confirm(`Are you sure you want to delete ${q.id}? This action cannot be undone.`)) return;
-                                await deleteQuote(q.id);
+                                try {
+                                  await deleteQuote(q.id);
+                                } catch (err: any) {
+                                  alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
+                                }
                               }}>Delete</Button>
                             )}
                           </div>
