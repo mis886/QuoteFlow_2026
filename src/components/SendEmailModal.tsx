@@ -209,8 +209,8 @@ export function SendEmailModal(props: Props) {
                 {siteContacts.filter(c => c.email !== to && !extraCCs.includes(c.email)).map(c => (
                   <button key={c.email} type="button" onClick={() => toggleCC(c.email)} className={chipCls(selectedCC.has(c.email))}>
                     {selectedCC.has(c.email) && <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>}
-                    <span className="font-medium">{c.name}</span>
-                    {c.role && <span className="opacity-60">· {c.role}</span>}
+                    <span className="font-medium">{c.name || c.email}</span>
+                    {c.role && !c.name && <span className="opacity-60">· {c.role}</span>}
                   </button>
                 ))}
 
