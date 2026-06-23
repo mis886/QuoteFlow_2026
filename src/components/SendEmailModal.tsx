@@ -7,7 +7,7 @@ import { generateQuotePDF } from '../lib/pdfGenerator';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { sendViaGmail } from '../lib/gmail';
 
-const FIXED_CCS = ['shishir@himalayaterpene.com', 'anil@himalayaterpene.com'];
+const DEFAULT_CCS = ['shishir@himalayaterpene.com', 'anil@himalayaterpene.com'];
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function getSiteContacts(customer?: Customer, siteId?: string): Contact[] {
@@ -74,12 +74,14 @@ export function SendEmailModal(props: Props) {
   const [body, setBody]       = useState(defaultBody);
   const [toError, setToError] = useState('');
 
-  // Pre-select other contacts from the same site (not the To address), plus support@ always
-  const [selectedCC, setSelectedCC] = useState<Set<string>>(() => new Set(
-    siteContacts.filter(c => c.email && c.email !== primaryEmail).map(c => c.email)
-  ));
+  // Pre-select other site contacts + default CCs. All are removable by the user.
+  const [selectedCC, setSelectedCC] = useState<Set<string>>(() => new Set([
+    ...siteContacts.filter(c => c.email && c.email !== primaryEmail).map(c => c.email),
+    ...DEFAULT_CCS,
+  ]));
   const [customCC, setCustomCC] = useState('');
-  const [extraCCs, setExtraCCs] = useState<string[]>([]);
+  // Default CCs start in extraCCs so they appear as toggleable chips
+  const [extraCCs, setExtraCCs] = useState<string[]>(DEFAULT_CCS);
 
   const [status, setStatus]   = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
@@ -93,15 +95,14 @@ export function SendEmailModal(props: Props) {
   const addCustomCC = () => {
     const email = customCC.trim();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
-    if (!extraCCs.includes(email) && !siteContacts.some(c => c.email === email) && !FIXED_CCS.includes(email)) {
+    if (!extraCCs.includes(email) && !siteContacts.some(c => c.email === email)) {
       setExtraCCs(prev => [...prev, email]);
       setSelectedCC(prev => new Set([...prev, email]));
     }
     setCustomCC('');
   };
 
-  // Fixed CCs are always included — never togglable
-  const ccString = [...FIXED_CCS, ...[...selectedCC].filter(e => e && !FIXED_CCS.includes(e))].filter(Boolean).join(', ');
+  const ccString = [...selectedCC].filter(Boolean).join(', ');
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,14 +193,6 @@ export function SendEmailModal(props: Props) {
               <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1.5">CC</label>
 
               <div className="flex flex-wrap gap-1.5 mb-2">
-                {/* Fixed CCs — always included, not toggleable */}
-                {FIXED_CCS.map(email => (
-                  <span key={email} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-medium border bg-red-lt border-red-mrt/30 text-red-mrt">
-                    <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>
-                    {email}
-                    <span className="text-[9px] opacity-60 font-mono">auto</span>
-                  </span>
-                ))}
 
                 {/* Site contacts (excluding To) */}
                 {siteContacts.filter(c => c.email !== to).map(c => (

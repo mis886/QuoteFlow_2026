@@ -172,10 +172,9 @@ export function generateQuotePDF(
   });
 
   // ── Items table ──────────────────────────────────────────────────────────
-  // Widths sized so all 9 header labels fit on one line at 8pt font.
-  // Fixed: Sr No(10) HSN(16) Barrels(24) Packing(14) TotalQty(16) PackType(22) Rate(22) Per(8) = 132mm
-  // Product Name gets the remainder.
-  const wSnoP = 10, wHsnP = 16, wBarrelsP = 24, wPackingP = 14, wTotalQtyP = 16, wPackTypeP = 22, wRateP = 22, wPerP = 8;
+  // Widths chosen so every header AND 8-digit HSN data fit on one line at 8pt.
+  // Verified minimums: HSN "38061090" needs ~19mm body, "No of Barrels" header needs ~22mm header.
+  const wSnoP = 9, wHsnP = 22, wBarrelsP = 22, wPackingP = 14, wTotalQtyP = 16, wPackTypeP = 23, wRateP = 25, wPerP = 15;
   const wProdNameP = cw - wSnoP - wHsnP - wBarrelsP - wPackingP - wTotalQtyP - wPackTypeP - wRateP - wPerP;
   y += 4;
 
@@ -192,7 +191,10 @@ export function generateQuotePDF(
     const hsnCode = i.hsn || (i as any).hsn_code || '';
     const noOfBarrels = i.qty != null ? String(i.qty) : '';
     const packing = i.packing || '';
-    const totalQty = (i as any).total_qty != null ? String((i as any).total_qty) : '';
+    const packingNum = parseFloat(packing) || 0;
+    const totalQty = (i as any).total_qty != null
+      ? String((i as any).total_qty)
+      : (i.qty && packingNum ? String(i.qty * packingNum) : '');
     const packingType = i.packingType || (i as any).packing_type || '';
     const perUnit = i.priceBasis?.trim() || i.uom || 'Each';
     return [idx + 1, productName, hsnCode, noOfBarrels, packing, totalQty, packingType, rateCell, perUnit];

@@ -133,8 +133,9 @@ export async function downloadQuoteDOCX(
   })();
 
   // Column widths in DXA (1 inch = 1440 DXA). Usable ≈ 8640 DXA for 0.65" margins on A4
+  // Proportional to PDF widths: HSN and Barrels widened to prevent 8-digit code and header wrap.
   const PAGE_W = 8640;
-  const wSno = 400, wHsn = 800, wBarrels = 800, wPacking = 700, wTotalQty = 700, wPackType = 900, wRate = 900, wPerUnit = 700;
+  const wSno = 430, wHsn = 1060, wBarrels = 1060, wPacking = 670, wTotalQty = 770, wPackType = 1110, wRate = 1200, wPerUnit = 720;
   const wProdName = PAGE_W - wSno - wHsn - wBarrels - wPacking - wTotalQty - wPackType - wRate - wPerUnit;
 
   const itemRows = quote.items.map((i, idx) => {
@@ -147,7 +148,10 @@ export async function downloadQuoteDOCX(
     const hsnCode = i.hsn || (i as any).hsn_code || '';
     const noOfBarrels = i.qty != null ? String(i.qty) : '';
     const packing = i.packing || '';
-    const totalQty = (i as any).total_qty != null ? String((i as any).total_qty) : '';
+    const packingNum = parseFloat(packing) || 0;
+    const totalQty = (i as any).total_qty != null
+      ? String((i as any).total_qty)
+      : (i.qty && packingNum ? String(i.qty * packingNum) : '');
     const packingType = i.packingType || (i as any).packing_type || '';
     const cells = [
       tdCell(String(idx + 1), wSno, AlignmentType.CENTER),
