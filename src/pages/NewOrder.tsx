@@ -120,12 +120,23 @@ export function NewOrder() {
   const [defaultHsn, setDefaultHsn] = useState<string>('');
   const [showExim, setShowExim] = useState(false);
 
-  // Auto-load default signatory
+  // Auto-load default signatory. app_settings always wins when loaded; is_default is
+  // fallback only while settings hasn't arrived yet. Same timing-race fix as NewQuote.tsx.
+  // quoteRef stays in the guard: when creating an order from a quote, the quote's signatory
+  // is loaded by the hydration effect below and should not be overwritten.
   useEffect(() => {
-    if (editOrderId || quoteRef || authName) return;
-    const def = data.signatories.find((s: any) => s.is_default);
-    if (def) { setAuthName(def.name); setAuthDesignation(def.designation); setAuthPhone(def.phone); setSelectedSigId(def.id); }
-  }, [data.signatories, editOrderId, quoteRef]);
+    if (editOrderId || quoteRef) return;
+    if (data.settings?.signatory_name) {
+      setAuthName(data.settings.signatory_name);
+      setAuthDesignation(data.settings.signatory_title || '');
+      setAuthPhone(data.settings.signatory_phone || '');
+      const matched = data.signatories.find((s: any) => s.name === data.settings!.signatory_name);
+      if (matched) setSelectedSigId(matched.id);
+    } else if (!authName) {
+      const def = data.signatories.find((s: any) => s.is_default);
+      if (def) { setAuthName(def.name); setAuthDesignation(def.designation); setAuthPhone(def.phone || ''); setSelectedSigId(def.id); }
+    }
+  }, [data.signatories, data.settings, editOrderId, quoteRef]);
 
   // Auto-load default unit (when not editing an existing order that already has one)
   useEffect(() => {

@@ -259,16 +259,19 @@ export function NewQuote() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [pdfPreview, setPdfPreview] = useState<QuoteItem[] | null>(null);
 
-  // Auto-load default signatory (app_settings takes priority, matches PDF footer logic)
+  // Auto-load default signatory. app_settings always wins when loaded; is_default is
+  // fallback only while settings hasn't arrived yet. authName is NOT in the top guard —
+  // that fixes the timing race where signatories load first, set the fallback, then
+  // settings loads but finds authName already set and returns early (wrong result).
   useEffect(() => {
-    if (editId || authName) return;
+    if (editId) return;
     if (data.settings?.signatory_name) {
       setAuthName(data.settings.signatory_name);
-      setAuthDesignation(data.settings.signatory_title || 'CRM');
+      setAuthDesignation(data.settings.signatory_title || '');
       setAuthPhone(data.settings.signatory_phone || '');
       const matched = data.signatories.find((s: AuthorizedSignatory) => s.name === data.settings!.signatory_name);
       if (matched) setSelectedSigId(matched.id);
-    } else {
+    } else if (!authName) {
       const def = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
       if (def) { setAuthName(def.name); setAuthDesignation(def.designation); setAuthPhone(def.phone || ''); setSelectedSigId(def.id); }
     }
