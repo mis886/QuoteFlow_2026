@@ -52,7 +52,7 @@ export function NewEnquiry() {
   const [enquiryDocs, setEnquiryDocs] = useState<{ id: string, fileName: string, file: File | null }[]>([]);
   const [drawingDocs, setDrawingDocs] = useState<{ id: string, fileName: string, file: File | null }[]>([]);
   
-  const [assigned, setAssigned] = useState('Akki');
+  const [assigned, setAssigned] = useState('Sales Team');
   const [reqDate, setReqDate] = useState(localDateStr(new Date(Date.now() + 86400000)));
   const [notes, setNotes] = useState('');
   
@@ -128,7 +128,7 @@ export function NewEnquiry() {
         setPhone(e.phone || '');
         setContactManual(false);
         setUrgency(e.urg);
-        setAssigned(e.assigned || 'Akki');
+        setAssigned(e.assigned || 'Sales Team');
         setNotes(e.notes || '');
         setItems(e.items);
         
@@ -575,7 +575,7 @@ export function NewEnquiry() {
                 <div>
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Assigned To</label>
                   <select title="Assigned To" value={assigned} onChange={e => setAssigned(e.target.value)} className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt">
-                    <option>Support</option><option>Sales Team</option><option>Technical</option>
+                    <option>Sales Team</option><option>Dispatch Team</option><option>Account Team</option>
                   </select>
                 </div>
                 <div>
