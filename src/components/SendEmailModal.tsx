@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { X, Send, Paperclip, Mail, Loader2 } from 'lucide-react';
 import { Quote, Order, Customer, Contact, AppSettings, AuthorizedSignatory } from '../lib/types';
 import { Button } from './ui';
-import { formatINR } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { sendViaGmailAsUser } from '../lib/gmail';
@@ -58,10 +57,6 @@ export function SendEmailModal(props: Props) {
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : `Proforma Invoice ${docId} — HIMALAYA TERPENES PVT. LTD.`;
 
-  const totalValue = isQuote
-    ? (props.doc as Quote).items.reduce((s, i) => s + i.total, 0)
-    : (props.doc as Order).items.reduce((s, i) => s + i.total, 0);
-
   // Signatory: prefer quote's saved authorizedPerson → app_settings → passed defaultSignatory
   const quoteAuthPerson = isQuote ? (props.doc as any).authorizedPerson : undefined;
   const settingsSig = props.settings?.signatory_name
@@ -73,11 +68,13 @@ export function SendEmailModal(props: Props) {
     : '';
 
   const poSubmitLink = '';
-  const poLine = '';
 
-  const defaultBody = primaryContact
-    ? `Dear ${primaryContact.name},\n\nPlease find attached our ${isQuote ? 'quotation' : 'Proforma Invoice'} ${docId} for the requirements discussed.\n\nTotal value: ${formatINR(totalValue)}${poLine}\n\nLooking forward to your favorable response.\n\nWarm regards,\n${sigName}${sigDesig}\nHIMALAYA TERPENES PVT. LTD.`
-    : `Dear Sir/Madam,\n\nPlease find attached our ${isQuote ? 'quotation' : 'Proforma Invoice'} ${docId}.${poLine}\n\nWarm regards,\n${sigName}${sigDesig}\nHIMALAYA TERPENES PVT. LTD.`;
+  const sigBlock = `${sigName}${sigDesig}\nHIMALAYA TERPENES PVT. LTD.\nTel.: 91-22-35397800/01\nE-mail: mum@himalayaterpene.com\nWeb: www.himalayaterpene.com`;
+  const greeting = primaryContact?.name ? `Dear ${primaryContact.name},` : 'Dear Sir/Madam,';
+
+  const defaultBody = isQuote
+    ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
+    : `${greeting}\n\nPlease find attached our Proforma Invoice ${docId} for the requirements discussed.\n\nKindly arrange for the Purchase Order at your earliest convenience.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`;
 
   const [to, setTo]           = useState(primaryEmail);
   const [subject, setSubject] = useState(defaultSubject);
