@@ -301,6 +301,7 @@ export function NewQuote() {
         if (q.custEnquiryDocNo) setCustEnquiryDocNo(q.custEnquiryDocNo);
         if (q.terms) { try { setTnc({ ...defaultTnc(), ...JSON.parse(q.terms) }); } catch { /**/ } }
         setItems(q.items);
+        setInsurance(q.insurance ?? 0);
         setNotes(q.notes ?? []);
         const matched = data.signatories.find((s: AuthorizedSignatory) => s.name === q.authorizedPerson?.name);
         if (matched) setSelectedSigId(matched.id);
@@ -579,6 +580,7 @@ export function NewQuote() {
       // sets Won separately. Don't auto-flip a saved draft to 'Sent'.
       status,
       curr, pay, items,
+      insurance: curr === 'INR' ? ins : 0,
       notes: notes.filter(n => n.trim()),
       authorizedPerson: { name: authName, designation: authDesignation, phone: authPhone },
       terms: JSON.stringify(tnc),

@@ -139,6 +139,7 @@ export interface Quote {
     phone?: string;
   };
   terms?: string;
+  insurance?: number;         // INR only; user-applied 0.15% charge on subtotal
   unitId?: string;
   custEnquiryDocNo?: string;
   doer?: string;
