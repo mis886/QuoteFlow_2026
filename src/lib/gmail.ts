@@ -1,10 +1,15 @@
 // Gmail API via Google Identity Services (browser OAuth2 – no backend needed)
-// Requires VITE_GOOGLE_CLIENT_ID in .env and Gmail API enabled in Google Cloud Console.
+// Requires VITE_GOOGLE_CLIENT_ID + VITE_GOOGLE_CLIENT_SECRET in Cloudflare Pages env vars.
+// VITE_GOOGLE_CLIENT_SECRET is exposed in the JS bundle; acceptable for an internal-only tool.
 
-const SCOPES = [
+import { supabase } from './supabase';
+
+const SCOPES_SYNC = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.readonly',
 ].join(' ');
+
+const SCOPE_SEND = 'https://www.googleapis.com/auth/gmail.send';
 
 declare global {
   interface Window { google: any; }
@@ -21,16 +26,121 @@ function loadScript(src: string): Promise<void> {
   });
 }
 
-// Cached token so we don't re-prompt on every send/sync
-let _cachedToken: string | null = null;
-let _tokenExpiry = 0;
+// ── Per-user in-memory access token cache ────────────────────────────────────
+// Keyed by lowercase email. Cleared on page refresh; DB refresh tokens persist.
+const _userTokenCache = new Map<string, { token: string; expiry: number }>();
 
-export function hasActiveToken(): boolean {
-  return !!_cachedToken && Date.now() < _tokenExpiry;
+export function hasActiveToken(email?: string): boolean {
+  if (email) {
+    const c = _userTokenCache.get(email.toLowerCase());
+    return !!c && Date.now() < c.expiry;
+  }
+  // Legacy: check any cached token (used by the sync status indicator)
+  for (const c of _userTokenCache.values()) {
+    if (Date.now() < c.expiry) return true;
+  }
+  return false;
 }
 
+function cacheUserToken(email: string, token: string, expiresIn: number) {
+  _userTokenCache.set(email.toLowerCase(), { token, expiry: Date.now() + expiresIn * 1000 - 60_000 });
+}
+
+// ── Token exchange helpers (call Google's token endpoint from browser) ────────
+async function exchangeCodeForTokens(code: string): Promise<{ access_token: string; refresh_token?: string; expires_in: number }> {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+  const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string;
+  if (!clientSecret) throw new Error('VITE_GOOGLE_CLIENT_SECRET is not configured. Add it to Cloudflare Pages environment variables.');
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: 'postmessage', grant_type: 'authorization_code' }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error_description ?? data.error ?? `Token exchange failed ${res.status}`);
+  return data;
+}
+
+async function exchangeRefreshToken(refreshToken: string): Promise<{ access_token: string; expires_in: number }> {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+  const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string;
+  if (!clientSecret) throw new Error('VITE_GOOGLE_CLIENT_SECRET is not configured.');
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ refresh_token: refreshToken, client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token' }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error_description ?? data.error ?? `Token refresh failed ${res.status}`);
+  return data;
+}
+
+// ── Per-user access token: DB refresh token → in-memory access token ─────────
+// Flow: in-memory cache → DB refresh token → full OAuth code flow (popup once).
+export async function getAccessTokenForUser(userEmail: string): Promise<string> {
+  const emailKey = userEmail.toLowerCase();
+
+  // 1. In-memory cache
+  const cached = _userTokenCache.get(emailKey);
+  if (cached && Date.now() < cached.expiry) return cached.token;
+
+  // 2. Check team_roster for a stored refresh token
+  const { data: row } = await supabase
+    .from('team_roster')
+    .select('gmail_refresh_token')
+    .eq('email', emailKey)
+    .maybeSingle();
+
+  if (row?.gmail_refresh_token) {
+    try {
+      const tokens = await exchangeRefreshToken(row.gmail_refresh_token);
+      cacheUserToken(emailKey, tokens.access_token, tokens.expires_in);
+      return tokens.access_token;
+    } catch {
+      // Refresh token revoked — fall through to full OAuth flow
+      await supabase.from('team_roster').update({ gmail_refresh_token: null }).eq('email', emailKey);
+    }
+  }
+
+  // 3. Full OAuth code flow — shows consent popup once, then stores refresh token
+  await loadScript('https://accounts.google.com/gsi/client');
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+  if (!clientId) throw new Error('VITE_GOOGLE_CLIENT_ID is not configured.');
+
+  const authCode = await new Promise<string>((resolve, reject) => {
+    const client = window.google.accounts.oauth2.initCodeClient({
+      client_id: clientId,
+      scope: SCOPE_SEND,
+      ux_mode: 'popup',
+      login_hint: userEmail,
+      access_type: 'offline',
+      prompt: 'consent',
+      callback: (resp: any) => {
+        if (resp.error) { reject(new Error(resp.error_description ?? resp.error)); return; }
+        resolve(resp.code as string);
+      },
+    });
+    client.requestCode();
+  });
+
+  const tokens = await exchangeCodeForTokens(authCode);
+
+  // Persist refresh token so future sessions skip the popup
+  if (tokens.refresh_token) {
+    await supabase.from('team_roster').update({ gmail_refresh_token: tokens.refresh_token }).eq('email', emailKey);
+  }
+
+  cacheUserToken(emailKey, tokens.access_token, tokens.expires_in);
+  return tokens.access_token;
+}
+
+// ── Legacy shared-account token (used by Gmail sync / enquiry reader) ─────────
+// Kept separate so the reading flow (info@/mis@ account) is unaffected.
+let _sharedToken: string | null = null;
+let _sharedTokenExpiry = 0;
+
 async function getAccessToken(silent = false): Promise<string> {
-  if (_cachedToken && Date.now() < _tokenExpiry) return _cachedToken;
+  if (_sharedToken && Date.now() < _sharedTokenExpiry) return _sharedToken;
 
   await loadScript('https://accounts.google.com/gsi/client');
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
@@ -39,13 +149,12 @@ async function getAccessToken(silent = false): Promise<string> {
   return new Promise((resolve, reject) => {
     const client = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
-      scope: SCOPES,
-      login_hint: 'info@himalayaterpene.com',
+      scope: SCOPES_SYNC,
       callback: (resp: any) => {
         if (resp.error) { reject(new Error(resp.error_description ?? resp.error)); return; }
-        _cachedToken = resp.access_token as string;
-        _tokenExpiry = Date.now() + (resp.expires_in ?? 3600) * 1000 - 60_000;
-        resolve(_cachedToken);
+        _sharedToken = resp.access_token as string;
+        _sharedTokenExpiry = Date.now() + (resp.expires_in ?? 3600) * 1000 - 60_000;
+        resolve(_sharedToken);
       },
     });
     client.requestAccessToken({ prompt: silent ? 'none' : '' });
@@ -154,6 +263,25 @@ export interface GmailSendPayload {
 
 export async function sendViaGmail(payload: GmailSendPayload): Promise<void> {
   const accessToken = await getAccessToken();
+  const raw = buildMimeMessage(payload);
+
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message ?? `Gmail API error ${res.status}`);
+  }
+}
+
+// Per-user send: uses the sender's own OAuth token stored in team_roster.
+// On first use shows a one-time Google consent popup; all subsequent sends are silent.
+export async function sendViaGmailAsUser(payload: GmailSendPayload, senderEmail: string): Promise<void> {
+  if (!senderEmail) throw new Error('Sender email is required to send email.');
+  const accessToken = await getAccessTokenForUser(senderEmail);
   const raw = buildMimeMessage(payload);
 
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {

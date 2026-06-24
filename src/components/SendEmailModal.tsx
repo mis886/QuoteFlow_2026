@@ -5,7 +5,8 @@ import { Button } from './ui';
 import { formatINR } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { generatePIPDF } from '../lib/pdfGenerator';
-import { sendViaGmail } from '../lib/gmail';
+import { sendViaGmailAsUser } from '../lib/gmail';
+import { useAppStore } from '../store';
 
 const DEFAULT_CCS = ['shishir@himalayaterpene.com', 'anil@himalayaterpene.com'];
 
@@ -42,6 +43,8 @@ const OAUTH_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
 // ── component ─────────────────────────────────────────────────────────────────
 export function SendEmailModal(props: Props) {
   const { customer, siteId, onClose, onSent } = props;
+  const { activeDoer, user } = useAppStore();
+  const senderEmail = activeDoer?.email ?? user?.email ?? '';
 
   const siteContacts = getSiteContacts(customer, siteId);
   const primaryContact = getPrimaryContact(customer, siteId);
@@ -136,7 +139,7 @@ export function SendEmailModal(props: Props) {
       const pdfBase64 = dataUri.split(',')[1];
       const attachments = [{ base64: pdfBase64, fileName: pdfName, mimeType: 'application/pdf' }];
 
-      await sendViaGmail({ to: to.trim(), cc: ccString, subject, body, attachments, poLink: poSubmitLink || undefined });
+      await sendViaGmailAsUser({ to: to.trim(), cc: ccString, subject, body, attachments, poLink: poSubmitLink || undefined }, senderEmail);
 
       setStatus('sent');
       setTimeout(() => { onSent?.(); onClose(); }, 1500);
