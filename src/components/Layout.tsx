@@ -13,12 +13,15 @@ export function Layout() {
   const { loading, attachmentModal, closeAttachmentModal, data, user, activeDoer } = useAppStore();
   const { collapsed, setCollapsed } = useSidebarCollapse();
 
-  // Doer identity prompt: active roster rows registered to the logged-in email.
-  // Shown only when this login is on the roster and no doer is chosen yet.
+  // Doer identity prompt: for company logins show the full active roster so any
+  // staff member can pick themselves. For external/shared logins, scope to that email.
   const email = user?.email?.toLowerCase();
-  const candidates = email
-    ? data.roster.filter(m => m.active && m.email.toLowerCase() === email)
-    : [];
+  const isCompanyUser = email?.endsWith('@himalayaterpene.com') ?? false;
+  const candidates = isCompanyUser
+    ? data.roster.filter(m => m.active)
+    : email
+      ? data.roster.filter(m => m.active && m.email.toLowerCase() === email)
+      : [];
   const needsDoer = !loading && !activeDoer && candidates.length > 0;
 
   return (
