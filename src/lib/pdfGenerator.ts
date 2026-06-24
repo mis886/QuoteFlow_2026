@@ -74,7 +74,7 @@ export function generateQuotePDF(
   doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, y, { align: 'center' }); y += 5;
   doc.setFontSize(7);
   doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, y, { align: 'center' }); y += 4;
-  doc.text('Tel.: 91-22-2405 6704  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, y, { align: 'center' }); y += 5;
+  doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, y, { align: 'center' }); y += 5;
   doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.4);
   doc.line(mx, y, rx, y); y += 2;
 
@@ -425,7 +425,7 @@ export function generatePIPDF(
     let ay = 22;
     addrLns.forEach(l => { doc.text(l, pw / 2, ay, { align: 'center' }); ay += 4; });
     // Line 4 — Contact
-    doc.text('Tel.: 91-22-2405 6704  |  E-Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, ay + 2, { align: 'center' });
+    doc.text('Tel.: 91-22-35397800/01  |  E-Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, ay + 2, { align: 'center' });
     y = headerH;
   }
 
