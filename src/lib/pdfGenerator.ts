@@ -179,7 +179,8 @@ export function generateQuotePDF(
       ? String((i as any).total_qty)
       : (i.qty && packingNum ? String(i.qty * packingNum) : '');
     const packingType = i.packingType || (i as any).packing_type || '';
-    const perUnit = i.priceBasis?.trim() || i.uom || 'Each';
+    const _pb = i.priceBasis?.trim();
+    const perUnit = !_pb ? 'kg' : _pb.startsWith('Per ') ? _pb.slice(4) : _pb;
     return [idx + 1, productName, hsnCode, noOfBarrels, packing, totalQty, packingType, rateCell, perUnit];
   });
 

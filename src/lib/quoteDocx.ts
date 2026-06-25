@@ -143,7 +143,8 @@ export async function downloadQuoteDOCX(
       ? ((i as any).rateText?.trim() || 'Regret')
       : fmtRate(i.unitPrice, sym);
     const isRegret = (i as any).rateOverride;
-    const perUnit = (i as any).priceBasis?.trim() || i.uom || 'Each';
+    const _pb = ((i as any).priceBasis as string | undefined)?.trim();
+    const perUnit = !_pb ? 'kg' : _pb.startsWith('Per ') ? _pb.slice(4) : _pb;
     const productName = (i as any).product_name || i.desc || '';
     const hsnCode = i.hsn || (i as any).hsn_code || '';
     const noOfBarrels = i.qty != null ? String(i.qty) : '';
