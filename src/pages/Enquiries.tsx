@@ -271,9 +271,7 @@ export function Enquiries() {
                             {canDelete && (
                               <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id); }}>Delete</Button>
                             )}
-                            {e.created_by && (
-                              <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">By: {e.created_by}</span>
-                            )}
+                            <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{e.created_by || '−'}</span>
                           </div>
                         </td>
                       </tr>
