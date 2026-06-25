@@ -108,6 +108,7 @@ export function NewOrder() {
   const [sigMsg, setSigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [adjustments, setAdjustments] = useState<OrderAdjustment[]>([]);
+  const [insurance, setInsurance] = useState(0);
   const [orderId, setOrderId] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -176,6 +177,7 @@ export function NewOrder() {
         setCustName(o.cust); setAuthName(o.authorizedPerson?.name || '');
         setAuthDesignation(o.authorizedPerson?.designation || ''); setAuthPhone(o.authorizedPerson?.phone || '');
         setOrderStatus(o.status as OrderStatus); setCustomTerms(parseQuoteTerms(o.terms)); setItems(o.items);
+        setInsurance(o.insurance ?? 0);
         if (Array.isArray(o.adjustments)) setAdjustments(o.adjustments);
         if (o.unitId) setUnitId(o.unitId);
         if (o.bankAccountId) setBankAccountId(o.bankAccountId);
@@ -227,6 +229,7 @@ export function NewOrder() {
         setCurr(q.curr || 'INR');
         setCustomTerms(parseQuoteTerms(q.terms));
         setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
+        setInsurance(q.insurance ?? 0);
       }
     } else {
       hydratedKey.current = key;
@@ -314,14 +317,16 @@ export function NewOrder() {
   const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 }))); };
 
   const subTotal = items.reduce((s, i) => s + i.total, 0);
-  const insurance = curr === 'INR' ? Math.round(subTotal * 0.0015 * 100) / 100 : 0;
-  const itemGst  = curr === 'INR' ? items.reduce((s, i) => s + i.total * i.gst / 100, 0) : 0;
+  const ins = curr === 'INR' ? insurance : 0;
+  // GST base = subtotal + insurance (insurance contributes to taxable amount) — mirrors NewQuote.tsx
+  const scaledItemGst = curr === 'INR' && subTotal > 0
+    ? items.reduce((s, i) => s + i.total * i.gst / 100, 0) * (subTotal + ins) / subTotal
+    : 0;
   const maxGstRate = curr === 'INR' ? maxItemGstRate(items) : 0;
-  const adj = resolveAdjustments(adjustments, subTotal, itemGst, maxGstRate);
+  const adj = resolveAdjustments(adjustments, subTotal, scaledItemGst, maxGstRate);
   const adjLines = adj.lines;
-  const insuranceGst = curr === 'INR' ? Math.round(insurance * (maxGstRate || 18) / 100 * 100) / 100 : 0;
-  const gstTotal = curr === 'INR' ? adj.gstTotal + insuranceGst : 0;
-  const grandTotal = subTotal + insurance + adj.preNet + gstTotal + adj.postNet;
+  const gstTotal = curr === 'INR' ? adj.gstTotal : 0;
+  const grandTotal = Math.round(subTotal + ins + adj.preNet + gstTotal + adj.postNet);
 
   // Adjustment row helpers
   const addAdjustment = (kind: OrderAdjustmentKind, label = '') => {
@@ -369,6 +374,7 @@ export function NewOrder() {
     poNo: poNo.trim(), poDate, dlvDate,
     status: editOrderId ? orderStatus : 'Processing',
     value: grandTotal,
+    insurance: curr === 'INR' ? ins : 0,
     inco: inco === 'OVERRIDE' ? customInco : inco,
     curr,
     items, adjustments,
@@ -906,8 +912,25 @@ export function NewOrder() {
                       </tr>
                       {curr === 'INR' && (
                         <tr className="border-b border-g200 bg-g50/50">
-                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">Insurance (0.15%)</td>
-                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(insurance)}</td>
+                          <td colSpan={9} className="px-3 py-2 text-right">
+                            <span className="text-[11px] text-g500">Insurance</span>
+                            <button
+                              type="button"
+                              onClick={() => setInsurance(Math.round(subTotal * 0.0015 * 100) / 100)}
+                              className="block ml-auto text-[10px] text-blue-600 hover:text-blue-800 underline underline-offset-2 leading-tight"
+                            >Apply 0.15%</button>
+                          </td>
+                          <td className="px-3 py-1 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={insurance === 0 ? '' : insurance}
+                              onChange={e => setInsurance(e.target.value === '' ? 0 : Math.round(parseFloat(e.target.value) * 100) / 100)}
+                              placeholder="0.00"
+                              className="w-full text-right font-mono text-[12px] font-bold text-blk bg-transparent border-b border-g300 focus:border-blue-500 outline-none py-0.5 pr-0"
+                            />
+                          </td>
                           <td></td>
                         </tr>
                       )}
@@ -1272,7 +1295,7 @@ export function NewOrder() {
               <div className="flex justify-end p-4">
                 <div className="w-[300px] text-[12px] space-y-1.5">
                   <div className="flex justify-between text-g500"><span>Sub-Total</span><span className="font-mono">{formatINR(subTotal)}</span></div>
-                  {curr === 'INR' && <div className="flex justify-between text-g500"><span>Insurance (0.15%)</span><span className="font-mono">{formatINR(insurance)}</span></div>}
+                  {curr === 'INR' && insurance > 0 && <div className="flex justify-between text-g500"><span>Insurance</span><span className="font-mono">{formatINR(insurance)}</span></div>}
                   {adjLines.filter(l => l.taxable).map(l => (
                     <div key={l.id} className="flex justify-between text-g500">
                       <span className="truncate pr-2">{l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}</span>

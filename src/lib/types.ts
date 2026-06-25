@@ -164,6 +164,7 @@ export interface Order {
   dlvDate: string;
   status: OrderStatus;
   value: number;
+  insurance?: number;      // INR only; user-applied 0.15% charge on subtotal
   inco?: string;
   curr?: string;
   items: OrderItem[];

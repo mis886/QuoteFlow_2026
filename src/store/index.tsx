@@ -357,6 +357,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('cust' in o) obj.cust = o.cust;
     if ('status' in o) obj.status = o.status;
     if ('value' in o) obj.value = o.value;
+    if ('insurance' in o) obj.insurance = o.insurance ?? null;
     if ('items' in o) obj.items = o.items;
     if ('inco' in o) obj.inco = o.inco;
     if ('curr' in o) obj.curr = o.curr;
