@@ -6,6 +6,17 @@ import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
 import { calculateAgeHours } from '../lib/utils';
 import { User } from '@supabase/supabase-js';
 
+// Static email → identity mapping; eliminates the manual "Who's working?" popup.
+const EMAIL_TO_DOER: Record<string, { display_name: string; role: DoerRole }> = {
+  'accounts@himalayaterpene.com': { display_name: 'Account Coordinator', role: 'Rate Entry' },
+  'mum@himalayaterpene.com':      { display_name: 'Mumbai Office',         role: 'Rate Entry' },
+  'sales@himalayaterpene.com':    { display_name: 'Sales Coordinator',     role: 'Rate Entry' },
+  'anil@himalayaterpene.com':     { display_name: 'Anil Agrawal',          role: 'Negotiation' },
+  'shishir@himalayaterpene.com':  { display_name: 'Shishir Agrawal',       role: 'Negotiation' },
+  'mis@himalayaterpene.com':      { display_name: 'MIS Coordinator',       role: 'Technical' },
+  'pc@himalayaterpene.com':       { display_name: 'PC',                    role: 'Admin' },
+};
+
 export interface GlobalDateRange {
   startDate: string;
   endDate: string;
@@ -160,6 +171,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Auto-resolve the active doer from the authenticated email so no manual
+  // "Who's working?" selection is needed after login.
+  useEffect(() => {
+    const email = user?.email?.toLowerCase() ?? null;
+    if (email) {
+      const mapped = EMAIL_TO_DOER[email];
+      const doer = mapped ? { email, display_name: mapped.display_name, role: mapped.role } : null;
+      setActiveDoerState(doer);
+      try {
+        if (doer) sessionStorage.setItem('active_doer', JSON.stringify(doer));
+        else sessionStorage.removeItem('active_doer');
+      } catch {}
+    } else {
+      setActiveDoerState(null);
+      try { sessionStorage.removeItem('active_doer'); } catch {}
+    }
+  }, [user]);
 
   // Persist global date range to localStorage — survives SPA navigation, resets on hard page reload
   useEffect(() => {

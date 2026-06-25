@@ -350,9 +350,11 @@ export type DoerRole =
   | 'SC_1'         // runs follow-ups per the TAT pipeline after quote sent
   | 'Negotiation'  // handles cards in the Negotiation lane
   | 'PI Sender'    // Accounts; issues the Proforma Invoice (scoring deferred)
+  | 'Technical'    // MIS / system administration
+  | 'Admin'        // full-access administrator
   | 'Other';
 
-export const DOER_ROLES: DoerRole[] = ['DEO', 'Rate Entry', 'SC_1', 'Negotiation', 'PI Sender', 'Other'];
+export const DOER_ROLES: DoerRole[] = ['DEO', 'Rate Entry', 'SC_1', 'Negotiation', 'PI Sender', 'Technical', 'Admin', 'Other'];
 
 // Default role that owns each board lane. Editable per lane in Settings →
 // Pipeline TAT (persisted as AppSettings.pipeline_roles). Used to show each

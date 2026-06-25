@@ -20,7 +20,7 @@ const PATH_TITLES: Record<string, string> = {
 
 export function Topbar() {
   const location = useLocation();
-  const { globalSearchQuery, setGlobalSearchQuery, syncGmailEnquiries, data, activeDoer, clearActiveDoer } = useAppStore();
+  const { globalSearchQuery, setGlobalSearchQuery, syncGmailEnquiries, data, activeDoer } = useAppStore();
   const [isSyncing, setIsSyncing] = useState(false);
 
   const basePath = '/' + location.pathname.split('/')[1];
@@ -73,18 +73,15 @@ export function Topbar() {
         </button>
       )}
 
-      {/* Active doer — who is being credited; click to switch on shared terminals */}
+      {/* Active doer — identity resolved automatically from login email */}
       {activeDoer && (
-        <button
-          type="button"
-          onClick={clearActiveDoer}
-          title={`Working as ${activeDoer.display_name} (${activeDoer.role}) — click to switch doer`}
-          className="h-[30px] flex items-center gap-1.5 px-2.5 rounded-[5px] border border-g200 bg-g100 text-[11px] font-medium text-g600 hover:bg-g200 transition-colors"
+        <div
+          title={`Signed in as ${activeDoer.display_name} (${activeDoer.role})`}
+          className="h-[30px] flex items-center gap-1.5 px-2.5 rounded-[5px] border border-g200 bg-g100 text-[11px] font-medium text-g600"
         >
           <UserCircle2 size={13} className="text-red-mrt shrink-0" />
           <span className="hidden md:inline max-w-[120px] truncate">{activeDoer.display_name}</span>
-          <span className="text-g400 hidden lg:inline">· switch</span>
-        </button>
+        </div>
       )}
 
       <WorkspaceSwitcher />

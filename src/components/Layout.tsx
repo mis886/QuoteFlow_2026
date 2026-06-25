@@ -6,23 +6,11 @@ import { AttachmentModal } from './AttachmentModal';
 import { AppTour } from './AppTour';
 import { MilestoneConfetti } from './MilestoneConfetti';
 import { useAppStore } from '../store';
-import { DoerIdentityGate } from './DoerIdentityGate';
 import { Loader2 } from 'lucide-react';
 
 export function Layout() {
-  const { loading, attachmentModal, closeAttachmentModal, data, user, activeDoer } = useAppStore();
+  const { loading, attachmentModal, closeAttachmentModal } = useAppStore();
   const { collapsed, setCollapsed } = useSidebarCollapse();
-
-  // Doer identity prompt: for company logins show the full active roster so any
-  // staff member can pick themselves. For external/shared logins, scope to that email.
-  const email = user?.email?.toLowerCase();
-  const isCompanyUser = email?.endsWith('@himalayaterpene.com') ?? false;
-  const candidates = isCompanyUser
-    ? data.roster.filter(m => m.active)
-    : email
-      ? data.roster.filter(m => m.active && m.email.toLowerCase() === email)
-      : [];
-  const needsDoer = !loading && !activeDoer && candidates.length > 0;
 
   return (
     <div className="flex w-full h-screen overflow-hidden">
@@ -51,7 +39,6 @@ export function Layout() {
       />
       <AppTour />
       <MilestoneConfetti />
-      {needsDoer && <DoerIdentityGate candidates={candidates} />}
     </div>
   );
 }
