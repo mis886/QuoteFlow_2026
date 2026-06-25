@@ -304,6 +304,7 @@ export function NewEnquiry() {
         status: editId ? (data.enquiries.find(x => x.id === editId)?.status || 'New') : 'New',
         assigned,
         doer: editId ? (data.enquiries.find(x => x.id === editId)?.doer) : stampName(),
+        created_by: editId ? (data.enquiries.find(x => x.id === editId)?.created_by) : stampName(),
         notes,
         ageH: editId ? (data.enquiries.find(x => x.id === editId)?.ageH || 0) : 0,
         qRef: editId ? (data.enquiries.find(x => x.id === editId)?.qRef || null) : null,

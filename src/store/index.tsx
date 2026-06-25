@@ -226,6 +226,7 @@ const mapEnquiryToDB = (e: any) => {
   if ('status' in e) obj.status = e.status;
   if ('assigned' in e) obj.assigned = e.assigned;
   if ('doer' in e) obj.doer = e.doer;
+  if ('created_by' in e) obj.created_by = e.created_by ?? null;
   if ('notes' in e) obj.notes = e.notes;
   if ('items' in e) obj.items = e.items;
   if ('attachments' in e) obj.attachments = e.attachments;

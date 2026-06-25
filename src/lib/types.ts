@@ -106,6 +106,7 @@ export interface Enquiry {
   status: EnqStatus;
   assigned: string;
   doer?: string;
+  created_by?: string;     // display name of the user who created the enquiry
   notes: string;
   ageH: number;
   qRef: string | null;
