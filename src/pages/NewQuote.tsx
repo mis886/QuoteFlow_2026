@@ -184,7 +184,7 @@ export function NewQuote() {
   const [dupQuoteAlert, setDupQuoteAlert] = useState<{ existingId: string } | null>(null);
 
   const [date, setDate] = useState(localDateStr(new Date()));
-  const [validity, setValidity] = useState(localDateStr(new Date(Date.now() + 30 * 86400000)));
+  const [validity, setValidity] = useState(localDateStr(new Date(Date.now() + 86400000)));
   const [custName, setCustName] = useState('');
   const [siteId, setSiteId] = useState('');
   const [contactId, setContactId] = useState('');
@@ -289,7 +289,7 @@ export function NewQuote() {
       const q = data.quotes.find(x => x.id === editId);
       if (q) {
         if (q.enqRef) setLinkedEnqRef(q.enqRef);
-        setQuoteId(q.id); setDate(q.date); setValidity(q.validity || '');
+        setQuoteId(q.id); setDate(q.date); setValidity(q.validity || localDateStr(new Date(new Date(q.date + 'T00:00:00').getTime() + 86400000)));
         setCustName(q.cust);
         const savedInco = q.inco || '';
         const _ni = normalizeInco(savedInco);
@@ -544,7 +544,7 @@ export function NewQuote() {
   const gstTotal = curr === 'INR' && subTotal > 0
     ? items.reduce((s, i) => s + i.total * i.gst / 100, 0) * (subTotal + ins) / subTotal
     : 0;
-  const grandTotal = curr === 'INR' ? subTotal + ins + gstTotal : subTotal;
+  const grandTotal = curr === 'INR' ? Math.round(subTotal + ins + gstTotal) : subTotal;
   const sym = curr === 'USD' ? '$' : '₹';
   const fmtAmt = (v: number) => curr === 'USD'
     ? '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
