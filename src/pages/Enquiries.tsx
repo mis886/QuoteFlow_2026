@@ -249,23 +249,19 @@ export function Enquiries() {
                         <td className="px-[13px] py-[10px] align-top">
                           {e.items.length === 0
                             ? <span className="text-g400 text-[11px]">—</span>
-                            : <div className="flex flex-col gap-0.5">
-                                {e.items.map((i, idx) => (
-                                  <div key={idx} className="text-[11px] text-blk leading-tight">{i.desc || '—'}</div>
-                                ))}
-                              </div>
+                            : e.items.map((i, idx) => (
+                                <div key={idx} className="text-[11px] text-blk" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>{i.desc || '—'}</div>
+                              ))
                           }
                         </td>
-                        <td className="px-[13px] py-[10px] align-top text-right">
+                        <td className="px-[13px] py-[10px] align-top">
                           {e.items.length === 0
                             ? <span className="text-g400 text-[11px]">—</span>
-                            : <div className="flex flex-col gap-0.5">
-                                {e.items.map((i, idx) => {
-                                  const packNum = parseFloat(i.packing || '');
-                                  const totalQty = packNum > 0 ? i.qty * packNum : i.qty > 0 ? i.qty : null;
-                                  return <div key={idx} className="font-mono text-[11px] text-blk leading-tight">{totalQty ?? '—'}</div>;
-                                })}
-                              </div>
+                            : e.items.map((i, idx) => {
+                                const packNum = parseFloat(i.packing || '');
+                                const totalQty = packNum > 0 ? i.qty * packNum : i.qty > 0 ? i.qty : null;
+                                return <div key={idx} className="font-mono text-[11px] text-blk text-right" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>{totalQty ?? '—'}</div>;
+                              })
                           }
                         </td>
                         <td className="px-[13px] py-[10px] align-middle"><Badge status={e.urg} /></td>
