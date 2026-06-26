@@ -26,9 +26,9 @@ export function Blueprint() {
   const slaRate = slaTotal ? Math.round((slaMet / slaTotal) * 100) : 0;
 
   const modules = [
-    { id: 'M01', name: 'Enquiry Register', icon: '📥', status: 'Live', progress: 100, desc: 'Multi-line-item enquiry logging with auto-numbering, SLA timer, urgency levels, source tracking, and inline item expansion.', entities: 'ENQUIRIES, LINE_ITEMS', records: totalEnq + ' enquiries · ' + totalLI + ' line items', color: 'text-red-mrt border-red-mrt', bg: 'bg-red-mrt' },
-    { id: 'M02', name: 'Quotation Engine', icon: '📄', status: 'Live', progress: 100, desc: 'One-click ENQ→Quote conversion. Items auto-populate. Add pricing + HSN + GST. PDF generation. Gmail integration.', entities: 'QUOTES, QUOTE_ITEMS', records: totalQt + ' quotes · ' + formatINR(Math.round(pipeline)) + ' pipeline', color: 'text-sQ border-sQ', bg: 'bg-sQ' },
-    { id: 'M03', name: 'Order Management', icon: '📦', status: 'Live', progress: 100, desc: 'Convert Won quotes to orders. Amend MOC/qty/rate per PO. PO number tracking. Pro-forma invoice. Delivery scheduling.', entities: 'ORDERS, ORDER_ITEMS', records: totalOrd + ' orders', color: 'text-sW border-sW', bg: 'bg-sW' },
+    { id: 'M01', name: 'Enquiry Register', icon: '📥', status: 'Live', progress: 100, desc: 'Multi-line-item enquiry logging with auto-numbering, SLA timer, urgency levels, source tracking, creator email tracking, and inline item expansion. Line items: Product Name, No of Barrels, Packing, Total QTY, Packing Type.', entities: 'ENQUIRIES, LINE_ITEMS', records: totalEnq + ' enquiries · ' + totalLI + ' line items', color: 'text-red-mrt border-red-mrt', bg: 'bg-red-mrt' },
+    { id: 'M02', name: 'Quotation Engine', icon: '📄', status: 'Live', progress: 100, desc: 'One-click ENQ→Quote conversion. Items auto-populate. Billing Name product search with HSN auto-fill. Insurance (0.15%), GST, Grand Total rounding. PDF/DOCX with hardcoded company header. Gmail integration with dynamic CC and signatory.', entities: 'QUOTES, QUOTE_ITEMS', records: totalQt + ' quotes · ' + formatINR(Math.round(pipeline)) + ' pipeline', color: 'text-sQ border-sQ', bg: 'bg-sQ' },
+    { id: 'M03', name: 'Order Management', icon: '📦', status: 'Live', progress: 100, desc: 'Convert Won quotes to orders. Insurance and GST calculations match quotation. Order Value rounded. PO number tracking. Pro-forma invoice. Delivery scheduling. Taxes & Charges section in progress.', entities: 'ORDERS, ORDER_ITEMS', records: totalOrd + ' orders', color: 'text-sW border-sW', bg: 'bg-sW' },
     { id: 'M04', name: 'Customer Master', icon: '👤', status: 'Live', progress: 100, desc: 'Single source of truth — GSTIN, Incoterms, currency, payment terms, segment. Auto-populates all downstream forms.', entities: 'CUSTOMERS', records: totalCust + ' customers', color: 'text-sN border-sN', bg: 'bg-sN' },
     { id: 'M05', name: 'Analytics Engine', icon: '📊', status: 'Live', progress: 100, desc: 'E2Q time distribution, SLA compliance heatmap, conversion funnel, source analysis, pipeline by customer. All computed live.', entities: 'Computed from all modules', records: '6 KPI widgets · 4 chart panels', color: 'text-sR border-sR', bg: 'bg-sR' },
     { id: 'M06', name: 'PDF Generator', icon: '🖨️', status: 'Live', progress: 100, desc: 'Branded Himalaya Terpenesletterhead PDF. Auto-populated from quote data. High resolution vector shapes.', entities: 'QUOTE_PDF_TEMPLATES', records: 'Letterhead Integrated', color: 'text-[#EA580C] border-[#EA580C]', bg: 'bg-[#EA580C]' },
@@ -39,23 +39,23 @@ export function Blueprint() {
   const requirementsByModule = [
     { module: 'App Shell', status: '✅ Live', features: ['Dark Sidebar with Nav Groups', 'White logo area', 'Red left-border active state', 'Nav badges (Counts)', 'Topbar breadcrumb', 'Global Search Engine', 'User avatar & Logout', 'Slide-in Detail Panels'] },
     { module: 'Dashboard', status: '✅ Live', features: ['5 Live KPI Cards', 'Needs Attention (Age ≥4h)', 'Recent Enquiries Panel', 'Quote Pipeline & Active Orders', 'KPI Click-to-Navigate'] },
-    { module: 'Enquiries', status: '✅ Live', features: ['Status Tab Filter Bar', 'Urgency/Assigned Dropdowns', 'Age Pulse Animation', 'Source Icons (✉📞💬)', 'Activity Timeline', 'ENQ→Quote Conversion'] },
-    { module: 'Quotations', status: '✅ Live', features: ['Line Items Total Box', 'Live GST/Grand Total math', 'PDF Generation (jsPDF)', 'Gmail mailto: integration', 'Draft/Sent/Won states'] },
-    { module: 'Orders', status: '✅ Live', features: ['Won Quote→Order Banner', 'Amendable MOC/Qty/Rates', 'PO Number/Date tracking', 'Pro-forma Invoice Gen'] },
-    { module: 'Customers', status: '✅ Live', features: ['Segment Dropdown Filters', 'Customer Code Auto-gen', 'Sites JSONB support', 'New ENQ shortcut button'] },
+    { module: 'Enquiries', status: '✅ Live', features: ['Status Tab Filter Bar', 'Urgency/Assigned Dropdowns', 'Age Pulse Animation', 'Source Icons (✉📞💬)', 'Activity Timeline', 'ENQ→Quote Conversion', 'Creator Email Tracking (created_by saved and shown on list)', 'Role-based Delete (mis@ and shishir@ only, New status only)', 'Searchable Product + Packing Type fields'] },
+    { module: 'Quotations', status: '✅ Live', features: ['Line Items Total Box', 'Live GST/Grand Total math', 'PDF Generation (jsPDF)', 'Gmail mailto: integration', 'Draft/Sent/Won states', 'Billing Name product dropdown with HSN auto-fill', 'Insurance 0.15% row', 'Grand Total rounding', 'HTP- prefix quote refs', 'INR/USD currency only', 'Dynamic CC (shishir, anil, customer email)', 'Hardcoded company header in PDF/DOCX', 'Dynamic signatory in email'] },
+    { module: 'Orders', status: '✅ Live', features: ['Won Quote→Order Banner', 'Amendable MOC/Qty/Rates', 'PO Number/Date tracking', 'Pro-forma Invoice Gen', 'Insurance + GST matching quotation logic', 'Order Value rounded', '⚠️ Taxes & Charges — Pending'] },
+    { module: 'Customers', status: '✅ Live', features: ['Segment Dropdown Filters', 'Customer Code Auto-gen', 'Sites JSONB support', 'New ENQ shortcut button', 'PAN auto-extracted from GSTIN', '750 customers imported and live'] },
     { module: 'Analytics', status: '✅ Live', features: ['E2Q Horizontal Bar Chart', 'Conversion Funnel SVG', 'Sources Donut Chart', 'SLA Urgency Bar Chart'] },
     { module: 'Search', status: '⚠ Partial', features: ['Topbar global search input', 'Result filtering in views', 'Deeper metadata search'] },
     { module: 'Follow-Ups', status: '✅ Live', features: ['Split-Panel CRM Layout', 'Activity Logging Timeline', 'Follow-up Scheduling logic', 'Supabase Real-time Table'] },
   ];
 
   const schema = [
-    { table: 'ENQUIRIES', cols: ['id', 'recv', 'src', 'cust', 'contact', 'email', 'urg', 'status', 'assigned', 'notes', 'ageH', 'qRef'], pk: 'id', fk: 'cust → CUSTOMERS.name', rows: totalEnq },
-    { table: 'ENQ_LINE_ITEMS', cols: ['enqId', 'seq', 'desc', 'mat', 'qty', 'uom', 'drwg'], pk: 'enqId+seq', fk: 'enqId → ENQUIRIES.id', rows: totalLI },
+    { table: 'ENQUIRIES', cols: ['id', 'recv', 'src', 'cust', 'contact', 'email', 'urg', 'status', 'assigned', 'notes', 'ageH', 'qRef', 'created_by'], pk: 'id', fk: 'cust → CUSTOMERS.name', rows: totalEnq },
+    { table: 'ENQ_LINE_ITEMS', cols: ['enqId', 'seq', 'product', 'noBarrels', 'packing', 'totalQty', 'packingType', 'createdBy'], pk: 'enqId+seq', fk: 'enqId → ENQUIRIES.id', rows: totalLI },
     { table: 'QUOTES', cols: ['id', 'enqRef', 'cust', 'date', 'validity', 'status', 'inco', 'curr', 'pay'], pk: 'id', fk: 'enqRef → ENQUIRIES.id', rows: totalQt },
-    { table: 'QUOTE_ITEMS', cols: ['quoteId', 'seq', 'desc', 'hsn', 'mat', 'qty', 'uom', 'unitPrice', 'gst', 'total'], pk: 'quoteId+seq', fk: 'quoteId → QUOTES.id', rows: data.quotes.reduce((a, q) => a + q.items.length, 0) },
-    { table: 'ORDERS', cols: ['id', 'quoteRef', 'enqRef', 'cust', 'poNo', 'poDate', 'dlvDate', 'status', 'value'], pk: 'id', fk: 'quoteRef → QUOTES.id', rows: totalOrd },
+    { table: 'QUOTE_ITEMS', cols: ['quoteId', 'seq', 'desc', 'hsn', 'mat', 'qty', 'uom', 'unitPrice', 'gst', 'total', 'noBarrels', 'packing', 'totalQty', 'packingType', 'priceBasis'], pk: 'quoteId+seq', fk: 'quoteId → QUOTES.id', rows: data.quotes.reduce((a, q) => a + q.items.length, 0) },
+    { table: 'ORDERS', cols: ['id', 'quoteRef', 'enqRef', 'cust', 'poNo', 'poDate', 'dlvDate', 'status', 'value', 'insurance'], pk: 'id', fk: 'quoteRef → QUOTES.id', rows: totalOrd },
     { table: 'ORDER_ITEMS', cols: ['orderId', 'seq', 'desc', 'mat', 'qty', 'uom', 'agreedRate', 'gst', 'total', 'remarks'], pk: 'orderId+seq', fk: 'orderId → ORDERS.id', rows: data.orders.reduce((a, o) => a + o.items.length, 0) },
-    { table: 'CUSTOMERS', cols: ['code', 'name', 'seg', 'city', 'gstin', 'contact', 'email', 'phone', 'inco', 'curr', 'pay'], pk: 'code', fk: '—', rows: totalCust },
+    { table: 'CUSTOMERS', cols: ['code', 'name', 'seg', 'city', 'gstin', 'pan', 'contact', 'email', 'phone', 'inco', 'curr', 'pay'], pk: 'code', fk: '—', rows: totalCust },
     { table: 'FOLLOWUPS', cols: ['id', 'quote_id', 'owner', 'next_date', 'logs'], pk: 'id', fk: 'quote_id → QUOTES.id', rows: modules.find(m => m.id === 'M08')?.records ? 0 : 0 },
   ];
 
@@ -80,10 +80,8 @@ export function Blueprint() {
   ];
 
   const timeline = [
-    { date: 'May 06 - May 08', event: 'Follow-Up Module Implementation', desc: 'Build split-panel CRM view and activity logging.' },
-    { date: 'May 10 - May 12', event: 'Global Search Refinement', desc: 'Sync top-bar search with active view contexts.' },
-    { date: 'May 14 - May 15', event: 'SLA Alert System', desc: 'Implement automated email/whatsapp breach alerts.' },
-    { date: 'May 18 - May 20', event: 'Final UAT & Polish', desc: 'Design consistency check and production deployment.' },
+    { date: '✅ May 20, 2026', event: 'V3 Launched', desc: 'All core modules live. Supabase-backed, authenticated, deployed to Cloudflare.' },
+    { date: 'June 2026 — In Progress', event: 'Phase 7', desc: 'Packing Type persistence (custom types saved to DB, appear in future dropdowns). Order Module: Taxes & Charges section completion. System Blueprint auto-sync.' },
   ];
 
   const KpiCard = ({ title, value, delta, up }: { title: string, value: string | React.ReactNode, delta: string, up?: boolean }) => (
@@ -126,7 +124,7 @@ export function Blueprint() {
         <div className="bg-white border border-g200">
           <div className="p-[11px_18px] border-b border-g200 flex justify-between items-center">
             <span className="font-mono text-[9px] font-bold tracking-[2.5px] uppercase text-g500">📅 Projected Implementation Timeline</span>
-            <span className="font-mono text-[10px] text-g400 font-bold">V3 Final Launch: May 20, 2026</span>
+            <span className="font-mono text-[10px] text-sW font-bold">V3 Launched ✅ May 20, 2026</span>
           </div>
           <div className="p-4">
             <div className="space-y-4">
