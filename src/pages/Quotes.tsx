@@ -4,7 +4,7 @@ import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus, Quote } from '../lib/types';
-import { formatINR, fmtIST, isInDateRange, siteLabel, maxItemGstRate } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, siteLabel } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { supabase } from '../lib/supabase';
 
@@ -212,11 +212,10 @@ export function Quotes() {
               ) : (
                 filteredQuotes.map(q => {
                   const subTotal = q.items.reduce((s, i) => s + i.total, 0);
-                  const insurance = Math.round(subTotal * 0.0015 * 100) / 100;
-                  const itemGst = q.items.reduce((s, i) => s + i.total * i.gst / 100, 0);
-                  const maxGst = maxItemGstRate(q.items);
-                  const insuranceGst = Math.round(insurance * (maxGst || 18) / 100 * 100) / 100;
-                  const grandTotal = subTotal + insurance + itemGst + insuranceGst;
+                  const ins = (q as any).insurance ?? 0;
+                  const rawItemGst = q.items.reduce((s, i) => s + i.total * i.gst / 100, 0);
+                  const scaledItemGst = subTotal > 0 ? rawItemGst * (subTotal + ins) / subTotal : rawItemGst;
+                  const grandTotal = Math.round(subTotal + ins + scaledItemGst);
                   const isExpanded = expandedRow === q.id;
 
                   return (
@@ -352,8 +351,8 @@ export function Quotes() {
                               </table>
                               <div className="flex justify-end pt-2 border-t border-g200 gap-5 items-center">
                                 <span className="text-[12px] text-g600">Sub-Total: <strong className="text-blk font-bold font-mono">{formatINR(subTotal)}</strong></span>
-                                <span className="text-[12px] text-g600">GST: <strong className="text-blk font-bold font-mono">{formatINR(itemGst + insuranceGst)}</strong></span>
-                                <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(Math.round(grandTotal))}</span>
+                                <span className="text-[12px] text-g600">GST: <strong className="text-blk font-bold font-mono">{formatINR(Math.round(scaledItemGst))}</strong></span>
+                                <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(grandTotal)}</span>
                               </div>
                             </div>
                           </td>
