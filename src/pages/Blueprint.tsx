@@ -31,7 +31,7 @@ export function Blueprint() {
     { id: 'M03', name: 'Order Management', icon: '📦', status: 'Live', progress: 100, desc: 'Convert Won quotes to orders. Insurance and GST calculations match quotation. Order Value rounded. PO number tracking. Pro-forma invoice. Delivery scheduling. Taxes & Charges section in progress.', entities: 'ORDERS, ORDER_ITEMS', records: totalOrd + ' orders', color: 'text-sW border-sW', bg: 'bg-sW' },
     { id: 'M04', name: 'Customer Master', icon: '👤', status: 'Live', progress: 100, desc: 'Single source of truth — GSTIN, Incoterms, currency, payment terms, segment. Auto-populates all downstream forms.', entities: 'CUSTOMERS', records: totalCust + ' customers', color: 'text-sN border-sN', bg: 'bg-sN' },
     { id: 'M05', name: 'Analytics Engine', icon: '📊', status: 'Live', progress: 100, desc: 'E2Q time distribution, SLA compliance heatmap, conversion funnel, source analysis, pipeline by customer. All computed live.', entities: 'Computed from all modules', records: '6 KPI widgets · 4 chart panels', color: 'text-sR border-sR', bg: 'bg-sR' },
-    { id: 'M06', name: 'PDF Generator', icon: '🖨️', status: 'Live', progress: 100, desc: 'Branded Himalaya Terpenesletterhead PDF. Auto-populated from quote data. High resolution vector shapes.', entities: 'QUOTE_PDF_TEMPLATES', records: 'Letterhead Integrated', color: 'text-[#EA580C] border-[#EA580C]', bg: 'bg-[#EA580C]' },
+    { id: 'M06', name: 'PDF Generator', icon: '🖨️', status: 'Live', progress: 100, desc: 'Hardcoded company header (no letterhead image). Auto-populated from quote data. 9-column line items table with dynamic INR/USD rates column. DOCX download also supported.', entities: 'QUOTE_PDF_TEMPLATES', records: 'Hardcoded Header · PDF + DOCX', color: 'text-[#EA580C] border-[#EA580C]', bg: 'bg-[#EA580C]' },
     { id: 'M07', name: 'App Settings', icon: '⚙️', status: 'Live', progress: 100, desc: 'Upload custom PDF header images and manage application configurations directly from settings.', entities: 'LOCAL_STORAGE', records: 'Custom PDF Branding', color: 'text-sW border-sW', bg: 'bg-sW' },
     { id: 'M08', name: 'Follow-Up CRM', icon: '📞', status: 'Live', progress: 100, desc: 'Split-panel Command Centre for quote follow-ups. Log activity, schedule next steps, and track overdue responses.', entities: 'FOLLOWUPS', records: 'Real-time logging active', color: 'text-sW border-sW', bg: 'bg-sW' },
   ];
@@ -371,7 +371,7 @@ export function Blueprint() {
               <div><strong className="text-blk">Supabase</strong> — PostgreSQL DB</div>
               <div><strong className="text-blk">Supabase Storage</strong> — File S3</div>
               <div><strong className="text-blk">Local Engine</strong> — Browser Cache fallback</div>
-              <div><strong className="text-blk">jsPDF</strong> — Letterhead Generation</div>
+              <div><strong className="text-blk">jsPDF</strong> — PDF &amp; DOCX Generation</div>
             </div>
           </div>
           <div className="bg-white border border-g200 p-[16px_18px]">
