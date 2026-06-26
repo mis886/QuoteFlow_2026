@@ -7,7 +7,8 @@ import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
-import { BILLING_HSN, PACKING_TYPES } from '../lib/products';
+import { BILLING_HSN } from '../lib/products';
+import { usePackingTypes, savePackingTypes } from '../hooks/usePackingTypes';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { downloadPIDOCX } from '../lib/quoteDocx';
 import { uploadToS3 } from '../lib/s3';
@@ -65,11 +66,8 @@ export function NewOrder() {
   const quoteRef = searchParams.get('quoteRef');
   const editOrderId = searchParams.get('orderId');
   const navigate = useNavigate();
-  const { data, addOrder, updateOrder, updateQuote, addCustomer, addSignatory, closeFollowUp, stampName, customPackingTypes, upsertCustomPackingTypes } = useAppStore();
-  const packingTypeOptions = useMemo(() =>
-    [...new Set([...PACKING_TYPES, ...customPackingTypes])].sort((a, b) => a.localeCompare(b)),
-    [customPackingTypes]
-  );
+  const { data, addOrder, updateOrder, updateQuote, addCustomer, addSignatory, closeFollowUp, stampName } = useAppStore();
+  const packingTypeOptions = usePackingTypes();
 
   // Linked quote / enquiry references. Seeded from the URL when converting a
   // quote, and re-hydrated from the saved order when editing — so editing never
@@ -425,7 +423,7 @@ export function NewOrder() {
         await addCustomer({ id: generateId('CUST', data.customers.map(c => c.id)), code: generateId('CUS', data.customers.map(c => c.code)), name: custName, seg: 'General', gstin: '', inco: 'Ex-Works', curr: 'INR', pay: '30 days', sites: [] });
       }
     }
-    upsertCustomPackingTypes(items.map(i => i.packingType || ''));
+    savePackingTypes(items.map(i => i.packingType || ''));
     return orderPayload;
   };
 

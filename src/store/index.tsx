@@ -4,7 +4,6 @@ import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
 import { calculateAgeHours } from '../lib/utils';
-import { PACKING_TYPES } from '../lib/products';
 import { User } from '@supabase/supabase-js';
 
 // Static email → identity mapping; eliminates the manual "Who's working?" popup.
@@ -86,8 +85,6 @@ interface AppContextType {
   refreshData: () => Promise<void>;
   syncGmailEnquiries: () => Promise<void>;
   logout: () => Promise<void>;
-  customPackingTypes: string[];
-  upsertCustomPackingTypes: (types: string[]) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -115,7 +112,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [detailPanel, setDetailPanel] = useState<{ type: 'enquiry' | 'quote' | 'order' | null, id: string | null }>({ type: null, id: null });
   const [attachmentModal, setAttachmentModal] = useState<{ type: 'enquiry' | 'quote' | 'order' | null, id: string | null }>({ type: null, id: null });
-  const [customPackingTypes, setCustomPackingTypes] = useState<string[]>([]);
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [globalDateRange, setGlobalDateRange] = useState<GlobalDateRange | null>(() => {
     const stored = localStorage.getItem('globalDateRange');
@@ -403,7 +399,6 @@ const mapEnquiryToDB = (e: any) => {
         { data: units },
         { data: bankAccountsData },
         { data: rosterData },
-        { data: customPtData }
       ] = await Promise.all([
         supabase.from('enquiries').select('*').order('recv', { ascending: false }),
         supabase.from('quotes').select('*').order('date', { ascending: false }),
@@ -415,7 +410,6 @@ const mapEnquiryToDB = (e: any) => {
         supabase.from('company_units').select('*').order('name'),
         supabase.from('bank_accounts').select('*'),
         supabase.from('team_roster').select('*').order('display_name'),
-        supabase.from('custom_packing_types').select('name').order('name')
       ]);
 
       setData({
@@ -435,7 +429,6 @@ const mapEnquiryToDB = (e: any) => {
         bankAccounts: bankAccountsData || [],
         roster: (rosterData as TeamMember[]) || [],
       });
-      setCustomPackingTypes((customPtData || []).map((r: any) => r.name as string));
       await linkPendingPOSubmissions();
     } catch (error) {
       console.error('Error fetching data from Supabase:', error);
@@ -1156,21 +1149,6 @@ const mapEnquiryToDB = (e: any) => {
     else { console.error('Error deleting bank account:', error); throw error; }
   };
 
-  const upsertCustomPackingTypes = async (types: string[]) => {
-    const toAdd = [...new Set(
-      types.map(t => t.trim()).filter(t => t && !PACKING_TYPES.includes(t))
-    )];
-    if (toAdd.length === 0) return;
-    const { error } = await supabase
-      .from('custom_packing_types')
-      .upsert(toAdd.map(name => ({ name })), { onConflict: 'name', ignoreDuplicates: true });
-    if (!error) {
-      setCustomPackingTypes(prev =>
-        [...new Set([...prev, ...toAdd])].sort((a, b) => a.localeCompare(b))
-      );
-    }
-  };
-
   const linkPendingPOSubmissions = async () => {
     const { data: pending } = await supabase
       .from('po_submissions').select('*').eq('linked', false);
@@ -1332,8 +1310,6 @@ const mapEnquiryToDB = (e: any) => {
         refreshData,
         syncGmailEnquiries,
         logout,
-        customPackingTypes,
-        upsertCustomPackingTypes,
       }}
     >
       {children}

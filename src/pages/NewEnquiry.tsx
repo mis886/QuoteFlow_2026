@@ -7,7 +7,8 @@ import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
-import { BILLING_HSN, PACKING_TYPES } from '../lib/products';
+import { BILLING_HSN } from '../lib/products';
+import { usePackingTypes, savePackingTypes } from '../hooks/usePackingTypes';
 
 import { uploadToS3 } from '../lib/s3';
 import { parseRfqPdf } from '../lib/rfqParser';
@@ -17,11 +18,8 @@ export function NewEnquiry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
-  const { data, user, addEnquiry, updateEnquiry, addCustomer, stampName, refreshData, customPackingTypes, upsertCustomPackingTypes } = useAppStore();
-  const packingTypeOptions = useMemo(() =>
-    [...new Set([...PACKING_TYPES, ...customPackingTypes])].sort((a, b) => a.localeCompare(b)),
-    [customPackingTypes]
-  );
+  const { data, user, addEnquiry, updateEnquiry, addCustomer, stampName, refreshData } = useAppStore();
+  const packingTypeOptions = usePackingTypes();
   const [isSaving, setIsSaving] = useState(false);
 
   // ── Unsaved-changes guard ──
@@ -322,8 +320,8 @@ export function NewEnquiry() {
         await addEnquiry(enqData);
       }
 
-      // Persist any custom packing types that aren't in the built-in list
-      upsertCustomPackingTypes(items.map(i => i.packingType || ''));
+      // Persist any new packing types to the shared packing_types table
+      savePackingTypes(items.map(i => i.packingType || ''));
 
       // Auto-create customer if it doesn't exist
       if (!data.customers.find(c => c.name.toLowerCase() === custName.toLowerCase())) {

@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, localDateStr, fmtDate } from '../lib/utils';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus } from '../lib/types';
-import { BILLING_HSN, PACKING_TYPES } from '../lib/products';
+import { BILLING_HSN } from '../lib/products';
+import { usePackingTypes, savePackingTypes } from '../hooks/usePackingTypes';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
 import { Button } from '../components/ui';
@@ -153,11 +154,8 @@ export function NewQuote() {
   const editId = searchParams.get('id');
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
-  const { data, addQuote, updateQuote, updateEnquiry, addCustomer, addSignatory, stampName, customPackingTypes, upsertCustomPackingTypes } = useAppStore();
-  const packingTypeOptions = useMemo(() =>
-    [...new Set([...PACKING_TYPES, ...customPackingTypes])].sort((a, b) => a.localeCompare(b)),
-    [customPackingTypes]
-  );
+  const { data, addQuote, updateQuote, updateEnquiry, addCustomer, addSignatory, stampName } = useAppStore();
+  const packingTypeOptions = usePackingTypes();
 
   // Linked enquiry reference. Seeded from the URL when converting an enquiry,
   // and re-hydrated from the saved quote when editing — so editing never wipes
@@ -617,7 +615,7 @@ export function NewQuote() {
     if (!data.customers.find(c => c.name.toLowerCase() === custName.toLowerCase())) {
       await addCustomer({ id: generateId('CUST', data.customers.map(c => c.id)), code: generateId('CUS', data.customers.map(c => c.code)), name: custName, seg: 'General', gstin: '', inco: 'Ex-Works', curr: 'INR', pay: '30 days', sites: [] });
     }
-    upsertCustomPackingTypes(items.map(i => i.packingType || ''));
+    savePackingTypes(items.map(i => i.packingType || ''));
     return qData;
   };
 
