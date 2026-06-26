@@ -85,7 +85,7 @@ export function NewOrder() {
   const [poFile, setPoFile] = useState<File | null>(null);
   const [existingPoFileName, setExistingPoFileName] = useState<string | null>(null);
   const [poDate, setPoDate] = useState(localDateStr(new Date()));
-  const [dlvDate, setDlvDate] = useState(localDateStr(new Date(Date.now() + 30 * 86400000)));
+  const [dlvDate, setDlvDate] = useState(localDateStr(new Date(Date.now() + 86400000)));
   const [inco, setInco] = useState('EXW');
   const [customInco, setCustomInco] = useState('');
   const [curr, setCurr] = useState('INR');
@@ -644,7 +644,7 @@ export function NewOrder() {
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">PO Date</label>
-                <input type="date" value={poDate} onChange={e => setPoDate(e.target.value)}
+                <input type="date" value={poDate} onChange={e => { setPoDate(e.target.value); setDlvDate(localDateStr(new Date(new Date(e.target.value).getTime() + 86400000))); }}
                   className="font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
               </div>
               <div>
