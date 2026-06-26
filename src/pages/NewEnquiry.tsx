@@ -17,7 +17,11 @@ export function NewEnquiry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
-  const { data, user, addEnquiry, updateEnquiry, addCustomer, stampName, refreshData } = useAppStore();
+  const { data, user, addEnquiry, updateEnquiry, addCustomer, stampName, refreshData, customPackingTypes, upsertCustomPackingTypes } = useAppStore();
+  const packingTypeOptions = useMemo(() =>
+    [...new Set([...PACKING_TYPES, ...customPackingTypes])].sort((a, b) => a.localeCompare(b)),
+    [customPackingTypes]
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   // ── Unsaved-changes guard ──
@@ -317,7 +321,10 @@ export function NewEnquiry() {
       } else {
         await addEnquiry(enqData);
       }
-      
+
+      // Persist any custom packing types that aren't in the built-in list
+      upsertCustomPackingTypes(items.map(i => i.packingType || ''));
+
       // Auto-create customer if it doesn't exist
       if (!data.customers.find(c => c.name.toLowerCase() === custName.toLowerCase())) {
         await addCustomer({
@@ -545,7 +552,7 @@ export function NewEnquiry() {
                             </td>
                             <td className="px-3 py-[5px] border border-g400 align-middle">
                               <OptionSearch
-                                options={PACKING_TYPES}
+                                options={packingTypeOptions}
                                 value={item.packingType || ''}
                                 onChange={val => updateItem(idx, 'packingType', val)}
                                 placeholder="Packing type…"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate } from '../lib/utils';
@@ -65,7 +65,11 @@ export function NewOrder() {
   const quoteRef = searchParams.get('quoteRef');
   const editOrderId = searchParams.get('orderId');
   const navigate = useNavigate();
-  const { data, addOrder, updateOrder, updateQuote, addCustomer, addSignatory, closeFollowUp, stampName } = useAppStore();
+  const { data, addOrder, updateOrder, updateQuote, addCustomer, addSignatory, closeFollowUp, stampName, customPackingTypes, upsertCustomPackingTypes } = useAppStore();
+  const packingTypeOptions = useMemo(() =>
+    [...new Set([...PACKING_TYPES, ...customPackingTypes])].sort((a, b) => a.localeCompare(b)),
+    [customPackingTypes]
+  );
 
   // Linked quote / enquiry references. Seeded from the URL when converting a
   // quote, and re-hydrated from the saved order when editing — so editing never
@@ -421,6 +425,7 @@ export function NewOrder() {
         await addCustomer({ id: generateId('CUST', data.customers.map(c => c.id)), code: generateId('CUS', data.customers.map(c => c.code)), name: custName, seg: 'General', gstin: '', inco: 'Ex-Works', curr: 'INR', pay: '30 days', sites: [] });
       }
     }
+    upsertCustomPackingTypes(items.map(i => i.packingType || ''));
     return orderPayload;
   };
 
@@ -853,7 +858,7 @@ export function NewOrder() {
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <OptionSearch
-                              options={PACKING_TYPES}
+                              options={packingTypeOptions}
                               value={item.packingType || ''}
                               onChange={val => updateItem(idx, 'packingType', val)}
                               placeholder="Packing type…"
