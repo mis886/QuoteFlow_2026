@@ -209,7 +209,7 @@ export function Enquiries() {
                 <SortTh col="created_at"   label="Punched At" />
                 <SortTh col="cust"   label="Customer - Unit" />
                 <SortTh col="src"    label="Source" />
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Product Name</th>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ minWidth: '140px' }}>Product Name</th>
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
                 <SortTh col="urg"    label="Urgency" />
                 <SortTh col="status" label="Status" />
@@ -250,7 +250,7 @@ export function Enquiries() {
                           {e.items.length === 0
                             ? <span className="text-g400 text-[11px]">—</span>
                             : e.items.map((i, idx) => (
-                                <div key={idx} className="text-[11px] text-blk" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>{i.desc || '—'}</div>
+                                <div key={idx} className="text-[11px] text-blk whitespace-nowrap" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>{i.desc || '—'}</div>
                               ))
                           }
                         </td>
