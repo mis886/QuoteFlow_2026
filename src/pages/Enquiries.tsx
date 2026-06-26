@@ -209,8 +209,7 @@ export function Enquiries() {
                 <SortTh col="created_at"   label="Punched At" />
                 <SortTh col="cust"   label="Customer - Unit" />
                 <SortTh col="src"    label="Source" />
-                <SortTh col="items"  label="Items" />
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Products</th>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Product Name</th>
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
                 <SortTh col="urg"    label="Urgency" />
                 <SortTh col="status" label="Status" />
@@ -221,7 +220,7 @@ export function Enquiries() {
             </thead>
             <tbody>
               {filteredEnqs.length === 0 ? (
-                <tr><td colSpan={13} className="text-center p-8 text-g400 text-[13px]">No enquiries match this filter</td></tr>
+                <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">No enquiries match this filter</td></tr>
               ) : (
                 filteredEnqs.map(e => {
                   const d = new Date(e.recv); // Assuming ISO string is stored
@@ -245,11 +244,6 @@ export function Enquiries() {
                         <td className="px-[13px] py-[10px] align-middle">
                           <span className="inline-flex items-center gap-1 text-[11px] text-g600 bg-g100 px-2 py-0.5 rounded-[3px] font-medium">
                             <SourceIcon source={e.src} /> {e.src}
-                          </span>
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle">
-                          <span className="font-mono text-[10px] font-bold bg-g100 text-g600 px-[7px] py-[2px] rounded-full inline-flex items-center">
-                            {e.items.length} item(s)
                           </span>
                         </td>
                         <td className="px-[13px] py-[10px] align-top">
@@ -301,7 +295,7 @@ export function Enquiries() {
                       </tr>
                       {isExpanded && (
                         <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">
-                          <td colSpan={13} className="p-0">
+                          <td colSpan={12} className="p-0">
                             <div className="p-[10px_16px]">
                               <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-[7px]">Line Items -- {e.id}</div>
                               <table className="w-full border-collapse text-[11.5px] m-0">
