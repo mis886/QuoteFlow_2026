@@ -239,7 +239,7 @@ export function Quotes() {
                           </span>
                         </td>
                         <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px]">{formatINR(subTotal)}</td>
-                        <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px] font-bold">{formatINR(grandTotal)}</td>
+                        <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
                         <td className="px-[13px] py-[10px] align-middle">
                           <div className="flex items-center gap-1.5">
                             <Badge status={q.status} />
@@ -353,7 +353,7 @@ export function Quotes() {
                               <div className="flex justify-end pt-2 border-t border-g200 gap-5 items-center">
                                 <span className="text-[12px] text-g600">Sub-Total: <strong className="text-blk font-bold font-mono">{formatINR(subTotal)}</strong></span>
                                 <span className="text-[12px] text-g600">GST: <strong className="text-blk font-bold font-mono">{formatINR(itemGst + insuranceGst)}</strong></span>
-                                <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(grandTotal)}</span>
+                                <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(Math.round(grandTotal))}</span>
                               </div>
                             </div>
                           </td>

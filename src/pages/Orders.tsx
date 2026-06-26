@@ -313,7 +313,7 @@ export function Orders() {
                             {o.items.length} item(s)
                           </span>
                         </td>
-                        <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px] font-bold">{formatINR(grandTotal)}</td>
+                        <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
                         {/* <td className="px-[13px] py-[10px] align-middle text-[11.5px] whitespace-nowrap">
                           {o.dlvDate ? (() => {
                             // Colour the due date only while the order is still open:
