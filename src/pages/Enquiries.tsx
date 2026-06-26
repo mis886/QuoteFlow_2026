@@ -210,6 +210,8 @@ export function Enquiries() {
                 <SortTh col="cust"   label="Customer - Unit" />
                 <SortTh col="src"    label="Source" />
                 <SortTh col="items"  label="Items" />
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Products</th>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
                 <SortTh col="urg"    label="Urgency" />
                 <SortTh col="status" label="Status" />
                 <SortTh col="age"    label="Age" />
@@ -219,7 +221,7 @@ export function Enquiries() {
             </thead>
             <tbody>
               {filteredEnqs.length === 0 ? (
-                <tr><td colSpan={11} className="text-center p-8 text-g400 text-[13px]">No enquiries match this filter</td></tr>
+                <tr><td colSpan={13} className="text-center p-8 text-g400 text-[13px]">No enquiries match this filter</td></tr>
               ) : (
                 filteredEnqs.map(e => {
                   const d = new Date(e.recv); // Assuming ISO string is stored
@@ -250,6 +252,28 @@ export function Enquiries() {
                             {e.items.length} item(s)
                           </span>
                         </td>
+                        <td className="px-[13px] py-[10px] align-top">
+                          {e.items.length === 0
+                            ? <span className="text-g400 text-[11px]">—</span>
+                            : <div className="flex flex-col gap-0.5">
+                                {e.items.map((i, idx) => (
+                                  <div key={idx} className="text-[11px] text-blk leading-tight">{i.desc || '—'}</div>
+                                ))}
+                              </div>
+                          }
+                        </td>
+                        <td className="px-[13px] py-[10px] align-top text-right">
+                          {e.items.length === 0
+                            ? <span className="text-g400 text-[11px]">—</span>
+                            : <div className="flex flex-col gap-0.5">
+                                {e.items.map((i, idx) => {
+                                  const packNum = parseFloat(i.packing || '');
+                                  const totalQty = packNum > 0 ? i.qty * packNum : i.qty > 0 ? i.qty : null;
+                                  return <div key={idx} className="font-mono text-[11px] text-blk leading-tight">{totalQty ?? '—'}</div>;
+                                })}
+                              </div>
+                          }
+                        </td>
                         <td className="px-[13px] py-[10px] align-middle"><Badge status={e.urg} /></td>
                         <td className="px-[13px] py-[10px] align-middle"><Badge status={e.status} /></td>
                         <td className="px-[13px] py-[10px] align-middle font-mono text-[10.5px] font-bold">
@@ -277,7 +301,7 @@ export function Enquiries() {
                       </tr>
                       {isExpanded && (
                         <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">
-                          <td colSpan={10} className="p-0">
+                          <td colSpan={13} className="p-0">
                             <div className="p-[10px_16px]">
                               <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-[7px]">Line Items -- {e.id}</div>
                               <table className="w-full border-collapse text-[11.5px] m-0">
