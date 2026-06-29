@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, FlaskConical, Clock, CheckCircle2, XCircle, X, Loader2, Info } from 'lucide-react';
+import { Plus, Search, FlaskConical, Clock, CheckCircle2, XCircle, X, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { CustomerSearch } from '../components/CustomerSearch';
 import { localDateStr } from '../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -111,191 +111,6 @@ function StatCard({ label, value, color, icon }: {
         </div>
       </div>
       <div className="font-sans text-[28px] leading-none font-bold text-blk tracking-tight">{value}</div>
-    </div>
-  );
-}
-
-// ─── Log Sample Modal ─────────────────────────────────────────────────────────
-
-const FORM_ID = 'log-sample-form';
-
-function LogSampleModal({ customers, onClose, onSaved }: {
-  customers: any[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const today = localDateStr(new Date());
-  const plus7 = localDateStr(new Date(Date.now() + 7 * 86400000));
-
-  const [cust, setCust] = useState('');
-  const [linkedRef, setLinkedRef] = useState('');
-  const [productName, setProductName] = useState('');
-  const [productGrade, setProductGrade] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState('g');
-  const [sentDate, setSentDate] = useState(today);
-  const [followupDue, setFollowupDue] = useState(plus7);
-  const [courier, setCourier] = useState('');
-  const [cost, setCost] = useState('');
-  const [sentBy, setSentBy] = useState('');
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cust.trim()) { setError('Customer is required.'); return; }
-    if (!productName.trim()) { setError('Product name is required.'); return; }
-    setSaving(true);
-    setError('');
-
-    // Detect if linkedRef is an enquiry or quote ref by prefix
-    const isEnq = linkedRef.trim().toUpperCase().startsWith('ENQ');
-    const isQt  = linkedRef.trim().toUpperCase().startsWith('QT');
-
-    const { error: err } = await supabase.from('samples').insert({
-      id: `SAMP-${Date.now()}`,
-      cust: cust.trim(),
-      enq_ref:   (linkedRef.trim() && isEnq) ? linkedRef.trim() : null,
-      quote_ref:  (linkedRef.trim() && isQt)  ? linkedRef.trim() : null,
-      product_name: productName.trim(),
-      product_grade: productGrade.trim() || null,
-      quantity: parseFloat(quantity) || 0,
-      unit,
-      sent_date: sentDate || null,
-      followup_due: followupDue || null,
-      courier_details: courier.trim() || null,
-      cost: parseFloat(cost) || 0,
-      status: 'dispatched',
-      feedback_received: false,
-      sent_by: sentBy.trim() || null,
-      notes: notes.trim() || null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-    setSaving(false);
-    if (err) { setError(err.message); return; }
-    onSaved();
-  };
-
-  const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-all";
-  const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]";
-
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center animate-in fade-in duration-200"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-xl overflow-hidden flex flex-col max-h-[92vh] border border-g300">
-        {/* Header */}
-        <div className="p-4 border-b border-g200 flex items-center justify-between bg-white shrink-0">
-          <div>
-            <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-0.5">Sampling Module</div>
-            <div className="font-serif text-[18px] text-blk tracking-tight">Log New Sample</div>
-          </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded text-g400 hover:text-blk hover:bg-g100 transition-colors">
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Info banner */}
-        <div className="mx-4 mt-4 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-[6px] px-3 py-2.5 shrink-0">
-          <Info size={14} className="text-blue-500 mt-0.5 shrink-0" />
-          <p className="text-[11.5px] text-blue-700 leading-snug">
-            Sampling is only required for new customers. Existing customers (Bronze/Silver/Gold) proceed directly to Order.
-          </p>
-        </div>
-
-        {/* Form body */}
-        <form id={FORM_ID} onSubmit={handleSubmit} className="overflow-y-auto flex-1 p-4 space-y-4">
-          {error && (
-            <div className="text-red-600 text-[11.5px] bg-red-50 border border-red-200 rounded-[3px] px-3 py-2">{error}</div>
-          )}
-
-          <div>
-            <label className={labelCls}>Customer <span className="text-red-mrt">*</span></label>
-            <CustomerSearch customers={customers} value={cust} onChange={setCust} error={!cust && !!error} />
-          </div>
-
-          <div>
-            <label className={labelCls}>Linked Quote / Enquiry Ref</label>
-            <input
-              value={linkedRef} onChange={e => setLinkedRef(e.target.value)}
-              placeholder="e.g. QT-001 or ENQ-20240101120000"
-              className={inputCls}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
-              <input value={productName} onChange={e => setProductName(e.target.value)} placeholder="e.g. Alpha Terpineol" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>Grade / Purity</label>
-              <input value={productGrade} onChange={e => setProductGrade(e.target.value)} placeholder="e.g. 98% GC" className={inputCls} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Sample Quantity</label>
-              <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="0" min="0" step="any" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>Unit</label>
-              <select value={unit} onChange={e => setUnit(e.target.value)} className={inputCls + " cursor-pointer"}>
-                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Dispatch Date</label>
-              <input type="date" value={sentDate} onChange={e => setSentDate(e.target.value)} className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>Follow-up Due</label>
-              <input type="date" value={followupDue} onChange={e => setFollowupDue(e.target.value)} className={inputCls} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Courier / Tracking</label>
-              <input value={courier} onChange={e => setCourier(e.target.value)} placeholder="Blue Dart AWB#..." className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>Sample Cost ₹</label>
-              <input type="number" value={cost} onChange={e => setCost(e.target.value)} placeholder="0" min="0" step="any" className={inputCls} />
-            </div>
-          </div>
-
-          <div>
-            <label className={labelCls}>Sent By</label>
-            <input value={sentBy} onChange={e => setSentBy(e.target.value)} placeholder="Name of person who dispatched" className={inputCls} />
-          </div>
-
-          <div>
-            <label className={labelCls}>Technical Specs / Remarks</label>
-            <textarea
-              value={notes} onChange={e => setNotes(e.target.value)} rows={3}
-              placeholder="COA details, specs, remarks..."
-              className="w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-all resize-none"
-            />
-          </div>
-        </form>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-g200 flex items-center justify-end gap-2 bg-g50 shrink-0">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" form={FORM_ID} variant="primary" disabled={saving} className="gap-2">
-            {saving && <Loader2 size={13} className="animate-spin" />}
-            {saving ? 'Saving...' : 'Log Sample'}
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -418,10 +233,10 @@ function FeedbackModal({ sample, onClose, onSaved }: {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Sampling() {
-  const { data } = useAppStore();
+  const navigate = useNavigate();
+  useAppStore(); // keep store subscription for future use
   const [samples, setSamples] = useState<Sample[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showLog, setShowLog] = useState(false);
   const [feedbackTarget, setFeedbackTarget] = useState<Sample | null>(null);
   const [search, setSearch] = useState('');
   const [tabFilter, setTabFilter] = useState<'all' | SampleStatus>('all');
@@ -500,8 +315,8 @@ export function Sampling() {
             <p className="text-xs text-g500 mt-1 font-light">New customer samples only · Status tracked per batch</p>
           </div>
           <div className="flex items-center gap-2 mt-1 shrink-0">
-            <Button onClick={() => setShowLog(true)} variant="primary" className="gap-2">
-              <Plus size={14} className="stroke-2" /> Log Sample
+            <Button onClick={() => navigate('/sampling/new')} variant="primary" className="gap-2">
+              <Plus size={14} className="stroke-2" /> Log New Sample
             </Button>
           </div>
         </div>
@@ -633,13 +448,6 @@ export function Sampling() {
       </div>
 
       {/* Modals */}
-      {showLog && (
-        <LogSampleModal
-          customers={data.customers}
-          onClose={() => setShowLog(false)}
-          onSaved={() => { setShowLog(false); fetchSamples(); }}
-        />
-      )}
       {feedbackTarget && (
         <FeedbackModal
           sample={feedbackTarget}
