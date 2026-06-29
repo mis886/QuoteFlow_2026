@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileText, FileSignature, ShoppingCart, Users, LineChart, Settings, Boxes, LogOut, Phone, Brain, ChevronRight, ChevronLeft, Gauge } from 'lucide-react';
+import { LayoutDashboard, FileText, FileSignature, ShoppingCart, Users, LineChart, Settings, Boxes, LogOut, Phone, Brain, ChevronRight, ChevronLeft, Gauge, FlaskConical } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAppStore } from '../store';
+import { supabase } from '../lib/supabase';
 
 export function useSidebarCollapse() {
   const location = useLocation();
@@ -17,6 +18,17 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   const location = useLocation();
   const { data, user, logout } = useAppStore();
   const [logoError, setLogoError] = useState(false);
+
+  const [overdueSamplesCount, setOverdueSamplesCount] = useState(0);
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    supabase
+      .from('samples')
+      .select('id', { count: 'exact', head: true })
+      .lt('followup_due', today)
+      .is('outcome', null)
+      .then(({ count }) => { if (count) setOverdueSamplesCount(count); });
+  }, []);
 
   const newEnqCount = data.enquiries.filter(e => e.status === 'New' || e.status === 'In Review').length;
   const sentQuotesCount = data.quotes.filter(q => q.status === 'Sent').length;
@@ -83,6 +95,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             badge={activeOrdersCount > 0 ? { text: activeOrdersCount.toString(), className: 'bg-sW' } : undefined} dataTour="nav-orders" />
           <NavItem to="/followups" icon={<Phone size={15} />} label="Follow-Ups" active={isActive('/followups')} collapsed={collapsed}
             badge={overdueFollowUpsCount > 0 ? { text: overdueFollowUpsCount.toString(), className: 'bg-red-mrt' } : undefined} dataTour="nav-followups" />
+          <NavItem to="/sampling" icon={<FlaskConical size={15} />} label="Sampling" active={isActive('/sampling')} collapsed={collapsed}
+            badge={overdueSamplesCount > 0 ? { text: overdueSamplesCount.toString(), className: 'bg-amber-500' } : undefined} />
           <NavItem to="/customers" icon={<Users size={15} />} label="Customers" active={isActive('/customers')} collapsed={collapsed} dataTour="nav-customers" />
         </div>
 

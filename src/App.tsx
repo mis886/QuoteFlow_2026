@@ -15,6 +15,7 @@ import { Analytics } from './pages/Analytics';
 import { Blueprint } from './pages/Blueprint';
 import { Settings } from './pages/Settings';
 import FollowUps from './pages/FollowUps';
+import { Sampling } from './pages/Sampling';
 import { Login } from './pages/Login';
 import { SubmitPO } from './pages/SubmitPO';
 import { IntelligenceBoard } from './pages/IntelligenceBoard';
@@ -93,6 +94,7 @@ export default function App() {
                   <Route path="doer-kpi/:key" element={<DoerDetail />} />
                   <Route path="blueprint" element={<Blueprint />} />
                   <Route path="followups" element={<FollowUps />} />
+                  <Route path="sampling" element={<Sampling />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="intelligence" element={<IntelligenceBoard />} />
                   <Route path="*" element={<div className="p-8 text-[13px] font-mono">Module not found...</div>} />
