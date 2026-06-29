@@ -69,7 +69,7 @@ ${(m==null?void 0:m.designation)||(v==null?void 0:v.designation)||((te=e.default
 HIMALAYA TERPENES PVT. LTD.
 Tel.: 91-22-35397800/01
 E-mail: mum@himalayaterpene.com
-Web: www.himalayaterpene.com`,y=d!=null&&d.name?`Dear ${d.name},`:"Dear Sir/Madam,",N=f?`${y}
+Web: www.himalayaterpene.com`,y=(()=>{const F=((d==null?void 0:d.name)||"").trim();return F?`Dear ${F.split(" ")[0]} ji,`:"Dear Sir/Madam,"})(),N=f?`${y}
 
 Thank you for your enquiry. Please find attached our quotation ${p} for your requirements.
 

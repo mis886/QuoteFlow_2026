@@ -70,7 +70,12 @@ export function SendEmailModal(props: Props) {
   const poSubmitLink = '';
 
   const sigBlock = `${sigName}${sigDesig}\nHIMALAYA TERPENES PVT. LTD.\nTel.: 91-22-35397800/01\nE-mail: mum@himalayaterpene.com\nWeb: www.himalayaterpene.com`;
-  const greeting = primaryContact?.name ? `Dear ${primaryContact.name},` : 'Dear Sir/Madam,';
+  const greeting = (() => {
+    const name = (primaryContact?.name || '').trim();
+    if (!name) return 'Dear Sir/Madam,';
+    const firstName = name.split(' ')[0];
+    return `Dear ${firstName} ji,`;
+  })();
 
   const defaultBody = isQuote
     ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
