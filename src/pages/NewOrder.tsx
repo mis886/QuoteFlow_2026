@@ -9,7 +9,7 @@ import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
 import { BILLING_HSN } from '../lib/products';
 import { usePackingTypes, savePackingTypes } from '../hooks/usePackingTypes';
-import { generatePIPDF } from '../lib/pdfGenerator';
+import { generateOrderPDF } from '../lib/pdfGenerator';
 import { downloadPIDOCX } from '../lib/quoteDocx';
 import { uploadToS3 } from '../lib/s3';
 import { Upload } from 'lucide-react';
@@ -455,10 +455,8 @@ export function NewOrder() {
       await doContactSync();
       const qt = quoteRef ? data.quotes.find(q => q.id === quoteRef) : undefined;
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
-      const bank = bankAccountId ? data.bankAccounts.find(b => b.id === bankAccountId)
-        : data.bankAccounts.find(b => b.unit_id === unit?.id && b.is_default);
       const sig = data.signatories.find((s: any) => s.is_default);
-      generatePIPDF(payload, qt, data.customers.find(c => c.name === custName), data.settings, sig, true, unit, bank);
+      await generateOrderPDF(payload, qt, data.customers.find(c => c.name === custName), data.settings, sig, unit, true);
     } catch (err) {
       setErrors({ global: `Failed to generate PI: ${(err as any)?.message || 'Check connection'}` });
     } finally { setIsSaving(false); }

@@ -129,7 +129,7 @@ export async function downloadQuoteDOCX(
 
   const salutation = (() => {
     const raw = ((quote as any).contact || primaryContact?.name || '').trim();
-    const n = raw.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+    const n = raw.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?|prof\.?)\s+/i, '').trim();
     const first = n.split(/\s+/)[0] || '';
     return first ? `Dear ${first} ji,` : 'Dear Sir/Madam,';
   })();
@@ -345,7 +345,7 @@ export async function downloadPIDOCX(
 
   const piSalutation = (() => {
     const raw = ((order as any).contact || primaryContact?.name || '').trim();
-    const n = raw.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+    const n = raw.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?|prof\.?)\s+/i, '').trim();
     const first = n.split(/\s+/)[0] || '';
     return first ? `Dear ${first} ji,` : 'Dear Sir/Madam,';
   })();

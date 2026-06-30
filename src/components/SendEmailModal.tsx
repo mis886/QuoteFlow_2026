@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { X, Send, Paperclip, Mail, Loader2 } from 'lucide-react';
 import { Quote, Order, Customer, Contact, AppSettings, AuthorizedSignatory } from '../lib/types';
 import { Button } from './ui';
-import { generateQuotePDF } from '../lib/pdfGenerator';
-import { generatePIPDF } from '../lib/pdfGenerator';
+import { generateQuotePDF, generateOrderPDF } from '../lib/pdfGenerator';
 import { sendViaGmailAsUser } from '../lib/gmail';
 import { useAppStore } from '../store';
 
@@ -139,10 +138,7 @@ export function SendEmailModal(props: Props) {
         const orderUnit = orderDoc.unitId
           ? data.units.find(u => u.id === orderDoc.unitId)
           : data.units.find(u => u.is_default);
-        const orderBank = orderDoc.bankAccountId
-          ? data.bankAccounts.find(b => b.id === orderDoc.bankAccountId)
-          : data.bankAccounts.find(b => b.unit_id === orderUnit?.id && b.is_default);
-        doc = generatePIPDF(orderDoc, op.relatedQuote, customer, props.settings, props.defaultSignatory, false, orderUnit, orderBank);
+        doc = await generateOrderPDF(orderDoc, op.relatedQuote, customer, props.settings, props.defaultSignatory, orderUnit, false);
       }
 
       const dataUri: string = doc.output('datauristring');

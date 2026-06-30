@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Customer, Quote, Order, AppSettings, CompanyUnit, BankAccount } from './types';
 import { formatINR, resolveAdjustments, maxItemGstRate, fmtDate, type ResolvedAdjustment } from './utils';
+import { supabase } from './supabase';
 
 export function getQuoteTotals(q: Quote) {
   const sub = q.items.reduce((a, i) => a + i.total, 0);
@@ -463,7 +464,7 @@ export function generatePIPDF(
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
   const piContactName = (order as any).contact || primaryContact?.name || '';
   const piSalutation = (() => {
-    const n = piContactName.trim().replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+    const n = piContactName.trim().replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?|prof\.?)\s+/i, '').trim();
     const first = n.split(/\s+/)[0] || '';
     return first ? `Dear ${first} ji,` : 'Dear Sir/Madam,';
   })();
@@ -704,4 +705,26 @@ export function generatePIPDF(
 
   if (download !== false) doc.save(order.id + '_PI.pdf');
   return doc;
+}
+
+/**
+ * Unified async entry point for Order PI PDF generation.
+ * Always fetches the default bank account directly from Supabase (is_default = true)
+ * so both the download button and email attachment always show the same bank details.
+ */
+export async function generateOrderPDF(
+  order: Order,
+  quote: Quote | undefined,
+  customer: Customer | undefined,
+  settings: AppSettings | null,
+  defaultSignatory: SigPerson | undefined,
+  unit: CompanyUnit | undefined,
+  download: boolean,
+): Promise<jsPDF> {
+  const { data: bankAccount } = await supabase
+    .from('bank_accounts')
+    .select('*')
+    .eq('is_default', true)
+    .single();
+  return generatePIPDF(order, quote, customer, settings, defaultSignatory, download, unit, bankAccount ?? undefined);
 }
