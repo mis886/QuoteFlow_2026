@@ -17,20 +17,7 @@ import { SendEmailModal } from '../components/SendEmailModal';
 
 const STEPS = ['Form', 'Preview'];
 
-// Pre-defined optional T&C clauses the doer can toggle per customer requirement.
-// Selected clauses are appended to the Terms & Conditions textarea as separate lines.
-const OPTIONAL_TNC_CLAUSES = [
-  'Inspection: Customer inspection welcome at our works before dispatch.',
-  'Warranty: 6 months from date of dispatch against manufacturing defects.',
-  'Packing: Standard export packing included.',
-  'Cancellation: Once accepted, the order cannot be cancelled.',
-  'Force Majeure: Delivery subject to force majeure conditions.',
-  'Jurisdiction: All disputes subject to Meerut jurisdiction only.',
-  'Advance: 50% advance with PO, balance before dispatch.',
-  'LD Clause: No LD clause applicable.',
-  'Quality: As per approved sample / drawing only.',
-  'Returns: No returns accepted on customized items.',
-];
+
 
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
 
@@ -1157,36 +1144,6 @@ export function NewOrder() {
                     placeholder="Enter terms &amp; conditions..."
                     className="w-full min-h-[140px] font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none" />
 
-                  {/* Optional additional clauses */}
-                  <div>
-                    <div className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 mb-2">Additional Clauses (optional)</div>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                      {OPTIONAL_TNC_CLAUSES.map(clause => {
-                        const checked = customTerms.includes(clause);
-                        return (
-                          <label key={clause} className="flex items-start gap-2 cursor-pointer text-[11.5px] text-g700 hover:bg-g50 px-1.5 py-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                if (checked) {
-                                  // Remove the clause line (any prefix/numbering) then renumber the rest
-                                  const lines = customTerms.split(/\r?\n/).filter(l => !l.includes(clause));
-                                  setCustomTerms(parseQuoteTerms(lines.join('\n')));
-                                } else {
-                                  // Append clause and renumber
-                                  const next = (customTerms.trim() ? customTerms.trim() + '\n' : '') + clause;
-                                  setCustomTerms(parseQuoteTerms(next));
-                                }
-                              }}
-                              className="mt-0.5 accent-red-mrt"
-                            />
-                            <span>{clause}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
                 </div>
               </div>
 
