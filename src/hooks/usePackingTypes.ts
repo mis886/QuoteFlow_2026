@@ -4,8 +4,13 @@ import { PACKING_TYPES } from '../lib/products';
 
 const LS_KEY = 'qf_custom_packing_types';
 
+export function toTitleCase(str: string): string {
+  return str.trim().toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase());
+}
+
 function mergeWithDefaults(extra: string[]): string[] {
-  return [...new Set([...PACKING_TYPES, ...extra])].sort((a, b) => a.localeCompare(b));
+  const all = [...PACKING_TYPES.map(toTitleCase), ...extra.map(toTitleCase)];
+  return [...new Set(all)].sort((a, b) => a.localeCompare(b));
 }
 
 function readLocalFallback(): string[] {
@@ -33,23 +38,13 @@ export function usePackingTypes(): string[] {
       .order('name')
       .then(({ data, error }) => {
         if (error) {
-          console.warn(
-            '[usePackingTypes] DB fetch failed — packing_types table may not exist yet.',
-            'Using localStorage fallback.',
-            'Error:', error.message,
-            '\nTo fix permanently, run this in the Supabase SQL Editor:\n' +
-            'https://app.supabase.com/project/nheujyknkqeimgpdfyiw/sql/new\n\n' +
-            'See migrations/2026-06-26_packing_types.sql'
-          );
+          console.warn('[usePackingTypes] DB fetch failed — using localStorage fallback:', error.message);
           return;
         }
         if (data && data.length > 0) {
-          const names = data.map((r: { name: string }) => r.name);
-          console.log('[usePackingTypes] loaded from DB:', names.length, 'entries');
-          setTypes(names);
-        } else {
-          console.log('[usePackingTypes] DB table empty — using hardcoded + localStorage fallback');
+          setTypes(data.map((r: { name: string }) => toTitleCase(r.name)));
         }
+        // else: table empty — keep hardcoded + localStorage fallback
       });
   }, []);
 
@@ -57,19 +52,33 @@ export function usePackingTypes(): string[] {
 }
 
 export async function savePackingTypes(packingValues: string[]): Promise<void> {
-  const unique = [...new Set(packingValues.map(t => t.trim()).filter(Boolean))];
-  if (unique.length === 0) return;
+  const candidates = [...new Set(packingValues.map(toTitleCase).filter(Boolean))];
+  if (candidates.length === 0) return;
+
+  // Fetch existing records for case-insensitive deduplication
+  const { data: existing, error: fetchErr } = await supabase
+    .from('packing_types')
+    .select('name');
+
+  if (fetchErr) {
+    // DB unavailable — persist to localStorage
+    const ls = readLocalFallback();
+    writeLocalFallback([...new Set([...ls, ...candidates])].sort((a, b) => a.localeCompare(b)));
+    return;
+  }
+
+  const existingLower = new Set((existing ?? []).map((r: { name: string }) => r.name.toLowerCase()));
+  const toInsert = candidates.filter(c => !existingLower.has(c.toLowerCase()));
+
+  if (toInsert.length === 0) return;
 
   const { error } = await supabase
     .from('packing_types')
-    .upsert(unique.map(name => ({ name })), { onConflict: 'name', ignoreDuplicates: true });
+    .insert(toInsert.map(name => ({ name })));
 
   if (error) {
-    console.warn('[savePackingTypes] DB save failed, persisting to localStorage:', error.message);
-    const existing = readLocalFallback();
-    const merged = [...new Set([...existing, ...unique])].sort((a, b) => a.localeCompare(b));
-    writeLocalFallback(merged);
-  } else {
-    console.log('[savePackingTypes] saved to DB:', unique);
+    console.warn('[savePackingTypes] DB insert failed — falling back to localStorage:', error.message);
+    const ls = readLocalFallback();
+    writeLocalFallback([...new Set([...ls, ...toInsert])].sort((a, b) => a.localeCompare(b)));
   }
 }
