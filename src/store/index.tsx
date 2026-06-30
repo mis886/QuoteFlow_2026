@@ -638,6 +638,7 @@ const mapEnquiryToDB = (e: any) => {
       nextOrder1,
       nextOrder2,
       nextOrders: [nextOrder1?.product, nextOrder2?.product].filter(Boolean) as string[],
+      customerType: c.customer_type || '',
       sites: [primarySite],
     };
   };
@@ -666,6 +667,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('crossSellOpportunities' in c) obj.cross_sell_opportunities = c.crossSellOpportunities ?? null;
     if ('notes' in c)  obj.notes = c.notes ?? null;
     if ('createdBy' in c) obj.created_by = c.createdBy;
+    if ('customerType' in c) obj.customer_type = c.customerType ?? null;
 
     // Primary site → flat address columns
     if (primarySite) {

@@ -65,7 +65,7 @@ const SEG_OPTIONS = [
   'Bhimseni Kapoor', 'Camphor', 'Dhoop & Agarbatti', 'Lubricants', 'Mehandi', 'Misc',
   'Paints', 'Perfume & Fragrance', 'Pharma', 'Phenyl', 'Pine Oil Trader',
   'Resin Mfg', 'Rosin Trader', 'Rubber / Rubber Trader', 'Sodium Acetate',
-  'Textile Auxiliaries', 'Trader',
+  'Textile Auxiliaries',
 ];
 
 const normalizeSeg = (raw: string | undefined | null): string => {
@@ -201,11 +201,14 @@ export function NewCustomer() {
     if (!editId) return;
     supabase
       .from('customers')
-      .select('industry_segment')
+      .select('industry_segment, customer_type')
       .eq('customer_id', editId)
       .single()
       .then(({ data: row }) => {
-        if (row != null) setSeg(normalizeSeg(row.industry_segment) || row.industry_segment || '');
+        if (row != null) {
+          setSeg(normalizeSeg(row.industry_segment) || row.industry_segment || '');
+          setCustomerType(row.customer_type || '');
+        }
       });
   }, [editId]);
 
@@ -213,6 +216,7 @@ export function NewCustomer() {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [seg, setSeg] = useState('');
+  const [customerType, setCustomerType] = useState('');
   const [inco, setInco] = useState('EXW');
   const [curr, setCurr] = useState('INR');
   const [pay, setPay] = useState('30 Days Net');
@@ -243,6 +247,7 @@ export function NewCustomer() {
         setCode(cust.code);
         setName(cust.name);
         setSeg(normalizeSeg(cust.seg) || cust.seg || '');
+        setCustomerType(cust.customerType || '');
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
         setPay(normalizePayTerms(cust.pay) || cust.pay || '30 Days Net');
@@ -296,7 +301,7 @@ export function NewCustomer() {
     if (!validate()) return;
     const cust: Customer = {
       id, code: code.trim().toUpperCase(), name: name.trim(),
-      seg, inco, curr, pay, gstin: gstin.trim().toUpperCase(), pan: pan.trim().toUpperCase() || undefined, sites,
+      seg, customerType, inco, curr, pay, gstin: gstin.trim().toUpperCase(), pan: pan.trim().toUpperCase() || undefined, sites,
       creditLimit: creditLimit !== '' ? Number(creditLimit) : undefined,
       nextOrder1: nextOrder1.product ? nextOrder1 : undefined,
       nextOrder2: nextOrder2.product ? nextOrder2 : undefined,
@@ -359,13 +364,23 @@ export function NewCustomer() {
               {errors.name && <p className="text-red-mrt text-[10px] mt-1">{errors.name}</p>}
             </div>
 
-            <div>
-              <label className={labelCls}>Segment</label>
-              <select title="Segment" value={seg} onChange={e => setSeg(e.target.value)} className={inputCls}>
-                <option value=""></option>
-                {seg && !SEG_OPTIONS.includes(seg) && <option value={seg}>{seg}</option>}
-                {SEG_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Segment</label>
+                <select title="Segment" value={seg} onChange={e => setSeg(e.target.value)} className={inputCls}>
+                  <option value=""></option>
+                  {seg && !SEG_OPTIONS.includes(seg) && <option value={seg}>{seg}</option>}
+                  {SEG_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Customer Type</label>
+                <select title="Customer Type" value={customerType} onChange={e => setCustomerType(e.target.value)} className={inputCls}>
+                  <option value=""></option>
+                  <option value="Trader">Trader</option>
+                  <option value="End User">End User</option>
+                </select>
+              </div>
             </div>
 
             <div>
@@ -486,12 +501,6 @@ export function NewCustomer() {
                     placeholder="Pincode"
                     className="bg-white border border-g300 rounded px-2 py-1 text-xs font-mono w-24 outline-none focus:border-red-mrt"
                   />
-                  <input
-                    type="text" value={site.gstin || ''}
-                    onChange={e => updateSite(sIdx, 'gstin', e.target.value.toUpperCase())}
-                    placeholder="GSTIN"
-                    className="bg-white border border-g300 rounded px-2 py-1 text-xs font-mono w-44 outline-none focus:border-red-mrt"
-                  />
                   <button type="button" onClick={() => removeSite(sIdx)} className="text-g400 hover:text-red-mrt transition-colors p-1" title="Remove site">
                     <Trash2 size={15} />
                   </button>
@@ -531,7 +540,6 @@ export function NewCustomer() {
                           {pv.dispatchHint && <div><span className="text-g500 font-bold">Dispatch hint: </span><span className="text-blk whitespace-pre-wrap">{pv.dispatchHint}</span></div>}
                           {pv.transporter && <div><span className="text-g500 font-bold">Transporter: </span><span className="text-blk">{pv.transporter}</span></div>}
                           {pv.leadTimeNote && <div><span className="text-g500 font-bold">Lead time: </span><span className="text-blk">{pv.leadTimeNote}</span></div>}
-                          {pv.gstin && <div><span className="text-g500 font-bold">GSTIN: </span><span className="text-blk font-mono">{pv.gstin}</span></div>}
                           {pv.phones.length > 0 && <div><span className="text-g500 font-bold">Phone(s): </span><span className="text-blk font-mono">{pv.phones.join(', ')}</span></div>}
                           <div className="flex gap-2 pt-2">
                             <button
@@ -542,7 +550,6 @@ export function NewCustomer() {
                                 if (pv.transporter && !site.transporter) updateSite(sIdx, 'transporter', pv.transporter);
                                 if (pv.leadTimeNote && !site.leadTimeNote) updateSite(sIdx, 'leadTimeNote', pv.leadTimeNote);
                                 if (pv.dispatchHint && !site.dispatchAddress) updateSite(sIdx, 'dispatchAddress', pv.dispatchHint);
-                                if (pv.gstin && !site.gstin) updateSite(sIdx, 'gstin', pv.gstin);
                                 if (pv.phones.length > 0) {
                                   // Fill primary contact's phone if empty, otherwise add a new contact row
                                   const s = [...sites];

@@ -256,6 +256,7 @@ export interface Customer {
   totalQuotes?: number;  // total_quotes (read-only from DB)
   createdBy?: string;    // created_by
   nextOrders?: string[]; // derived display list (product names from nextOrder1/2)
+  customerType?: string; // customer_type
 }
 
 export interface FollowUpLog {
