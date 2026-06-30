@@ -347,22 +347,26 @@ export async function downloadPIDOCX(
   })();
 
   const PAGE_W = 8640;
-  const wSno = 400, wQty = 700, wHsn = 760, wRate = 960, wPer = 560, wAmt = 1100;
-  const wPart = PAGE_W - wSno - wQty - wHsn - wRate - wPer - wAmt;
+  const wSno = 430, wHsn = 1060, wBarrels = 1060, wPacking = 670, wTotalQty = 770, wPackType = 1110, wRate = 1200, wPerUnit = 720;
+  const wProdName = PAGE_W - wSno - wHsn - wBarrels - wPacking - wTotalQty - wPackType - wRate - wPerUnit;
 
-  const itemRows = order.items.map(i => {
-    const perUnit = (i as any).priceBasis?.trim() || i.uom || 'Each';
-    const conv = Number((i as any).priceBasisConv) || 1;
-    const amount = Number(i.qty) * conv * Number(i.agreedRate);
+  const itemRows = order.items.map((i, idx) => {
+    const packing = i.packing || '';
+    const packingNum = parseFloat(packing) || 0;
+    const totalQty = i.qty && packingNum ? String(i.qty * packingNum) : '';
+    const _pb = (i as any).priceBasis?.trim() as string | undefined;
+    const perUnit = !_pb ? 'kg' : _pb.startsWith('Per ') ? _pb.slice(4) : _pb;
     return new TableRow({
       children: [
-        tdCell(String(i.seq), wSno, AlignmentType.CENTER),
-        tdCell(i.qty + ' ' + (i.uom || 'nos.'), wQty, AlignmentType.CENTER),
-        tdCell(i.desc + (i.mat ? ' - ' + i.mat : ''), wPart),
-        tdCell(i.hsn || order.hsn || '—', wHsn, AlignmentType.CENTER),
+        tdCell(String(idx + 1), wSno, AlignmentType.CENTER),
+        tdCell(i.desc || '', wProdName),
+        tdCell(i.hsn || order.hsn || '', wHsn, AlignmentType.CENTER),
+        tdCell(i.qty != null ? String(i.qty) : '', wBarrels, AlignmentType.CENTER),
+        tdCell(packing, wPacking, AlignmentType.CENTER),
+        tdCell(totalQty, wTotalQty, AlignmentType.CENTER),
+        tdCell((i as any).packingType || '', wPackType, AlignmentType.CENTER),
         tdCell(fmtRate(i.agreedRate, sym), wRate, AlignmentType.RIGHT),
-        tdCell(perUnit, wPer, AlignmentType.CENTER),
-        tdCell(fmtRate(amount, sym), wAmt, AlignmentType.RIGHT, { bold: true }),
+        tdCell(perUnit, wPerUnit, AlignmentType.CENTER),
       ],
     });
   });
@@ -499,13 +503,15 @@ export async function downloadPIDOCX(
             new TableRow({
               tableHeader: true,
               children: [
-                thCell('S. No.', wSno),
-                thCell('Quantity', wQty),
-                thCell('Particulars', wPart),
-                thCell('HSN', wHsn),
-                thCell(`Rate (${quote?.curr || 'INR'})`, wRate, AlignmentType.RIGHT),
-                thCell('Per', wPer),
-                thCell('Amount', wAmt, AlignmentType.RIGHT),
+                thCell('Sr No', wSno),
+                thCell('Product Name', wProdName),
+                thCell('HSN Code', wHsn),
+                thCell('No of Barrels', wBarrels),
+                thCell('Packing', wPacking),
+                thCell('Total Qty', wTotalQty),
+                thCell('Packing Type', wPackType),
+                thCell(`Rates (${quote?.curr || 'INR'})`, wRate, AlignmentType.RIGHT),
+                thCell('Per', wPerUnit),
               ],
             }),
             ...itemRows,
