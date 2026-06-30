@@ -1134,16 +1134,15 @@ export function NewOrder() {
 
             {/* Signatory & T&C */}
             <div className="grid grid-cols-12 gap-[12px]">
-              <div className="col-span-8 bg-white border border-g200">
-                <div className="p-[11px_16px] border-b border-g200 flex items-center justify-between">
+              <div className="col-span-8 bg-white border border-g200 flex flex-col">
+                <div className="p-[11px_16px] border-b border-g200 flex items-center justify-between shrink-0">
                   <span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt">Terms & Conditions (Proforma)</span>
                   <button type="button" onClick={() => setCustomTerms('')} className="text-[9px] font-bold text-g400 uppercase hover:text-red-mrt hover:underline">Reset</button>
                 </div>
-                <div className="p-[12px_16px] space-y-3">
+                <div className="p-[12px_16px] pb-0 flex flex-col flex-1">
                   <textarea value={customTerms} onChange={e => setCustomTerms(e.target.value)}
                     placeholder="Enter terms &amp; conditions..."
-                    className="w-full min-h-[200px] font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none" />
-
+                    className="w-full flex-1 min-h-[200px] font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none" />
                 </div>
               </div>
 
