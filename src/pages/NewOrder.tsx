@@ -1142,7 +1142,7 @@ export function NewOrder() {
                 <div className="p-[12px_16px] space-y-3">
                   <textarea value={customTerms} onChange={e => setCustomTerms(e.target.value)}
                     placeholder="Enter terms &amp; conditions..."
-                    className="w-full min-h-[140px] font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none" />
+                    className="w-full min-h-[200px] font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none" />
 
                 </div>
               </div>
