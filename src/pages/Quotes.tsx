@@ -269,6 +269,7 @@ export function Quotes() {
                               generateQuotePDF(q, cust, data.settings, sig, true, unit);
                             }}>PDF</Button>
                             <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openAttachmentModal('quote', q.id); }}>Docs</Button>
+                            <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); navigate(`/sampling/new?quoteRef=${encodeURIComponent(q.id)}&cust=${encodeURIComponent(q.cust)}`); }}>+ Sample</Button>
                             {q.status === 'Draft' && (
                               <Button size="sm" variant="primary" onClick={async (ev) => {
                                 ev.stopPropagation();

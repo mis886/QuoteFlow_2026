@@ -26,7 +26,7 @@ export function SamplingNew() {
   const [courier,     setCourier]     = useState('');
   const [cost,        setCost]        = useState('');
   const [cust,        setCust]        = useState(() => searchParams.get('cust') ?? '');
-  const [linkedRef,   setLinkedRef]   = useState(() => searchParams.get('enqRef') ?? '');
+  const [linkedRef,   setLinkedRef]   = useState(() => searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '');
   const [sentBy,      setSentBy]      = useState('');
   const [productName, setProductName] = useState('');
   const [productGrade,setProductGrade]= useState('');
