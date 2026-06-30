@@ -8,7 +8,7 @@ import { localDateStr } from '../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SampleStatus = 'dispatched' | 'feedback_received' | 'approved' | 'rejected';
+type SampleStatus = 'pending' | 'dispatched' | 'feedback_received' | 'approved' | 'rejected';
 type SampleOutcome = 'approved' | 'rejected' | 'reformulation_needed';
 
 interface Sample {
@@ -47,12 +47,13 @@ function fmtDate(d?: string | null): string {
 
 function SampleStatusBadge({ status }: { status: SampleStatus }) {
   const cfg: Record<SampleStatus, { bg: string; dot: string; label: string }> = {
+    pending:           { bg: 'bg-yellow-50 text-yellow-700', dot: 'bg-yellow-400', label: 'Pending' },
     dispatched:        { bg: 'bg-purple-50 text-purple-700', dot: 'bg-purple-500', label: 'Dispatched' },
     feedback_received: { bg: 'bg-amber-50 text-amber-700',  dot: 'bg-amber-500',  label: 'Feedback Rcvd' },
     approved:          { bg: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500', label: 'Approved' },
     rejected:          { bg: 'bg-red-50 text-red-700',      dot: 'bg-red-500',    label: 'Rejected' },
   };
-  const c = cfg[status] ?? cfg.dispatched;
+  const c = cfg[status] ?? cfg.pending;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[3px] text-[10.5px] font-semibold whitespace-nowrap ${c.bg}`}>
       <span className={`w-[5px] h-[5px] rounded-full shrink-0 ${c.dot}`} />
@@ -92,7 +93,7 @@ function FollowUpCell({ date, resolved }: { date?: string | null; resolved: bool
 
 function StatCard({ label, value, color, icon }: {
   label: string; value: number;
-  color: 'purple' | 'amber' | 'green' | 'red';
+  color: 'purple' | 'amber' | 'green' | 'red' | 'yellow';
   icon: React.ReactNode;
 }) {
   const cfg = {
@@ -100,6 +101,7 @@ function StatCard({ label, value, color, icon }: {
     amber:  { border: 'border-t-amber-500',  iconBg: 'bg-amber-50',  iconText: 'text-amber-500'  },
     green:  { border: 'border-t-emerald-500',iconBg: 'bg-emerald-50',iconText: 'text-emerald-500' },
     red:    { border: 'border-t-red-500',    iconBg: 'bg-red-50',    iconText: 'text-red-500'    },
+    yellow: { border: 'border-t-yellow-400', iconBg: 'bg-yellow-50', iconText: 'text-yellow-500' },
   };
   const c = cfg[color];
   return (
@@ -256,6 +258,7 @@ export function Sampling() {
   const thisMonthStart = `${today.slice(0, 7)}-01`;
 
   const stats = useMemo(() => ({
+    pending:          samples.filter(s => s.status === 'pending').length,
     sentThisMonth:    samples.filter(s => s.sent_date && s.sent_date >= thisMonthStart).length,
     awaitingFeedback: samples.filter(s => !s.feedback_received).length,
     approved:         samples.filter(s => s.outcome === 'approved').length,
@@ -280,6 +283,7 @@ export function Sampling() {
 
   const tabCounts = useMemo(() => ({
     all:               samples.length,
+    pending:           samples.filter(s => s.status === 'pending').length,
     dispatched:        samples.filter(s => s.status === 'dispatched').length,
     feedback_received: samples.filter(s => s.status === 'feedback_received').length,
     approved:          samples.filter(s => s.status === 'approved').length,
@@ -323,8 +327,9 @@ export function Sampling() {
       </div>
 
       {/* Stat cards */}
-      <div className="px-6 pt-4 grid grid-cols-4 gap-3">
-        <StatCard label="Samples Sent (This Month)" value={stats.sentThisMonth}    color="purple" icon={<FlaskConical size={16} />} />
+      <div className="px-6 pt-4 grid grid-cols-5 gap-3">
+        <StatCard label="Pending Dispatch"           value={stats.pending}          color="yellow" icon={<Clock size={16} />} />
+        <StatCard label="Samples Sent (This Month)"  value={stats.sentThisMonth}    color="purple" icon={<FlaskConical size={16} />} />
         <StatCard label="Awaiting Feedback"          value={stats.awaitingFeedback} color="amber"  icon={<Clock size={16} />} />
         <StatCard label="Approved → Order"           value={stats.approved}         color="green"  icon={<CheckCircle2 size={16} />} />
         <StatCard label="Rejected / Reformulation"   value={stats.rejected}         color="red"    icon={<XCircle size={16} />} />
@@ -334,6 +339,7 @@ export function Sampling() {
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <TabBtn value="all"               label="All" />
+          <TabBtn value="pending"           label="Pending" />
           <TabBtn value="dispatched"        label="Dispatched" />
           <TabBtn value="feedback_received" label="Feedback Rcvd" />
           <TabBtn value="approved"          label="Approved" />

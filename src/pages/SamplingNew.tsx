@@ -65,7 +65,7 @@ export function SamplingNew() {
       followup_due:  followupDue || null,
       courier_details: courier.trim() || null,
       cost:          parseFloat(cost) || 0,
-      status:        'dispatched',
+      status:        'pending',
       feedback_received: false,
       sent_by:       sentBy.trim() || null,
       notes:         notes.trim() || null,
