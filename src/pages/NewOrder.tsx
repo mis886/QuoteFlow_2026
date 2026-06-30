@@ -1000,7 +1000,7 @@ export function NewOrder() {
                 </div>
               </div>
               {adjustments.length === 0 ? (
-                <div className="p-[12px_16px] text-[11px] text-g400 italic">No extra taxes or charges. Use the buttons above to add Freight, P&amp;F, TDS, TCS, etc.</div>
+                <div className="p-[12px_16px] text-[11px] text-g400 italic">No extra taxes or charges. Use the buttons above to add Freight or Other charges.</div>
               ) : (
                 <div className="p-[10px_12px] space-y-2">
                   {adjustments.map(a => {
