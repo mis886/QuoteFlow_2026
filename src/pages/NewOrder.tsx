@@ -1006,7 +1006,11 @@ export function NewOrder() {
                   {adjustments.map(a => {
                     const resolved = adjLines.find(l => l.id === a.id);
                     return (
-                      <div key={a.id} className="grid grid-cols-[1fr_96px_92px_96px_110px_28px] gap-2 items-center">
+                      <div key={a.id} className="grid grid-cols-[100px_1fr_96px_92px_96px_110px_28px] gap-2 items-center">
+                        <select title="Type" value={a.kind} onChange={e => updateAdjustment(a.id, { kind: e.target.value as OrderAdjustmentKind })}
+                          className="font-mono text-[11px] border border-g300 rounded-[3px] px-2 py-[6px] outline-none focus:border-red-mrt bg-white">
+                          <option value="charge">Charge</option>
+                        </select>
                         <input type="text" value={a.label} placeholder="Label (e.g. Freight, Other)"
                           onChange={e => updateAdjustment(a.id, { label: e.target.value })}
                           className="text-[12px] border border-g300 rounded-[3px] px-2 py-[6px] outline-none focus:border-red-mrt" />
