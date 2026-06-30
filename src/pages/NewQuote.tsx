@@ -334,7 +334,7 @@ export function NewQuote() {
         setContactManual(!enq.contactId && !!(enq.contact || enq.email));
         const cr = data.customers.find(c => c.name === enq.cust);
         if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
-        setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '', unitPrice: 0, gst: 18, total: 0 })));
+        setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
       }
     } else {
       setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
@@ -389,7 +389,10 @@ export function NewQuote() {
           }
         }
       }
-    } else { if (sites.length === 1) setSiteId(sites[0].id); }
+    } else {
+      const ps = (sites as any[]).find((s: any) => s.isPrimary) ?? sites[0];
+      if (ps) setSiteId(ps.id);
+    }
   }, [custName, siteId, contactId, contactManual, data.customers, editId]);
 
   // T&C auto-fill: payment from Payment Terms, validity from Valid Until date.
@@ -727,7 +730,7 @@ export function NewQuote() {
                 setContactManual(!enq.contactId && !!(enq.contact || enq.email));
                 const cr = data.customers.find(c => c.name === enq.cust);
                 if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
-                setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: '', unitPrice: 0, gst: 18, total: 0 })));
+                setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
               }
             }} className="flex-1">
               Create New Anyway
@@ -834,7 +837,22 @@ export function NewQuote() {
                     <CustomerSearch
                       customers={data.customers}
                       value={custName}
-                      onChange={name => { setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({ ...errors, custName: '' }); }}
+                      onChange={name => {
+                        setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({ ...errors, custName: '' });
+                        if (name) {
+                          const cust = data.customers.find(c => c.name === name);
+                          if (cust) {
+                            const sites = (cust.sites ?? []) as any[];
+                            const ps = sites.find((s: any) => s.isPrimary) || sites[0];
+                            if (ps) {
+                              setSiteId(ps.id);
+                              const contacts = (ps.contacts ?? []) as any[];
+                              const pc = contacts.find((ct: any) => ct.isPrimary) || contacts.find((ct: any) => ct.email || ct.phone || ct.name) || contacts[0];
+                              if (pc && (pc.name || pc.email || pc.phone)) { setContactId(pc.id); setContact(pc.name || ''); setEmail(pc.email || ''); setPhone(pc.phone || ''); }
+                            }
+                          }
+                        }
+                      }}
                       error={!!errors.custName}
                     />
                     {errors.custName && <p className="text-red-mrt text-[10px] mt-1">{errors.custName}</p>}
