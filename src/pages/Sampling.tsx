@@ -436,14 +436,24 @@ export function Sampling() {
                       <OutcomeCell outcome={s.outcome} />
                     </td>
                     <td className={tdCls}>
-                      {!s.outcome && (
-                        <button
-                          onClick={() => setFeedbackTarget(s)}
-                          className="font-mono text-[9px] font-bold tracking-[1px] uppercase px-2.5 py-1.5 bg-white border border-g300 rounded-[3px] text-g600 hover:border-red-mrt hover:text-red-mrt transition-colors whitespace-nowrap"
-                        >
-                          Record Feedback
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {!s.outcome && (
+                          <button
+                            onClick={() => setFeedbackTarget(s)}
+                            className="font-mono text-[9px] font-bold tracking-[1px] uppercase px-2.5 py-1.5 bg-white border border-g300 rounded-[3px] text-g600 hover:border-red-mrt hover:text-red-mrt transition-colors whitespace-nowrap"
+                          >
+                            Record Feedback
+                          </button>
+                        )}
+                        {s.status === 'approved' && (
+                          <button
+                            onClick={() => navigate(`/orders/new?cust=${encodeURIComponent(s.cust)}`)}
+                            className="font-mono text-[9px] font-bold tracking-[1px] uppercase px-2.5 py-1.5 bg-emerald-50 border border-emerald-300 rounded-[3px] text-emerald-700 hover:bg-emerald-100 hover:border-emerald-500 transition-colors whitespace-nowrap"
+                          >
+                            Convert to Order
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

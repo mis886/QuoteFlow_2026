@@ -52,6 +52,7 @@ export function NewOrder() {
   const [searchParams, setSearchParams] = useSearchParams();
   const quoteRef = searchParams.get('quoteRef');
   const editOrderId = searchParams.get('orderId');
+  const custParam = searchParams.get('cust');
   const navigate = useNavigate();
   const { data, addOrder, updateOrder, updateQuote, addCustomer, addSignatory, closeFollowUp, stampName } = useAppStore();
   const packingTypeOptions = usePackingTypes();
@@ -85,7 +86,7 @@ export function NewOrder() {
   const [contactManual, setContactManual] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
-  const [custName, setCustName] = useState('');
+  const [custName, setCustName] = useState(custParam ?? '');
   const [siteId, setSiteId] = useState('');
   const [contactId, setContactId] = useState('');
   const [authName, setAuthName] = useState('');
