@@ -142,8 +142,11 @@ export function generateQuotePDF(
   // ── Dear [Name] + intro ──────────────────────────────────────────────────
   y += 8;
   const contactFullName = (quote as any).contact || primaryContact?.name || '';
-  const lastName = contactFullName.trim().split(/\s+/).pop() || '';
-  const salutation = lastName ? `Dear ${lastName},` : 'Dear Sir/Madam,';
+  const salutation = (() => {
+    const n = contactFullName.trim().replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+    const first = n.split(/\s+/)[0] || '';
+    return first ? `Dear ${first} ji,` : 'Dear Sir/Madam,';
+  })();
   doc.text(salutation, mx, y);
   y += 6;
   const intro =
@@ -399,7 +402,6 @@ export function generatePIPDF(
   const cw = rx - mx;
   const t = getOrderTotals(order);
   const sym = getCurrencySymbol(quote?.curr || 'INR');
-  const customHeader = unit?.header_url || settings?.header_url || localStorage.getItem('mrt_header_img');
   const sigImg = unit?.sig_url || settings?.sig_url || localStorage.getItem('mrt_sig_img');
 
   // ── Header (hardcoded text — no letterhead image) ────────────────────────
@@ -460,8 +462,11 @@ export function generatePIPDF(
   y += 7;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
   const piContactName = (order as any).contact || primaryContact?.name || '';
-  const piLastName = piContactName.trim().split(/\s+/).pop() || '';
-  const piSalutation = piLastName ? `Dear ${piLastName},` : 'Dear Sir/Madam,';
+  const piSalutation = (() => {
+    const n = piContactName.trim().replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+    const first = n.split(/\s+/)[0] || '';
+    return first ? `Dear ${first} ji,` : 'Dear Sir/Madam,';
+  })();
   doc.text(piSalutation, mx, y);
   y += 5;
   const letterBody = 'We are sending here with our Performa Invoice. You are requested to kindly deposit the payment with our bank account under intimation to us so that we may be able to provide your material.';

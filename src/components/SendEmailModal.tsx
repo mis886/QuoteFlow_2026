@@ -73,8 +73,9 @@ export function SendEmailModal(props: Props) {
   const greeting = (() => {
     const name = (primaryContact?.name || '').trim();
     if (!name) return 'Dear Sir/Madam,';
-    const firstName = name.split(' ')[0];
-    return `Dear ${firstName} ji,`;
+    const stripped = name.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+    const firstName = stripped.split(/\s+/)[0] || '';
+    return firstName ? `Dear ${firstName} ji,` : 'Dear Sir/Madam,';
   })();
 
   const defaultBody = isQuote

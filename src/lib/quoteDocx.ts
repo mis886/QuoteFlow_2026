@@ -128,8 +128,10 @@ export async function downloadQuoteDOCX(
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   const salutation = (() => {
-    const ln = primaryContact?.name?.trim().split(/\s+/).at(-1);
-    return ln ? `Dear Mr./Ms. ${ln},` : 'Dear Sir/Madam,';
+    const raw = ((quote as any).contact || primaryContact?.name || '').trim();
+    const n = raw.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+    const first = n.split(/\s+/)[0] || '';
+    return first ? `Dear ${first} ji,` : 'Dear Sir/Madam,';
   })();
 
   // Column widths in DXA (1 inch = 1440 DXA). Usable ≈ 8640 DXA for 0.65" margins on A4
@@ -342,8 +344,10 @@ export async function downloadPIDOCX(
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   const piSalutation = (() => {
-    const ln = primaryContact?.name?.trim().split(/\s+/).at(-1);
-    return ln ? `Dear Mr./Ms. ${ln},` : 'Dear Sir/Madam,';
+    const raw = ((order as any).contact || primaryContact?.name || '').trim();
+    const n = raw.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+    const first = n.split(/\s+/)[0] || '';
+    return first ? `Dear ${first} ji,` : 'Dear Sir/Madam,';
   })();
 
   const PAGE_W = 8640;
