@@ -402,33 +402,18 @@ export function generatePIPDF(
   const customHeader = unit?.header_url || settings?.header_url || localStorage.getItem('mrt_header_img');
   const sigImg = unit?.sig_url || settings?.sig_url || localStorage.getItem('mrt_sig_img');
 
-  // ── Header ───────────────────────────────────────────────────────────────
+  // ── Header (hardcoded text — no letterhead image) ────────────────────────
   const headerH = 33;
   let y: number;
 
-  if (customHeader) {
-    const hFmt = customHeader.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-    try { doc.addImage(customHeader, hFmt, mx, 0, cw, headerH); } catch (e) { console.warn('Header image failed', e); }
-    y = headerH;
-    // GSTIN is already part of the letterhead image — don't stamp it again
-  } else {
-    // Line 1 — Company name
-    doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
-    doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, 10, { align: 'center' });
-    // Line 2 — Product tagline (directly below name)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
-    doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, 16, { align: 'center' });
-    // Line 3 — Address + CIN
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
-    const defaultAddr = '201/5 Jogani Industrial Estate, VN Purav Marg Chunabhatti Mumbai 400022';
-    const addrStr = unit?.address ? unit.address : defaultAddr;
-    const addrLns = doc.splitTextToSize(addrStr, cw) as string[];
-    let ay = 22;
-    addrLns.forEach(l => { doc.text(l, pw / 2, ay, { align: 'center' }); ay += 4; });
-    // Line 4 — Contact
-    doc.text('Tel.: 91-22-35397800/01  |  E-Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, ay + 2, { align: 'center' });
-    y = headerH;
-  }
+  doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
+  doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, 10, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
+  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, 16, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
+  doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, 22, { align: 'center' });
+  doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, 28, { align: 'center' });
+  y = headerH;
 
   // ── PROFORMA INVOICE heading + details ──────────────────────────────────
   y += 6;
@@ -525,38 +510,43 @@ export function generatePIPDF(
 
   y = Math.max(y, ry) + 8;
 
-  // ── Items table ──────────────────────────────────────────────────────────
-  // Columns: # / Qty / Particulars / HSN / Rate / Per / Amount
-  const wSno = 12, wQty = 24, wHsn = 24, wRate = 30, wPer = 18, wAmt = 34;
-  const wPart = cw - wSno - wQty - wHsn - wRate - wPer - wAmt;
+  // ── Items table (matches Quotation PDF columns exactly) ──────────────────
+  const wSnoPI = 9, wHsnPI = 22, wBarrelsPI = 22, wPackingPI = 14, wTotalQtyPI = 16, wPackTypePI = 23, wRatePI = 25, wPerPI = 15;
+  const wProdNamePI = cw - wSnoPI - wHsnPI - wBarrelsPI - wPackingPI - wTotalQtyPI - wPackTypePI - wRatePI - wPerPI;
   autoTable(doc, {
     startY: y,
-    head: [['S. No.', 'Quantity', 'Particulars', 'HSN', 'Rate (' + (quote?.curr || 'INR') + ')', 'Per', 'Amount']],
-    body: order.items.map((i) => {
-      const perUnit = (i as any).priceBasis?.trim() || i.uom || 'Each';
-      const conv = Number((i as any).priceBasisConv) || 1;
-      const amount = Number(i.qty) * conv * Number(i.agreedRate);
+    head: [['Sr No', 'Product Name', 'HSN Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'Rates (' + (quote?.curr || 'INR') + ')', 'Per']],
+    body: order.items.map((i, idx) => {
+      const packing = i.packing || '';
+      const packingNum = parseFloat(packing) || 0;
+      const totalQty = i.qty && packingNum ? String(i.qty * packingNum) : '';
+      const _pb = (i as any).priceBasis?.trim();
+      const perUnit = !_pb ? 'kg' : _pb.startsWith('Per ') ? _pb.slice(4) : _pb;
       return [
-        i.seq,
-        i.qty + ' ' + (i.uom || 'nos.'),
-        i.desc + (i.mat ? ' - ' + i.mat : ''),
-        i.hsn || order.hsn || '—',
+        idx + 1,
+        i.desc || '',
+        i.hsn || order.hsn || '',
+        i.qty != null ? String(i.qty) : '',
+        packing,
+        totalQty,
+        (i as any).packingType || '',
         fmtRate(i.agreedRate, sym),
         perUnit,
-        fmtAmount(amount, sym),
       ];
     }),
     theme: 'grid',
-    headStyles: { fillColor: TRUST_BLUE, textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 9, cellPadding: 1.5, lineColor: HEAD_BORDER, lineWidth: 0.5, halign: 'center' },
+    headStyles: { fillColor: TRUST_BLUE, textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 8, cellPadding: 1, lineColor: HEAD_BORDER, lineWidth: 0.5, halign: 'center' },
     bodyStyles: { fontSize: 9, cellPadding: 1.5, textColor: [30, 30, 30], lineColor: [80, 80, 80], lineWidth: 0.35 },
     columnStyles: {
-      0: { cellWidth: wSno, halign: 'center' },
-      1: { cellWidth: wQty, halign: 'center' },
-      2: { cellWidth: wPart },
-      3: { cellWidth: wHsn, halign: 'center' },
-      4: { cellWidth: wRate, halign: 'right' },
-      5: { cellWidth: wPer, halign: 'center' },
-      6: { cellWidth: wAmt, halign: 'right' },
+      0: { cellWidth: wSnoPI, halign: 'center' },
+      1: { cellWidth: wProdNamePI },
+      2: { cellWidth: wHsnPI, halign: 'center' },
+      3: { cellWidth: wBarrelsPI, halign: 'center' },
+      4: { cellWidth: wPackingPI, halign: 'center' },
+      5: { cellWidth: wTotalQtyPI, halign: 'center' },
+      6: { cellWidth: wPackTypePI, halign: 'center' },
+      7: { cellWidth: wRatePI, halign: 'right' },
+      8: { cellWidth: wPerPI, halign: 'center' },
     },
     margin: { left: mx, right: mx },
   });
