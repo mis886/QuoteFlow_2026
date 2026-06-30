@@ -42,7 +42,7 @@ const OAUTH_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
 // ── component ─────────────────────────────────────────────────────────────────
 export function SendEmailModal(props: Props) {
   const { customer, siteId, onClose, onSent } = props;
-  const { activeDoer, user } = useAppStore();
+  const { activeDoer, user, data } = useAppStore();
   const senderEmail = activeDoer?.email ?? user?.email ?? '';
 
   const siteContacts = getSiteContacts(customer, siteId);
@@ -135,7 +135,14 @@ export function SendEmailModal(props: Props) {
         doc = generateQuotePDF(props.doc as Quote, customer, props.settings, props.defaultSignatory, false);
       } else {
         const op = props as OrderProps;
-        doc = generatePIPDF(props.doc as Order, op.relatedQuote, customer, props.settings, props.defaultSignatory, false);
+        const orderDoc = props.doc as Order;
+        const orderUnit = orderDoc.unitId
+          ? data.units.find(u => u.id === orderDoc.unitId)
+          : data.units.find(u => u.is_default);
+        const orderBank = orderDoc.bankAccountId
+          ? data.bankAccounts.find(b => b.id === orderDoc.bankAccountId)
+          : data.bankAccounts.find(b => b.unit_id === orderUnit?.id && b.is_default);
+        doc = generatePIPDF(orderDoc, op.relatedQuote, customer, props.settings, props.defaultSignatory, false, orderUnit, orderBank);
       }
 
       const dataUri: string = doc.output('datauristring');
