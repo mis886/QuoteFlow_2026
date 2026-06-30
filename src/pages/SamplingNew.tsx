@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { localDateStr } from '../lib/utils';
@@ -14,18 +14,19 @@ const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppe
 
 export function SamplingNew() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { data } = useAppStore();
 
   const today = localDateStr(new Date());
   const plus7  = localDateStr(new Date(Date.now() + 7 * 86400000));
 
-  // Form state
+  // Form state — seed from URL params when navigating from Enquiry detail
   const [sentDate,    setSentDate]    = useState(today);
   const [followupDue, setFollowupDue] = useState(plus7);
   const [courier,     setCourier]     = useState('');
   const [cost,        setCost]        = useState('');
-  const [cust,        setCust]        = useState('');
-  const [linkedRef,   setLinkedRef]   = useState('');
+  const [cust,        setCust]        = useState(() => searchParams.get('cust') ?? '');
+  const [linkedRef,   setLinkedRef]   = useState(() => searchParams.get('enqRef') ?? '');
   const [sentBy,      setSentBy]      = useState('');
   const [productName, setProductName] = useState('');
   const [productGrade,setProductGrade]= useState('');

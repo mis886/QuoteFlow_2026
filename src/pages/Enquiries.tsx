@@ -322,11 +322,12 @@ export function Enquiries() {
                                   })}
                                 </tbody>
                               </table>
-                              {!e.qRef && (
-                                <div className="mt-2">
+                              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                {!e.qRef && (
                                   <Button size="sm" variant="primary" onClick={() => navigate(`/quotes/new?enqRef=${e.id}`)}>Convert to Quotation</Button>
-                                </div>
-                              )}
+                                )}
+                                <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?enqRef=${encodeURIComponent(e.id)}&cust=${encodeURIComponent(e.cust)}`)}>+ Request Sample</Button>
+                              </div>
                             </div>
                           </td>
                         </tr>
