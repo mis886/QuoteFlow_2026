@@ -253,7 +253,10 @@ export function NewOrder() {
           if (pc && (pc.name || pc.email || pc.phone)) { setContactId(pc.id); setContact(pc.name || ''); setEmail(pc.email || ''); setPhone(pc.phone || ''); }
         }
       }
-    } else { if (sites.length === 1) setSiteId(sites[0].id); }
+    } else {
+      const ps = (sites as any[]).find((s: any) => s.isPrimary) ?? sites[0];
+      if (ps) setSiteId(ps.id);
+    }
   }, [custName, siteId, contactId, contactManual, data.customers, editOrderId, quoteRef]);
 
   // T&C from incoterms
@@ -524,12 +527,17 @@ export function NewOrder() {
                   const qSite2 = (qCust2?.sites ?? []).find((s: any) => s.id === (q as any).siteId);
                   if (qSite2) setShipAddr((qSite2 as any).dispatchAddress || (qSite2 as any).fullAddress || qSite2.address || '');
                 }
-                if ((q as any).contactId) setContactId((q as any).contactId);
-                if ((q as any).contact) setContact((q as any).contact);
-                if ((q as any).email) setEmail((q as any).email);
-                setContactManual(!(q as any).contactId && !!((q as any).contact || (q as any).email));
+                if (q.contactId) setContactId(q.contactId);
+                if (q.contact) setContact(q.contact);
+                if (q.email) setEmail(q.email);
+                if (q.phone) setPhone(q.phone);
+                if (q.custEnquiryDocNo) setCustEnquiryDocNo(q.custEnquiryDocNo);
+                setContactManual(!q.contactId && !!(q.contact || q.email));
                 setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
+                if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
+                setCurr(q.curr || 'INR');
                 setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
+                setInsurance(q.insurance ?? 0);
               }
             }} className="flex-1">
               Create New Anyway
