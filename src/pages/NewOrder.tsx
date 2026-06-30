@@ -229,7 +229,6 @@ export function NewOrder() {
         setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
         if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
         setCurr(q.curr || 'INR');
-        setCustomTerms(parseQuoteTerms(q.terms));
         setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
         setInsurance(q.insurance ?? 0);
       }
@@ -542,7 +541,6 @@ export function NewOrder() {
                 if ((q as any).email) setEmail((q as any).email);
                 setContactManual(!(q as any).contactId && !!((q as any).contact || (q as any).email));
                 setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
-                setCustomTerms(parseQuoteTerms(q.terms));
                 setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
               }
             }} className="flex-1">
