@@ -274,8 +274,7 @@ export function NewOrder() {
     if (editOrderId) return;
     const sel = inco === 'OVERRIDE' ? customInco : inco;
     let t = '';
-    if (sel.includes('EXW')) t = '1. Delivery: Ex-Works, Meerut.\n2. Packing & Forwarding: Extra @ 2%.\n3. Freight: To be paid by the buyer.\n4. Payment: As per agreement.\n5. Taxes: GST 18% extra as applicable.';
-    else if (sel.includes('FOB')) t = '1. Delivery: FOB Port of Loading.\n2. Packing & Forwarding: Included.\n3. Freight: Payable by buyer from port.\n4. Payment: As per agreement.';
+    if (sel.includes('FOB')) t = '1. Delivery: FOB Port of Loading.\n2. Packing & Forwarding: Included.\n3. Freight: Payable by buyer from port.\n4. Payment: As per agreement.';
     else if (sel.includes('DDP') || sel.includes('DAP') || sel.includes('CIF')) t = `1. Delivery: ${sel} Destination.\n2. Insurance & Freight: Included.\n3. Taxes/Duties: As per quotation.\n4. Payment: As per agreement.`;
     if (t && !customTerms) setCustomTerms(t);
   }, [inco, customInco, editOrderId]);
