@@ -331,15 +331,12 @@ export function NewOrder() {
   const grandTotal = Math.round(subTotal + ins + adj.preNet + gstTotal + adj.postNet);
 
   // Adjustment row helpers
-  const addAdjustment = (kind: OrderAdjustmentKind, label = '') => {
-    const isTds = /tds/i.test(label);
+  const addAdjustment = (_kind: OrderAdjustmentKind, label = '') => {
     setAdjustments(a => [...a, {
       id: 'adj-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
-      kind, label, mode: 'percent', rate: 0,
-      direction: kind === 'tax' && isTds ? 'deduct' : 'add',
-      // Charges (P&F, Freight…) are part of the supply value → taxable before GST.
-      // Taxes (TDS/TCS) apply after GST → not taxable.
-      taxable: kind === 'charge',
+      kind: 'charge', label, mode: 'percent', rate: 0,
+      direction: 'add',
+      taxable: true,
     }]);
   };
   const updateAdjustment = (id: string, patch: Partial<OrderAdjustment>) =>
@@ -994,7 +991,7 @@ export function NewOrder() {
               <div className="p-[11px_16px] border-b border-g200 flex items-center justify-between flex-wrap gap-2">
                 <span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g500">Taxes &amp; Charges (added to / deducted from total)</span>
                 <div className="flex items-center gap-1.5">
-                  {([['charge', 'Freight'], ['charge', 'Packing & Forwarding'], ['charge', 'Carriage'], ['tax', 'TDS'], ['tax', 'TCS'], ['tax', 'VAT'], ['other', '']] as [OrderAdjustmentKind, string][]).map(([k, label], i) => (
+                  {([['charge', 'Freight'], ['other', '']] as [OrderAdjustmentKind, string][]).map(([k, label], i) => (
                     <button key={i} type="button" onClick={() => addAdjustment(k, label)}
                       className="text-[10px] font-semibold text-red-mrt border border-red-mrt/25 rounded-[3px] px-2 py-1 hover:bg-red-lt transition-colors">
                       + {label || 'Other'}
@@ -1009,14 +1006,8 @@ export function NewOrder() {
                   {adjustments.map(a => {
                     const resolved = adjLines.find(l => l.id === a.id);
                     return (
-                      <div key={a.id} className="grid grid-cols-[100px_1fr_96px_92px_96px_110px_28px] gap-2 items-center">
-                        <select title="Type" value={a.kind} onChange={e => updateAdjustment(a.id, { kind: e.target.value as OrderAdjustmentKind })}
-                          className="font-mono text-[11px] border border-g300 rounded-[3px] px-2 py-[6px] outline-none focus:border-red-mrt bg-white">
-                          <option value="charge">Charge</option>
-                          <option value="tax">Tax</option>
-                          <option value="other">Other</option>
-                        </select>
-                        <input type="text" value={a.label} placeholder="Label (e.g. Freight, TDS)"
+                      <div key={a.id} className="grid grid-cols-[1fr_96px_92px_96px_110px_28px] gap-2 items-center">
+                        <input type="text" value={a.label} placeholder="Label (e.g. Freight, Other)"
                           onChange={e => updateAdjustment(a.id, { label: e.target.value })}
                           className="text-[12px] border border-g300 rounded-[3px] px-2 py-[6px] outline-none focus:border-red-mrt" />
                         <div className="flex">
