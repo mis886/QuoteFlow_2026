@@ -13,6 +13,7 @@ import { usePackingTypes, savePackingTypes } from '../hooks/usePackingTypes';
 import { uploadToS3 } from '../lib/s3';
 import { parseRfqPdf } from '../lib/rfqParser';
 import { RfqMapDialog } from '../components/RfqMapDialog';
+import { syncContactToCustomer } from '../lib/contactSync';
 
 export function NewEnquiry() {
   const navigate = useNavigate();
@@ -21,6 +22,12 @@ export function NewEnquiry() {
   const { data, user, addEnquiry, updateEnquiry, addCustomer, stampName, refreshData } = useAppStore();
   const packingTypeOptions = usePackingTypes();
   const [isSaving, setIsSaving] = useState(false);
+  const [contactSyncMsg, setContactSyncMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!contactSyncMsg) return;
+    const t = setTimeout(() => setContactSyncMsg(null), 6000);
+    return () => clearTimeout(t);
+  }, [contactSyncMsg]);
 
   // ── Unsaved-changes guard ──
   // `dirty` flips on first edit, clears on a successful save; while dirty,
@@ -349,7 +356,16 @@ export function NewEnquiry() {
 
       setDirty(false);   // persisted — no longer unsaved
       await refreshData();
+
+      // Background contact sync — silently update customer profile
+      let contactFull = false;
+      try {
+        const syncResult = await syncContactToCustomer(custName, contact, phone, email, data.customers);
+        if (syncResult.action === 'full') { setContactSyncMsg(syncResult.message); contactFull = true; }
+      } catch (e) { console.error('Contact sync failed:', e); }
+
       if (andQuote) navigate(`/quotes/new?enqRef=${enqId}`);
+      else if (contactFull) setTimeout(() => navigate('/enquiries'), 4000);
       else navigate('/enquiries');
     } catch (error: any) {
       console.error("Failed to save enquiry:", error);
@@ -790,6 +806,15 @@ export function NewEnquiry() {
         <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>
         {errors.global && <div className="ml-4 text-red-mrt text-[11px] font-bold">{errors.global}</div>}
       </div>
+
+      {/* Contact sync — Case 3 toast (all slots full) */}
+      {contactSyncMsg && (
+        <div className="fixed bottom-5 right-5 z-50 max-w-[360px] bg-amber-50 border border-amber-300 rounded-[4px] shadow-lg p-[12px_14px] flex items-start gap-2.5 animate-in slide-in-from-bottom-2 duration-300">
+          <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4 text-amber-500 shrink-0 mt-0.5"><path d="M10 2L2 17h16L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M10 8v4M10 14.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          <p className="text-[11.5px] text-amber-800 leading-relaxed flex-1">{contactSyncMsg}</p>
+          <button type="button" onClick={() => setContactSyncMsg(null)} className="shrink-0 text-amber-400 hover:text-amber-700 ml-1 font-bold text-[16px] leading-none">×</button>
+        </div>
+      )}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { generateQuotePDF } from '../lib/pdfGenerator';
 import { downloadQuoteDOCX } from '../lib/quoteDocx';
 import { SendEmailModal } from '../components/SendEmailModal';
 import { Copy, Upload, X, AlertCircle } from 'lucide-react';
+import { syncContactToCustomer } from '../lib/contactSync';
 
 const STEPS = ['Form', 'Preview'];
 
@@ -252,6 +253,12 @@ export function NewQuote() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [savedQuote, setSavedQuote] = useState<Quote | null>(null);
+  const [contactSyncMsg, setContactSyncMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!contactSyncMsg) return;
+    const t = setTimeout(() => setContactSyncMsg(null), 6000);
+    return () => clearTimeout(t);
+  }, [contactSyncMsg]);
 
   // Copy from quote
   const [showCopyQuote, setShowCopyQuote] = useState(false);
@@ -622,12 +629,26 @@ export function NewQuote() {
     return qData;
   };
 
+  // Run contact sync after save — silently for cases 1/2, brief toast for case 3.
+  // Returns true if navigation should be delayed (case 3 shown).
+  const doContactSync = async (): Promise<boolean> => {
+    try {
+      const r = await syncContactToCustomer(custName, contact, phone, email, data.customers);
+      if (r.action === 'full') { setContactSyncMsg(r.message); return true; }
+    } catch (e) { console.error('Contact sync failed:', e); }
+    return false;
+  };
+
   // Save only: persist + navigate to /quotes. No PDF.
   const handleSave = async (statusOverride?: QuoteStatus) => {
     setIsSaving(true);
     try {
       const qData = await persistQuote(statusOverride);
-      if (qData) { setDirty(false); navigate('/quotes'); }
+      if (!qData) return;
+      setDirty(false);
+      const delayed = await doContactSync();
+      if (delayed) setTimeout(() => navigate('/quotes'), 4000);
+      else navigate('/quotes');
     } catch (e: any) {
       console.error('Save failed:', e);
       setErrors({ global: `Failed to save: ${e?.message || e?.details || 'Unknown error — check browser console for details.'}` });
@@ -642,6 +663,7 @@ export function NewQuote() {
       const qData = await persistQuote();
       if (!qData) return;
       setDirty(false);
+      await doContactSync();
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
       const sig = data.signatories.find((s: any) => s.is_default);
       generateQuotePDF(qData, data.customers.find(c => c.name === custName), data.settings, sig, true, unit);
@@ -658,6 +680,7 @@ export function NewQuote() {
       const qData = await persistQuote();
       if (!qData) return;
       setDirty(false);
+      await doContactSync();
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
       const sig = data.signatories.find((s: any) => s.is_default);
       await downloadQuoteDOCX(qData, data.customers.find(c => c.name === custName), data.settings, sig, unit);
@@ -1521,6 +1544,15 @@ export function NewQuote() {
             await handleSave(sentStatus);
           }}
         />
+      )}
+
+      {/* Contact sync — Case 3 toast (all slots full) */}
+      {contactSyncMsg && (
+        <div className="fixed bottom-5 right-5 z-50 max-w-[360px] bg-amber-50 border border-amber-300 rounded-[4px] shadow-lg p-[12px_14px] flex items-start gap-2.5 animate-in slide-in-from-bottom-2 duration-300">
+          <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4 text-amber-500 shrink-0 mt-0.5"><path d="M10 2L2 17h16L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M10 8v4M10 14.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          <p className="text-[11.5px] text-amber-800 leading-relaxed flex-1">{contactSyncMsg}</p>
+          <button type="button" onClick={() => setContactSyncMsg(null)} className="shrink-0 text-amber-400 hover:text-amber-700 ml-1 font-bold text-[16px] leading-none">×</button>
+        </div>
       )}
     </div>
   );

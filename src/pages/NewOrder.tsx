@@ -14,6 +14,7 @@ import { downloadPIDOCX } from '../lib/quoteDocx';
 import { uploadToS3 } from '../lib/s3';
 import { Upload } from 'lucide-react';
 import { SendEmailModal } from '../components/SendEmailModal';
+import { syncContactToCustomer } from '../lib/contactSync';
 
 const STEPS = ['Form', 'Preview'];
 
@@ -102,6 +103,12 @@ export function NewOrder() {
   const [orderId, setOrderId] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [contactSyncMsg, setContactSyncMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!contactSyncMsg) return;
+    const t = setTimeout(() => setContactSyncMsg(null), 6000);
+    return () => clearTimeout(t);
+  }, [contactSyncMsg]);
   const [unitId, setUnitId] = useState<string>('');
   const [bankAccountId, setBankAccountId] = useState<string>('');
   const [priceBasis, setPriceBasis] = useState<string>('');
@@ -413,12 +420,25 @@ export function NewOrder() {
     return orderPayload;
   };
 
+  // Run contact sync after save — silently for cases 1/2, brief toast for case 3.
+  const doContactSync = async (): Promise<boolean> => {
+    try {
+      const r = await syncContactToCustomer(custName, contact, phone, email, data.customers);
+      if (r.action === 'full') { setContactSyncMsg(r.message); return true; }
+    } catch (e) { console.error('Contact sync failed:', e); }
+    return false;
+  };
+
   // Save only: persist + navigate back to /orders. No PDF.
   const handleSave = async () => {
     setIsSaving(true);
     try {
       const payload = await persistOrder();
-      if (payload) { setDirty(false); navigate('/orders'); }
+      if (!payload) return;
+      setDirty(false);
+      const delayed = await doContactSync();
+      if (delayed) setTimeout(() => navigate('/orders'), 4000);
+      else navigate('/orders');
     } catch (err) {
       setErrors({ global: `Failed to save: ${(err as any)?.message || 'Check connection'}` });
     } finally { setIsSaving(false); }
@@ -431,7 +451,8 @@ export function NewOrder() {
     try {
       const payload = await persistOrder();
       if (!payload) return;
-      setDirty(false);   // persisted — no longer unsaved
+      setDirty(false);
+      await doContactSync();
       const qt = quoteRef ? data.quotes.find(q => q.id === quoteRef) : undefined;
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
       const bank = bankAccountId ? data.bankAccounts.find(b => b.id === bankAccountId)
@@ -449,6 +470,7 @@ export function NewOrder() {
       const payload = await persistOrder();
       if (!payload) return;
       setDirty(false);
+      await doContactSync();
       const qt = quoteRef ? data.quotes.find(q => q.id === quoteRef) : undefined;
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
       const bank = bankAccountId ? data.bankAccounts.find(b => b.id === bankAccountId)
@@ -1350,6 +1372,15 @@ export function NewOrder() {
             await handleSave();
           }}
         />
+      )}
+
+      {/* Contact sync — Case 3 toast (all slots full) */}
+      {contactSyncMsg && (
+        <div className="fixed bottom-5 right-5 z-50 max-w-[360px] bg-amber-50 border border-amber-300 rounded-[4px] shadow-lg p-[12px_14px] flex items-start gap-2.5 animate-in slide-in-from-bottom-2 duration-300">
+          <svg viewBox="0 0 20 20" fill="none" className="w-4 h-4 text-amber-500 shrink-0 mt-0.5"><path d="M10 2L2 17h16L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M10 8v4M10 14.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          <p className="text-[11.5px] text-amber-800 leading-relaxed flex-1">{contactSyncMsg}</p>
+          <button type="button" onClick={() => setContactSyncMsg(null)} className="shrink-0 text-amber-400 hover:text-amber-700 ml-1 font-bold text-[16px] leading-none">×</button>
+        </div>
       )}
     </div>
   );
