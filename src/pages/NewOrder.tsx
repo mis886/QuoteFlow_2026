@@ -11,8 +11,8 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { generateOrderPDF } from '../lib/pdfGenerator';
 import { downloadPIDOCX } from '../lib/quoteDocx';
-import { uploadToS3 } from '../lib/s3';
-import { Upload } from 'lucide-react';
+import { uploadPublicFile } from '../lib/supabase';
+import { Upload, ExternalLink } from 'lucide-react';
 import { SendEmailModal } from '../components/SendEmailModal';
 import { syncContactToCustomer } from '../lib/contactSync';
 
@@ -399,9 +399,9 @@ export function NewOrder() {
     if (poFile) {
       try {
         const safeName = poFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const s3Path = await uploadToS3(poFile, `orders/${orderId}/${safeName}`);
-        if (s3Path) finalPoFileName = s3Path;
-      } catch { /* use local name */ }
+        const { data: publicUrl } = await uploadPublicFile('order-documents', `orders/${orderId}/${safeName}`, poFile);
+        if (publicUrl) finalPoFileName = publicUrl;
+      } catch { /* use local name as fallback */ }
     }
     const orderPayload: Order = { ...buildOrderData(), poFileName: finalPoFileName };
     if (editOrderId) {
@@ -674,9 +674,21 @@ export function NewOrder() {
                   <input type="file" id="po-upload" className="hidden" onChange={e => { if (e.target.files?.length) setPoFile(e.target.files[0]); }} accept=".pdf,.jpeg,.jpg,.png" />
                   <label htmlFor="po-upload" className="cursor-pointer font-sans text-[11px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors h-[36px] w-[140px]">
                     <Upload size={13} className="text-g500 shrink-0" />
-                    {poFile ? <span className="truncate">{poFile.name}</span> : existingPoFileName ? <span className="truncate">{existingPoFileName}</span> : 'Upload PO'}
+                    {poFile
+                      ? <span className="truncate">{poFile.name}</span>
+                      : existingPoFileName
+                      ? <span className="truncate text-emerald-600">Existing (click to replace)</span>
+                      : 'Upload PO'}
                   </label>
-                  {(poFile || existingPoFileName) && <button type="button" title="Remove" onClick={() => { setPoFile(null); setExistingPoFileName(null); }} className="text-g400 hover:text-red-mrt text-[16px]">×</button>}
+                  {!poFile && existingPoFileName?.startsWith('https://') && (
+                    <a href={existingPoFileName} target="_blank" rel="noopener noreferrer" title="Open PO document"
+                      className="p-1.5 text-g400 hover:text-blue-600 transition-colors" onClick={e => e.stopPropagation()}>
+                      <ExternalLink size={14} />
+                    </a>
+                  )}
+                  {(poFile || existingPoFileName) && (
+                    <button type="button" title="Remove" onClick={() => { setPoFile(null); setExistingPoFileName(null); }} className="text-g400 hover:text-red-mrt text-[16px]">×</button>
+                  )}
                 </div>
               </div>
             </div>
