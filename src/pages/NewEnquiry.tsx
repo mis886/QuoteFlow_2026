@@ -8,7 +8,7 @@ import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
 import { BILLING_HSN } from '../lib/products';
-import { usePackingTypes, savePackingTypes } from '../hooks/usePackingTypes';
+import { usePackingTypes } from '../hooks/usePackingTypes';
 
 import { uploadToS3 } from '../lib/s3';
 import { parseRfqPdf } from '../lib/rfqParser';
@@ -326,9 +326,6 @@ export function NewEnquiry() {
       } else {
         await addEnquiry(enqData);
       }
-
-      // Persist any new packing types to the shared packing_types table
-      savePackingTypes(items.map(i => i.packingType || ''));
 
       // Auto-create customer if it doesn't exist
       if (!data.customers.find(c => c.name.toLowerCase() === custName.toLowerCase())) {

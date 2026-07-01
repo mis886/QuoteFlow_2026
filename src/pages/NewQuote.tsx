@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { generateId, formatINR, localDateStr, fmtDate } from '../lib/utils';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus } from '../lib/types';
 import { BILLING_HSN } from '../lib/products';
-import { usePackingTypes, savePackingTypes } from '../hooks/usePackingTypes';
+import { usePackingTypes } from '../hooks/usePackingTypes';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
 import { Button } from '../components/ui';
@@ -625,7 +625,6 @@ export function NewQuote() {
     if (!data.customers.find(c => c.name.toLowerCase() === custName.toLowerCase())) {
       await addCustomer({ id: generateId('CUST', data.customers.map(c => c.id)), code: generateId('CUS', data.customers.map(c => c.code)), name: custName, seg: 'General', gstin: '', inco: 'Ex-Works', curr: 'INR', pay: '30 days', sites: [] });
     }
-    savePackingTypes(items.map(i => i.packingType || ''));
     return qData;
   };
 

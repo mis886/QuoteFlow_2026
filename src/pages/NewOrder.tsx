@@ -8,7 +8,7 @@ import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
 import { BILLING_HSN } from '../lib/products';
-import { usePackingTypes, savePackingTypes } from '../hooks/usePackingTypes';
+import { usePackingTypes } from '../hooks/usePackingTypes';
 import { generateOrderPDF } from '../lib/pdfGenerator';
 import { downloadPIDOCX } from '../lib/quoteDocx';
 import { uploadToS3 } from '../lib/s3';
@@ -416,7 +416,6 @@ export function NewOrder() {
         await addCustomer({ id: generateId('CUST', data.customers.map(c => c.id)), code: generateId('CUS', data.customers.map(c => c.code)), name: custName, seg: 'General', gstin: '', inco: 'Ex-Works', curr: 'INR', pay: '30 days', sites: [] });
       }
     }
-    savePackingTypes(items.map(i => i.packingType || ''));
     return orderPayload;
   };
 

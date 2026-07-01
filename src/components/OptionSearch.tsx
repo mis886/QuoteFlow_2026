@@ -14,8 +14,13 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€
   const [activeIdx, setActiveIdx] = useState(0);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // tracks the last value committed via pick(), so we can revert on close-without-pick
+  const committedRef = useRef(value);
 
-  useEffect(() => { setQuery(value); }, [value]);
+  useEffect(() => {
+    committedRef.current = value;
+    setQuery(value);
+  }, [value]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -32,24 +37,29 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€
     }
   };
 
+  const closeAndRevert = () => {
+    setOpen(false);
+    setQuery(committedRef.current);
+  };
+
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
     const outside = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) close();
+      if (!containerRef.current?.contains(e.target as Node)) closeAndRevert();
     };
     document.addEventListener('mousedown', outside);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
+    window.addEventListener('scroll', closeAndRevert, true);
+    window.addEventListener('resize', closeAndRevert);
     return () => {
       document.removeEventListener('mousedown', outside);
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', closeAndRevert, true);
+      window.removeEventListener('resize', closeAndRevert);
     };
   }, [open]);
 
   const pick = (opt: string) => {
     onChange(opt);
+    committedRef.current = opt;
     setQuery(opt);
     setOpen(false);
   };
@@ -59,8 +69,8 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€
     if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, filtered.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); }
     else if (e.key === 'Enter') { e.preventDefault(); if (filtered[activeIdx]) pick(filtered[activeIdx]); }
-    else if (e.key === 'Escape') { setOpen(false); }
-    else if (e.key === 'Tab') { setOpen(false); }
+    else if (e.key === 'Escape') { closeAndRevert(); }
+    else if (e.key === 'Tab') { closeAndRevert(); }
   };
 
   return (
@@ -70,9 +80,8 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€
         value={query}
         placeholder={placeholder}
         onChange={e => {
-          const v = e.target.value;
-          setQuery(v);
-          onChange(v);
+          setQuery(e.target.value);
+          // Not calling onChange â€” only picks from the list commit a value
           if (!open) calcPos();
           setOpen(true);
         }}
@@ -86,7 +95,7 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€
           className="bg-white border border-g200 rounded-[3px] shadow-lg max-h-52 overflow-y-auto"
         >
           {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-[12px] text-g400 italic">No match â€” will save as typed</div>
+            <div className="px-3 py-2 text-[12px] text-g400 italic">No options match</div>
           ) : (
             filtered.map((opt, i) => (
               <div
