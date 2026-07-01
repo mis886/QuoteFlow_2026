@@ -29,6 +29,8 @@ interface Sample {
   outcome?: SampleOutcome | null;
   notes?: string | null;
   sent_by?: string | null;
+  coa_file?: string | null;
+  lot_no?: string | null;
   created_at?: string | null;
 }
 
@@ -377,13 +379,15 @@ export function Sampling() {
                 <th className={thCls}>Follow-Up Due</th>
                 <th className={thCls}>Status</th>
                 <th className={thCls}>Outcome</th>
+                <th className={thCls}>COA</th>
+                <th className={thCls}>Lot No</th>
                 <th className={thCls}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="text-center p-10">
+                  <td colSpan={12} className="text-center p-10">
                     <div className="flex items-center justify-center gap-2 text-g400">
                       <Loader2 size={16} className="animate-spin" />
                       <span className="text-[13px]">Loading samples...</span>
@@ -392,7 +396,7 @@ export function Sampling() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center p-10 text-g400 text-[13px]">
+                  <td colSpan={12} className="text-center p-10 text-g400 text-[13px]">
                     {search || tabFilter !== 'all'
                       ? 'No samples match this filter'
                       : 'No samples logged yet — click "+ Log Sample" to get started'}
@@ -434,6 +438,14 @@ export function Sampling() {
                     </td>
                     <td className={tdCls}>
                       <OutcomeCell outcome={s.outcome} />
+                    </td>
+                    <td className={tdCls}>
+                      {s.coa_file
+                        ? <span className="text-emerald-600 font-semibold text-[11.5px]">Yes</span>
+                        : <span className="text-g400 text-[11.5px]">No</span>}
+                    </td>
+                    <td className={`${tdCls} font-mono text-[11px] text-g600 whitespace-nowrap`}>
+                      {s.lot_no || '—'}
                     </td>
                     <td className={tdCls}>
                       <div className="flex items-center gap-1.5">

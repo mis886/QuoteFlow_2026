@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Upload } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { uploadPublicFile } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { localDateStr } from '../lib/utils';
 import { Button } from '../components/ui';
@@ -12,30 +14,42 @@ const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g
 const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]";
 const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200";
 
+function addDaysToDate(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return localDateStr(d);
+}
+
 export function SamplingNew() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { data } = useAppStore();
 
   const today = localDateStr(new Date());
-  const plus7  = localDateStr(new Date(Date.now() + 7 * 86400000));
 
-  // Form state — seed from URL params when navigating from Enquiry detail
-  const [sentDate,    setSentDate]    = useState(today);
-  const [followupDue, setFollowupDue] = useState(plus7);
-  const [courier,     setCourier]     = useState('');
-  const [cost,        setCost]        = useState('');
-  const [cust,        setCust]        = useState(() => searchParams.get('cust') ?? '');
-  const [linkedRef,   setLinkedRef]   = useState(() => searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '');
-  const [sentBy,      setSentBy]      = useState('');
-  const [productName, setProductName] = useState('');
-  const [productGrade,setProductGrade]= useState('');
-  const [quantity,    setQuantity]    = useState('');
-  const [unit,        setUnit]        = useState('g');
-  const [notes,       setNotes]       = useState('');
+  const [sentDate,     setSentDate]     = useState(today);
+  const [followupDue,  setFollowupDue]  = useState(() => addDaysToDate(today, 3));
+  const [courier,      setCourier]      = useState('');
+  const [podFile,      setPodFile]      = useState<File | null>(null);
+  const [cost,         setCost]         = useState('');
+  const [cust,         setCust]         = useState(() => searchParams.get('cust') ?? '');
+  const [linkedRef,    setLinkedRef]    = useState(() => searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '');
+  const [sentBy,       setSentBy]       = useState('');
+  const [productName,  setProductName]  = useState('');
+  const [productGrade, setProductGrade] = useState('');
+  const [lotNo,        setLotNo]        = useState('');
+  const [coaFile,      setCoaFile]      = useState<File | null>(null);
+  const [quantity,     setQuantity]     = useState('');
+  const [unit,         setUnit]         = useState('g');
+  const [notes,        setNotes]        = useState('');
 
   const [saving,  setSaving]  = useState(false);
   const [errors,  setErrors]  = useState<Record<string, string>>({});
+
+  // Auto-update follow-up date when dispatch date changes (default: sentDate + 3 days)
+  useEffect(() => {
+    if (sentDate) setFollowupDue(addDaysToDate(sentDate, 3));
+  }, [sentDate]);
 
   const previewId = `SAMP-${Date.now()}`;
 
@@ -48,36 +62,57 @@ export function SamplingNew() {
     setSaving(true);
     setErrors({});
 
-    const ref = linkedRef.trim();
-    const upper = ref.toUpperCase();
-    const isQt  = upper.startsWith('HTP') || upper.startsWith('QT');
-    const isEnq = upper.startsWith('ENQ');
+    const sampleId = `SAMP-${Date.now()}`;
+
+    // Upload POD and COA files to sample-attachments bucket
+    let podUrl: string | null = null;
+    let coaUrl: string | null = null;
+
+    if (podFile) {
+      const ext = podFile.name.split('.').pop() || 'bin';
+      const { data: url } = await uploadPublicFile('sample-attachments', `${sampleId}/pod.${ext}`, podFile);
+      podUrl = url ?? null;
+    }
+    if (coaFile) {
+      const ext = coaFile.name.split('.').pop() || 'bin';
+      const { data: url } = await uploadPublicFile('sample-attachments', `${sampleId}/coa.${ext}`, coaFile);
+      coaUrl = url ?? null;
+    }
+
+    const ref    = linkedRef.trim();
+    const upper  = ref.toUpperCase();
+    const isQt   = upper.startsWith('HTP') || upper.startsWith('QT');
 
     const { error } = await supabase.from('samples').insert({
-      id:            `SAMP-${Date.now()}`,
-      cust:          cust.trim(),
-      quote_ref:     (ref && isQt)  ? ref : null,
-      enq_ref:       (ref && !isQt) ? ref : null,
-      product_name:  productName.trim(),
-      product_grade: productGrade.trim() || null,
-      quantity:      parseFloat(quantity) || 0,
+      id:              sampleId,
+      cust:            cust.trim(),
+      quote_ref:       (ref && isQt)  ? ref : null,
+      enq_ref:         (ref && !isQt) ? ref : null,
+      product_name:    productName.trim(),
+      product_grade:   productGrade.trim() || null,
+      lot_no:          lotNo.trim() || null,
+      quantity:        parseFloat(quantity) || 0,
       unit,
-      sent_date:     sentDate || null,
-      followup_due:  followupDue || null,
+      sent_date:       sentDate || null,
+      followup_due:    followupDue || null,
       courier_details: courier.trim() || null,
-      cost:          parseFloat(cost) || 0,
-      status:        'pending',
+      pod_file:        podUrl,
+      coa_file:        coaUrl,
+      cost:            parseFloat(cost) || 0,
+      status:          'pending',
       feedback_received: false,
-      sent_by:       sentBy.trim() || null,
-      notes:         notes.trim() || null,
-      created_at:    new Date().toISOString(),
-      updated_at:    new Date().toISOString(),
+      sent_by:         sentBy.trim() || null,
+      notes:           notes.trim() || null,
+      created_at:      new Date().toISOString(),
+      updated_at:      new Date().toISOString(),
     });
 
     setSaving(false);
     if (error) { setErrors({ global: error.message }); return; }
     navigate('/sampling');
   };
+
+  const selectCls = `${inputCls} cursor-pointer appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px]`;
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -108,6 +143,7 @@ export function SamplingNew() {
         <div className="grid grid-cols-[1fr_340px] gap-[14px] items-start">
           {/* LEFT — main form sections */}
           <div className="flex flex-col gap-[14px]">
+
             {/* DISPATCH INFORMATION */}
             <div className="bg-white border border-g200 p-[18px_20px]">
               <div className={sectionHeaderCls}>Dispatch Information</div>
@@ -125,6 +161,25 @@ export function SamplingNew() {
                   <input type="text" value={courier} onChange={e => setCourier(e.target.value)}
                     placeholder="Blue Dart AWB#, DTDC, India Post..."
                     className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>POD</label>
+                  <div className="flex items-center gap-1.5">
+                    <input type="file" id="pod-upload" className="hidden"
+                      accept=".pdf,.jpeg,.jpg,.png"
+                      onChange={e => setPodFile(e.target.files?.[0] ?? null)} />
+                    <label htmlFor="pod-upload"
+                      className="cursor-pointer font-sans text-[12px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors min-h-[36px] w-full">
+                      <Upload size={13} className="text-g500 shrink-0" />
+                      {podFile
+                        ? <span className="truncate text-[11.5px]">{podFile.name}</span>
+                        : <span className="text-g400">Upload proof of delivery</span>}
+                    </label>
+                    {podFile && (
+                      <button type="button" title="Remove" onClick={() => setPodFile(null)}
+                        className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className={labelCls}>Sample Cost ₹</label>
@@ -169,7 +224,8 @@ export function SamplingNew() {
               <div className="grid grid-cols-2 gap-[12px]">
                 <div>
                   <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
-                  <input type="text" value={productName} onChange={e => { setProductName(e.target.value); setErrors(er => ({ ...er, productName: '' })); }}
+                  <input type="text" value={productName}
+                    onChange={e => { setProductName(e.target.value); setErrors(er => ({ ...er, productName: '' })); }}
                     placeholder="e.g. Alpha Terpineol"
                     className={`${inputCls}${errors.productName ? ' border-red-mrt' : ''}`} />
                   {errors.productName && <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.productName}</div>}
@@ -181,14 +237,38 @@ export function SamplingNew() {
                     className={inputCls} />
                 </div>
                 <div>
+                  <label className={labelCls}>Lot No</label>
+                  <input type="text" value={lotNo} onChange={e => setLotNo(e.target.value)}
+                    placeholder="e.g. LOT-2026-001"
+                    className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>COA</label>
+                  <div className="flex items-center gap-1.5">
+                    <input type="file" id="coa-upload" className="hidden"
+                      accept=".pdf,.jpeg,.jpg,.png"
+                      onChange={e => setCoaFile(e.target.files?.[0] ?? null)} />
+                    <label htmlFor="coa-upload"
+                      className="cursor-pointer font-sans text-[12px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors min-h-[36px] w-full">
+                      <Upload size={13} className="text-g500 shrink-0" />
+                      {coaFile
+                        ? <span className="truncate text-[11.5px]">{coaFile.name}</span>
+                        : <span className="text-g400">Upload certificate of analysis</span>}
+                    </label>
+                    {coaFile && (
+                      <button type="button" title="Remove" onClick={() => setCoaFile(null)}
+                        className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
+                    )}
+                  </div>
+                </div>
+                <div>
                   <label className={labelCls}>Sample Quantity</label>
                   <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)}
                     placeholder="0" min="0" step="any" className={inputCls} />
                 </div>
                 <div>
                   <label className={labelCls}>Unit</label>
-                  <select value={unit} onChange={e => setUnit(e.target.value)}
-                    className={`${inputCls} cursor-pointer appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px]`}>
+                  <select value={unit} onChange={e => setUnit(e.target.value)} className={selectCls}>
                     {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
@@ -225,7 +305,7 @@ export function SamplingNew() {
                   </div>
                   <div className="flex items-start gap-1.5">
                     <span className="text-red-mrt font-bold mt-px shrink-0">›</span>
-                    <span>Default follow-up window: <strong>7 days</strong> after dispatch</span>
+                    <span>Default follow-up window: <strong>3 days</strong> after dispatch</span>
                   </div>
                   <div className="flex items-start gap-1.5">
                     <span className="text-red-mrt font-bold mt-px shrink-0">›</span>
@@ -240,17 +320,18 @@ export function SamplingNew() {
               <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200">Sample Status</div>
               <div className="text-[11px] text-g500 mb-3">This record will be created with status:</div>
               <div className="flex items-center gap-1.5 mb-4">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[3px] text-[11px] font-semibold bg-purple-50 text-purple-700">
-                  <span className="w-[5px] h-[5px] rounded-full bg-purple-500 shrink-0" />
-                  Dispatched
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[3px] text-[11px] font-semibold bg-yellow-50 text-yellow-700">
+                  <span className="w-[5px] h-[5px] rounded-full bg-yellow-400 shrink-0" />
+                  Pending
                 </span>
               </div>
               <div className="text-[10px] text-g400 font-mono tracking-wide uppercase mb-2">Workflow</div>
               <div className="flex flex-col gap-2">
                 {[
-                  { label: 'Dispatched',        active: true,  color: 'bg-purple-500' },
-                  { label: 'Feedback Received', active: false, color: 'bg-amber-500' },
-                  { label: 'Approved / Rejected', active: false, color: 'bg-emerald-500' },
+                  { label: 'Pending',            active: true,  color: 'bg-yellow-400' },
+                  { label: 'Dispatched',         active: false, color: 'bg-purple-500' },
+                  { label: 'Feedback Received',  active: false, color: 'bg-amber-500'  },
+                  { label: 'Approved / Rejected',active: false, color: 'bg-emerald-500'},
                 ].map((step, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full shrink-0 ${step.active ? step.color : 'bg-g200'}`} />
