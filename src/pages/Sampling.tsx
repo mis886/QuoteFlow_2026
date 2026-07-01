@@ -31,6 +31,7 @@ interface Sample {
   sent_by?: string | null;
   coa_file?: string | null;
   lot_no?: string | null;
+  email_sent_at?: string | null;
   created_at?: string | null;
 }
 
@@ -244,7 +245,7 @@ export function Sampling() {
   const [loading, setLoading] = useState(true);
   const [feedbackTarget, setFeedbackTarget] = useState<Sample | null>(null);
   const [search, setSearch] = useState('');
-  const [tabFilter, setTabFilter] = useState<'all' | SampleStatus>('all');
+  const [tabFilter, setTabFilter] = useState<'all' | SampleStatus | 'sent'>('all');
 
   const handleDelete = async (id: string) => {
     if (!confirm(`Delete sample ${id}? This cannot be undone.`)) return;
@@ -277,7 +278,8 @@ export function Sampling() {
 
   const filtered = useMemo(() => {
     let list = samples;
-    if (tabFilter !== 'all') list = list.filter(s => s.status === tabFilter);
+    if (tabFilter === 'sent') list = list.filter(s => !!s.email_sent_at);
+    else if (tabFilter !== 'all') list = list.filter(s => s.status === tabFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(s =>
@@ -293,6 +295,7 @@ export function Sampling() {
 
   const tabCounts = useMemo(() => ({
     all:               samples.length,
+    sent:              samples.filter(s => !!s.email_sent_at).length,
     pending:           samples.filter(s => s.status === 'pending').length,
     dispatched:        samples.filter(s => s.status === 'dispatched').length,
     feedback_received: samples.filter(s => s.status === 'feedback_received').length,
@@ -349,6 +352,7 @@ export function Sampling() {
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <TabBtn value="all"               label="All" />
+          <TabBtn value="sent"              label="Sent" />
           <TabBtn value="pending"           label="Pending" />
           <TabBtn value="dispatched"        label="Dispatched" />
           <TabBtn value="feedback_received" label="Feedback Rcvd" />
