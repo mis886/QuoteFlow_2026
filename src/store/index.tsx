@@ -312,8 +312,9 @@ const mapEnquiryToDB = (e: any) => {
     obj.dlvDate = o.dlv_date;
     if (o.po_filename) obj.poFileName = o.po_filename;
     if (o.sheets_exported_at) obj.sheetsExportedAt = o.sheets_exported_at;
-    if (o.unit_id) obj.unitId = o.unit_id;
+    if (o.company_unit_id) obj.unitId = o.company_unit_id;
     if (o.bank_account_id) obj.bankAccountId = o.bank_account_id;
+    if (o.shipping_address) obj.shipToAddress = o.shipping_address;
     if (o.price_basis) obj.priceBasis = o.price_basis;
     if (o.country_of_origin) obj.countryOfOrigin = o.country_of_origin;
     if (o.exim_code) obj.eximCode = o.exim_code;
@@ -336,8 +337,9 @@ const mapEnquiryToDB = (e: any) => {
     delete obj.dlv_date;
     delete obj.po_filename;
     delete obj.sheets_exported_at;
-    delete obj.unit_id;
+    delete obj.company_unit_id;
     delete obj.bank_account_id;
+    delete obj.shipping_address;
     delete obj.price_basis;
     delete obj.country_of_origin;
     delete obj.exim_code;
@@ -348,9 +350,6 @@ const mapEnquiryToDB = (e: any) => {
     return obj;
   };
 
-  // Only maps fields that actually exist in the orders table.
-  // Confirmed columns: id, quote_ref, enq_ref, cust, po_no, po_date, dlv_date,
-  // status, value, items, po_filename, site_id, inco, curr (+ created_at/updated_at managed by DB).
   const mapOrderToDB = (o: any) => {
     const obj: any = {};
     if ('id' in o) obj.id = o.id;
@@ -382,6 +381,18 @@ const mapEnquiryToDB = (e: any) => {
 
     if ('poFileName' in o) obj.po_filename = o.poFileName;
     else if ('po_filename' in o) obj.po_filename = o.po_filename;
+
+    // Fields added in migration add_missing_order_columns
+    if ('contactId' in o) obj.contact_id = o.contactId || null;
+    if ('contact' in o) obj.contact = o.contact || null;
+    if ('phone' in o) obj.contact_phone = o.phone || null;
+    if ('email' in o) obj.email = o.email || null;
+    if ('shipToAddress' in o) obj.shipping_address = o.shipToAddress || null;
+    if ('custEnquiryDocNo' in o) obj.cust_enquiry_doc_no = o.custEnquiryDocNo || null;
+    if ('unitId' in o) obj.company_unit_id = o.unitId || null;
+    if ('bankAccountId' in o) obj.bank_account_id = o.bankAccountId || null;
+    if ('authorizedPerson' in o) obj.authorized_person = o.authorizedPerson || null;
+    if ('terms' in o) obj.terms = o.terms || null;
 
     return obj;
   };
