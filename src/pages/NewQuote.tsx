@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, localDateStr, fmtDate } from '../lib/utils';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus } from '../lib/types';
-import { BILLING_HSN } from '../lib/products';
 import { usePackingTypes } from '../hooks/usePackingTypes';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
 import { Button } from '../components/ui';
@@ -157,6 +157,7 @@ export function NewQuote() {
   const navigate = useNavigate();
   const { data, addQuote, updateQuote, updateEnquiry, addCustomer, addSignatory, stampName } = useAppStore();
   const packingTypeOptions = usePackingTypes();
+  const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
   // Linked enquiry reference. Seeded from the URL when converting an enquiry,
   // and re-hydrated from the saved quote when editing — so editing never wipes
@@ -1099,9 +1100,11 @@ export function NewQuote() {
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <ProductSearch
                               value={item.desc}
+                              names={productNames}
+                              hsnMap={productHsnMap}
                               onChange={(desc, hsn) => {
                                 const ni = [...items];
-                                const resolvedHsn = !desc ? '' : (hsn ?? (desc in BILLING_HSN ? BILLING_HSN[desc] : undefined));
+                                const resolvedHsn = !desc ? '' : (hsn ?? (desc in productHsnMap ? productHsnMap[desc] : undefined));
                                 ni[idx] = { ...ni[idx], desc, ...(resolvedHsn !== undefined ? { hsn: resolvedHsn } : {}) };
                                 setItems(ni);
                                 setErrors({ ...errors, items: '' });
@@ -1109,15 +1112,15 @@ export function NewQuote() {
                               error={!!(errors.items && !item.desc)}
                             />
                           </td>
-                          <td className={`px-3 py-[5px] border border-g400 align-middle${item.desc in BILLING_HSN ? ' bg-g100' : ''}`}>
+                          <td className={`px-3 py-[5px] border border-g400 align-middle${item.desc in productHsnMap ? ' bg-g100' : ''}`}>
                             <input
                               type="text"
-                              list={item.desc in BILLING_HSN ? undefined : 'qt-hsn-list'}
+                              list={item.desc in productHsnMap ? undefined : 'qt-hsn-list'}
                               title="HSN Code"
                               value={item.hsn}
-                              readOnly={item.desc in BILLING_HSN}
+                              readOnly={item.desc in productHsnMap}
                               onChange={e => updateItem(idx, 'hsn', e.target.value)}
-                              className={`w-full bg-transparent outline-none font-mono text-[11px] ${item.desc in BILLING_HSN ? 'text-g500 cursor-default select-none' : 'text-blk'}`}
+                              className={`w-full bg-transparent outline-none font-mono text-[11px] ${item.desc in productHsnMap ? 'text-g500 cursor-default select-none' : 'text-blk'}`}
                             />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">

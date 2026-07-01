@@ -7,8 +7,8 @@ import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
-import { BILLING_HSN } from '../lib/products';
 import { usePackingTypes } from '../hooks/usePackingTypes';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 
 import { uploadToS3 } from '../lib/s3';
 import { parseRfqPdf } from '../lib/rfqParser';
@@ -21,6 +21,7 @@ export function NewEnquiry() {
   const editId = searchParams.get('id');
   const { data, user, addEnquiry, updateEnquiry, addCustomer, stampName, refreshData } = useAppStore();
   const packingTypeOptions = usePackingTypes();
+  const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
   const [isSaving, setIsSaving] = useState(false);
   const [contactSyncMsg, setContactSyncMsg] = useState<string | null>(null);
   useEffect(() => {
@@ -540,9 +541,11 @@ export function NewEnquiry() {
                             <td className="px-3 py-[5px] border border-g400 align-middle">
                               <ProductSearch
                                 value={item.desc}
+                                names={productNames}
+                                hsnMap={productHsnMap}
                                 onChange={(desc, hsn) => {
                                   const ni = [...items];
-                                  const resolvedHsn = !desc ? '' : (hsn ?? (desc in BILLING_HSN ? BILLING_HSN[desc] : undefined));
+                                  const resolvedHsn = !desc ? '' : (hsn ?? (desc in productHsnMap ? productHsnMap[desc] : undefined));
                                   ni[idx] = { ...ni[idx], desc, ...(resolvedHsn !== undefined ? { hsn: resolvedHsn } : {}) };
                                   setItems(ni);
                                   setErrors({ ...errors, items: '' });

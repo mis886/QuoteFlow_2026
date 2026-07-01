@@ -1,15 +1,16 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { BILLING_HSN, BILLING_NAMES } from '../lib/products';
 
 interface Props {
   value: string;
   // hsn defined → known product selected (auto-fill); hsn undefined → free type (don't touch hsn)
   onChange: (desc: string, hsn?: string) => void;
   error?: boolean;
+  names: string[];
+  hsnMap: Record<string, string>;
 }
 
-export function ProductSearch({ value, onChange, error }: Props) {
+export function ProductSearch({ value, onChange, error, names, hsnMap }: Props) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -21,9 +22,9 @@ export function ProductSearch({ value, onChange, error }: Props) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return BILLING_NAMES;
-    return BILLING_NAMES.filter(n => n.toLowerCase().includes(q));
-  }, [query]);
+    if (!q) return names;
+    return names.filter(n => n.toLowerCase().includes(q));
+  }, [query, names]);
 
   useEffect(() => { setActiveIdx(0); }, [filtered.length]);
 
@@ -51,7 +52,7 @@ export function ProductSearch({ value, onChange, error }: Props) {
   }, [open]);
 
   const pick = (name: string) => {
-    onChange(name, BILLING_HSN[name]);
+    onChange(name, hsnMap[name]);
     setQuery(name);
     setOpen(false);
   };
@@ -96,7 +97,7 @@ export function ProductSearch({ value, onChange, error }: Props) {
               className={`px-3 py-1.5 cursor-pointer text-[12px] flex items-center justify-between gap-2 ${i === activeIdx ? 'bg-red-lt/40' : 'hover:bg-g50'}`}
             >
               <span className="text-blk truncate">{name}</span>
-              <span className="font-mono text-[10px] text-g400 shrink-0">{BILLING_HSN[name]}</span>
+              <span className="font-mono text-[10px] text-g400 shrink-0">{hsnMap[name]}</span>
             </div>
           ))}
         </div>,

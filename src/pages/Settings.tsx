@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { hasActiveToken } from '../lib/gmail';
-import { RefreshCw, Save, Plus, Trash2, Check, Landmark, Mail, Star, Lock, Puzzle, RotateCcw, Pencil, X, GitBranch, Users } from 'lucide-react';
+import { RefreshCw, Save, Plus, Trash2, Check, Landmark, Mail, Star, Lock, Puzzle, RotateCcw, Pencil, X, GitBranch, Users, Package } from 'lucide-react';
 import { UnitsManager } from '../components/UnitsManager';
 import { TeamRosterManager } from '../components/TeamRosterManager';
+import { ProductCatalogManager } from '../components/ProductCatalogManager';
 import { PinGate } from '../components/PinGate';
 import { BOARD_LANES, DEFAULT_STAGE_TAT_H, DEFAULT_STAGE_ROLE, DOER_ROLES, type BoardLane, type DoerRole } from '../lib/types';
 
-type Tab = 'signatories' | 'units' | 'gmail' | 'intel' | 'integrations' | 'pipeline' | 'roster';
+type Tab = 'signatories' | 'units' | 'gmail' | 'intel' | 'integrations' | 'pipeline' | 'roster' | 'catalog';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -171,13 +172,14 @@ export function Settings() {
   };
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'units',       label: 'Units & Bank',  icon: <Landmark size={13} /> },
-    { id: 'signatories', label: 'Signatories',   icon: <Star size={13} /> },
-    { id: 'pipeline', label: 'Pipeline TAT',    icon: <GitBranch size={13} /> },
-    { id: 'roster', label: 'Team Roster',       icon: <Users size={13} /> },
-    { id: 'gmail', label: 'Gmail Integration',  icon: <Mail size={13} /> },
-    { id: 'intel', label: 'Intelligence',       icon: <Lock size={13} /> },
-    { id: 'integrations', label: 'Integrations', icon: <Puzzle size={13} /> },
+    { id: 'units',       label: 'Units & Bank',    icon: <Landmark size={13} /> },
+    { id: 'signatories', label: 'Signatories',     icon: <Star size={13} /> },
+    { id: 'catalog',     label: 'Product Catalog', icon: <Package size={13} /> },
+    { id: 'pipeline',    label: 'Pipeline TAT',    icon: <GitBranch size={13} /> },
+    { id: 'roster',      label: 'Team Roster',     icon: <Users size={13} /> },
+    { id: 'gmail',       label: 'Gmail Integration', icon: <Mail size={13} /> },
+    { id: 'intel',       label: 'Intelligence',    icon: <Lock size={13} /> },
+    { id: 'integrations', label: 'Integrations',   icon: <Puzzle size={13} /> },
   ];
 
   return (
@@ -396,6 +398,9 @@ export function Settings() {
 
         {/* ── Units & Bank Accounts ── */}
         {tab === 'units' && <UnitsManager />}
+
+        {/* ── Product Catalog ── */}
+        {tab === 'catalog' && <ProductCatalogManager />}
 
         {tab === 'roster' && <TeamRosterManager />}
 
