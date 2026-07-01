@@ -7,6 +7,7 @@ import { useAppStore } from '../store';
 import { localDateStr } from '../lib/utils';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
+import { SampleEmailModal } from '../components/SampleEmailModal';
 
 const UNITS = ['g', 'ml', 'kg', 'L'];
 
@@ -45,6 +46,10 @@ export function SamplingNew() {
 
   const [saving,  setSaving]  = useState(false);
   const [errors,  setErrors]  = useState<Record<string, string>>({});
+  const [emailModal, setEmailModal] = useState<{
+    sampleId: string; podUrl: string | null; podFileName: string;
+    coaUrl: string | null; coaFileName: string;
+  } | null>(null);
 
   // Auto-update follow-up date when dispatch date changes (default: sentDate + 3 days)
   useEffect(() => {
@@ -53,18 +58,20 @@ export function SamplingNew() {
 
   const previewId = `SAMP-${Date.now()}`;
 
-  const handleSave = async () => {
+  const doSave = async (): Promise<{
+    sampleId: string; podUrl: string | null; podFileName: string;
+    coaUrl: string | null; coaFileName: string;
+  } | null> => {
     const errs: Record<string, string> = {};
     if (!cust.trim())        errs.cust        = 'Customer is required.';
     if (!productName.trim()) errs.productName = 'Product name is required.';
-    if (Object.keys(errs).length) { setErrors(errs); return; }
+    if (Object.keys(errs).length) { setErrors(errs); return null; }
 
     setSaving(true);
     setErrors({});
 
     const sampleId = `SAMP-${Date.now()}`;
 
-    // Upload POD and COA files to sample-attachments bucket
     let podUrl: string | null = null;
     let coaUrl: string | null = null;
 
@@ -79,9 +86,9 @@ export function SamplingNew() {
       coaUrl = url ?? null;
     }
 
-    const ref    = linkedRef.trim();
-    const upper  = ref.toUpperCase();
-    const isQt   = upper.startsWith('HTP') || upper.startsWith('QT');
+    const ref   = linkedRef.trim();
+    const upper = ref.toUpperCase();
+    const isQt  = upper.startsWith('HTP') || upper.startsWith('QT');
 
     const { error } = await supabase.from('samples').insert({
       id:              sampleId,
@@ -108,8 +115,25 @@ export function SamplingNew() {
     });
 
     setSaving(false);
-    if (error) { setErrors({ global: error.message }); return; }
-    navigate('/sampling');
+    if (error) { setErrors({ global: error.message }); return null; }
+
+    return {
+      sampleId,
+      podUrl,
+      podFileName: podFile?.name ?? 'POD.pdf',
+      coaUrl,
+      coaFileName: coaFile?.name ?? 'COA.pdf',
+    };
+  };
+
+  const handleSave = async () => {
+    const result = await doSave();
+    if (result) navigate('/sampling');
+  };
+
+  const handleSaveAndEmail = async () => {
+    const result = await doSave();
+    if (result) setEmailModal(result);
   };
 
   const selectCls = `${inputCls} cursor-pointer appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px]`;
@@ -349,6 +373,9 @@ export function SamplingNew() {
         <Button variant="primary" onClick={handleSave} disabled={saving}>
           {saving ? 'Saving...' : 'Log Sample'}
         </Button>
+        <Button variant="secondary" onClick={handleSaveAndEmail} disabled={saving}>
+          {saving ? 'Saving...' : 'Email to Client'}
+        </Button>
         <Button variant="secondary" onClick={() => navigate('/sampling')} disabled={saving}>
           Cancel
         </Button>
@@ -357,6 +384,28 @@ export function SamplingNew() {
           <div className="ml-4 text-red-mrt text-[11px] font-bold">{errors.global}</div>
         )}
       </div>
+
+      {emailModal && (
+        <SampleEmailModal
+          sampleId={emailModal.sampleId}
+          customerName={cust}
+          productName={productName}
+          productGrade={productGrade}
+          quantity={quantity}
+          unit={unit}
+          lotNo={lotNo}
+          sentDate={sentDate}
+          followupDue={followupDue}
+          courier={courier}
+          sentBy={sentBy}
+          podUrl={emailModal.podUrl}
+          podFileName={emailModal.podFileName}
+          coaUrl={emailModal.coaUrl}
+          coaFileName={emailModal.coaFileName}
+          onClose={() => navigate('/sampling')}
+          onSent={() => navigate('/sampling')}
+        />
+      )}
     </div>
   );
 }
