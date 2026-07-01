@@ -238,12 +238,20 @@ function FeedbackModal({ sample, onClose, onSaved }: {
 
 export function Sampling() {
   const navigate = useNavigate();
-  useAppStore(); // keep store subscription for future use
+  const { user } = useAppStore();
+  const canDelete = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
   const [samples, setSamples] = useState<Sample[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedbackTarget, setFeedbackTarget] = useState<Sample | null>(null);
   const [search, setSearch] = useState('');
   const [tabFilter, setTabFilter] = useState<'all' | SampleStatus>('all');
+
+  const handleDelete = async (id: string) => {
+    if (!confirm(`Delete sample ${id}? This cannot be undone.`)) return;
+    const { error } = await supabase.from('samples').delete().eq('id', id);
+    if (error) { alert(`Could not delete: ${error.message}`); return; }
+    setSamples(prev => prev.filter(s => s.id !== id));
+  };
 
   const fetchSamples = async () => {
     const { data: rows, error } = await supabase
@@ -449,6 +457,7 @@ export function Sampling() {
                     </td>
                     <td className={tdCls}>
                       <div className="flex items-center gap-1.5">
+                        <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
                         {!s.outcome && (
                           <button
                             onClick={() => setFeedbackTarget(s)}
@@ -464,6 +473,9 @@ export function Sampling() {
                           >
                             Convert to Order
                           </button>
+                        )}
+                        {canDelete && (
+                          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(s.id)}>Delete</Button>
                         )}
                       </div>
                     </td>

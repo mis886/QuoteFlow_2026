@@ -26,15 +26,16 @@ export function SamplingNew() {
   const [searchParams] = useSearchParams();
   const { data } = useAppStore();
 
-  const today = localDateStr(new Date());
+  const editId = searchParams.get('id');
+  const today  = localDateStr(new Date());
 
   const [sentDate,     setSentDate]     = useState(today);
   const [followupDue,  setFollowupDue]  = useState(() => addDaysToDate(today, 3));
   const [courier,      setCourier]      = useState('');
   const [podFile,      setPodFile]      = useState<File | null>(null);
   const [cost,         setCost]         = useState('');
-  const [cust,         setCust]         = useState(() => searchParams.get('cust') ?? '');
-  const [linkedRef,    setLinkedRef]    = useState(() => searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '');
+  const [cust,         setCust]         = useState(() => (editId ? '' : (searchParams.get('cust') ?? '')));
+  const [linkedRef,    setLinkedRef]    = useState(() => (editId ? '' : (searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '')));
   const [sentBy,       setSentBy]       = useState('');
   const [productName,  setProductName]  = useState('');
   const [productGrade, setProductGrade] = useState('');
@@ -44,6 +45,10 @@ export function SamplingNew() {
   const [unit,         setUnit]         = useState('g');
   const [notes,        setNotes]        = useState('');
 
+  // Tracks existing uploaded URLs when in edit mode
+  const [existingPodUrl, setExistingPodUrl] = useState<string | null>(null);
+  const [existingCoaUrl, setExistingCoaUrl] = useState<string | null>(null);
+
   const [saving,  setSaving]  = useState(false);
   const [errors,  setErrors]  = useState<Record<string, string>>({});
   const [emailModal, setEmailModal] = useState<{
@@ -51,12 +56,37 @@ export function SamplingNew() {
     coaUrl: string | null; coaFileName: string;
   } | null>(null);
 
-  // Auto-update follow-up date when dispatch date changes (default: sentDate + 3 days)
+  // Load existing sample data in edit mode.
+  // followupDue is set directly here (not via the sentDate onChange) so the
+  // stored value is preserved rather than auto-recalculated from sentDate.
   useEffect(() => {
-    if (sentDate) setFollowupDue(addDaysToDate(sentDate, 3));
-  }, [sentDate]);
+    if (!editId) return;
+    supabase
+      .from('samples')
+      .select('*')
+      .eq('id', editId)
+      .maybeSingle()
+      .then(({ data: row }) => {
+        if (!row) return;
+        setCust(row.cust ?? '');
+        setLinkedRef(row.quote_ref ?? row.enq_ref ?? '');
+        setSentBy(row.sent_by ?? '');
+        setProductName(row.product_name ?? '');
+        setProductGrade(row.product_grade ?? '');
+        setLotNo(row.lot_no ?? '');
+        setQuantity(row.quantity != null ? String(row.quantity) : '');
+        setUnit(row.unit ?? 'g');
+        setNotes(row.notes ?? '');
+        setSentDate(row.sent_date ?? today);
+        setFollowupDue(row.followup_due ?? addDaysToDate(today, 3));
+        setCourier(row.courier_details ?? '');
+        setCost(row.cost != null ? String(row.cost) : '');
+        setExistingPodUrl(row.pod_file ?? null);
+        setExistingCoaUrl(row.coa_file ?? null);
+      });
+  }, [editId]);
 
-  const previewId = `SAMP-${Date.now()}`;
+  const newSamplePreviewId = `SAMP-${Date.now()}`;
 
   const doSave = async (): Promise<{
     sampleId: string; podUrl: string | null; podFileName: string;
@@ -70,10 +100,11 @@ export function SamplingNew() {
     setSaving(true);
     setErrors({});
 
-    const sampleId = `SAMP-${Date.now()}`;
+    const sampleId = editId ?? `SAMP-${Date.now()}`;
 
-    let podUrl: string | null = null;
-    let coaUrl: string | null = null;
+    // In edit mode: keep existing URLs if no new file was selected
+    let podUrl: string | null = editId ? existingPodUrl : null;
+    let coaUrl: string | null = editId ? existingCoaUrl : null;
 
     if (podFile) {
       const ext = podFile.name.split('.').pop() || 'bin';
@@ -90,8 +121,7 @@ export function SamplingNew() {
     const upper = ref.toUpperCase();
     const isQt  = upper.startsWith('HTP') || upper.startsWith('QT');
 
-    const { error } = await supabase.from('samples').insert({
-      id:              sampleId,
+    const commonFields = {
       cust:            cust.trim(),
       quote_ref:       (ref && isQt)  ? ref : null,
       enq_ref:         (ref && !isQt) ? ref : null,
@@ -106,13 +136,23 @@ export function SamplingNew() {
       pod_file:        podUrl,
       coa_file:        coaUrl,
       cost:            parseFloat(cost) || 0,
-      status:          'pending',
-      feedback_received: false,
       sent_by:         sentBy.trim() || null,
       notes:           notes.trim() || null,
-      created_at:      new Date().toISOString(),
       updated_at:      new Date().toISOString(),
-    });
+    };
+
+    let error: any;
+    if (editId) {
+      ({ error } = await supabase.from('samples').update(commonFields).eq('id', editId));
+    } else {
+      ({ error } = await supabase.from('samples').insert({
+        id: sampleId,
+        ...commonFields,
+        status:           'pending',
+        feedback_received: false,
+        created_at:       new Date().toISOString(),
+      }));
+    }
 
     setSaving(false);
     if (error) { setErrors({ global: error.message }); return null; }
@@ -120,9 +160,11 @@ export function SamplingNew() {
     return {
       sampleId,
       podUrl,
-      podFileName: podFile?.name ?? 'POD.pdf',
+      podFileName: podFile?.name
+        ?? (existingPodUrl ? (existingPodUrl.split('/').pop() ?? 'POD.pdf') : 'POD.pdf'),
       coaUrl,
-      coaFileName: coaFile?.name ?? 'COA.pdf',
+      coaFileName: coaFile?.name
+        ?? (existingCoaUrl ? (existingCoaUrl.split('/').pop() ?? 'COA.pdf') : 'COA.pdf'),
     };
   };
 
@@ -146,9 +188,11 @@ export function SamplingNew() {
           <div>
             <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">Sampling Module</div>
             <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">
-              Log <em className="italic text-red-mrt">New Sample</em>
+              {editId ? 'Edit' : 'Log'} <em className="italic text-red-mrt">{editId ? 'Sample' : 'New Sample'}</em>
             </h1>
-            <p className="text-xs text-g500 mt-1 font-light">Dispatch a sample to a new customer for evaluation.</p>
+            <p className="text-xs text-g500 mt-1 font-light">
+              {editId ? `Updating record ${editId}` : 'Dispatch a sample to a new customer for evaluation.'}
+            </p>
           </div>
           <Button variant="secondary" onClick={() => navigate('/sampling')}>Back</Button>
         </div>
@@ -156,11 +200,17 @@ export function SamplingNew() {
 
       {/* Scrollable form body */}
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-        {/* Auto ID pill */}
+        {/* ID pill */}
         <div className="bg-blk p-[9px_14px] rounded-[3px] inline-flex items-center gap-[12px] mb-[18px]">
-          <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-white/30">Auto Sample ID</div>
-          <div className="font-mono text-[14px] font-bold text-white">{previewId}</div>
-          <div className="font-mono text-[9px] text-white/20">Generated on save</div>
+          <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-white/30">
+            {editId ? 'Sample ID' : 'Auto Sample ID'}
+          </div>
+          <div className="font-mono text-[14px] font-bold text-white">
+            {editId ?? newSamplePreviewId}
+          </div>
+          <div className="font-mono text-[9px] text-white/20">
+            {editId ? 'Existing record' : 'Generated on save'}
+          </div>
         </div>
 
         {/* Two-column layout */}
@@ -174,7 +224,9 @@ export function SamplingNew() {
               <div className="grid grid-cols-2 gap-[12px]">
                 <div>
                   <label className={labelCls}>Dispatch Date <span className="text-red-mrt">*</span></label>
-                  <input type="date" value={sentDate} onChange={e => setSentDate(e.target.value)} className={inputCls} />
+                  <input type="date" value={sentDate}
+                    onChange={e => { setSentDate(e.target.value); setFollowupDue(addDaysToDate(e.target.value, 3)); }}
+                    className={inputCls} />
                 </div>
                 <div>
                   <label className={labelCls}>Follow-up Due Date</label>
@@ -197,10 +249,16 @@ export function SamplingNew() {
                       <Upload size={13} className="text-g500 shrink-0" />
                       {podFile
                         ? <span className="truncate text-[11.5px]">{podFile.name}</span>
+                        : existingPodUrl
+                        ? <span className="truncate text-[11.5px] text-emerald-600">Existing file (click to replace)</span>
                         : <span className="text-g400">Upload proof of delivery</span>}
                     </label>
                     {podFile && (
-                      <button type="button" title="Remove" onClick={() => setPodFile(null)}
+                      <button type="button" title="Remove new file" onClick={() => setPodFile(null)}
+                        className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
+                    )}
+                    {!podFile && existingPodUrl && (
+                      <button type="button" title="Remove existing file" onClick={() => setExistingPodUrl(null)}
                         className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
                     )}
                   </div>
@@ -277,10 +335,16 @@ export function SamplingNew() {
                       <Upload size={13} className="text-g500 shrink-0" />
                       {coaFile
                         ? <span className="truncate text-[11.5px]">{coaFile.name}</span>
+                        : existingCoaUrl
+                        ? <span className="truncate text-[11.5px] text-emerald-600">Existing file (click to replace)</span>
                         : <span className="text-g400">Upload certificate of analysis</span>}
                     </label>
                     {coaFile && (
-                      <button type="button" title="Remove" onClick={() => setCoaFile(null)}
+                      <button type="button" title="Remove new file" onClick={() => setCoaFile(null)}
+                        className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
+                    )}
+                    {!coaFile && existingCoaUrl && (
+                      <button type="button" title="Remove existing file" onClick={() => setExistingCoaUrl(null)}
                         className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
                     )}
                   </div>
@@ -339,31 +403,43 @@ export function SamplingNew() {
               </div>
             </div>
 
-            {/* Sample Status */}
-            <div className="bg-white border border-g200 p-[16px_18px] rounded-[3px]">
-              <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200">Sample Status</div>
-              <div className="text-[11px] text-g500 mb-3">This record will be created with status:</div>
-              <div className="flex items-center gap-1.5 mb-4">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[3px] text-[11px] font-semibold bg-yellow-50 text-yellow-700">
-                  <span className="w-[5px] h-[5px] rounded-full bg-yellow-400 shrink-0" />
-                  Pending
-                </span>
+            {/* Sample Status — only shown for new records */}
+            {!editId && (
+              <div className="bg-white border border-g200 p-[16px_18px] rounded-[3px]">
+                <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200">Sample Status</div>
+                <div className="text-[11px] text-g500 mb-3">This record will be created with status:</div>
+                <div className="flex items-center gap-1.5 mb-4">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[3px] text-[11px] font-semibold bg-yellow-50 text-yellow-700">
+                    <span className="w-[5px] h-[5px] rounded-full bg-yellow-400 shrink-0" />
+                    Pending
+                  </span>
+                </div>
+                <div className="text-[10px] text-g400 font-mono tracking-wide uppercase mb-2">Workflow</div>
+                <div className="flex flex-col gap-2">
+                  {[
+                    { label: 'Pending',            active: true,  color: 'bg-yellow-400' },
+                    { label: 'Dispatched',         active: false, color: 'bg-purple-500' },
+                    { label: 'Feedback Received',  active: false, color: 'bg-amber-500'  },
+                    { label: 'Approved / Rejected',active: false, color: 'bg-emerald-500'},
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${step.active ? step.color : 'bg-g200'}`} />
+                      <span className={`text-[11px] ${step.active ? 'font-semibold text-blk' : 'text-g400'}`}>{step.label}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="text-[10px] text-g400 font-mono tracking-wide uppercase mb-2">Workflow</div>
-              <div className="flex flex-col gap-2">
-                {[
-                  { label: 'Pending',            active: true,  color: 'bg-yellow-400' },
-                  { label: 'Dispatched',         active: false, color: 'bg-purple-500' },
-                  { label: 'Feedback Received',  active: false, color: 'bg-amber-500'  },
-                  { label: 'Approved / Rejected',active: false, color: 'bg-emerald-500'},
-                ].map((step, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full shrink-0 ${step.active ? step.color : 'bg-g200'}`} />
-                    <span className={`text-[11px] ${step.active ? 'font-semibold text-blk' : 'text-g400'}`}>{step.label}</span>
-                  </div>
-                ))}
+            )}
+
+            {/* Edit-mode note */}
+            {editId && (
+              <div className="bg-amber-50 border border-amber-200 p-[16px_18px] rounded-[3px]">
+                <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-amber-700 mb-2">Editing Record</div>
+                <div className="text-[11px] text-amber-800 leading-relaxed">
+                  Sample status and feedback are managed separately via the tracker — editing here only updates the dispatch details, product info, and files.
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -371,7 +447,7 @@ export function SamplingNew() {
       {/* Sticky footer */}
       <div className="flex items-center gap-2 p-[14px_20px] bg-g100 border-t border-g200 sticky bottom-0">
         <Button variant="primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : 'Log Sample'}
+          {saving ? 'Saving...' : (editId ? 'Update Sample' : 'Log Sample')}
         </Button>
         <Button variant="secondary" onClick={handleSaveAndEmail} disabled={saving}>
           {saving ? 'Saving...' : 'Email to Client'}
