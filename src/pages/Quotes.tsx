@@ -277,7 +277,7 @@ export function Quotes() {
                                 : '--'}
                           </td>
                           <td className="px-[13px] py-[10px] align-middle" onClick={ev => ev.stopPropagation()}>
-                            <div className="flex gap-1.5">
+                            <div className="flex gap-1.5 flex-wrap">
                               <Button size="sm" variant="secondary" onClick={() => navigate(`/quotes/new?id=${q.id}`)}>Edit</Button>
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('quote', q.id); }}>Detail</Button>
                               <Button size="sm" variant="secondary" onClick={(ev) => {

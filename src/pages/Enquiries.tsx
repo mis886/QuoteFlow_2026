@@ -297,7 +297,7 @@ export function Enquiries() {
                             {e.qRef ? <span className="font-mono text-[10.5px] font-bold text-sQ">{e.qRef}</span> : <span className="text-g400 text-[11px]">--</span>}
                           </td>
                           <td className="px-[13px] py-[10px] align-middle" onClick={ev => ev.stopPropagation()}>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex gap-1.5 flex-wrap">
                               <Button size="sm" variant="secondary" onClick={() => navigate(`/enquiries/new?id=${e.id}`)}>Edit</Button>
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('enquiry', e.id); }}>Detail</Button>
                               {!e.qRef && <Button size="sm" variant="ghost" onClick={(ev) => { ev.stopPropagation(); navigate(`/quotes/new?enqRef=${e.id}`); }}>Quote</Button>}
