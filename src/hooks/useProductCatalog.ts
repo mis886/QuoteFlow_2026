@@ -5,6 +5,8 @@ export interface ProductCatalogEntry {
   id: string;
   product_name: string;
   hsn_code: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
 }
 
 export interface ProductCatalogResult {

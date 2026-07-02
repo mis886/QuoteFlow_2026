@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Plus, Pencil, Trash2, Check, X, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAppStore } from '../store';
 import { ProductCatalogEntry } from '../hooks/useProductCatalog';
 
 const inputCls = 'w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] px-3 py-[7px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow';
 
 export function ProductCatalogManager() {
+  const { user } = useAppStore();
   const [entries, setEntries] = useState<ProductCatalogEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -25,7 +27,7 @@ export function ProductCatalogManager() {
     setLoading(true);
     const { data, error } = await supabase
       .from('product_catalog')
-      .select('id, product_name, hsn_code')
+      .select('id, product_name, hsn_code, created_by, updated_by')
       .order('product_name');
     if (!error && data) setEntries(data as ProductCatalogEntry[]);
     setLoading(false);
@@ -39,7 +41,7 @@ export function ProductCatalogManager() {
     setAddError('');
     const { error } = await supabase
       .from('product_catalog')
-      .insert({ product_name: newName.trim(), hsn_code: newHsn.trim() || null });
+      .insert({ product_name: newName.trim(), hsn_code: newHsn.trim() || null, created_by: user?.email ?? null });
     if (error) {
       setAddError(error.code === '23505' ? 'A product with this name already exists.' : error.message);
     } else {
@@ -65,7 +67,7 @@ export function ProductCatalogManager() {
     setEditError('');
     const { error } = await supabase
       .from('product_catalog')
-      .update({ product_name: editName.trim(), hsn_code: editHsn.trim() || null, updated_at: new Date().toISOString() })
+      .update({ product_name: editName.trim(), hsn_code: editHsn.trim() || null, updated_at: new Date().toISOString(), updated_by: user?.email ?? null })
       .eq('id', editId!);
     if (error) {
       setEditError(error.code === '23505' ? 'A product with this name already exists.' : error.message);
@@ -200,7 +202,16 @@ export function ProductCatalogManager() {
                 </tr>
               ) : (
                 <tr key={entry.id} className="hover:bg-g50/50">
-                  <td className="px-4 py-2.5 text-[13px] text-blk">{entry.product_name}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="text-[13px] text-blk">{entry.product_name}</div>
+                    {(entry.created_by || entry.updated_by) && (
+                      <div className="text-[10px] text-g400 font-mono mt-0.5">
+                        {entry.updated_by
+                          ? <>Edited by {entry.updated_by}</>
+                          : <>Added by {entry.created_by}</>}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 font-mono text-[12px] text-g500">{entry.hsn_code || '—'}</td>
                   <td className="px-4 py-2.5 w-20">
                     <div className="flex items-center gap-1">

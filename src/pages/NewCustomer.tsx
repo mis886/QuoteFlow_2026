@@ -196,7 +196,7 @@ export function NewCustomer() {
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
   const navigate = useNavigate();
-  const { data, addCustomer, updateCustomer } = useAppStore();
+  const { data, user, addCustomer, updateCustomer } = useAppStore();
   useEffect(() => {
     if (!editId) return;
     supabase
@@ -232,6 +232,7 @@ export function NewCustomer() {
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [parsePreview, setParsePreview] = useState<Record<number, ReturnType<typeof parseMixedAddress> | null>>({});
+  const [existingAudit, setExistingAudit] = useState<{ createdBy: string; createdDate: string; modifiedBy: string; modifiedDate: string } | null>(null);
 
   // Load the form ONCE per record. Keyed on editId only (not data.customers) so
   // a background refreshData() — e.g. a Supabase token refresh fired on tab
@@ -260,6 +261,12 @@ export function NewCustomer() {
         setNextOrder2({ product: cust.nextOrder2?.product || '' });
         setCrossSellOpportunities(cust.crossSellOpportunities || '');
         setNotes(cust.notes || '');
+        setExistingAudit({
+          createdBy: cust.createdBy || '',
+          createdDate: cust.createdDate || '',
+          modifiedBy: cust.modifiedBy || '',
+          modifiedDate: cust.modifiedDate || '',
+        });
       }
     } else if (loadedFor.current !== '__new__') {
       loadedFor.current = '__new__';
@@ -308,8 +315,11 @@ export function NewCustomer() {
       crossSellOpportunities: crossSellOpportunities.trim() || undefined,
       notes: notes.trim() || undefined,
     };
-    if (editId) await updateCustomer(editId, cust);
-    else await addCustomer(cust);
+    if (editId) {
+      await updateCustomer(editId, { ...cust, modifiedBy: user?.email ?? undefined, modifiedDate: new Date().toISOString() });
+    } else {
+      await addCustomer({ ...cust, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
+    }
     navigate(-1);
   };
 
@@ -329,6 +339,16 @@ export function NewCustomer() {
             <p className="text-xs text-g500 mt-1">
               {editId ? `Updating corporate record ${code}` : 'Create a new hierarchical customer master record.'}
             </p>
+            {editId && existingAudit && (existingAudit.createdBy || existingAudit.modifiedBy) && (
+              <div className="text-[10.5px] text-g400 mt-1 space-y-0.5">
+                {existingAudit.createdBy && (
+                  <p>Added by <span className="font-mono">{existingAudit.createdBy}</span>{existingAudit.createdDate ? ` · ${new Date(existingAudit.createdDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}</p>
+                )}
+                {existingAudit.modifiedBy && (
+                  <p>Last edited by <span className="font-mono">{existingAudit.modifiedBy}</span>{existingAudit.modifiedDate ? ` · ${new Date(existingAudit.modifiedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}</p>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={() => navigate(-1)}>Cancel</Button>

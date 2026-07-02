@@ -646,6 +646,9 @@ const mapEnquiryToDB = (e: any) => {
       notes: c.notes || '',
       totalQuotes: toNum(c.total_quotes),
       createdBy: c.created_by || '',
+      createdDate: c.created_date || '',
+      modifiedBy: c.modified_by || '',
+      modifiedDate: c.modified_date || '',
       nextOrder1,
       nextOrder2,
       nextOrders: [nextOrder1?.product, nextOrder2?.product].filter(Boolean) as string[],
@@ -677,7 +680,10 @@ const mapEnquiryToDB = (e: any) => {
     if ('creditLimit' in c)   obj.credit_limit   = c.creditLimit ?? null;
     if ('crossSellOpportunities' in c) obj.cross_sell_opportunities = c.crossSellOpportunities ?? null;
     if ('notes' in c)  obj.notes = c.notes ?? null;
-    if ('createdBy' in c) obj.created_by = c.createdBy;
+    if ('createdBy' in c)   obj.created_by   = c.createdBy;
+    if ('createdDate' in c) obj.created_date  = c.createdDate ?? null;
+    if ('modifiedBy' in c)  obj.modified_by   = c.modifiedBy ?? null;
+    if ('modifiedDate' in c) obj.modified_date = c.modifiedDate ?? null;
     if ('customerType' in c) obj.customer_type = c.customerType ?? null;
 
     // Primary site → flat address columns

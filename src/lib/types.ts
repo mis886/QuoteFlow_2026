@@ -255,6 +255,9 @@ export interface Customer {
   notes?: string;
   totalQuotes?: number;  // total_quotes (read-only from DB)
   createdBy?: string;    // created_by
+  createdDate?: string;  // created_date
+  modifiedBy?: string;   // modified_by
+  modifiedDate?: string; // modified_date
   nextOrders?: string[]; // derived display list (product names from nextOrder1/2)
   customerType?: string; // customer_type
 }
