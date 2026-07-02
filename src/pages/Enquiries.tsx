@@ -5,6 +5,7 @@ import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-rea
 import { useNavigate } from 'react-router-dom';
 import { calculateAgeHours, fmtIST, isInDateRange, siteLabel } from '../lib/utils';
 import { EnqStatus } from '../lib/types';
+import { supabase } from '../lib/supabase';
 
 export function Enquiries() {
   const store = useAppStore();
@@ -12,7 +13,7 @@ export function Enquiries() {
   const { globalDateRange, setGlobalDateRange } = store as any;
   const canDelete = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
   const navigate = useNavigate();
-  const [tab, setTab] = useState<'All' | 'Open' | EnqStatus>('All');
+  const [tab, setTab] = useState<'All' | 'Open' | EnqStatus | 'Sample'>('All');
   const [srcFilter, setSrcFilter] = useState('');
   const [urgFilter, setUrgFilter] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -20,17 +21,29 @@ export function Enquiries() {
   const [siteDebounced, setSiteDebounced] = useState('');
   const [sortCol, setSortCol] = useState<string>('recv');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [enqSamples, setEnqSamples] = useState<any[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => setSiteDebounced(siteQuery), 250);
     return () => clearTimeout(t);
   }, [siteQuery]);
 
+  useEffect(() => {
+    supabase
+      .from('samples')
+      .select('id, enq_ref, cust, product_name, quantity, unit, email_sent_at, status, outcome, client_email')
+      .eq('source_module', 'enquiry')
+      .eq('email_sent', true)
+      .order('email_sent_at', { ascending: false })
+      .then(({ data: rows }) => { if (rows) setEnqSamples(rows); });
+  }, []);
+
   const applySearch = (search: string) => {
     setGlobalSearchQuery(search);
   };
 
   const filteredEnqs = useMemo(() => {
+    if (tab === 'Sample') return [];
     const q = globalSearchQuery.toLowerCase();
     const sq = siteDebounced.toLowerCase();
     const list = data.enquiries.filter(e => {
@@ -81,6 +94,7 @@ export function Enquiries() {
     Parked: data.enquiries.filter(e => e.status === 'Parked').length,
     All: data.enquiries.length,
     Open: data.enquiries.filter(e => e.status === 'New' || e.status === 'In Review').length,
+    Sample: enqSamples.length,
   };
 
   const toggleSort = (col: string) => {
@@ -100,7 +114,7 @@ export function Enquiries() {
   const TabSelect = ({ current, label, count }: { current: string, label: string, count?: number }) => {
     const isActive = tab === current || (tab === 'Open' && (current === 'New' || current === 'In Review'));
     return (
-      <div 
+      <div
         onClick={() => setTab(current as any)}
         className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${isActive ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
       >
@@ -108,6 +122,8 @@ export function Enquiries() {
       </div>
     );
   };
+
+  const thCls = "font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-left";
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -141,8 +157,9 @@ export function Enquiries() {
           <TabSelect current="Won" label="Won" count={statusCounts.Won} />
           <TabSelect current="Lost" label="Lost" count={statusCounts.Lost} />
           <TabSelect current="Parked" label="Parked" count={statusCounts.Parked} />
+          <TabSelect current="Sample" label="Sample" count={statusCounts.Sample} />
         </div>
-        
+
         <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
 
         <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[160px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
@@ -195,150 +212,205 @@ export function Enquiries() {
         </div>
 
         <div className="ml-auto font-mono text-[10px] text-g500">
-          {filteredEnqs.length} enquiries &middot; {totalItems} items
+          {tab === 'Sample'
+            ? `${enqSamples.length} emailed samples`
+            : `${filteredEnqs.length} enquiries · ${totalItems} items`}
         </div>
       </div>
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-        <div className="bg-white border border-g200 overflow-x-auto m-0">
-          <table className="w-full border-collapse text-[12.5px]">
-            <thead className="bg-g100">
-              <tr>
-                <SortTh col="id"     label="ENQ No." />
-                <SortTh col="recv"   label="Received" />
-                <SortTh col="created_at"   label="Punched At" />
-                <SortTh col="cust"   label="Customer - Unit" />
-                <SortTh col="src"    label="Source" />
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ minWidth: '140px' }}>Product Name</th>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
-                <SortTh col="urg"    label="Urgency" />
-                <SortTh col="status" label="Status" />
-                <SortTh col="age"    label="Age" />
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEnqs.length === 0 ? (
-                <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">No enquiries match this filter</td></tr>
-              ) : (
-                filteredEnqs.map(e => {
-                  const d = new Date(e.recv); // Assuming ISO string is stored
-                  const isExpanded = expandedRow === e.id;
-                  
-                  return (
-                    <React.Fragment key={e.id}>
-                      <tr 
-                        className={`transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 ${isExpanded ? 'bg-red-mrt/5' : ''}`}
-                        onClick={() => setExpandedRow(isExpanded ? null : e.id)}
-                      >
-                        <td className="px-[13px] py-[10px] align-middle"><span className="font-mono text-[10.5px] font-bold text-red-mrt">{e.id}</span></td>
-                        <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">{fmtIST(d, 'dd MMM HH:mm')}</td>
-                        <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
-                          {e.created_at ? fmtIST(new Date(e.created_at), 'dd MMM HH:mm') : '--'}
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle">
-                          <div className="font-semibold">{e.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === e.cust), e.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
-                          <div className="text-[11px] text-g500">{e.contact}</div>
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle">
-                          <span className="inline-flex items-center gap-1 text-[11px] text-g600 bg-g100 px-2 py-0.5 rounded-[3px] font-medium">
-                            <SourceIcon source={e.src} /> {e.src}
-                          </span>
-                        </td>
-                        <td className="px-[13px] py-[10px] align-top">
-                          {e.items.length === 0
-                            ? <span className="text-g400 text-[11px]">—</span>
-                            : e.items.map((i, idx) => (
-                                <div key={idx} className="text-[11px] text-blk whitespace-nowrap" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>{i.desc || '—'}</div>
-                              ))
-                          }
-                        </td>
-                        <td className="px-[13px] py-[10px] align-top">
-                          {e.items.length === 0
-                            ? <span className="text-g400 text-[11px]">—</span>
-                            : e.items.map((i, idx) => {
-                                const packNum = parseFloat(i.packing || '');
-                                const totalQty = packNum > 0 ? i.qty * packNum : i.qty > 0 ? i.qty : null;
-                                return <div key={idx} className="font-mono text-[11px] text-blk text-right" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>{totalQty ?? '—'}</div>;
-                              })
-                          }
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle"><Badge status={e.urg} /></td>
-                        <td className="px-[13px] py-[10px] align-middle"><Badge status={e.status} /></td>
-                        <td className="px-[13px] py-[10px] align-middle font-mono text-[10.5px] font-bold">
-                          {e.ageH < 1 ? <span className="text-sW"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sW mr-1"></span>Now</span> :
-                           e.ageH < 4 ? <span className="text-sW"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sW mr-1"></span>{e.ageH.toFixed(1)}h</span> :
-                           e.ageH < 24 ? <span className="text-sR"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sR mr-1"></span>{Math.round(e.ageH)}h</span> :
-                           <span className="text-red-mrt"><span className="inline-block w-[7px] h-[7px] rounded-full bg-red-mrt mr-1 animate-pulse"></span>{Math.floor(e.ageH/24)}d {Math.round(e.ageH%24)}h</span>
-                          }
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle">
-                          {e.qRef ? <span className="font-mono text-[10.5px] font-bold text-sQ">{e.qRef}</span> : <span className="text-g400 text-[11px]">--</span>}
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle" onClick={ev => ev.stopPropagation()}>
-                          <div className="flex items-center gap-1.5">
-                            <Button size="sm" variant="secondary" onClick={() => navigate(`/enquiries/new?id=${e.id}`)}>Edit</Button>
-                            <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('enquiry', e.id); }}>Detail</Button>
-                            {!e.qRef && <Button size="sm" variant="ghost" onClick={(ev) => { ev.stopPropagation(); navigate(`/quotes/new?enqRef=${e.id}`); }}>Quote</Button>}
-                            <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openAttachmentModal('enquiry', e.id); }}>Docs</Button>
-                            <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); navigate(`/sampling/new?enqRef=${encodeURIComponent(e.id)}&cust=${encodeURIComponent(e.cust)}`); }}>+ Sample</Button>
-                            {canDelete && (
-                              <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id); }}>Delete</Button>
-                            )}
-                            <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{e.created_by || '−'}</span>
-                          </div>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">
-                          <td colSpan={12} className="p-0">
-                            <div className="p-[10px_16px]">
-                              <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-[7px]">Line Items -- {e.id}</div>
-                              <table className="w-full border-collapse text-[11.5px] m-0">
-                                <thead className="bg-g100">
-                                  <tr>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">#</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Product Name</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">No of Barrels</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Packing</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Total Qty</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Packing Type</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {e.items.map(i => {
-                                    const packNum = parseFloat(i.packing || '');
-                                    const totalQty = i.qty > 0 && packNum > 0 ? i.qty * packNum : null;
-                                    return (
-                                    <tr key={i.seq}>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px] text-g400 w-6">{i.seq}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11px] text-right">{i.packing || '—'}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{totalQty ?? '—'}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk text-[11px] text-g600">{i.packingType || '—'}</td>
-                                    </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                              {!e.qRef && (
-                                <div className="mt-2">
-                                  <Button size="sm" variant="primary" onClick={() => navigate(`/quotes/new?enqRef=${e.id}`)}>Convert to Quotation</Button>
-                                </div>
+        {tab !== 'Sample' ? (
+          <div className="bg-white border border-g200 overflow-x-auto m-0">
+            <table className="w-full border-collapse text-[12.5px]">
+              <thead className="bg-g100">
+                <tr>
+                  <SortTh col="id"     label="ENQ No." />
+                  <SortTh col="recv"   label="Received" />
+                  <SortTh col="created_at"   label="Punched At" />
+                  <SortTh col="cust"   label="Customer - Unit" />
+                  <SortTh col="src"    label="Source" />
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ minWidth: '140px' }}>Product Name</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
+                  <SortTh col="urg"    label="Urgency" />
+                  <SortTh col="status" label="Status" />
+                  <SortTh col="age"    label="Age" />
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEnqs.length === 0 ? (
+                  <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">No enquiries match this filter</td></tr>
+                ) : (
+                  filteredEnqs.map(e => {
+                    const d = new Date(e.recv); // Assuming ISO string is stored
+                    const isExpanded = expandedRow === e.id;
+
+                    return (
+                      <React.Fragment key={e.id}>
+                        <tr
+                          className={`transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 ${isExpanded ? 'bg-red-mrt/5' : ''}`}
+                          onClick={() => setExpandedRow(isExpanded ? null : e.id)}
+                        >
+                          <td className="px-[13px] py-[10px] align-middle"><span className="font-mono text-[10.5px] font-bold text-red-mrt">{e.id}</span></td>
+                          <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">{fmtIST(d, 'dd MMM HH:mm')}</td>
+                          <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                            {e.created_at ? fmtIST(new Date(e.created_at), 'dd MMM HH:mm') : '--'}
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle">
+                            <div className="font-semibold">{e.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === e.cust), e.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
+                            <div className="text-[11px] text-g500">{e.contact}</div>
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle">
+                            <span className="inline-flex items-center gap-1 text-[11px] text-g600 bg-g100 px-2 py-0.5 rounded-[3px] font-medium">
+                              <SourceIcon source={e.src} /> {e.src}
+                            </span>
+                          </td>
+                          <td className="px-[13px] py-[10px] align-top">
+                            {e.items.length === 0
+                              ? <span className="text-g400 text-[11px]">—</span>
+                              : e.items.map((i, idx) => (
+                                  <div key={idx} className="text-[11px] text-blk whitespace-nowrap" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>{i.desc || '—'}</div>
+                                ))
+                            }
+                          </td>
+                          <td className="px-[13px] py-[10px] align-top">
+                            {e.items.length === 0
+                              ? <span className="text-g400 text-[11px]">—</span>
+                              : e.items.map((i, idx) => {
+                                  const packNum = parseFloat(i.packing || '');
+                                  const totalQty = packNum > 0 ? i.qty * packNum : i.qty > 0 ? i.qty : null;
+                                  return <div key={idx} className="font-mono text-[11px] text-blk text-right" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>{totalQty ?? '—'}</div>;
+                                })
+                            }
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle"><Badge status={e.urg} /></td>
+                          <td className="px-[13px] py-[10px] align-middle"><Badge status={e.status} /></td>
+                          <td className="px-[13px] py-[10px] align-middle font-mono text-[10.5px] font-bold">
+                            {e.ageH < 1 ? <span className="text-sW"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sW mr-1"></span>Now</span> :
+                             e.ageH < 4 ? <span className="text-sW"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sW mr-1"></span>{e.ageH.toFixed(1)}h</span> :
+                             e.ageH < 24 ? <span className="text-sR"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sR mr-1"></span>{Math.round(e.ageH)}h</span> :
+                             <span className="text-red-mrt"><span className="inline-block w-[7px] h-[7px] rounded-full bg-red-mrt mr-1 animate-pulse"></span>{Math.floor(e.ageH/24)}d {Math.round(e.ageH%24)}h</span>
+                            }
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle">
+                            {e.qRef ? <span className="font-mono text-[10.5px] font-bold text-sQ">{e.qRef}</span> : <span className="text-g400 text-[11px]">--</span>}
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle" onClick={ev => ev.stopPropagation()}>
+                            <div className="flex items-center gap-1.5">
+                              <Button size="sm" variant="secondary" onClick={() => navigate(`/enquiries/new?id=${e.id}`)}>Edit</Button>
+                              <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('enquiry', e.id); }}>Detail</Button>
+                              {!e.qRef && <Button size="sm" variant="ghost" onClick={(ev) => { ev.stopPropagation(); navigate(`/quotes/new?enqRef=${e.id}`); }}>Quote</Button>}
+                              <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openAttachmentModal('enquiry', e.id); }}>Docs</Button>
+                              <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); navigate(`/sampling/new?enqRef=${encodeURIComponent(e.id)}&cust=${encodeURIComponent(e.cust)}&source=enquiry`); }}>+ Sample</Button>
+                              {canDelete && (
+                                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id); }}>Delete</Button>
                               )}
+                              <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{e.created_by || '−'}</span>
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                        {isExpanded && (
+                          <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">
+                            <td colSpan={12} className="p-0">
+                              <div className="p-[10px_16px]">
+                                <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-[7px]">Line Items -- {e.id}</div>
+                                <table className="w-full border-collapse text-[11.5px] m-0">
+                                  <thead className="bg-g100">
+                                    <tr>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">#</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Product Name</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">No of Barrels</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Packing</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Total Qty</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Packing Type</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {e.items.map(i => {
+                                      const packNum = parseFloat(i.packing || '');
+                                      const totalQty = i.qty > 0 && packNum > 0 ? i.qty * packNum : null;
+                                      return (
+                                      <tr key={i.seq}>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px] text-g400 w-6">{i.seq}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11px] text-right">{i.packing || '—'}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{totalQty ?? '—'}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk text-[11px] text-g600">{i.packingType || '—'}</td>
+                                      </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                                {!e.qRef && (
+                                  <div className="mt-2">
+                                    <Button size="sm" variant="primary" onClick={() => navigate(`/quotes/new?enqRef=${e.id}`)}>Convert to Quotation</Button>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="bg-white border border-g200 overflow-x-auto m-0">
+            <table className="w-full border-collapse text-[12.5px]">
+              <thead className="bg-g100">
+                <tr>
+                  <th className={thCls}>Sample ID</th>
+                  <th className={thCls}>Enq Ref</th>
+                  <th className={thCls}>Customer</th>
+                  <th className={thCls}>Product</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-right">Qty Sent</th>
+                  <th className={thCls}>Email Sent At</th>
+                  <th className={thCls}>Status</th>
+                  <th className={thCls}>Outcome</th>
+                  <th className={thCls}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {enqSamples.length === 0 ? (
+                  <tr><td colSpan={9} className="text-center p-8 text-g400 text-[13px]">No emailed samples linked to enquiries yet</td></tr>
+                ) : (
+                  enqSamples.map(s => (
+                    <tr key={s.id} className="border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 transition-colors">
+                      <td className="px-[13px] py-[10px] align-middle">
+                        <span className="font-mono text-[10.5px] font-bold text-red-mrt">{s.id}</span>
+                      </td>
+                      <td className="px-[13px] py-[10px] align-middle">
+                        {s.enq_ref
+                          ? <span className="font-mono text-[10.5px] font-bold text-red-mrt">{s.enq_ref}</span>
+                          : <span className="text-g400 text-[11px]">—</span>}
+                      </td>
+                      <td className="px-[13px] py-[10px] align-middle font-medium">{s.cust}</td>
+                      <td className="px-[13px] py-[10px] align-middle">{s.product_name}</td>
+                      <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[11.5px]">
+                        {s.quantity != null ? `${s.quantity} ${s.unit || ''}`.trim() : '—'}
+                      </td>
+                      <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                        {s.email_sent_at ? fmtIST(new Date(s.email_sent_at), 'dd MMM HH:mm') : '—'}
+                      </td>
+                      <td className="px-[13px] py-[10px] align-middle"><Badge status={s.status} /></td>
+                      <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600">
+                        {s.outcome || <span className="text-g400">—</span>}
+                      </td>
+                      <td className="px-[13px] py-[10px] align-middle">
+                        <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

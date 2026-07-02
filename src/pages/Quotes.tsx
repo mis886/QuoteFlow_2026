@@ -14,7 +14,7 @@ export function Quotes() {
   const canDelete = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
   const { globalDateRange, setGlobalDateRange } = store as any;
   const navigate = useNavigate();
-  const [tab, setTab] = useState<'All' | QuoteStatus>('All');
+  const [tab, setTab] = useState<'All' | QuoteStatus | 'Sample'>('All');
   const [custFilter, setCustFilter] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [poReceivedIds, setPoReceivedIds] = useState<Set<string>>(new Set());
@@ -22,6 +22,7 @@ export function Quotes() {
   const [siteDebounced, setSiteDebounced] = useState('');
   const [sortCol, setSortCol] = useState('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [quoteSamples, setQuoteSamples] = useState<any[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => setSiteDebounced(siteQuery), 250);
@@ -34,11 +35,22 @@ export function Quotes() {
     });
   }, []);
 
+  useEffect(() => {
+    supabase
+      .from('samples')
+      .select('id, quote_ref, cust, product_name, quantity, unit, email_sent_at, status, outcome, client_email')
+      .eq('source_module', 'quotation')
+      .eq('email_sent', true)
+      .order('email_sent_at', { ascending: false })
+      .then(({ data: rows }) => { if (rows) setQuoteSamples(rows); });
+  }, []);
+
   const applySearch = (search: string) => {
     setGlobalSearchQuery(search);
   };
 
   const filteredQuotes = useMemo(() => {
+    if (tab === 'Sample') return [];
     const qs = globalSearchQuery.toLowerCase();
     const sq = siteDebounced.toLowerCase();
     const list = data.quotes.filter(q => {
@@ -81,15 +93,16 @@ export function Quotes() {
     Won: data.quotes.filter(q => q.status === 'Won').length,
     Lost: data.quotes.filter(q => q.status === 'Lost').length,
     Parked: data.quotes.filter(q => q.status === 'Parked').length,
-    All: data.quotes.length
+    All: data.quotes.length,
+    Sample: quoteSamples.length,
   };
-  
+
   const customers = Array.from(new Set(data.quotes.map(q => q.cust)));
 
   const TabSelect = ({ current, label, count }: { current: string, label: string, count?: number }) => {
     const isActive = tab === current;
     return (
-      <div 
+      <div
         onClick={() => setTab(current as any)}
         className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${isActive ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
       >
@@ -116,6 +129,8 @@ export function Quotes() {
       </th>
     );
   };
+
+  const thCls = "font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-left";
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -148,8 +163,9 @@ export function Quotes() {
           <TabSelect current="Won" label="Won" count={statusCounts.Won} />
           <TabSelect current="Lost" label="Lost" count={statusCounts.Lost} />
           <TabSelect current="Parked" label="Parked" count={statusCounts.Parked} />
+          <TabSelect current="Sample" label="Sample" count={statusCounts.Sample} />
         </div>
-        
+
         <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
 
         <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[160px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
@@ -185,187 +201,242 @@ export function Quotes() {
         </div>
 
         <div className="ml-auto font-mono text-[10px] text-g500">
-          {filteredQuotes.length} quotes
+          {tab === 'Sample'
+            ? `${quoteSamples.length} emailed samples`
+            : `${filteredQuotes.length} quotes`}
         </div>
       </div>
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-        <div className="bg-white border border-g200 overflow-x-auto m-0">
-          <table className="w-full border-collapse text-[12.5px]">
-            <thead className="bg-g100">
-              <tr>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote No.</th>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">ENQ Ref</th>
-                <SortTh col="cust">Customer - Unit</SortTh>
-                <SortTh col="date">Date</SortTh>
-                <SortTh col="items">Items</SortTh>
-                <SortTh col="value" right>Value (excl. GST)</SortTh>
-                <SortTh col="value" right>Grand Total</SortTh>
-                <SortTh col="status">Status</SortTh>
-                <SortTh col="sent_at">Punched At</SortTh>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredQuotes.length === 0 ? (
-                <tr><td colSpan={10} className="text-center p-8 text-g400 text-[13px]">No quotations match</td></tr>
-              ) : (
-                filteredQuotes.map(q => {
-                  const subTotal = q.items.reduce((s, i) => s + i.total, 0);
-                  const ins = (q as any).insurance ?? 0;
-                  const rawItemGst = q.items.reduce((s, i) => s + i.total * i.gst / 100, 0);
-                  const scaledItemGst = subTotal > 0 ? rawItemGst * (subTotal + ins) / subTotal : rawItemGst;
-                  const grandTotal = Math.round(subTotal + ins + scaledItemGst);
-                  const isExpanded = expandedRow === q.id;
+        {tab !== 'Sample' ? (
+          <div className="bg-white border border-g200 overflow-x-auto m-0">
+            <table className="w-full border-collapse text-[12.5px]">
+              <thead className="bg-g100">
+                <tr>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote No.</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">ENQ Ref</th>
+                  <SortTh col="cust">Customer - Unit</SortTh>
+                  <SortTh col="date">Date</SortTh>
+                  <SortTh col="items">Items</SortTh>
+                  <SortTh col="value" right>Value (excl. GST)</SortTh>
+                  <SortTh col="value" right>Grand Total</SortTh>
+                  <SortTh col="status">Status</SortTh>
+                  <SortTh col="sent_at">Punched At</SortTh>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredQuotes.length === 0 ? (
+                  <tr><td colSpan={10} className="text-center p-8 text-g400 text-[13px]">No quotations match</td></tr>
+                ) : (
+                  filteredQuotes.map(q => {
+                    const subTotal = q.items.reduce((s, i) => s + i.total, 0);
+                    const ins = (q as any).insurance ?? 0;
+                    const rawItemGst = q.items.reduce((s, i) => s + i.total * i.gst / 100, 0);
+                    const scaledItemGst = subTotal > 0 ? rawItemGst * (subTotal + ins) / subTotal : rawItemGst;
+                    const grandTotal = Math.round(subTotal + ins + scaledItemGst);
+                    const isExpanded = expandedRow === q.id;
 
-                  return (
-                    <React.Fragment key={q.id}>
-                      <tr 
-                        className={`transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-sQ/5 ${isExpanded ? 'bg-sQ/5' : ''}`}
-                        onClick={() => setExpandedRow(isExpanded ? null : q.id)}
-                      >
-                        <td className="px-[13px] py-[10px] align-middle"><span className="font-mono text-[10.5px] font-bold text-sQ">{q.id}</span></td>
-                        <td className="px-[13px] py-[10px] align-middle">{q.enqRef ? <span className="font-mono text-[10px] font-bold text-red-mrt">{q.enqRef}</span> : <span className="font-mono text-[10px] font-bold text-g400" title="Standalone quote — not linked to an enquiry">—</span>}</td>
-                        <td className="px-[13px] py-[10px] align-middle">
-                          <div className="font-semibold">{q.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === q.cust), (q as any).siteId || data.enquiries.find(e => e.id === q.enqRef)?.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
-                          {q.date ? fmtIST(new Date(q.date), 'dd-MMM-yyyy') : '--'}
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle">
-                          <span className="font-mono text-[10px] font-bold bg-g100 text-g600 px-[7px] py-[2px] rounded-full inline-flex items-center">
-                            {q.items.length} item(s)
-                          </span>
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px]">{formatINR(subTotal)}</td>
-                        <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
-                        <td className="px-[13px] py-[10px] align-middle">
-                          <div className="flex items-center gap-1.5">
-                            <Badge status={q.status} />
-                            {poReceivedIds.has(q.id) && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 border border-green-300 text-green-700 text-[9.5px] font-bold tracking-wide uppercase whitespace-nowrap">
-                                <svg viewBox="0 0 24 24" width="9" height="9" stroke="currentColor" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12"/></svg>
-                                PO Received
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
-                          {q.sent_at
-                            ? fmtIST(new Date(q.sent_at), 'dd MMM HH:mm')
-                            : q.status === 'Draft'
-                              ? <span className="text-g400 italic">not sent</span>
-                              : '--'}
-                        </td>
-                        <td className="px-[13px] py-[10px] align-middle" onClick={ev => ev.stopPropagation()}>
-                          <div className="flex gap-1.5">
-                            <Button size="sm" variant="secondary" onClick={() => navigate(`/quotes/new?id=${q.id}`)}>Edit</Button>
-                            <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('quote', q.id); }}>Detail</Button>
-                            <Button size="sm" variant="secondary" onClick={(ev) => {
-                              ev.stopPropagation();
-                              const cust = data.customers.find(c => c.name === q.cust);
-                              const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
-                              const sig = data.signatories.find(s => s.is_default);
-                              generateQuotePDF(q, cust, data.settings, sig, true, unit);
-                            }}>PDF</Button>
-                            <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openAttachmentModal('quote', q.id); }}>Docs</Button>
-                            <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); navigate(`/sampling/new?quoteRef=${encodeURIComponent(q.id)}&cust=${encodeURIComponent(q.cust)}`); }}>+ Sample</Button>
-                            {q.status === 'Draft' && (
-                              <Button size="sm" variant="primary" onClick={async (ev) => {
+                    return (
+                      <React.Fragment key={q.id}>
+                        <tr
+                          className={`transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-sQ/5 ${isExpanded ? 'bg-sQ/5' : ''}`}
+                          onClick={() => setExpandedRow(isExpanded ? null : q.id)}
+                        >
+                          <td className="px-[13px] py-[10px] align-middle"><span className="font-mono text-[10.5px] font-bold text-sQ">{q.id}</span></td>
+                          <td className="px-[13px] py-[10px] align-middle">{q.enqRef ? <span className="font-mono text-[10px] font-bold text-red-mrt">{q.enqRef}</span> : <span className="font-mono text-[10px] font-bold text-g400" title="Standalone quote — not linked to an enquiry">—</span>}</td>
+                          <td className="px-[13px] py-[10px] align-middle">
+                            <div className="font-semibold">{q.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === q.cust), (q as any).siteId || data.enquiries.find(e => e.id === q.enqRef)?.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                            {q.date ? fmtIST(new Date(q.date), 'dd-MMM-yyyy') : '--'}
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle">
+                            <span className="font-mono text-[10px] font-bold bg-g100 text-g600 px-[7px] py-[2px] rounded-full inline-flex items-center">
+                              {q.items.length} item(s)
+                            </span>
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px]">{formatINR(subTotal)}</td>
+                          <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
+                          <td className="px-[13px] py-[10px] align-middle">
+                            <div className="flex items-center gap-1.5">
+                              <Badge status={q.status} />
+                              {poReceivedIds.has(q.id) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-50 border border-green-300 text-green-700 text-[9.5px] font-bold tracking-wide uppercase whitespace-nowrap">
+                                  <svg viewBox="0 0 24 24" width="9" height="9" stroke="currentColor" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12"/></svg>
+                                  PO Received
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                            {q.sent_at
+                              ? fmtIST(new Date(q.sent_at), 'dd MMM HH:mm')
+                              : q.status === 'Draft'
+                                ? <span className="text-g400 italic">not sent</span>
+                                : '--'}
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle" onClick={ev => ev.stopPropagation()}>
+                            <div className="flex gap-1.5">
+                              <Button size="sm" variant="secondary" onClick={() => navigate(`/quotes/new?id=${q.id}`)}>Edit</Button>
+                              <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('quote', q.id); }}>Detail</Button>
+                              <Button size="sm" variant="secondary" onClick={(ev) => {
                                 ev.stopPropagation();
-                                const now = new Date().toISOString();
-                                await updateQuote(q.id, { status: 'Sent', sent_at: now });
-                                await addFollowUpLog(q.id, { ts: now, who: 'System', channel: 'Email', note: `Quote sent — ${q.id}` }, null, null, '');
-                              }} className="gap-1.5">
-                                <Send size={12} /> Mark Sent
-                              </Button>
-                            )}
-                            {(q.status === 'Won' || q.status === 'Sent') && (
-                              (() => {
-                                const isOrdered = data.orders.some(o => o.quoteRef === q.id);
-                                return isOrdered ? (
-                                  <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed">Ordered</Button>
-                                ) : (
-                                  <Button size="sm" variant="success" onClick={() => navigate(`/orders/new?quoteRef=${q.id}`)} className="btn-order active:scale-95 transition-transform">Order</Button>
-                                );
-                              })()
-                            )}
-                            {canDelete && (
-                              <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async (ev) => {
-                                ev.stopPropagation();
-                                const linkedOrder = data.orders.find(o => o.quoteRef === q.id);
-                                if (linkedOrder) {
-                                  if (!confirm(`This quotation has a linked order ${linkedOrder.id}. Delete quotation anyway?`)) return;
-                                }
-                                if (!confirm(`Are you sure you want to delete ${q.id}? This action cannot be undone.`)) return;
-                                try {
-                                  await deleteQuote(q.id);
-                                } catch (err: any) {
-                                  alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
-                                }
-                              }}>Delete</Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-
-                      {isExpanded && (
-                        <tr className="bg-sQ/[0.02] border-b-2 border-sQ">
-                          <td colSpan={10} className="p-0">
-                            <div className="p-[10px_16px]">
-                              <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sQ mb-[7px]">Line Items -- {q.id}</div>
-                              <table className="w-full border-collapse text-[11.5px] m-0 mb-2">
-                                <thead className="bg-g100">
-                                  <tr>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">#</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Product Name</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">HSN Code</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">No of Barrels</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Packing</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Total Qty</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Packing Type</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Unit Rate (₹)</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">GST%</th>
-                                    <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Amount (₹)</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {q.items.map(i => {
-                                    const packNum = parseFloat(i.packing || '');
-                                    const totalQty = i.qty > 0 && packNum > 0 ? i.qty * packNum : null;
-                                    return (
-                                    <tr key={i.seq}>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px] text-g400 w-6">{i.seq}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px]">{i.hsn || '—'}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11px] text-right">{i.packing || '—'}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{totalQty ?? '—'}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk text-[11px] text-g600">{i.packingType || '—'}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-right">{formatINR(i.unitPrice)}</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-right">{i.gst}%</td>
-                                      <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono font-bold text-right">{formatINR(i.total)}</td>
-                                    </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                              <div className="flex justify-end pt-2 border-t border-g200 gap-5 items-center">
-                                <span className="text-[12px] text-g600">Sub-Total: <strong className="text-blk font-bold font-mono">{formatINR(subTotal)}</strong></span>
-                                <span className="text-[12px] text-g600">GST: <strong className="text-blk font-bold font-mono">{formatINR(Math.round(scaledItemGst))}</strong></span>
-                                <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(grandTotal)}</span>
-                              </div>
+                                const cust = data.customers.find(c => c.name === q.cust);
+                                const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
+                                const sig = data.signatories.find(s => s.is_default);
+                                generateQuotePDF(q, cust, data.settings, sig, true, unit);
+                              }}>PDF</Button>
+                              <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openAttachmentModal('quote', q.id); }}>Docs</Button>
+                              <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); navigate(`/sampling/new?quoteRef=${encodeURIComponent(q.id)}&cust=${encodeURIComponent(q.cust)}&source=quotation`); }}>+ Sample</Button>
+                              {q.status === 'Draft' && (
+                                <Button size="sm" variant="primary" onClick={async (ev) => {
+                                  ev.stopPropagation();
+                                  const now = new Date().toISOString();
+                                  await updateQuote(q.id, { status: 'Sent', sent_at: now });
+                                  await addFollowUpLog(q.id, { ts: now, who: 'System', channel: 'Email', note: `Quote sent — ${q.id}` }, null, null, '');
+                                }} className="gap-1.5">
+                                  <Send size={12} /> Mark Sent
+                                </Button>
+                              )}
+                              {(q.status === 'Won' || q.status === 'Sent') && (
+                                (() => {
+                                  const isOrdered = data.orders.some(o => o.quoteRef === q.id);
+                                  return isOrdered ? (
+                                    <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed">Ordered</Button>
+                                  ) : (
+                                    <Button size="sm" variant="success" onClick={() => navigate(`/orders/new?quoteRef=${q.id}`)} className="btn-order active:scale-95 transition-transform">Order</Button>
+                                  );
+                                })()
+                              )}
+                              {canDelete && (
+                                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async (ev) => {
+                                  ev.stopPropagation();
+                                  const linkedOrder = data.orders.find(o => o.quoteRef === q.id);
+                                  if (linkedOrder) {
+                                    if (!confirm(`This quotation has a linked order ${linkedOrder.id}. Delete quotation anyway?`)) return;
+                                  }
+                                  if (!confirm(`Are you sure you want to delete ${q.id}? This action cannot be undone.`)) return;
+                                  try {
+                                    await deleteQuote(q.id);
+                                  } catch (err: any) {
+                                    alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
+                                  }
+                                }}>Delete</Button>
+                              )}
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+
+                        {isExpanded && (
+                          <tr className="bg-sQ/[0.02] border-b-2 border-sQ">
+                            <td colSpan={10} className="p-0">
+                              <div className="p-[10px_16px]">
+                                <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sQ mb-[7px]">Line Items -- {q.id}</div>
+                                <table className="w-full border-collapse text-[11.5px] m-0 mb-2">
+                                  <thead className="bg-g100">
+                                    <tr>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">#</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Product Name</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">HSN Code</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">No of Barrels</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Packing</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Total Qty</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Packing Type</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Unit Rate (₹)</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">GST%</th>
+                                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Amount (₹)</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {q.items.map(i => {
+                                      const packNum = parseFloat(i.packing || '');
+                                      const totalQty = i.qty > 0 && packNum > 0 ? i.qty * packNum : null;
+                                      return (
+                                      <tr key={i.seq}>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px] text-g400 w-6">{i.seq}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px]">{i.hsn || '—'}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11px] text-right">{i.packing || '—'}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{totalQty ?? '—'}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk text-[11px] text-g600">{i.packingType || '—'}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-right">{formatINR(i.unitPrice)}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-right">{i.gst}%</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono font-bold text-right">{formatINR(i.total)}</td>
+                                      </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                                <div className="flex justify-end pt-2 border-t border-g200 gap-5 items-center">
+                                  <span className="text-[12px] text-g600">Sub-Total: <strong className="text-blk font-bold font-mono">{formatINR(subTotal)}</strong></span>
+                                  <span className="text-[12px] text-g600">GST: <strong className="text-blk font-bold font-mono">{formatINR(Math.round(scaledItemGst))}</strong></span>
+                                  <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(grandTotal)}</span>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="bg-white border border-g200 overflow-x-auto m-0">
+            <table className="w-full border-collapse text-[12.5px]">
+              <thead className="bg-g100">
+                <tr>
+                  <th className={thCls}>Sample ID</th>
+                  <th className={thCls}>Quote Ref</th>
+                  <th className={thCls}>Customer</th>
+                  <th className={thCls}>Product</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-right">Qty Sent</th>
+                  <th className={thCls}>Email Sent At</th>
+                  <th className={thCls}>Status</th>
+                  <th className={thCls}>Outcome</th>
+                  <th className={thCls}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {quoteSamples.length === 0 ? (
+                  <tr><td colSpan={9} className="text-center p-8 text-g400 text-[13px]">No emailed samples linked to quotations yet</td></tr>
+                ) : (
+                  quoteSamples.map(s => (
+                    <tr key={s.id} className="border-b border-g100 last:border-b-0 hover:bg-sQ/5 transition-colors">
+                      <td className="px-[13px] py-[10px] align-middle">
+                        <span className="font-mono text-[10.5px] font-bold text-red-mrt">{s.id}</span>
+                      </td>
+                      <td className="px-[13px] py-[10px] align-middle">
+                        {s.quote_ref
+                          ? <span className="font-mono text-[10.5px] font-bold text-sQ">{s.quote_ref}</span>
+                          : <span className="text-g400 text-[11px]">—</span>}
+                      </td>
+                      <td className="px-[13px] py-[10px] align-middle font-medium">{s.cust}</td>
+                      <td className="px-[13px] py-[10px] align-middle">{s.product_name}</td>
+                      <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[11.5px]">
+                        {s.quantity != null ? `${s.quantity} ${s.unit || ''}`.trim() : '—'}
+                      </td>
+                      <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                        {s.email_sent_at ? fmtIST(new Date(s.email_sent_at), 'dd MMM HH:mm') : '—'}
+                      </td>
+                      <td className="px-[13px] py-[10px] align-middle"><Badge status={s.status} /></td>
+                      <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600">
+                        {s.outcome || <span className="text-g400">—</span>}
+                      </td>
+                      <td className="px-[13px] py-[10px] align-middle">
+                        <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
     </div>

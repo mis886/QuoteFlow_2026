@@ -145,7 +145,7 @@ export function SampleEmailModal(props: SampleEmailModalProps) {
 
       await sendViaGmailAsUser({ to: to.trim(), cc: ccString, subject, body, attachments }, senderEmail);
       // Record successful send — fire and forget, don't block the success UX
-      supabase.from('samples').update({ email_sent_at: new Date().toISOString() }).eq('id', props.sampleId).then(() => {});
+      supabase.from('samples').update({ email_sent_at: new Date().toISOString(), email_sent: true, client_email: to.trim() }).eq('id', props.sampleId).then(() => {});
       setStatus('sent');
       setTimeout(() => { props.onSent(); props.onClose(); }, 1500);
     } catch (err: any) {

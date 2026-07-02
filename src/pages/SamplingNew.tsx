@@ -27,6 +27,7 @@ export function SamplingNew() {
   const { data } = useAppStore();
 
   const editId = searchParams.get('id');
+  const source = searchParams.get('source') as 'enquiry' | 'quotation' | null;
   const today  = localDateStr(new Date());
 
   const [sentDate,     setSentDate]     = useState(today);
@@ -148,6 +149,7 @@ export function SamplingNew() {
       ({ error } = await supabase.from('samples').insert({
         id: sampleId,
         ...commonFields,
+        source_module:     source ?? (isQt ? 'quotation' : ref ? 'enquiry' : null),
         status:           'pending',
         feedback_received: false,
         created_at:       new Date().toISOString(),
@@ -287,9 +289,16 @@ export function SamplingNew() {
                 </div>
                 <div>
                   <label className={labelCls}>Linked Quote / Enquiry Ref</label>
-                  <input type="text" value={linkedRef} onChange={e => setLinkedRef(e.target.value)}
-                    placeholder="e.g. HTP-2026-020 or ENQ-2026-025"
-                    className={inputCls} />
+                  {(() => {
+                    const locked = !editId && !!(searchParams.get('enqRef') || searchParams.get('quoteRef'));
+                    return (
+                      <input type="text" value={linkedRef}
+                        onChange={e => !locked && setLinkedRef(e.target.value)}
+                        readOnly={locked}
+                        placeholder="e.g. HTP-2026-020 or ENQ-2026-025"
+                        className={`${inputCls}${locked ? ' bg-g50 text-g500 cursor-default' : ''}`} />
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className={labelCls}>Sent By</label>
