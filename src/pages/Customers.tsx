@@ -336,6 +336,16 @@ function CustomerPanel({ customer, onClose }: { customer: Customer; onClose: () 
                   </span>
                 )}
               </div>
+              {(customer.createdBy || customer.modifiedBy) && (
+                <div className="text-[10px] text-g400 font-mono mt-1.5 space-y-0.5">
+                  {customer.createdBy && (
+                    <p>Added by {customer.createdBy}{customer.createdDate ? ` · ${new Date(customer.createdDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}</p>
+                  )}
+                  {customer.modifiedBy && (
+                    <p>Edited by {customer.modifiedBy}{customer.modifiedDate ? ` · ${new Date(customer.modifiedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <button type="button" title="Close panel" aria-label="Close customer panel" onClick={onClose} className="p-1 text-g400 hover:text-blk rounded transition-colors">
