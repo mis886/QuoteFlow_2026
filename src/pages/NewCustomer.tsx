@@ -62,10 +62,10 @@ const normalizePayTerms = (raw: string | undefined): string => {
 };
 
 const SEG_OPTIONS = [
-  'Bhimseni Kapoor', 'Camphor', 'Dhoop & Agarbatti', 'Lubricants', 'Mehandi', 'Misc',
-  'Paints', 'Perfume & Fragrance', 'Pharma', 'Phenyl', 'Pine Oil Trader',
-  'Resin Mfg', 'Rosin Trader', 'Rubber / Rubber Trader', 'Sodium Acetate',
-  'Textile Auxiliaries',
+  'Adhesive', 'Camphor Tablet MFR / Bhimseni', 'Cosmetics', 'Dhoop & Agarbatti',
+  'F & F - All', 'F & F - Fine Fragrance', 'F & F - Flavours', 'F & F - Incense',
+  'F & F - Soaps & detergents', 'Lubricants', 'Mehandi', 'Misc', 'Paints',
+  'Pharma', 'Phenyl', 'Resin Mfg', 'Rubber', 'Sodium Acetate', 'Textile Auxiliaries',
 ];
 
 const normalizeSeg = (raw: string | undefined | null): string => {
