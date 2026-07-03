@@ -33,8 +33,7 @@ export function Enquiries() {
       .from('samples')
       .select('id, enq_ref, cust, product_name, quantity, unit, email_sent_at, status, outcome, client_email')
       .eq('source_module', 'enquiry')
-      .eq('email_sent', true)
-      .order('email_sent_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .then(({ data: rows }) => { if (rows) setEnqSamples(rows); });
   }, []);
 
@@ -213,7 +212,7 @@ export function Enquiries() {
 
         <div className="ml-auto font-mono text-[10px] text-g500">
           {tab === 'Sample'
-            ? `${enqSamples.length} emailed samples`
+            ? `${enqSamples.length} linked sample${enqSamples.length === 1 ? '' : 's'}`
             : `${filteredEnqs.length} enquiries · ${totalItems} items`}
         </div>
       </div>

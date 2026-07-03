@@ -40,8 +40,7 @@ export function Quotes() {
       .from('samples')
       .select('id, quote_ref, cust, product_name, quantity, unit, email_sent_at, status, outcome, client_email')
       .eq('source_module', 'quotation')
-      .eq('email_sent', true)
-      .order('email_sent_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .then(({ data: rows }) => { if (rows) setQuoteSamples(rows); });
   }, []);
 
@@ -202,7 +201,7 @@ export function Quotes() {
 
         <div className="ml-auto font-mono text-[10px] text-g500">
           {tab === 'Sample'
-            ? `${quoteSamples.length} emailed samples`
+            ? `${quoteSamples.length} linked sample${quoteSamples.length === 1 ? '' : 's'}`
             : `${filteredQuotes.length} quotes`}
         </div>
       </div>
