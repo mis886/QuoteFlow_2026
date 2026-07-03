@@ -1084,14 +1084,21 @@ export function Customers() {
 
                     {/* Actions */}
                     <td className="px-[13px] py-[11px] align-middle" onClick={e => e.stopPropagation()}>
-                      <div className="flex gap-1.5 flex-wrap">
-                        <Button size="sm" variant="secondary" onClick={() => setSelectedCustomer(c)}>Profile</Button>
-                        <Button size="sm" variant="secondary" onClick={() => navigate(`/customers/new?id=${c.id}`)}>
-                          <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </Button>
-                        <Button size="sm" variant="primary" onClick={() => navigate(`/quotes/new?cust=${encodeURIComponent(c.name)}`)}>Quote</Button>
-                        {canDelete && (
-                          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); handleDeleteCustomer(c); }}>Delete</Button>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-1.5">
+                          <Button size="sm" variant="secondary" onClick={() => setSelectedCustomer(c)}>Profile</Button>
+                          <Button size="sm" variant="secondary" onClick={() => navigate(`/customers/new?id=${c.id}`)}>
+                            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </Button>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <Button size="sm" variant="primary" onClick={() => navigate(`/quotes/new?cust=${encodeURIComponent(c.name)}`)}>Quote</Button>
+                          {canDelete && (
+                            <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); handleDeleteCustomer(c); }}>Delete</Button>
+                          )}
+                        </div>
+                        {(c.modifiedBy || c.createdBy) && (
+                          <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{c.modifiedBy || c.createdBy}</span>
                         )}
                       </div>
                     </td>
