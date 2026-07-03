@@ -7,6 +7,8 @@ import { useAppStore } from '../store';
 import { localDateStr } from '../lib/utils';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
+import { ProductSearch } from '../components/ProductSearch';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 import { SampleEmailModal } from '../components/SampleEmailModal';
 
 const UNITS = ['g', 'ml', 'kg', 'L'];
@@ -25,6 +27,7 @@ export function SamplingNew() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { data } = useAppStore();
+  const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
   const editId = searchParams.get('id');
   const source = searchParams.get('source') as 'enquiry' | 'quotation' | null;
@@ -38,7 +41,7 @@ export function SamplingNew() {
   const [cust,         setCust]         = useState(() => (editId ? '' : (searchParams.get('cust') ?? '')));
   const [linkedRef,    setLinkedRef]    = useState(() => (editId ? '' : (searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '')));
   const [sentBy,       setSentBy]       = useState('');
-  const [productName,  setProductName]  = useState('');
+  const [productName,  setProductName]  = useState(() => (editId ? '' : (searchParams.get('prod') ?? '')));
   const [productGrade, setProductGrade] = useState('');
   const [lotNo,        setLotNo]        = useState('');
   const [coaFile,      setCoaFile]      = useState<File | null>(null);
@@ -315,10 +318,15 @@ export function SamplingNew() {
               <div className="grid grid-cols-2 gap-[12px]">
                 <div>
                   <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
-                  <input type="text" value={productName}
-                    onChange={e => { setProductName(e.target.value); setErrors(er => ({ ...er, productName: '' })); }}
-                    placeholder="e.g. Alpha Terpineol"
-                    className={`${inputCls}${errors.productName ? ' border-red-mrt' : ''}`} />
+                  <div className={`bg-white border ${errors.productName ? 'border-red-mrt' : 'border-g300 focus-within:border-red-mrt'} rounded-[3px] p-[8px_10px] focus-within:ring-[3px] focus-within:ring-red-lt transition-all`}>
+                    <ProductSearch
+                      value={productName}
+                      names={productNames}
+                      hsnMap={productHsnMap}
+                      error={!!errors.productName}
+                      onChange={(desc) => { setProductName(desc); setErrors(er => ({ ...er, productName: '' })); }}
+                    />
+                  </div>
                   {errors.productName && <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.productName}</div>}
                 </div>
                 <div>

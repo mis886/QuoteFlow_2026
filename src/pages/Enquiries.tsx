@@ -301,7 +301,7 @@ export function Enquiries() {
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('enquiry', e.id); }}>Detail</Button>
                               {!e.qRef && <Button size="sm" variant="ghost" onClick={(ev) => { ev.stopPropagation(); navigate(`/quotes/new?enqRef=${e.id}`); }}>Quote</Button>}
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openAttachmentModal('enquiry', e.id); }}>Docs</Button>
-                              <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); navigate(`/sampling/new?enqRef=${encodeURIComponent(e.id)}&cust=${encodeURIComponent(e.cust)}&source=enquiry`); }}>+ Sample</Button>
+                              <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); navigate(`/sampling/new?enqRef=${encodeURIComponent(e.id)}&cust=${encodeURIComponent(e.cust)}&source=enquiry${e.items?.[0]?.desc ? `&prod=${encodeURIComponent(e.items[0].desc)}` : ''}`); }}>+ Sample</Button>
                               {canDelete && (
                                 <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id); }}>Delete</Button>
                               )}
