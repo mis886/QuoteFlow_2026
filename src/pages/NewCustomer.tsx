@@ -257,8 +257,8 @@ export function NewCustomer() {
         setPan(cust.pan || (loadedGstin.length === 15 ? loadedGstin.substring(2, 12) : ''));
         setSites(cust.sites || []);
         setCreditLimit(cust.creditLimit != null ? String(cust.creditLimit) : '');
-        setNextOrder1({ product: cust.nextOrder1?.product || '' });
-        setNextOrder2({ product: cust.nextOrder2?.product || '' });
+        setNextOrder1({ product: cust.nextOrder1?.product || '', qty: cust.nextOrder1?.qty || '', date: cust.nextOrder1?.date || '' });
+        setNextOrder2({ product: cust.nextOrder2?.product || '', qty: cust.nextOrder2?.qty || '', date: cust.nextOrder2?.date || '' });
         setCrossSellOpportunities(cust.crossSellOpportunities || '');
         setNotes(cust.notes || '');
         setExistingAudit({
