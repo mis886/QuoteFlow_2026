@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { localDateStr } from '../lib/utils';
+import { localDateStr, canDeleteRecords } from '../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -240,7 +240,7 @@ function FeedbackModal({ sample, onClose, onSaved }: {
 export function Sampling() {
   const navigate = useNavigate();
   const { user } = useAppStore();
-  const canDelete = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
+  const canDelete = canDeleteRecords(user?.email);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedbackTarget, setFeedbackTarget] = useState<Sample | null>(null);

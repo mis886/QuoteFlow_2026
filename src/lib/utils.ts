@@ -2,6 +2,10 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { OrderAdjustment, Customer } from './types';
 
+export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'];
+export const canDeleteRecords = (email: string | null | undefined): boolean =>
+  ALLOWED_DELETE_EMAILS.includes((email ?? '').toLowerCase());
+
 /**
  * Returns a display label for a site — "City — Branch" or just whichever part exists.
  * Pass the customer record + the siteId stored on the doc (quote/order/enquiry).

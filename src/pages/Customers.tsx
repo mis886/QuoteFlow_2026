@@ -5,7 +5,7 @@ import { DuplicateReviewPanel } from '../components/DuplicateReviewPanel';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Customer, Contact, CustomerTier, FollowUpLog } from '../lib/types';
-import { formatINR, fmtIST, generateId } from '../lib/utils';
+import { formatINR, fmtIST, generateId, canDeleteRecords } from '../lib/utils';
 import { parseISO } from 'date-fns';
 import Papa from 'papaparse';
 
@@ -663,8 +663,8 @@ function sortValue(c: Customer, key: SortKey): string | number {
 // ── Main Customers page ───────────────────────────────────────────────────────
 
 export function Customers() {
-  const { data, addCustomer, updateCustomer } = useAppStore();
-  const { deleteCustomer } = useAppStore() as any;
+  const { data, user, addCustomer, updateCustomer, deleteCustomer } = useAppStore() as any;
+  const canDelete = canDeleteRecords(user?.email);
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const searchQuery = params.get('q') ?? '';
@@ -685,6 +685,26 @@ export function Customers() {
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir('asc'); }
+  };
+
+  const handleDeleteCustomer = async (c: Customer) => {
+    const enqCount   = data.enquiries.filter((e: any) => e.cust === c.name).length;
+    const quoteCount = data.quotes.filter((q: any)    => q.cust === c.name).length;
+    const orderCount = data.orders.filter((o: any)    => o.cust === c.name).length;
+    const linkedParts: string[] = [];
+    if (enqCount   > 0) linkedParts.push(`${enqCount} enquir${enqCount === 1 ? 'y' : 'ies'}`);
+    if (quoteCount > 0) linkedParts.push(`${quoteCount} quote${quoteCount === 1 ? '' : 's'}`);
+    if (orderCount > 0) linkedParts.push(`${orderCount} order${orderCount === 1 ? '' : 's'}`);
+    const warning = linkedParts.length > 0
+      ? `\n\nWarning: This customer has ${linkedParts.join(', ')} linked — deleting will not remove those records but they will lose their customer reference.`
+      : '';
+    if (!confirm(`Are you sure you want to delete "${c.name}"? This action cannot be undone.${warning}`)) return;
+    try {
+      await deleteCustomer(c.id);
+      if (selectedCustomer?.id === c.id) setSelectedCustomer(null);
+    } catch (err: any) {
+      alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
+    }
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1064,12 +1084,15 @@ export function Customers() {
 
                     {/* Actions */}
                     <td className="px-[13px] py-[11px] align-middle" onClick={e => e.stopPropagation()}>
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-1.5 flex-wrap">
                         <Button size="sm" variant="secondary" onClick={() => setSelectedCustomer(c)}>Profile</Button>
                         <Button size="sm" variant="secondary" onClick={() => navigate(`/customers/new?id=${c.id}`)}>
                           <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </Button>
                         <Button size="sm" variant="primary" onClick={() => navigate(`/quotes/new?cust=${encodeURIComponent(c.name)}`)}>Quote</Button>
+                        {canDelete && (
+                          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); handleDeleteCustomer(c); }}>Delete</Button>
+                        )}
                       </div>
                     </td>
                   </tr>

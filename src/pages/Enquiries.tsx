@@ -3,7 +3,7 @@ import { useAppStore } from '../store';
 import { Badge, Button, SourceIcon, DateFilterBanner } from '../components/ui';
 import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { calculateAgeHours, fmtIST, isInDateRange, siteLabel } from '../lib/utils';
+import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords } from '../lib/utils';
 import { EnqStatus } from '../lib/types';
 import { supabase } from '../lib/supabase';
 
@@ -11,7 +11,7 @@ export function Enquiries() {
   const store = useAppStore();
   const { data, user, globalSearchQuery, setGlobalSearchQuery, openDetailPanel, openAttachmentModal, deleteEnquiry } = store;
   const { globalDateRange, setGlobalDateRange } = store as any;
-  const canDelete = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
+  const canDelete = canDeleteRecords(user?.email);
   const navigate = useNavigate();
   const [tab, setTab] = useState<'All' | 'Open' | EnqStatus | 'Sample'>('All');
   const [srcFilter, setSrcFilter] = useState('');
