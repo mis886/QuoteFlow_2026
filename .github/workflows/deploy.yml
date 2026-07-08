@@ -1,6 +1,7 @@
 name: Build and deploy
 
 on:
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
   push:
     branches: [main]
     paths:
@@ -8,6 +9,7 @@ on:
       - 'public/**'
       - 'index.html'
       - 'vite.config.*'
+      - 'wrangler.toml'
       - 'package*.json'
       - 'tailwind.config.*'
       - 'tsconfig*.json'
