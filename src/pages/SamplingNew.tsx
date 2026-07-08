@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Upload, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -42,6 +42,7 @@ export function SamplingNew() {
   const [linkedRef,    setLinkedRef]    = useState(() => (editId ? '' : (searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '')));
   const [sentBy,          setSentBy]          = useState('');
   const [sentByOpen,      setSentByOpen]      = useState(false);
+  const sentByRef = useRef<HTMLDivElement>(null);
   const [trackingNumber,  setTrackingNumber]  = useState('');
   const [productName,     setProductName]     = useState(() => (editId ? '' : (searchParams.get('prod') ?? '')));
   const [productGrade, setProductGrade] = useState('');
@@ -95,6 +96,23 @@ export function SamplingNew() {
         setExistingCoaUrl(row.coa_file ?? null);
       });
   }, [editId]);
+
+  // Close Sent By dropdown when focus leaves the wrapper entirely
+  useEffect(() => {
+    const el = sentByRef.current;
+    if (!el) return;
+    const handler = (e: FocusEvent) => {
+      if (!el.contains(e.relatedTarget as Node | null)) setSentByOpen(false);
+    };
+    el.addEventListener('focusout', handler);
+    return () => el.removeEventListener('focusout', handler);
+  }, []);
+
+  const sentByMatches = useMemo(() => {
+    if (!sentByOpen || sentBy.trim().length === 0) return [];
+    const q = sentBy.toLowerCase();
+    return data.signatories.filter(s => s.name.toLowerCase().includes(q));
+  }, [sentByOpen, sentBy, data.signatories]);
 
   const newSamplePreviewId = `SAMP-${Date.now()}`;
 
@@ -334,35 +352,29 @@ export function SamplingNew() {
                 </div>
                 <div>
                   <label className={labelCls}>Sent By</label>
-                  <div className="relative">
+                  <div ref={sentByRef} className="relative">
                     <input
                       type="text"
                       value={sentBy}
-                      onChange={e => setSentBy(e.target.value)}
+                      onChange={e => { setSentBy(e.target.value); setSentByOpen(true); }}
                       onFocus={() => setSentByOpen(true)}
-                      onBlur={() => setTimeout(() => setSentByOpen(false), 150)}
                       placeholder="Name of person who dispatched the sample"
                       className={inputCls}
                     />
-                    {sentByOpen && sentBy.length > 0 && (() => {
-                      const matches = data.signatories.filter(s =>
-                        s.name.toLowerCase().includes(sentBy.toLowerCase())
-                      );
-                      return matches.length > 0 ? (
-                        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-g300 rounded-[3px] shadow-md max-h-[160px] overflow-y-auto">
-                          {matches.map(s => (
-                            <button
-                              key={s.id}
-                              type="button"
-                              onMouseDown={() => { setSentBy(s.name); setSentByOpen(false); }}
-                              className="w-full text-left px-3 py-2 text-[12.5px] text-blk hover:bg-g50 transition-colors"
-                            >
-                              {s.name}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null;
-                    })()}
+                    {sentByOpen && sentByMatches.length > 0 && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-g300 rounded-[3px] shadow-lg max-h-[160px] overflow-y-auto">
+                        {sentByMatches.map(s => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onMouseDown={() => { setSentBy(s.name); setSentByOpen(false); }}
+                            className="w-full text-left px-3 py-2 text-[12.5px] text-blk hover:bg-g50 transition-colors"
+                          >
+                            {s.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
