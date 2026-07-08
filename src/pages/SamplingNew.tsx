@@ -49,6 +49,9 @@ export function SamplingNew() {
   const [unit,         setUnit]         = useState('g');
   const [notes,        setNotes]        = useState('');
 
+  // Local object URLs for immediate preview before save
+  const [podLocalUrl, setPodLocalUrl] = useState<string | null>(null);
+  const [coaLocalUrl, setCoaLocalUrl] = useState<string | null>(null);
   // Tracks existing uploaded URLs when in edit mode
   const [existingPodUrl, setExistingPodUrl] = useState<string | null>(null);
   const [existingCoaUrl, setExistingCoaUrl] = useState<string | null>(null);
@@ -248,7 +251,11 @@ export function SamplingNew() {
                   <div className="flex items-center gap-1.5">
                     <input type="file" id="pod-upload" className="hidden"
                       accept=".pdf,.jpeg,.jpg,.png"
-                      onChange={e => setPodFile(e.target.files?.[0] ?? null)} />
+                      onChange={e => {
+                        const f = e.target.files?.[0] ?? null;
+                        setPodFile(f);
+                        setPodLocalUrl(f ? URL.createObjectURL(f) : null);
+                      }} />
                     <label htmlFor="pod-upload"
                       className="cursor-pointer font-sans text-[12px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors min-h-[36px] w-full">
                       <Upload size={13} className="text-g500 shrink-0" />
@@ -258,8 +265,14 @@ export function SamplingNew() {
                         ? <span className="truncate text-[11.5px] text-emerald-600">Existing file (click to replace)</span>
                         : <span className="text-g400">Upload proof of delivery</span>}
                     </label>
+                    {podFile && podLocalUrl && (
+                      <a href={podLocalUrl} target="_blank" rel="noopener noreferrer" title="Preview selected file"
+                        className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
+                        <ExternalLink size={14} />
+                      </a>
+                    )}
                     {podFile && (
-                      <button type="button" title="Remove new file" onClick={() => setPodFile(null)}
+                      <button type="button" title="Remove new file" onClick={() => { setPodFile(null); setPodLocalUrl(null); }}
                         className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
                     )}
                     {!podFile && existingPodUrl && (
@@ -352,7 +365,11 @@ export function SamplingNew() {
                   <div className="flex items-center gap-1.5">
                     <input type="file" id="coa-upload" className="hidden"
                       accept=".pdf,.jpeg,.jpg,.png"
-                      onChange={e => setCoaFile(e.target.files?.[0] ?? null)} />
+                      onChange={e => {
+                        const f = e.target.files?.[0] ?? null;
+                        setCoaFile(f);
+                        setCoaLocalUrl(f ? URL.createObjectURL(f) : null);
+                      }} />
                     <label htmlFor="coa-upload"
                       className="cursor-pointer font-sans text-[12px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors min-h-[36px] w-full">
                       <Upload size={13} className="text-g500 shrink-0" />
@@ -362,8 +379,14 @@ export function SamplingNew() {
                         ? <span className="truncate text-[11.5px] text-emerald-600">Existing file (click to replace)</span>
                         : <span className="text-g400">Upload certificate of analysis</span>}
                     </label>
+                    {coaFile && coaLocalUrl && (
+                      <a href={coaLocalUrl} target="_blank" rel="noopener noreferrer" title="Preview selected file"
+                        className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
+                        <ExternalLink size={14} />
+                      </a>
+                    )}
                     {coaFile && (
-                      <button type="button" title="Remove new file" onClick={() => setCoaFile(null)}
+                      <button type="button" title="Remove new file" onClick={() => { setCoaFile(null); setCoaLocalUrl(null); }}
                         className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
                     )}
                     {!coaFile && existingCoaUrl && (

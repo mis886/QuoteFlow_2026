@@ -73,6 +73,7 @@ export function NewOrder() {
 
   const [poNo, setPoNo] = useState('');
   const [poFile, setPoFile] = useState<File | null>(null);
+  const [poLocalUrl, setPoLocalUrl] = useState<string | null>(null);
   const [existingPoFileName, setExistingPoFileName] = useState<string | null>(null);
   const [poDate, setPoDate] = useState(localDateStr(new Date()));
   const [dlvDate, setDlvDate] = useState(localDateStr(new Date(Date.now() + 86400000)));
@@ -671,7 +672,7 @@ export function NewOrder() {
               <div>
                 <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">PO Document</label>
                 <div className="flex items-center gap-1.5">
-                  <input type="file" id="po-upload" className="hidden" onChange={e => { if (e.target.files?.length) setPoFile(e.target.files[0]); }} accept=".pdf,.jpeg,.jpg,.png" />
+                  <input type="file" id="po-upload" className="hidden" onChange={e => { if (e.target.files?.length) { const f = e.target.files[0]; setPoFile(f); setPoLocalUrl(URL.createObjectURL(f)); } }} accept=".pdf,.jpeg,.jpg,.png" />
                   <label htmlFor="po-upload" className="cursor-pointer font-sans text-[11px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors h-[36px] w-[140px]">
                     <Upload size={13} className="text-g500 shrink-0" />
                     {poFile
@@ -680,6 +681,12 @@ export function NewOrder() {
                       ? <span className="truncate text-emerald-600">Existing (click to replace)</span>
                       : 'Upload PO'}
                   </label>
+                  {poFile && poLocalUrl && (
+                    <a href={poLocalUrl} target="_blank" rel="noopener noreferrer" title="Preview selected file"
+                      className="p-1.5 text-g400 hover:text-blue-600 transition-colors" onClick={e => e.stopPropagation()}>
+                      <ExternalLink size={14} />
+                    </a>
+                  )}
                   {!poFile && existingPoFileName && (
                     <a href={existingPoFileName.startsWith('https://')
                         ? existingPoFileName
@@ -690,7 +697,7 @@ export function NewOrder() {
                     </a>
                   )}
                   {(poFile || existingPoFileName) && (
-                    <button type="button" title="Remove" onClick={() => { setPoFile(null); setExistingPoFileName(null); }} className="text-g400 hover:text-red-mrt text-[16px]">×</button>
+                    <button type="button" title="Remove" onClick={() => { setPoFile(null); setPoLocalUrl(null); setExistingPoFileName(null); }} className="text-g400 hover:text-red-mrt text-[16px]">×</button>
                   )}
                 </div>
               </div>
