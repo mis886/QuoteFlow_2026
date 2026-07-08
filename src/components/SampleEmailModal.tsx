@@ -19,6 +19,7 @@ export interface SampleEmailModalProps {
   sentDate: string;
   followupDue: string;
   courier: string;
+  trackingNumber: string;
   sentBy: string;
   podUrl: string | null;
   podFileName: string;
@@ -57,6 +58,7 @@ function buildBody(p: SampleEmailModalProps): string {
     `Quantity: ${p.quantity} ${p.unit}`,
     `Dispatch Date: ${dispatchDate}`,
     `Courier / AWB: ${p.courier || '—'}`,
+    `Tracking Number: ${p.trackingNumber || '—'}`,
     '',
     'Kindly find the attached documents (POD and COA) for your reference. We would greatly appreciate it if you could evaluate the sample at your convenience and share your valuable feedback. If possible, we would be grateful to receive your comments within the next few days, as they will help us better understand your requirements and provide any further assistance you may need.',
     '',

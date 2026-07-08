@@ -40,8 +40,10 @@ export function SamplingNew() {
   const [cost,         setCost]         = useState('');
   const [cust,         setCust]         = useState(() => (editId ? '' : (searchParams.get('cust') ?? '')));
   const [linkedRef,    setLinkedRef]    = useState(() => (editId ? '' : (searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '')));
-  const [sentBy,       setSentBy]       = useState('');
-  const [productName,  setProductName]  = useState(() => (editId ? '' : (searchParams.get('prod') ?? '')));
+  const [sentBy,          setSentBy]          = useState('');
+  const [sentByOpen,      setSentByOpen]      = useState(false);
+  const [trackingNumber,  setTrackingNumber]  = useState('');
+  const [productName,     setProductName]     = useState(() => (editId ? '' : (searchParams.get('prod') ?? '')));
   const [productGrade, setProductGrade] = useState('');
   const [lotNo,        setLotNo]        = useState('');
   const [coaFile,      setCoaFile]      = useState<File | null>(null);
@@ -87,6 +89,7 @@ export function SamplingNew() {
         setSentDate(row.sent_date ?? today);
         setFollowupDue(row.followup_due ?? addDaysToDate(today, 3));
         setCourier(row.courier_details ?? '');
+        setTrackingNumber(row.tracking_number ?? '');
         setCost(row.cost != null ? String(row.cost) : '');
         setExistingPodUrl(row.pod_file ?? null);
         setExistingCoaUrl(row.coa_file ?? null);
@@ -139,11 +142,12 @@ export function SamplingNew() {
       unit,
       sent_date:       sentDate || null,
       followup_due:    followupDue || null,
-      courier_details: courier.trim() || null,
-      pod_file:        podUrl,
-      coa_file:        coaUrl,
-      cost:            parseFloat(cost) || 0,
-      sent_by:         sentBy.trim() || null,
+      courier_details:  courier.trim() || null,
+      tracking_number:  trackingNumber.trim() || null,
+      pod_file:         podUrl,
+      coa_file:         coaUrl,
+      cost:             parseFloat(cost) || 0,
+      sent_by:          sentBy.trim() || null,
       notes:           notes.trim() || null,
       updated_at:      new Date().toISOString(),
     };
@@ -292,6 +296,12 @@ export function SamplingNew() {
                   <input type="number" value={cost} onChange={e => setCost(e.target.value)}
                     placeholder="0" min="0" step="any" className={inputCls} />
                 </div>
+                <div>
+                  <label className={labelCls}>Tracking Number</label>
+                  <input type="text" value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)}
+                    placeholder="AWB / Tracking ID"
+                    className={inputCls} />
+                </div>
               </div>
             </div>
 
@@ -324,9 +334,36 @@ export function SamplingNew() {
                 </div>
                 <div>
                   <label className={labelCls}>Sent By</label>
-                  <input type="text" value={sentBy} onChange={e => setSentBy(e.target.value)}
-                    placeholder="Name of person who dispatched the sample"
-                    className={inputCls} />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={sentBy}
+                      onChange={e => setSentBy(e.target.value)}
+                      onFocus={() => setSentByOpen(true)}
+                      onBlur={() => setTimeout(() => setSentByOpen(false), 150)}
+                      placeholder="Name of person who dispatched the sample"
+                      className={inputCls}
+                    />
+                    {sentByOpen && sentBy.length > 0 && (() => {
+                      const matches = data.signatories.filter(s =>
+                        s.name.toLowerCase().includes(sentBy.toLowerCase())
+                      );
+                      return matches.length > 0 ? (
+                        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-g300 rounded-[3px] shadow-md max-h-[160px] overflow-y-auto">
+                          {matches.map(s => (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onMouseDown={() => { setSentBy(s.name); setSentByOpen(false); }}
+                              className="w-full text-left px-3 py-2 text-[12.5px] text-blk hover:bg-g50 transition-colors"
+                            >
+                              {s.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
                 </div>
               </div>
             </div>
@@ -525,6 +562,7 @@ export function SamplingNew() {
           sentDate={sentDate}
           followupDue={followupDue}
           courier={courier}
+          trackingNumber={trackingNumber}
           sentBy={sentBy}
           podUrl={emailModal.podUrl}
           podFileName={emailModal.podFileName}
