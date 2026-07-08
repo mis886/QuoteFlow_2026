@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Upload } from 'lucide-react';
+import { Upload, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { uploadPublicFile } from '../lib/supabase';
 import { useAppStore } from '../store';
@@ -263,6 +263,12 @@ export function SamplingNew() {
                         className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
                     )}
                     {!podFile && existingPodUrl && (
+                      <a href={existingPodUrl} target="_blank" rel="noopener noreferrer" title="View POD"
+                        className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
+                        <ExternalLink size={14} />
+                      </a>
+                    )}
+                    {!podFile && existingPodUrl && (
                       <button type="button" title="Remove existing file" onClick={() => setExistingPodUrl(null)}
                         className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
                     )}
@@ -359,6 +365,12 @@ export function SamplingNew() {
                     {coaFile && (
                       <button type="button" title="Remove new file" onClick={() => setCoaFile(null)}
                         className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
+                    )}
+                    {!coaFile && existingCoaUrl && (
+                      <a href={existingCoaUrl} target="_blank" rel="noopener noreferrer" title="View COA"
+                        className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
+                        <ExternalLink size={14} />
+                      </a>
                     )}
                     {!coaFile && existingCoaUrl && (
                       <button type="button" title="Remove existing file" onClick={() => setExistingCoaUrl(null)}

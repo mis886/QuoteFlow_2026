@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, FlaskConical, Clock, CheckCircle2, XCircle, X, Loader2 } from 'lucide-react';
+import { Plus, Search, FlaskConical, Clock, CheckCircle2, XCircle, X, Loader2, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
@@ -453,7 +453,10 @@ export function Sampling() {
                     </td>
                     <td className={tdCls}>
                       {s.coa_file
-                        ? <span className="text-emerald-600 font-semibold text-[11.5px]">Yes</span>
+                        ? <a href={s.coa_file} target="_blank" rel="noopener noreferrer" title="View COA"
+                            className="flex items-center gap-1 text-emerald-600 font-semibold text-[11.5px] hover:text-blue-600 transition-colors">
+                            Yes <ExternalLink size={11} />
+                          </a>
                         : <span className="text-g400 text-[11.5px]">No</span>}
                     </td>
                     <td className={`${tdCls} font-mono text-[11px] text-g600 whitespace-nowrap`}>

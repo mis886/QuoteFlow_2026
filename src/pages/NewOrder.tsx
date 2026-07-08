@@ -680,8 +680,11 @@ export function NewOrder() {
                       ? <span className="truncate text-emerald-600">Existing (click to replace)</span>
                       : 'Upload PO'}
                   </label>
-                  {!poFile && existingPoFileName?.startsWith('https://') && (
-                    <a href={existingPoFileName} target="_blank" rel="noopener noreferrer" title="Open PO document"
+                  {!poFile && existingPoFileName && (
+                    <a href={existingPoFileName.startsWith('https://')
+                        ? existingPoFileName
+                        : `https://nheujyknkqeimgpdfyiw.supabase.co/storage/v1/object/public/order-documents/orders/${orderId}/${encodeURIComponent(existingPoFileName)}`}
+                      target="_blank" rel="noopener noreferrer" title="Open PO document"
                       className="p-1.5 text-g400 hover:text-blue-600 transition-colors" onClick={e => e.stopPropagation()}>
                       <ExternalLink size={14} />
                     </a>
