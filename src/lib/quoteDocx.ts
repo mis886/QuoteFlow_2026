@@ -121,10 +121,10 @@ export async function downloadQuoteDOCX(
   const settingsSig: SigPerson | undefined = settings?.signatory_name
     ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
     : undefined;
-  // Priority: app_settings → authorized_signatories is_default → per-quote authorizedPerson → hardcoded fallback
-  const person: SigPerson = settingsSig
+  // Priority: per-quote selection → app_settings → authorized_signatories is_default → hardcoded fallback
+  const person: SigPerson = ((quote as any).authorizedPerson?.name ? (quote as any).authorizedPerson : undefined)
+    || settingsSig
     || defaultSignatory
-    || ((quote as any).authorizedPerson?.name ? (quote as any).authorizedPerson : undefined)
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   const salutation = (() => {
@@ -337,10 +337,10 @@ export async function downloadPIDOCX(
   const piSettingsSig: SigPerson | undefined = settings?.signatory_name
     ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
     : undefined;
-  // Priority: app_settings → authorized_signatories is_default → per-order authorizedPerson → hardcoded fallback
-  const person: SigPerson = piSettingsSig
+  // Priority: per-order selection → app_settings → authorized_signatories is_default → hardcoded fallback
+  const person: SigPerson = ((order as any).authorizedPerson?.name ? (order as any).authorizedPerson : undefined)
+    || piSettingsSig
     || defaultSignatory
-    || ((order as any).authorizedPerson?.name ? (order as any).authorizedPerson : undefined)
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   const piSalutation = (() => {

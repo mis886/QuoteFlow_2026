@@ -358,10 +358,10 @@ export function generateQuotePDF(
   const settingsSig: SigPerson | undefined = settings?.signatory_name
     ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
     : undefined;
-  // Priority: app_settings → authorized_signatories is_default → per-quote authorizedPerson → hardcoded fallback
-  const person: SigPerson = settingsSig
+  // Priority: per-quote selection → app_settings → authorized_signatories is_default → hardcoded fallback
+  const person: SigPerson = (quote.authorizedPerson?.name ? (quote.authorizedPerson as SigPerson) : undefined)
+    || settingsSig
     || defaultSignatory
-    || (quote.authorizedPerson?.name ? (quote.authorizedPerson as SigPerson) : undefined)
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
@@ -682,10 +682,10 @@ export function generatePIPDF(
   const piSettingsSig: SigPerson | undefined = settings?.signatory_name
     ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
     : undefined;
-  // Priority: app_settings → authorized_signatories is_default → per-order authorizedPerson → hardcoded fallback
-  const person: SigPerson = piSettingsSig
+  // Priority: per-order selection → app_settings → authorized_signatories is_default → hardcoded fallback
+  const person: SigPerson = (order.authorizedPerson?.name ? (order.authorizedPerson as SigPerson) : undefined)
+    || piSettingsSig
     || defaultSignatory
-    || (order.authorizedPerson?.name ? (order.authorizedPerson as SigPerson) : undefined)
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
