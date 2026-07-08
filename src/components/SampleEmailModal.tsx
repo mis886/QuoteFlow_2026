@@ -42,30 +42,25 @@ async function urlToBase64(url: string): Promise<{ base64: string; mimeType: str
 
 function buildBody(p: SampleEmailModalProps): string {
   const grade = p.productGrade ? ` (${p.productGrade})` : '';
-  const s = new Date(p.sentDate + 'T00:00:00');
-  const d = new Date(p.followupDue + 'T00:00:00');
-  const days = Math.max(1, Math.round((d.getTime() - s.getTime()) / 86_400_000));
-  const hasFiles = !!(p.podUrl || p.coaUrl);
+  const product = `${p.productName}${grade}`;
+  const dispatchDate = p.sentDate
+    ? new Date(p.sentDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—';
 
   const lines: (string | null)[] = [
     'Dear Sir / Madam,',
     '',
-    'Greetings from Himalaya Terpenes Pvt. Ltd.',
+    `Greetings from Himalaya Terpenes Pvt. Ltd. We are pleased to inform you that a sample of ${product} has been dispatched to you. The details are as follows:`,
     '',
-    `We are pleased to inform you that a sample of ${p.productName}${grade} has been dispatched to you. Details are as follows:`,
+    `Product: ${product}`,
+    `Lot No.: ${p.lotNo || '—'}`,
+    `Quantity: ${p.quantity} ${p.unit}`,
+    `Dispatch Date: ${dispatchDate}`,
+    `Courier / AWB: ${p.courier || '—'}`,
     '',
-    `  Sample ID      : ${p.sampleId}`,
-    `  Product        : ${p.productName}${grade}`,
-    p.lotNo        ? `  Lot No         : ${p.lotNo}`        : null,
-    `  Quantity       : ${p.quantity} ${p.unit}`,
-    p.sentDate     ? `  Dispatch Date  : ${p.sentDate}`     : null,
-    p.courier      ? `  Courier / AWB  : ${p.courier}`      : null,
+    'Kindly find the attached documents (POD and COA) for your reference. We would greatly appreciate it if you could evaluate the sample at your convenience and share your valuable feedback. If possible, we would be grateful to receive your comments within the next few days, as they will help us better understand your requirements and provide any further assistance you may need.',
     '',
-    `We request you to kindly evaluate the sample and share your feedback within ${days} day${days !== 1 ? 's' : ''} (by ${p.followupDue}).`,
-    '',
-    hasFiles ? 'Please find the attached document(s) — POD / COA — for your reference.' : null,
-    hasFiles ? '' : null,
-    'Thank you for your time and consideration. We look forward to building a valued partnership with you.',
+    'Thank you for your time and consideration. We look forward to your feedback and to the opportunity of building a long-term business relationship with you.',
     '',
     'Warm regards,',
     '',
@@ -262,7 +257,7 @@ export function SampleEmailModal(props: SampleEmailModalProps) {
               <textarea
                 title="Message body" placeholder="Message body"
                 value={body} onChange={e => setBody(e.target.value)}
-                className="w-full min-h-[140px] p-3 bg-g50 border border-g300 rounded-[3px] font-sans text-[12.5px] leading-relaxed text-blk focus:border-red-mrt focus:ring-4 focus:ring-red-lt outline-none resize-none"
+                className="w-full min-h-[260px] p-3 bg-g50 border border-g300 rounded-[3px] font-sans text-[12.5px] leading-relaxed text-blk focus:border-red-mrt focus:ring-4 focus:ring-red-lt outline-none resize-none"
               />
             </div>
 
