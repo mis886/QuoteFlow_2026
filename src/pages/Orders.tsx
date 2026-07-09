@@ -380,6 +380,9 @@ export function Orders() {
                                 }
                               }}>Delete</Button>
                             )}
+                            {o.authorizedPerson?.name && (
+                              <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{o.authorizedPerson.name}</span>
+                            )}
                           </div>
                           {/* // hide temporaryly to prevent unnecessary entries in google sheet otherwise its most useful button */}
                         </td>
