@@ -47,6 +47,12 @@ function cacheUserToken(email: string, token: string, expiresIn: number) {
 }
 
 // ── Token exchange helpers (call Google's token endpoint from browser) ────────
+function googleTokenError(data: any, fallback: string): Error {
+  const e = new Error(data.error_description ?? data.error ?? fallback);
+  (e as any).code = data.error; // e.g. 'invalid_client', 'invalid_grant'
+  return e;
+}
+
 async function exchangeCodeForTokens(code: string): Promise<{ access_token: string; refresh_token?: string; expires_in: number }> {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
   const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string;
@@ -57,7 +63,7 @@ async function exchangeCodeForTokens(code: string): Promise<{ access_token: stri
     body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: 'postmessage', grant_type: 'authorization_code' }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error_description ?? data.error ?? `Token exchange failed ${res.status}`);
+  if (!res.ok) throw googleTokenError(data, `Token exchange failed ${res.status}`);
   return data;
 }
 
@@ -71,7 +77,7 @@ async function exchangeRefreshToken(refreshToken: string): Promise<{ access_toke
     body: new URLSearchParams({ refresh_token: refreshToken, client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token' }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error_description ?? data.error ?? `Token refresh failed ${res.status}`);
+  if (!res.ok) throw googleTokenError(data, `Token refresh failed ${res.status}`);
   return data;
 }
 
@@ -96,8 +102,13 @@ export async function getAccessTokenForUser(userEmail: string): Promise<string> 
       const tokens = await exchangeRefreshToken(row.gmail_refresh_token);
       cacheUserToken(emailKey, tokens.access_token, tokens.expires_in);
       return tokens.access_token;
-    } catch {
-      // Refresh token revoked — fall through to full OAuth flow
+    } catch (err: any) {
+      if (err?.code === 'invalid_client') {
+        // Wrong OAuth credentials (client ID/secret) — surface immediately.
+        // Don't clear the refresh token: it's still valid once the config is fixed.
+        throw err;
+      }
+      // invalid_grant or similar — refresh token is revoked; clear it and re-authorize.
       await supabase.from('team_roster').update({ gmail_refresh_token: null }).eq('email', emailKey);
     }
   }
