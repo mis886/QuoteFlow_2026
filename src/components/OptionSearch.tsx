@@ -6,9 +6,11 @@ interface Props {
   value: string;
   onChange: (val: string) => void;
   placeholder?: string;
+  /** When true, every keystroke commits the typed value — free text is accepted, not just picks. */
+  freeText?: boolean;
 }
 
-export function OptionSearch({ options, value, onChange, placeholder = 'Search…' }: Props) {
+export function OptionSearch({ options, value, onChange, placeholder = 'Search…', freeText = false }: Props) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -39,7 +41,7 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Search�
 
   const closeAndRevert = () => {
     setOpen(false);
-    setQuery(committedRef.current);
+    if (!freeText) setQuery(committedRef.current);
   };
 
   useEffect(() => {
@@ -81,7 +83,7 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Search�
         placeholder={placeholder}
         onChange={e => {
           setQuery(e.target.value);
-          // Not calling onChange — only picks from the list commit a value
+          if (freeText) onChange(e.target.value); // free-text mode: commit every keystroke
           if (!open) calcPos();
           setOpen(true);
         }}
