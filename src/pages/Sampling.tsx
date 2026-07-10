@@ -501,27 +501,29 @@ export function Sampling() {
                       ))}
                     </td>
                     <td className={tdCls}>
-                      <div className="flex items-center gap-1.5">
-                        <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
-                        {!s.outcome && (
-                          <button
-                            onClick={() => setFeedbackTarget(s)}
-                            className="font-mono text-[9px] font-bold tracking-[1px] uppercase px-2.5 py-1.5 bg-white border border-g300 rounded-[3px] text-g600 hover:border-red-mrt hover:text-red-mrt transition-colors whitespace-nowrap"
-                          >
-                            Record Feedback
-                          </button>
-                        )}
-                        {s.status === 'approved' && (
-                          <button
-                            onClick={() => navigate(`/orders/new?cust=${encodeURIComponent(s.cust)}`)}
-                            className="font-mono text-[9px] font-bold tracking-[1px] uppercase px-2.5 py-1.5 bg-emerald-50 border border-emerald-300 rounded-[3px] text-emerald-700 hover:bg-emerald-100 hover:border-emerald-500 transition-colors whitespace-nowrap"
-                          >
-                            Convert to Order
-                          </button>
-                        )}
-                        {canDelete && (
-                          <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(s.id)}>Delete</Button>
-                        )}
+                      <div className="flex flex-col gap-[3px]">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
+                          {!s.outcome && (
+                            <button
+                              onClick={() => setFeedbackTarget(s)}
+                              className="font-mono text-[9px] font-bold tracking-[1px] uppercase px-2.5 py-1.5 bg-white border border-g300 rounded-[3px] text-g600 hover:border-red-mrt hover:text-red-mrt transition-colors whitespace-nowrap"
+                            >
+                              Record Feedback
+                            </button>
+                          )}
+                          {s.status === 'approved' && (
+                            <button
+                              onClick={() => navigate(`/orders/new?cust=${encodeURIComponent(s.cust)}`)}
+                              className="font-mono text-[9px] font-bold tracking-[1px] uppercase px-2.5 py-1.5 bg-emerald-50 border border-emerald-300 rounded-[3px] text-emerald-700 hover:bg-emerald-100 hover:border-emerald-500 transition-colors whitespace-nowrap"
+                            >
+                              Convert to Order
+                            </button>
+                          )}
+                          {canDelete && (
+                            <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(s.id)}>Delete</Button>
+                          )}
+                        </div>
                         {s.created_by && (
                           <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{s.created_by}</span>
                         )}
