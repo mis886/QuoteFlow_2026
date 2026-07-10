@@ -33,6 +33,8 @@ interface Sample {
   lot_no?: string | null;
   email_sent_at?: string | null;
   created_at?: string | null;
+  products?: Array<{ name: string; grade: string }> | null;
+  created_by?: string | null;
 }
 
 const UNITS = ['g', 'ml', 'kg', 'L'];
@@ -423,10 +425,15 @@ export function Sampling() {
                       <div className="text-[12.5px] font-medium text-blk whitespace-nowrap">{s.cust}</div>
                     </td>
                     <td className={tdCls}>
-                      <div className="text-[12.5px] text-blk font-medium">{s.product_name}</div>
-                      {s.product_grade && (
-                        <div className="text-[10.5px] text-g500 mt-0.5">{s.product_grade}</div>
-                      )}
+                      {(s.products && s.products.length > 0
+                        ? s.products
+                        : [{ name: s.product_name, grade: s.product_grade ?? '' }]
+                      ).map((p, i) => (
+                        <div key={i} className="text-[11px] text-blk whitespace-nowrap" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>
+                          <span className="font-medium">{p.name || '—'}</span>
+                          {p.grade && <span className="text-g500"> · {p.grade}</span>}
+                        </div>
+                      ))}
                     </td>
                     <td className={`${tdCls} font-mono text-[11.5px] whitespace-nowrap`}>
                       {s.quantity > 0 ? `${s.quantity} ${s.unit}` : '—'}
@@ -482,6 +489,9 @@ export function Sampling() {
                         )}
                         {canDelete && (
                           <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(s.id)}>Delete</Button>
+                        )}
+                        {s.created_by && (
+                          <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{s.created_by}</span>
                         )}
                       </div>
                     </td>

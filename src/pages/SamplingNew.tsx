@@ -28,7 +28,7 @@ function addDaysToDate(dateStr: string, days: number): string {
 export function SamplingNew() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { data } = useAppStore();
+  const { data, user } = useAppStore();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
   const editId = searchParams.get('id');
@@ -44,8 +44,9 @@ export function SamplingNew() {
   const [linkedRef,    setLinkedRef]    = useState(() => (editId ? '' : (searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '')));
   const [sentBy,          setSentBy]          = useState('');
   const [trackingNumber,  setTrackingNumber]  = useState('');
-  const [productName,     setProductName]     = useState(() => (editId ? '' : (searchParams.get('prod') ?? '')));
-  const [productGrade, setProductGrade] = useState('');
+  const [products, setProducts] = useState<{ name: string; grade: string }[]>(() => [
+    { name: editId ? '' : (searchParams.get('prod') ?? ''), grade: '' },
+  ]);
   const [lotNo,        setLotNo]        = useState('');
   const [coaFile,      setCoaFile]      = useState<File | null>(null);
   const [quantity,     setQuantity]     = useState('');
@@ -84,8 +85,11 @@ export function SamplingNew() {
         setCust(row.cust ?? '');
         setLinkedRef(row.quote_ref ?? row.enq_ref ?? '');
         setSentBy(row.sent_by ?? '');
-        setProductName(row.product_name ?? '');
-        setProductGrade(row.product_grade ?? '');
+        setProducts(
+          Array.isArray(row.products) && row.products.length > 0
+            ? row.products.map((p: any) => ({ name: String(p.name ?? ''), grade: String(p.grade ?? '') }))
+            : [{ name: row.product_name ?? '', grade: row.product_grade ?? '' }]
+        );
         setLotNo(row.lot_no ?? '');
         setQuantity(row.quantity != null ? String(row.quantity) : '');
         setUnit(row.unit ?? 'g');
@@ -105,6 +109,11 @@ export function SamplingNew() {
       });
   }, [editId]);
 
+  const addProduct = () => setProducts(prev => [...prev, { name: '', grade: '' }]);
+  const removeProduct = (idx: number) => setProducts(prev => prev.filter((_, i) => i !== idx));
+  const updateProduct = (idx: number, field: 'name' | 'grade', value: string) =>
+    setProducts(prev => prev.map((p, i) => i === idx ? { ...p, [field]: value } : p));
+
   const newSamplePreviewId = `SAMP-${Date.now()}`;
 
   const doSave = async (): Promise<{
@@ -112,8 +121,8 @@ export function SamplingNew() {
     coaUrl: string | null; coaFileName: string;
   } | null> => {
     const errs: Record<string, string> = {};
-    if (!cust.trim())        errs.cust        = 'Customer is required.';
-    if (!productName.trim()) errs.productName = 'Product name is required.';
+    if (!cust.trim())              errs.cust        = 'Customer is required.';
+    if (!products[0]?.name.trim()) errs.productName = 'Product name is required.';
     if (Object.keys(errs).length) { setErrors(errs); return null; }
 
     setSaving(true);
@@ -144,8 +153,9 @@ export function SamplingNew() {
       cust:            cust.trim(),
       quote_ref:       (ref && isQt)  ? ref : null,
       enq_ref:         (ref && !isQt) ? ref : null,
-      product_name:    productName.trim(),
-      product_grade:   productGrade.trim() || null,
+      product_name:    products[0]?.name.trim() || null,
+      product_grade:   products[0]?.grade.trim() || null,
+      products:        products.map(p => ({ name: p.name.trim(), grade: p.grade.trim() })),
       lot_no:          lotNo.trim() || null,
       quantity:        parseFloat(quantity) || 0,
       unit,
@@ -178,6 +188,7 @@ export function SamplingNew() {
         source_module:     source ?? (isQt ? 'quotation' : ref ? 'enquiry' : null),
         status:           'pending',
         feedback_received: false,
+        created_by:        user?.email ?? null,
         created_at:       new Date().toISOString(),
       }));
     }
@@ -383,83 +394,114 @@ export function SamplingNew() {
             {/* SAMPLE DETAILS */}
             <div className="bg-white border border-g200 p-[18px_20px]">
               <div className={sectionHeaderCls}>Sample Details</div>
-              <div className="grid grid-cols-2 gap-[12px]">
-                <div>
-                  <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
-                  <div className={`bg-white border ${errors.productName ? 'border-red-mrt' : 'border-g300 focus-within:border-red-mrt'} rounded-[3px] p-[8px_10px] focus-within:ring-[3px] focus-within:ring-red-lt transition-all`}>
-                    <ProductSearch
-                      value={productName}
-                      names={productNames}
-                      hsnMap={productHsnMap}
-                      error={!!errors.productName}
-                      onChange={(desc) => { setProductName(desc); setErrors(er => ({ ...er, productName: '' })); }}
-                    />
+              <div className="flex flex-col gap-[12px]">
+
+                {/* Product rows — one per product */}
+                {products.map((prod, idx) => (
+                  <div key={idx} className="grid grid-cols-2 gap-[12px]">
+                    <div>
+                      <label className={labelCls}>
+                        {idx === 0
+                          ? <span>Product Name <span className="text-red-mrt">*</span></span>
+                          : `Product ${idx + 1} Name`}
+                      </label>
+                      <div className={`bg-white border ${(errors.productName && idx === 0) ? 'border-red-mrt' : 'border-g300 focus-within:border-red-mrt'} rounded-[3px] p-[8px_10px] focus-within:ring-[3px] focus-within:ring-red-lt transition-all`}>
+                        <ProductSearch
+                          value={prod.name}
+                          names={productNames}
+                          hsnMap={productHsnMap}
+                          error={!!(errors.productName && idx === 0)}
+                          onChange={desc => { updateProduct(idx, 'name', desc); if (idx === 0) setErrors(er => ({ ...er, productName: '' })); }}
+                        />
+                      </div>
+                      {idx === 0 && errors.productName && (
+                        <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.productName}</div>
+                      )}
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <div className="flex-1">
+                        <label className={labelCls}>{idx === 0 ? 'Grade / Purity' : `Product ${idx + 1} Grade`}</label>
+                        <input type="text" value={prod.grade}
+                          onChange={e => updateProduct(idx, 'grade', e.target.value)}
+                          placeholder="e.g. 98% GC" className={inputCls} />
+                      </div>
+                      {products.length > 1 && (
+                        <button type="button" onClick={() => removeProduct(idx)}
+                          className="mt-[22px] text-g400 hover:text-red-mrt text-[20px] leading-none shrink-0 transition-colors"
+                          title="Remove product">×</button>
+                      )}
+                    </div>
                   </div>
-                  {errors.productName && <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.productName}</div>}
-                </div>
+                ))}
+
+                {/* Add Product */}
                 <div>
-                  <label className={labelCls}>Grade / Purity</label>
-                  <input type="text" value={productGrade} onChange={e => setProductGrade(e.target.value)}
-                    placeholder="e.g. 98% GC"
-                    className={inputCls} />
+                  <button type="button" onClick={addProduct}
+                    className="inline-flex items-center gap-[6px] p-[5px_9px] text-red-mrt cursor-pointer text-[11.5px] font-semibold border border-dashed border-red-mrt/30 rounded-[3px] transition-colors hover:bg-red-lt">
+                    + Add Product
+                  </button>
                 </div>
-                <div>
-                  <label className={labelCls}>Lot No</label>
-                  <input type="text" value={lotNo} onChange={e => setLotNo(e.target.value)}
-                    placeholder="e.g. LOT-2026-001"
-                    className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>COA</label>
-                  <div className="flex items-center gap-1.5">
-                    <input type="file" id="coa-upload" className="hidden"
-                      accept=".pdf,.jpeg,.jpg,.png"
-                      onChange={e => {
-                        const f = e.target.files?.[0] ?? null;
-                        setCoaFile(f);
-                        setCoaLocalUrl(f ? URL.createObjectURL(f) : null);
-                      }} />
-                    <label htmlFor="coa-upload"
-                      className="cursor-pointer font-sans text-[12px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors min-h-[36px] w-full">
-                      <Upload size={13} className="text-g500 shrink-0" />
-                      {coaFile
-                        ? <span className="truncate text-[11.5px]">{coaFile.name}</span>
-                        : existingCoaUrl
-                        ? <span className="truncate text-[11.5px] text-emerald-600">Existing file (click to replace)</span>
-                        : <span className="text-g400">Upload certificate of analysis</span>}
-                    </label>
-                    {coaFile && coaLocalUrl && (
-                      <a href={coaLocalUrl} target="_blank" rel="noopener noreferrer" title="Preview selected file"
-                        className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
-                        <ExternalLink size={14} />
-                      </a>
-                    )}
-                    {coaFile && (
-                      <button type="button" title="Remove new file" onClick={() => { setCoaFile(null); setCoaLocalUrl(null); }}
-                        className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
-                    )}
-                    {!coaFile && existingCoaUrl && (
-                      <a href={existingCoaUrl} target="_blank" rel="noopener noreferrer" title="View COA"
-                        className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
-                        <ExternalLink size={14} />
-                      </a>
-                    )}
-                    {!coaFile && existingCoaUrl && (
-                      <button type="button" title="Remove existing file" onClick={() => setExistingCoaUrl(null)}
-                        className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
-                    )}
+
+                {/* Other sample fields */}
+                <div className="grid grid-cols-2 gap-[12px]">
+                  <div>
+                    <label className={labelCls}>Lot No</label>
+                    <input type="text" value={lotNo} onChange={e => setLotNo(e.target.value)}
+                      placeholder="e.g. LOT-2026-001"
+                      className={inputCls} />
                   </div>
-                </div>
-                <div>
-                  <label className={labelCls}>Sample Quantity</label>
-                  <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)}
-                    placeholder="0" min="0" step="any" className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Unit</label>
-                  <select value={unit} onChange={e => setUnit(e.target.value)} className={selectCls}>
-                    {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
+                  <div>
+                    <label className={labelCls}>COA</label>
+                    <div className="flex items-center gap-1.5">
+                      <input type="file" id="coa-upload" className="hidden"
+                        accept=".pdf,.jpeg,.jpg,.png"
+                        onChange={e => {
+                          const f = e.target.files?.[0] ?? null;
+                          setCoaFile(f);
+                          setCoaLocalUrl(f ? URL.createObjectURL(f) : null);
+                        }} />
+                      <label htmlFor="coa-upload"
+                        className="cursor-pointer font-sans text-[12px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors min-h-[36px] w-full">
+                        <Upload size={13} className="text-g500 shrink-0" />
+                        {coaFile
+                          ? <span className="truncate text-[11.5px]">{coaFile.name}</span>
+                          : existingCoaUrl
+                          ? <span className="truncate text-[11.5px] text-emerald-600">Existing file (click to replace)</span>
+                          : <span className="text-g400">Upload certificate of analysis</span>}
+                      </label>
+                      {coaFile && coaLocalUrl && (
+                        <a href={coaLocalUrl} target="_blank" rel="noopener noreferrer" title="Preview selected file"
+                          className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
+                          <ExternalLink size={14} />
+                        </a>
+                      )}
+                      {coaFile && (
+                        <button type="button" title="Remove new file" onClick={() => { setCoaFile(null); setCoaLocalUrl(null); }}
+                          className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
+                      )}
+                      {!coaFile && existingCoaUrl && (
+                        <a href={existingCoaUrl} target="_blank" rel="noopener noreferrer" title="View COA"
+                          className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
+                          <ExternalLink size={14} />
+                        </a>
+                      )}
+                      {!coaFile && existingCoaUrl && (
+                        <button type="button" title="Remove existing file" onClick={() => setExistingCoaUrl(null)}
+                          className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Sample Quantity</label>
+                    <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)}
+                      placeholder="0" min="0" step="any" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Unit</label>
+                    <select value={unit} onChange={e => setUnit(e.target.value)} className={selectCls}>
+                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -566,8 +608,8 @@ export function SamplingNew() {
         <SampleEmailModal
           sampleId={emailModal.sampleId}
           customerName={cust}
-          productName={productName}
-          productGrade={productGrade}
+          productName={products[0]?.name ?? ''}
+          productGrade={products[0]?.grade ?? ''}
           quantity={quantity}
           unit={unit}
           lotNo={lotNo}
