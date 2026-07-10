@@ -142,7 +142,10 @@ export function SampleEmailModal(props: SampleEmailModalProps) {
 
       await sendViaGmailAsUser({ to: to.trim(), cc: ccString, subject, body, attachments }, senderEmail);
       // Record successful send — fire and forget, don't block the success UX
-      supabase.from('samples').update({ email_sent_at: new Date().toISOString(), email_sent: true, client_email: to.trim() }).eq('id', props.sampleId).then(() => {});
+      const sentAt = new Date().toISOString();
+      supabase.from('samples').update({ email_sent_at: sentAt, email_sent: true, client_email: to.trim() }).eq('id', props.sampleId).then(() => {});
+      // Advance to dispatched only if still pending — never downgrade a later-stage sample
+      supabase.from('samples').update({ status: 'dispatched' }).eq('id', props.sampleId).eq('status', 'pending').then(() => {});
       setStatus('sent');
       setTimeout(() => { props.onSent(); props.onClose(); }, 1500);
     } catch (err: any) {

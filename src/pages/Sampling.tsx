@@ -246,7 +246,7 @@ export function Sampling() {
   const [loading, setLoading] = useState(true);
   const [feedbackTarget, setFeedbackTarget] = useState<Sample | null>(null);
   const [search, setSearch] = useState('');
-  const [tabFilter, setTabFilter] = useState<'all' | SampleStatus | 'sent'>('all');
+  const [tabFilter, setTabFilter] = useState<'all' | SampleStatus>('all');
 
   const handleDelete = async (id: string) => {
     if (!confirm(`Delete sample ${id}? This cannot be undone.`)) return;
@@ -279,8 +279,8 @@ export function Sampling() {
 
   const filtered = useMemo(() => {
     let list = samples;
-    if (tabFilter === 'sent') list = list.filter(s => !!s.email_sent_at);
-    else if (tabFilter === 'dispatched') list = list.filter(s => s.status === 'dispatched' || s.status === 'delivered');
+    if (tabFilter === 'pending') list = list.filter(s => s.status === 'pending' || s.status === 'dispatched');
+    else if (tabFilter === 'delivered') list = list.filter(s => s.status === 'delivered' || s.status === 'approved' || s.status === 'rejected');
     else if (tabFilter !== 'all') list = list.filter(s => s.status === tabFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -297,9 +297,9 @@ export function Sampling() {
 
   const tabCounts = useMemo(() => ({
     all:               samples.length,
-    sent:              samples.filter(s => !!s.email_sent_at).length,
-    pending:           samples.filter(s => s.status === 'pending').length,
-    dispatched:        samples.filter(s => s.status === 'dispatched' || s.status === 'delivered').length,
+    pending:           samples.filter(s => s.status === 'pending' || s.status === 'dispatched').length,
+    dispatched:        samples.filter(s => s.status === 'dispatched').length,
+    delivered:         samples.filter(s => s.status === 'delivered' || s.status === 'approved' || s.status === 'rejected').length,
     feedback_received: samples.filter(s => s.status === 'feedback_received').length,
     approved:          samples.filter(s => s.status === 'approved').length,
     rejected:          samples.filter(s => s.status === 'rejected').length,
@@ -354,9 +354,9 @@ export function Sampling() {
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <TabBtn value="all"               label="All" />
-          <TabBtn value="sent"              label="Dispatched" />
+          <TabBtn value="dispatched"        label="Dispatched" />
           <TabBtn value="pending"           label="Pending" />
-          <TabBtn value="dispatched"        label="Delivered" />
+          <TabBtn value="delivered"         label="Delivered" />
           <TabBtn value="approved"          label="Approved" />
           <TabBtn value="rejected"          label="Rejected" />
           <TabBtn value="feedback_received" label="Feedback Rcvd" />
