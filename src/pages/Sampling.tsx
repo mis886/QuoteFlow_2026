@@ -502,7 +502,7 @@ export function Sampling() {
                     </td>
                     <td className={tdCls}>
                       <div className="flex flex-col gap-[3px]">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-1.5">
                           <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
                           {!s.outcome && (
                             <button
