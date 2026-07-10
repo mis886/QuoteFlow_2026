@@ -33,8 +33,17 @@ interface Sample {
   lot_no?: string | null;
   email_sent_at?: string | null;
   created_at?: string | null;
-  products?: Array<{ name: string; grade: string }> | null;
   created_by?: string | null;
+  sample_products?: Array<{
+    id: string;
+    product_name: string | null;
+    grade: string | null;
+    lot_no: string | null;
+    coa_url: string | null;
+    quantity: number;
+    unit: string;
+    sort_order: number;
+  }> | null;
 }
 
 const UNITS = ['g', 'ml', 'kg', 'L'];
@@ -237,6 +246,20 @@ function FeedbackModal({ sample, onClose, onSaved }: {
   );
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+type ProductRow = { name: string; grade: string; lot_no: string | null; coa_url: string | null; quantity: number; unit: string };
+
+function getSampleProducts(s: Sample): ProductRow[] {
+  if (s.sample_products && s.sample_products.length > 0) {
+    return [...s.sample_products]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map(p => ({ name: p.product_name ?? '', grade: p.grade ?? '', lot_no: p.lot_no ?? null, coa_url: p.coa_url ?? null, quantity: p.quantity ?? 0, unit: p.unit ?? 'g' }));
+  }
+  // Fallback to legacy single-product columns on the samples row
+  return [{ name: s.product_name ?? '', grade: s.product_grade ?? '', lot_no: s.lot_no ?? null, coa_url: s.coa_file ?? null, quantity: s.quantity ?? 0, unit: s.unit ?? 'g' }];
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function Sampling() {
@@ -259,7 +282,7 @@ export function Sampling() {
   const fetchSamples = async () => {
     const { data: rows, error } = await supabase
       .from('samples')
-      .select('*')
+      .select('*, sample_products(id, product_name, grade, lot_no, coa_url, quantity, unit, sort_order)')
       .order('created_at', { ascending: false });
     if (!error && rows) setSamples(rows as Sample[]);
     setLoading(false);
@@ -425,18 +448,19 @@ export function Sampling() {
                       <div className="text-[12.5px] font-medium text-blk whitespace-nowrap">{s.cust}</div>
                     </td>
                     <td className={tdCls}>
-                      {(s.products && s.products.length > 0
-                        ? s.products
-                        : [{ name: s.product_name, grade: s.product_grade ?? '' }]
-                      ).map((p, i) => (
+                      {getSampleProducts(s).map((p, i) => (
                         <div key={i} className="text-[11px] text-blk whitespace-nowrap" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>
                           <span className="font-medium">{p.name || '—'}</span>
                           {p.grade && <span className="text-g500"> · {p.grade}</span>}
                         </div>
                       ))}
                     </td>
-                    <td className={`${tdCls} font-mono text-[11.5px] whitespace-nowrap`}>
-                      {s.quantity > 0 ? `${s.quantity} ${s.unit}` : '—'}
+                    <td className={tdCls}>
+                      {getSampleProducts(s).map((p, i) => (
+                        <div key={i} className="font-mono text-[11px] text-g600 whitespace-nowrap" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>
+                          {p.quantity > 0 ? `${p.quantity} ${p.unit}` : '—'}
+                        </div>
+                      ))}
                     </td>
                     <td className={tdCls}>
                       {(s.quote_ref || s.enq_ref) ? (
@@ -458,15 +482,23 @@ export function Sampling() {
                       <OutcomeCell outcome={s.outcome} />
                     </td>
                     <td className={tdCls}>
-                      {s.coa_file
-                        ? <a href={s.coa_file} target="_blank" rel="noopener noreferrer" title="View COA"
-                            className="flex items-center gap-1 text-emerald-600 font-semibold text-[11.5px] hover:text-blue-600 transition-colors">
-                            Yes <ExternalLink size={11} />
-                          </a>
-                        : <span className="text-g400 text-[11.5px]">No</span>}
+                      {getSampleProducts(s).map((p, i) => (
+                        <div key={i} style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>
+                          {p.coa_url
+                            ? <a href={p.coa_url} target="_blank" rel="noopener noreferrer" title="View COA"
+                                className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-[11.5px] hover:text-blue-600 transition-colors">
+                                Yes <ExternalLink size={11} />
+                              </a>
+                            : <span className="text-g400 text-[11.5px]">No</span>}
+                        </div>
+                      ))}
                     </td>
-                    <td className={`${tdCls} font-mono text-[11px] text-g600 whitespace-nowrap`}>
-                      {s.lot_no || '—'}
+                    <td className={tdCls}>
+                      {getSampleProducts(s).map((p, i) => (
+                        <div key={i} className="font-mono text-[11px] text-g600 whitespace-nowrap" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>
+                          {p.lot_no || '—'}
+                        </div>
+                      ))}
                     </td>
                     <td className={tdCls}>
                       <div className="flex items-center gap-1.5">

@@ -19,6 +19,24 @@ const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g
 const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]";
 const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200";
 
+type SampleProduct = {
+  dbId?: string;
+  name: string;
+  grade: string;
+  lotNo: string;
+  coaFile: File | null;
+  coaLocalUrl: string | null;
+  existingCoaUrl: string | null;
+  quantity: string;
+  unit: string;
+};
+
+const emptyProduct = (): SampleProduct => ({
+  name: '', grade: '', lotNo: '',
+  coaFile: null, coaLocalUrl: null, existingCoaUrl: null,
+  quantity: '', unit: 'g',
+});
+
 function addDaysToDate(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T00:00:00');
   d.setDate(d.getDate() + days);
@@ -35,84 +53,93 @@ export function SamplingNew() {
   const source = searchParams.get('source') as 'enquiry' | 'quotation' | null;
   const today  = localDateStr(new Date());
 
-  const [sentDate,     setSentDate]     = useState(today);
-  const [followupDue,  setFollowupDue]  = useState(() => addDaysToDate(today, 3));
-  const [courier,      setCourier]      = useState('');
-  const [podFile,      setPodFile]      = useState<File | null>(null);
-  const [cost,         setCost]         = useState('');
-  const [cust,         setCust]         = useState(() => (editId ? '' : (searchParams.get('cust') ?? '')));
-  const [linkedRef,    setLinkedRef]    = useState(() => (editId ? '' : (searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '')));
-  const [sentBy,          setSentBy]          = useState('');
-  const [trackingNumber,  setTrackingNumber]  = useState('');
-  const [products, setProducts] = useState<{ name: string; grade: string }[]>(() => [
-    { name: editId ? '' : (searchParams.get('prod') ?? ''), grade: '' },
-  ]);
-  const [lotNo,        setLotNo]        = useState('');
-  const [coaFile,      setCoaFile]      = useState<File | null>(null);
-  const [quantity,     setQuantity]     = useState('');
-  const [unit,         setUnit]         = useState('g');
-  const [notes,        setNotes]        = useState('');
-
-  // Local object URLs for immediate preview before save
-  const [podLocalUrl, setPodLocalUrl] = useState<string | null>(null);
-  const [coaLocalUrl, setCoaLocalUrl] = useState<string | null>(null);
-  // Tracks existing uploaded URLs when in edit mode
+  const [sentDate,       setSentDate]       = useState(today);
+  const [followupDue,    setFollowupDue]    = useState(() => addDaysToDate(today, 3));
+  const [courier,        setCourier]        = useState('');
+  const [podFile,        setPodFile]        = useState<File | null>(null);
+  const [podLocalUrl,    setPodLocalUrl]    = useState<string | null>(null);
   const [existingPodUrl, setExistingPodUrl] = useState<string | null>(null);
-  const [existingCoaUrl, setExistingCoaUrl] = useState<string | null>(null);
+  const [cost,           setCost]           = useState('');
+  const [cust,           setCust]           = useState(() => (editId ? '' : (searchParams.get('cust') ?? '')));
+  const [linkedRef,      setLinkedRef]      = useState(() => (editId ? '' : (searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '')));
+  const [sentBy,         setSentBy]         = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [notes,          setNotes]          = useState('');
+
+  const [products, setProducts] = useState<SampleProduct[]>(() => [{
+    ...emptyProduct(),
+    name: editId ? '' : (searchParams.get('prod') ?? ''),
+  }]);
 
   const [sampleStatus, setSampleStatus] = useState<'delivered' | 'approved' | 'rejected' | ''>('');
   const [emailWasSent, setEmailWasSent] = useState(false);
 
-  const [saving,  setSaving]  = useState(false);
-  const [errors,  setErrors]  = useState<Record<string, string>>({});
+  const [saving,     setSaving]     = useState(false);
+  const [errors,     setErrors]     = useState<Record<string, string>>({});
   const [emailModal, setEmailModal] = useState<{
     sampleId: string; podUrl: string | null; podFileName: string;
     coaUrl: string | null; coaFileName: string;
   } | null>(null);
 
-  // Load existing sample data in edit mode.
-  // followupDue is set directly here (not via the sentDate onChange) so the
-  // stored value is preserved rather than auto-recalculated from sentDate.
+  // Load existing record (samples row + sample_products rows) in edit mode
   useEffect(() => {
     if (!editId) return;
-    supabase
-      .from('samples')
-      .select('*')
-      .eq('id', editId)
-      .maybeSingle()
-      .then(({ data: row }) => {
-        if (!row) return;
-        setCust(row.cust ?? '');
-        setLinkedRef(row.quote_ref ?? row.enq_ref ?? '');
-        setSentBy(row.sent_by ?? '');
-        setProducts(
-          Array.isArray(row.products) && row.products.length > 0
-            ? row.products.map((p: any) => ({ name: String(p.name ?? ''), grade: String(p.grade ?? '') }))
-            : [{ name: row.product_name ?? '', grade: row.product_grade ?? '' }]
-        );
-        setLotNo(row.lot_no ?? '');
-        setQuantity(row.quantity != null ? String(row.quantity) : '');
-        setUnit(row.unit ?? 'g');
-        setNotes(row.notes ?? '');
-        setSentDate(row.sent_date ?? today);
-        setFollowupDue(row.followup_due ?? addDaysToDate(today, 3));
-        setCourier(row.courier_details ?? '');
-        setTrackingNumber(row.tracking_number ?? '');
-        setCost(row.cost != null ? String(row.cost) : '');
-        setExistingPodUrl(row.pod_file ?? null);
-        setExistingCoaUrl(row.coa_file ?? null);
-        setEmailWasSent(!!row.email_sent);
-        const editableStatuses = ['delivered', 'approved', 'rejected'] as const;
-        if (editableStatuses.includes(row.status as any)) {
-          setSampleStatus(row.status as typeof sampleStatus);
-        }
-      });
+    (async () => {
+      const [{ data: row }, { data: productRows }] = await Promise.all([
+        supabase.from('samples').select('*').eq('id', editId).maybeSingle(),
+        supabase.from('sample_products').select('*').eq('sample_id', editId).order('sort_order'),
+      ]);
+      if (!row) return;
+
+      setCust(row.cust ?? '');
+      setLinkedRef(row.quote_ref ?? row.enq_ref ?? '');
+      setSentBy(row.sent_by ?? '');
+      setNotes(row.notes ?? '');
+      setSentDate(row.sent_date ?? today);
+      setFollowupDue(row.followup_due ?? addDaysToDate(today, 3));
+      setCourier(row.courier_details ?? '');
+      setTrackingNumber(row.tracking_number ?? '');
+      setCost(row.cost != null ? String(row.cost) : '');
+      setExistingPodUrl(row.pod_file ?? null);
+      setEmailWasSent(!!row.email_sent);
+      const editableStatuses = ['delivered', 'approved', 'rejected'] as const;
+      if (editableStatuses.includes(row.status as any)) {
+        setSampleStatus(row.status as typeof sampleStatus);
+      }
+
+      if (productRows && productRows.length > 0) {
+        setProducts(productRows.map((p: any) => ({
+          dbId: p.id,
+          name: p.product_name ?? '',
+          grade: p.grade ?? '',
+          lotNo: p.lot_no ?? '',
+          coaFile: null,
+          coaLocalUrl: null,
+          existingCoaUrl: p.coa_url ?? null,
+          quantity: p.quantity != null ? String(p.quantity) : '',
+          unit: p.unit ?? 'g',
+        })));
+      } else {
+        // Legacy fallback: no sample_products rows yet — use columns on samples row
+        setProducts([{
+          dbId: undefined,
+          name: row.product_name ?? '',
+          grade: row.product_grade ?? '',
+          lotNo: row.lot_no ?? '',
+          coaFile: null,
+          coaLocalUrl: null,
+          existingCoaUrl: row.coa_file ?? null,
+          quantity: row.quantity != null ? String(row.quantity) : '',
+          unit: row.unit ?? 'g',
+        }]);
+      }
+    })();
   }, [editId]);
 
-  const addProduct = () => setProducts(prev => [...prev, { name: '', grade: '' }]);
+  const addProduct    = () => setProducts(prev => [...prev, emptyProduct()]);
   const removeProduct = (idx: number) => setProducts(prev => prev.filter((_, i) => i !== idx));
-  const updateProduct = (idx: number, field: 'name' | 'grade', value: string) =>
-    setProducts(prev => prev.map((p, i) => i === idx ? { ...p, [field]: value } : p));
+  const updateProduct = (idx: number, patch: Partial<SampleProduct>) =>
+    setProducts(prev => prev.map((p, i) => i === idx ? { ...p, ...patch } : p));
 
   const newSamplePreviewId = `SAMP-${Date.now()}`;
 
@@ -130,52 +157,66 @@ export function SamplingNew() {
 
     const sampleId = editId ?? `SAMP-${Date.now()}`;
 
-    // In edit mode: keep existing URLs if no new file was selected
+    // Upload shared POD
     let podUrl: string | null = editId ? existingPodUrl : null;
-    let coaUrl: string | null = editId ? existingCoaUrl : null;
-
     if (podFile) {
       const ext = podFile.name.split('.').pop() || 'bin';
       const { data: url } = await uploadPublicFile('sample-attachments', `${sampleId}/pod.${ext}`, podFile);
       podUrl = url ?? null;
-    }
-    if (coaFile) {
-      const ext = coaFile.name.split('.').pop() || 'bin';
-      const { data: url } = await uploadPublicFile('sample-attachments', `${sampleId}/coa.${ext}`, coaFile);
-      coaUrl = url ?? null;
     }
 
     const ref   = linkedRef.trim();
     const upper = ref.toUpperCase();
     const isQt  = upper.startsWith('HTP') || upper.startsWith('QT');
 
+    // Upload per-product COAs and build sample_products rows
+    const savedProductRows = await Promise.all(products.map(async (prod, idx) => {
+      let coaUrl: string | null = prod.existingCoaUrl;
+      if (prod.coaFile) {
+        const ext = prod.coaFile.name.split('.').pop() || 'bin';
+        const { data: url } = await uploadPublicFile(
+          'sample-attachments', `${sampleId}/coa-${idx + 1}.${ext}`, prod.coaFile
+        );
+        coaUrl = url ?? null;
+      }
+      return {
+        sample_id:    sampleId,
+        product_name: prod.name.trim() || null,
+        grade:        prod.grade.trim() || null,
+        lot_no:       prod.lotNo.trim() || null,
+        coa_url:      coaUrl,
+        quantity:     parseFloat(prod.quantity) || 0,
+        unit:         prod.unit,
+        sort_order:   idx + 1,
+      };
+    }));
+
+    const first = savedProductRows[0];
+
+    // Legacy-compat columns on samples: mirror first product's values
     const commonFields = {
       cust:            cust.trim(),
       quote_ref:       (ref && isQt)  ? ref : null,
       enq_ref:         (ref && !isQt) ? ref : null,
-      product_name:    products[0]?.name.trim() || null,
-      product_grade:   products[0]?.grade.trim() || null,
-      products:        products.map(p => ({ name: p.name.trim(), grade: p.grade.trim() })),
-      lot_no:          lotNo.trim() || null,
-      quantity:        parseFloat(quantity) || 0,
-      unit,
+      product_name:    first?.product_name ?? null,
+      product_grade:   first?.grade ?? null,
+      lot_no:          first?.lot_no ?? null,
+      coa_file:        first?.coa_url ?? null,
+      quantity:        first?.quantity ?? 0,
+      unit:            first?.unit ?? 'g',
       sent_date:       sentDate || null,
       followup_due:    followupDue || null,
-      courier_details:  courier.trim() || null,
-      tracking_number:  trackingNumber.trim() || null,
-      pod_file:         podUrl,
-      coa_file:         coaUrl,
-      cost:             parseFloat(cost) || 0,
-      sent_by:          sentBy.trim() || null,
+      courier_details: courier.trim() || null,
+      tracking_number: trackingNumber.trim() || null,
+      pod_file:        podUrl,
+      cost:            parseFloat(cost) || 0,
+      sent_by:         sentBy.trim() || null,
       notes:           notes.trim() || null,
       updated_at:      new Date().toISOString(),
     };
 
     let error: any;
     if (editId) {
-      // "– no change –" is not a silent no-op: it recomputes status from the persistent
-      // email_sent flag, clearing any prior manual override (dispatched if ever emailed,
-      // otherwise pending). Explicit picks (delivered/approved/rejected) write directly.
       const resolvedStatus = sampleStatus || (emailWasSent ? 'dispatched' : 'pending');
       const statusFields: Record<string, any> = { status: resolvedStatus };
       if (resolvedStatus === 'approved') { statusFields.outcome = 'approved'; statusFields.feedback_received = true; }
@@ -186,24 +227,31 @@ export function SamplingNew() {
         id: sampleId,
         ...commonFields,
         source_module:     source ?? (isQt ? 'quotation' : ref ? 'enquiry' : null),
-        status:           'pending',
+        status:            'pending',
         feedback_received: false,
         created_by:        user?.email ?? null,
-        created_at:       new Date().toISOString(),
+        created_at:        new Date().toISOString(),
       }));
     }
 
-    setSaving(false);
-    if (error) { setErrors({ global: error.message }); return null; }
+    if (error) { setSaving(false); setErrors({ global: error.message }); return null; }
 
+    // Save sample_products: delete-then-insert (handles both create and edit cleanly)
+    await supabase.from('sample_products').delete().eq('sample_id', sampleId);
+    const { error: prodError } = await supabase.from('sample_products').insert(savedProductRows);
+    if (prodError) { setSaving(false); setErrors({ global: prodError.message }); return null; }
+
+    setSaving(false);
+
+    const firstCoaUrl = first?.coa_url ?? null;
     return {
       sampleId,
       podUrl,
       podFileName: podFile?.name
         ?? (existingPodUrl ? (existingPodUrl.split('/').pop() ?? 'POD.pdf') : 'POD.pdf'),
-      coaUrl,
-      coaFileName: coaFile?.name
-        ?? (existingCoaUrl ? (existingCoaUrl.split('/').pop() ?? 'COA.pdf') : 'COA.pdf'),
+      coaUrl: firstCoaUrl,
+      coaFileName: products[0]?.coaFile?.name
+        ?? (firstCoaUrl ? (firstCoaUrl.split('/').pop() ?? 'COA.pdf') : 'COA.pdf'),
     };
   };
 
@@ -391,118 +439,145 @@ export function SamplingNew() {
               </div>
             </div>
 
-            {/* SAMPLE DETAILS */}
+            {/* SAMPLE DETAILS — full block repeated per product */}
             <div className="bg-white border border-g200 p-[18px_20px]">
               <div className={sectionHeaderCls}>Sample Details</div>
-              <div className="flex flex-col gap-[12px]">
+              <div className="flex flex-col gap-[14px]">
 
-                {/* Product rows — one per product */}
                 {products.map((prod, idx) => (
-                  <div key={idx} className="grid grid-cols-2 gap-[12px]">
-                    <div>
-                      <label className={labelCls}>
-                        {idx === 0
-                          ? <span>Product Name <span className="text-red-mrt">*</span></span>
-                          : `Product ${idx + 1} Name`}
-                      </label>
-                      <div className={`bg-white border ${(errors.productName && idx === 0) ? 'border-red-mrt' : 'border-g300 focus-within:border-red-mrt'} rounded-[3px] p-[8px_10px] focus-within:ring-[3px] focus-within:ring-red-lt transition-all`}>
-                        <ProductSearch
-                          value={prod.name}
-                          names={productNames}
-                          hsnMap={productHsnMap}
-                          error={!!(errors.productName && idx === 0)}
-                          onChange={desc => { updateProduct(idx, 'name', desc); if (idx === 0) setErrors(er => ({ ...er, productName: '' })); }}
-                        />
-                      </div>
-                      {idx === 0 && errors.productName && (
-                        <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.productName}</div>
-                      )}
-                    </div>
-                    <div className="flex gap-2 items-start">
-                      <div className="flex-1">
-                        <label className={labelCls}>{idx === 0 ? 'Grade / Purity' : `Product ${idx + 1} Grade`}</label>
-                        <input type="text" value={prod.grade}
-                          onChange={e => updateProduct(idx, 'grade', e.target.value)}
-                          placeholder="e.g. 98% GC" className={inputCls} />
-                      </div>
+                  <div key={idx} className="border border-g200 rounded-[3px] p-[14px_16px]">
+
+                    {/* Product block header */}
+                    <div className="flex items-center justify-between mb-[12px] pb-[8px] border-b border-g100">
+                      <span className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-g500">
+                        Product {idx + 1}{idx === 0 && <span className="text-red-mrt"> *</span>}
+                      </span>
                       {products.length > 1 && (
                         <button type="button" onClick={() => removeProduct(idx)}
-                          className="mt-[22px] text-g400 hover:text-red-mrt text-[20px] leading-none shrink-0 transition-colors"
-                          title="Remove product">×</button>
+                          title={`Remove Product ${idx + 1}`}
+                          className="text-g400 hover:text-red-mrt transition-colors p-0.5">
+                          <svg viewBox="0 0 16 16" width="13" height="13" className="fill-current">
+                            <path d="M5.5 1h5v1h-5V1zM3 3v1h10V3H3zm1 2v9h8V5H4zm2 1h1v7H6V6zm3 0h1v7H9V6z" />
+                          </svg>
+                        </button>
                       )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-[12px]">
+
+                      {/* PRODUCT NAME */}
+                      <div>
+                        <label className={labelCls}>
+                          Product Name{idx === 0 && <span className="text-red-mrt"> *</span>}
+                        </label>
+                        <div className={`bg-white border ${(errors.productName && idx === 0) ? 'border-red-mrt' : 'border-g300 focus-within:border-red-mrt'} rounded-[3px] p-[8px_10px] focus-within:ring-[3px] focus-within:ring-red-lt transition-all`}>
+                          <ProductSearch
+                            value={prod.name}
+                            names={productNames}
+                            hsnMap={productHsnMap}
+                            error={!!(errors.productName && idx === 0)}
+                            onChange={desc => {
+                              updateProduct(idx, { name: desc });
+                              if (idx === 0) setErrors(er => ({ ...er, productName: '' }));
+                            }}
+                          />
+                        </div>
+                        {idx === 0 && errors.productName && (
+                          <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.productName}</div>
+                        )}
+                      </div>
+
+                      {/* GRADE / PURITY */}
+                      <div>
+                        <label className={labelCls}>Grade / Purity</label>
+                        <input type="text" value={prod.grade}
+                          onChange={e => updateProduct(idx, { grade: e.target.value })}
+                          placeholder="e.g. 98% GC" className={inputCls} />
+                      </div>
+
+                      {/* LOT NO */}
+                      <div>
+                        <label className={labelCls}>Lot No</label>
+                        <input type="text" value={prod.lotNo}
+                          onChange={e => updateProduct(idx, { lotNo: e.target.value })}
+                          placeholder="e.g. LOT-2026-001" className={inputCls} />
+                      </div>
+
+                      {/* COA */}
+                      <div>
+                        <label className={labelCls}>COA</label>
+                        <div className="flex items-center gap-1.5">
+                          <input type="file" id={`coa-upload-${idx}`} className="hidden"
+                            accept=".pdf,.jpeg,.jpg,.png"
+                            onChange={e => {
+                              const f = e.target.files?.[0] ?? null;
+                              updateProduct(idx, { coaFile: f, coaLocalUrl: f ? URL.createObjectURL(f) : null });
+                            }} />
+                          <label htmlFor={`coa-upload-${idx}`}
+                            className="cursor-pointer font-sans text-[12px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors min-h-[36px] w-full">
+                            <Upload size={13} className="text-g500 shrink-0" />
+                            {prod.coaFile
+                              ? <span className="truncate text-[11.5px]">{prod.coaFile.name}</span>
+                              : prod.existingCoaUrl
+                              ? <span className="truncate text-[11.5px] text-emerald-600">Existing file (click to replace)</span>
+                              : <span className="text-g400">Upload certificate of analysis</span>}
+                          </label>
+                          {prod.coaFile && prod.coaLocalUrl && (
+                            <a href={prod.coaLocalUrl} target="_blank" rel="noopener noreferrer" title="Preview"
+                              className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
+                              <ExternalLink size={14} />
+                            </a>
+                          )}
+                          {prod.coaFile && (
+                            <button type="button" title="Remove new file"
+                              onClick={() => updateProduct(idx, { coaFile: null, coaLocalUrl: null })}
+                              className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
+                          )}
+                          {!prod.coaFile && prod.existingCoaUrl && (
+                            <a href={prod.existingCoaUrl} target="_blank" rel="noopener noreferrer" title="View COA"
+                              className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
+                              <ExternalLink size={14} />
+                            </a>
+                          )}
+                          {!prod.coaFile && prod.existingCoaUrl && (
+                            <button type="button" title="Remove existing file"
+                              onClick={() => updateProduct(idx, { existingCoaUrl: null })}
+                              className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* SAMPLE QUANTITY */}
+                      <div>
+                        <label className={labelCls}>Sample Quantity</label>
+                        <input type="number" value={prod.quantity}
+                          onChange={e => updateProduct(idx, { quantity: e.target.value })}
+                          placeholder="0" min="0" step="any" className={inputCls} />
+                      </div>
+
+                      {/* UNIT */}
+                      <div>
+                        <label className={labelCls}>Unit</label>
+                        <select value={prod.unit}
+                          onChange={e => updateProduct(idx, { unit: e.target.value })}
+                          className={selectCls}>
+                          {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      </div>
+
                     </div>
                   </div>
                 ))}
 
-                {/* Add Product */}
-                <div>
-                  <button type="button" onClick={addProduct}
-                    className="inline-flex items-center gap-[6px] p-[5px_9px] text-red-mrt cursor-pointer text-[11.5px] font-semibold border border-dashed border-red-mrt/30 rounded-[3px] transition-colors hover:bg-red-lt">
-                    + Add Product
-                  </button>
+                {/* Add Product — same button style as "Add Another Line Item" on quotation form */}
+                <div className="inline-flex items-center gap-[6px] p-[7px_9px] text-red-mrt cursor-pointer text-[12px] font-semibold border border-dashed border-red-mrt/25 rounded-[3px] transition-colors hover:bg-red-lt w-fit"
+                  onClick={addProduct}>
+                  <svg viewBox="0 0 16 16" className="w-[13px] h-[13px] stroke-red-mrt fill-none stroke-2">
+                    <path d="M8 3v10M3 8h10"/>
+                  </svg>
+                  Add Product
                 </div>
 
-                {/* Other sample fields */}
-                <div className="grid grid-cols-2 gap-[12px]">
-                  <div>
-                    <label className={labelCls}>Lot No</label>
-                    <input type="text" value={lotNo} onChange={e => setLotNo(e.target.value)}
-                      placeholder="e.g. LOT-2026-001"
-                      className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>COA</label>
-                    <div className="flex items-center gap-1.5">
-                      <input type="file" id="coa-upload" className="hidden"
-                        accept=".pdf,.jpeg,.jpg,.png"
-                        onChange={e => {
-                          const f = e.target.files?.[0] ?? null;
-                          setCoaFile(f);
-                          setCoaLocalUrl(f ? URL.createObjectURL(f) : null);
-                        }} />
-                      <label htmlFor="coa-upload"
-                        className="cursor-pointer font-sans text-[12px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors min-h-[36px] w-full">
-                        <Upload size={13} className="text-g500 shrink-0" />
-                        {coaFile
-                          ? <span className="truncate text-[11.5px]">{coaFile.name}</span>
-                          : existingCoaUrl
-                          ? <span className="truncate text-[11.5px] text-emerald-600">Existing file (click to replace)</span>
-                          : <span className="text-g400">Upload certificate of analysis</span>}
-                      </label>
-                      {coaFile && coaLocalUrl && (
-                        <a href={coaLocalUrl} target="_blank" rel="noopener noreferrer" title="Preview selected file"
-                          className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
-                          <ExternalLink size={14} />
-                        </a>
-                      )}
-                      {coaFile && (
-                        <button type="button" title="Remove new file" onClick={() => { setCoaFile(null); setCoaLocalUrl(null); }}
-                          className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
-                      )}
-                      {!coaFile && existingCoaUrl && (
-                        <a href={existingCoaUrl} target="_blank" rel="noopener noreferrer" title="View COA"
-                          className="p-1 text-g400 hover:text-blue-600 transition-colors shrink-0">
-                          <ExternalLink size={14} />
-                        </a>
-                      )}
-                      {!coaFile && existingCoaUrl && (
-                        <button type="button" title="Remove existing file" onClick={() => setExistingCoaUrl(null)}
-                          className="text-g400 hover:text-red-mrt text-[18px] leading-none shrink-0">×</button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Sample Quantity</label>
-                    <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)}
-                      placeholder="0" min="0" step="any" className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Unit</label>
-                    <select value={unit} onChange={e => setUnit(e.target.value)} className={selectCls}>
-                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -520,7 +595,6 @@ export function SamplingNew() {
 
           {/* RIGHT — guidance panels */}
           <div className="flex flex-col gap-[14px]">
-            {/* Sampling Guidelines */}
             <div className="bg-g100 border border-g200 p-[16px_18px] rounded-[3px]">
               <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600 mb-[12px] pb-[7px] border-b border-g200">Sampling Guidelines</div>
               <div className="text-[11.5px] text-g600 leading-[1.9]">
@@ -546,7 +620,6 @@ export function SamplingNew() {
               </div>
             </div>
 
-            {/* Sample Status — only shown for new records */}
             {!editId && (
               <div className="bg-white border border-g200 p-[16px_18px] rounded-[3px]">
                 <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200">Sample Status</div>
@@ -560,10 +633,10 @@ export function SamplingNew() {
                 <div className="text-[10px] text-g400 font-mono tracking-wide uppercase mb-2">Workflow</div>
                 <div className="flex flex-col gap-2">
                   {[
-                    { label: 'Pending',            active: true,  color: 'bg-yellow-400' },
-                    { label: 'Dispatched',         active: false, color: 'bg-purple-500' },
-                    { label: 'Feedback Received',  active: false, color: 'bg-amber-500'  },
-                    { label: 'Approved / Rejected',active: false, color: 'bg-emerald-500'},
+                    { label: 'Pending',             active: true,  color: 'bg-yellow-400' },
+                    { label: 'Dispatched',          active: false, color: 'bg-purple-500' },
+                    { label: 'Feedback Received',   active: false, color: 'bg-amber-500'  },
+                    { label: 'Approved / Rejected', active: false, color: 'bg-emerald-500' },
                   ].map((step, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full shrink-0 ${step.active ? step.color : 'bg-g200'}`} />
@@ -574,7 +647,6 @@ export function SamplingNew() {
               </div>
             )}
 
-            {/* Edit-mode note */}
             {editId && (
               <div className="bg-amber-50 border border-amber-200 p-[16px_18px] rounded-[3px]">
                 <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-amber-700 mb-2">Editing Record</div>
@@ -610,9 +682,9 @@ export function SamplingNew() {
           customerName={cust}
           productName={products[0]?.name ?? ''}
           productGrade={products[0]?.grade ?? ''}
-          quantity={quantity}
-          unit={unit}
-          lotNo={lotNo}
+          quantity={products[0]?.quantity ?? ''}
+          unit={products[0]?.unit ?? 'g'}
+          lotNo={products[0]?.lotNo ?? ''}
           sentDate={sentDate}
           followupDue={followupDue}
           courier={courier}
