@@ -59,7 +59,8 @@ export function SamplingNew() {
   const [existingPodUrl, setExistingPodUrl] = useState<string | null>(null);
   const [existingCoaUrl, setExistingCoaUrl] = useState<string | null>(null);
 
-  const [sampleStatus, setSampleStatus] = useState<'delivered' | 'approved' | 'rejected' | 'feedback_received' | ''>('');
+  const [sampleStatus, setSampleStatus] = useState<'delivered' | 'approved' | 'rejected' | ''>('');
+  const [emailWasSent, setEmailWasSent] = useState(false);
 
   const [saving,  setSaving]  = useState(false);
   const [errors,  setErrors]  = useState<Record<string, string>>({});
@@ -96,7 +97,8 @@ export function SamplingNew() {
         setCost(row.cost != null ? String(row.cost) : '');
         setExistingPodUrl(row.pod_file ?? null);
         setExistingCoaUrl(row.coa_file ?? null);
-        const editableStatuses = ['delivered', 'approved', 'rejected', 'feedback_received'] as const;
+        setEmailWasSent(!!row.email_sent);
+        const editableStatuses = ['delivered', 'approved', 'rejected'] as const;
         if (editableStatuses.includes(row.status as any)) {
           setSampleStatus(row.status as typeof sampleStatus);
         }
@@ -161,12 +163,13 @@ export function SamplingNew() {
 
     let error: any;
     if (editId) {
-      const statusFields = sampleStatus ? {
-        status: sampleStatus,
-        ...(sampleStatus === 'feedback_received' && { feedback_received: true }),
-        ...(sampleStatus === 'approved'           && { outcome: 'approved', feedback_received: true }),
-        ...(sampleStatus === 'rejected'           && { outcome: 'rejected', feedback_received: true }),
-      } : {};
+      // "– no change –" is not a silent no-op: it recomputes status from the persistent
+      // email_sent flag, clearing any prior manual override (dispatched if ever emailed,
+      // otherwise pending). Explicit picks (delivered/approved/rejected) write directly.
+      const resolvedStatus = sampleStatus || (emailWasSent ? 'dispatched' : 'pending');
+      const statusFields: Record<string, any> = { status: resolvedStatus };
+      if (resolvedStatus === 'approved') { statusFields.outcome = 'approved'; statusFields.feedback_received = true; }
+      if (resolvedStatus === 'rejected') { statusFields.outcome = 'rejected'; statusFields.feedback_received = true; }
       ({ error } = await supabase.from('samples').update({ ...commonFields, ...statusFields }).eq('id', editId));
     } else {
       ({ error } = await supabase.from('samples').insert({
@@ -232,7 +235,6 @@ export function SamplingNew() {
                   <option value="delivered">Delivered</option>
                   <option value="approved">Approved</option>
                   <option value="rejected">Rejected</option>
-                  <option value="feedback_received">Feedback Rcvd</option>
                 </select>
               </div>
             )}
