@@ -59,6 +59,8 @@ export function SamplingNew() {
   const [existingPodUrl, setExistingPodUrl] = useState<string | null>(null);
   const [existingCoaUrl, setExistingCoaUrl] = useState<string | null>(null);
 
+  const [sampleStatus, setSampleStatus] = useState<'delivered' | 'approved' | 'rejected' | 'feedback_received' | ''>('');
+
   const [saving,  setSaving]  = useState(false);
   const [errors,  setErrors]  = useState<Record<string, string>>({});
   const [emailModal, setEmailModal] = useState<{
@@ -94,6 +96,10 @@ export function SamplingNew() {
         setCost(row.cost != null ? String(row.cost) : '');
         setExistingPodUrl(row.pod_file ?? null);
         setExistingCoaUrl(row.coa_file ?? null);
+        const editableStatuses = ['delivered', 'approved', 'rejected', 'feedback_received'] as const;
+        if (editableStatuses.includes(row.status as any)) {
+          setSampleStatus(row.status as typeof sampleStatus);
+        }
       });
   }, [editId]);
 
@@ -155,7 +161,13 @@ export function SamplingNew() {
 
     let error: any;
     if (editId) {
-      ({ error } = await supabase.from('samples').update(commonFields).eq('id', editId));
+      const statusFields = sampleStatus ? {
+        status: sampleStatus,
+        ...(sampleStatus === 'feedback_received' && { feedback_received: true }),
+        ...(sampleStatus === 'approved'           && { outcome: 'approved', feedback_received: true }),
+        ...(sampleStatus === 'rejected'           && { outcome: 'rejected', feedback_received: true }),
+      } : {};
+      ({ error } = await supabase.from('samples').update({ ...commonFields, ...statusFields }).eq('id', editId));
     } else {
       ({ error } = await supabase.from('samples').insert({
         id: sampleId,
@@ -207,7 +219,25 @@ export function SamplingNew() {
               {editId ? `Updating record ${editId}` : 'Dispatch a sample to a new customer for evaluation.'}
             </p>
           </div>
-          <Button variant="secondary" onClick={() => navigate('/sampling')}>Back</Button>
+          <div className="flex items-center gap-3 shrink-0">
+            {editId && (
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
+                <select
+                  value={sampleStatus}
+                  onChange={e => setSampleStatus(e.target.value as typeof sampleStatus)}
+                  className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer"
+                >
+                  <option value="">— no change —</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="feedback_received">Feedback Rcvd</option>
+                </select>
+              </div>
+            )}
+            <Button variant="secondary" onClick={() => navigate('/sampling')}>Back</Button>
+          </div>
         </div>
       </div>
 

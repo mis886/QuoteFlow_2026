@@ -8,7 +8,7 @@ import { localDateStr, canDeleteRecords } from '../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SampleStatus = 'pending' | 'dispatched' | 'feedback_received' | 'approved' | 'rejected';
+type SampleStatus = 'pending' | 'dispatched' | 'delivered' | 'feedback_received' | 'approved' | 'rejected';
 type SampleOutcome = 'approved' | 'rejected' | 'reformulation_needed';
 
 interface Sample {
@@ -50,11 +50,12 @@ function fmtDate(d?: string | null): string {
 
 function SampleStatusBadge({ status }: { status: SampleStatus }) {
   const cfg: Record<SampleStatus, { bg: string; dot: string; label: string }> = {
-    pending:           { bg: 'bg-yellow-50 text-yellow-700', dot: 'bg-yellow-400', label: 'Pending' },
-    dispatched:        { bg: 'bg-purple-50 text-purple-700', dot: 'bg-purple-500', label: 'Dispatched' },
-    feedback_received: { bg: 'bg-amber-50 text-amber-700',  dot: 'bg-amber-500',  label: 'Feedback Rcvd' },
-    approved:          { bg: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500', label: 'Approved' },
-    rejected:          { bg: 'bg-red-50 text-red-700',      dot: 'bg-red-500',    label: 'Rejected' },
+    pending:           { bg: 'bg-yellow-50 text-yellow-700',  dot: 'bg-yellow-400',  label: 'Pending' },
+    dispatched:        { bg: 'bg-purple-50 text-purple-700',  dot: 'bg-purple-500',  label: 'Dispatched' },
+    delivered:         { bg: 'bg-blue-50 text-blue-700',      dot: 'bg-blue-500',    label: 'Delivered' },
+    feedback_received: { bg: 'bg-amber-50 text-amber-700',    dot: 'bg-amber-500',   label: 'Feedback Rcvd' },
+    approved:          { bg: 'bg-emerald-50 text-emerald-700',dot: 'bg-emerald-500', label: 'Approved' },
+    rejected:          { bg: 'bg-red-50 text-red-700',        dot: 'bg-red-500',     label: 'Rejected' },
   };
   const c = cfg[status] ?? cfg.pending;
   return (
@@ -279,6 +280,7 @@ export function Sampling() {
   const filtered = useMemo(() => {
     let list = samples;
     if (tabFilter === 'sent') list = list.filter(s => !!s.email_sent_at);
+    else if (tabFilter === 'dispatched') list = list.filter(s => s.status === 'dispatched' || s.status === 'delivered');
     else if (tabFilter !== 'all') list = list.filter(s => s.status === tabFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -297,7 +299,7 @@ export function Sampling() {
     all:               samples.length,
     sent:              samples.filter(s => !!s.email_sent_at).length,
     pending:           samples.filter(s => s.status === 'pending').length,
-    dispatched:        samples.filter(s => s.status === 'dispatched').length,
+    dispatched:        samples.filter(s => s.status === 'dispatched' || s.status === 'delivered').length,
     feedback_received: samples.filter(s => s.status === 'feedback_received').length,
     approved:          samples.filter(s => s.status === 'approved').length,
     rejected:          samples.filter(s => s.status === 'rejected').length,
@@ -352,12 +354,12 @@ export function Sampling() {
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <TabBtn value="all"               label="All" />
-          <TabBtn value="sent"              label="Sent" />
+          <TabBtn value="sent"              label="Dispatched" />
           <TabBtn value="pending"           label="Pending" />
-          <TabBtn value="dispatched"        label="Dispatched" />
-          <TabBtn value="feedback_received" label="Feedback Rcvd" />
+          <TabBtn value="dispatched"        label="Delivered" />
           <TabBtn value="approved"          label="Approved" />
           <TabBtn value="rejected"          label="Rejected" />
+          <TabBtn value="feedback_received" label="Feedback Rcvd" />
         </div>
 
         <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[220px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
