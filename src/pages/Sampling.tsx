@@ -264,12 +264,11 @@ function getSampleProducts(s: Sample): ProductRow[] {
 
 export function Sampling() {
   const navigate = useNavigate();
-  const { user } = useAppStore();
+  const { user, globalSearchQuery, setGlobalSearchQuery } = useAppStore() as any;
   const canDelete = canDeleteRecords(user?.email);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedbackTarget, setFeedbackTarget] = useState<Sample | null>(null);
-  const [search, setSearch] = useState('');
   const [tabFilter, setTabFilter] = useState<'all' | SampleStatus>('all');
 
   const handleDelete = async (id: string) => {
@@ -306,8 +305,8 @@ export function Sampling() {
     if (tabFilter === 'pending') list = list.filter(s => s.status === 'pending' || s.status === 'dispatched');
     else if (tabFilter === 'delivered') list = list.filter(s => s.status === 'delivered' || s.status === 'approved' || s.status === 'rejected');
     else if (tabFilter !== 'all') list = list.filter(s => s.status === tabFilter);
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    if (globalSearchQuery.trim()) {
+      const q = globalSearchQuery.toLowerCase();
       list = list.filter(s =>
         s.id.toLowerCase().includes(q) ||
         s.cust.toLowerCase().includes(q) ||
@@ -317,7 +316,7 @@ export function Sampling() {
       );
     }
     return list;
-  }, [samples, tabFilter, search]);
+  }, [samples, tabFilter, globalSearchQuery]);
 
   const tabCounts = useMemo(() => ({
     all:        samples.length,
@@ -389,8 +388,8 @@ export function Sampling() {
           <input
             type="text"
             placeholder="Sample ID, customer, product..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            value={globalSearchQuery}
+            onChange={e => setGlobalSearchQuery(e.target.value)}
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
           />
         </div>
@@ -433,7 +432,7 @@ export function Sampling() {
               ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={12} className="text-center p-10 text-g400 text-[13px]">
-                    {search || tabFilter !== 'all'
+                    {globalSearchQuery || tabFilter !== 'all'
                       ? 'No samples match this filter'
                       : 'No samples logged yet — click "+ Log Sample" to get started'}
                   </td>
