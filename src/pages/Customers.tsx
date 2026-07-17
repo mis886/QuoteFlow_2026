@@ -629,18 +629,16 @@ function CustomerPanel({ customer, onClose }: { customer: Customer; onClose: () 
 
 // ── Table columns / sorting ───────────────────────────────────────────────────
 
-type SortKey = 'name' | 'sites' | 'gstin' | 'contact' | 'seg' | 'turnover' | 'inco' | 'rating' | 'nextOrder';
+type SortKey = 'name' | 'contact' | 'phone' | 'seg' | 'tier' | 'turnover' | 'nextOrder';
 
 interface ColDef { label: string; sortKey: SortKey | null; }
 const COLUMNS: ColDef[] = [
   { label: 'Company',         sortKey: 'name' },
-  { label: 'Sites',           sortKey: 'sites' },
-  { label: 'GSTIN',           sortKey: 'gstin' },
   { label: 'Primary Contact', sortKey: 'contact' },
+  { label: 'Contact Number',  sortKey: 'phone' },
   { label: 'Industry',        sortKey: 'seg' },
+  { label: 'Customer Type',   sortKey: 'tier' },
   { label: 'Turnover',        sortKey: 'turnover' },
-  { label: 'Incoterms',       sortKey: 'inco' },
-  { label: 'Rating',          sortKey: 'rating' },
   { label: 'Next Order',      sortKey: 'nextOrder' },
   { label: 'Actions',         sortKey: null },
 ];
@@ -649,13 +647,14 @@ const COLUMNS: ColDef[] = [
 function sortValue(c: Customer, key: SortKey): string | number {
   switch (key) {
     case 'name':      return c.name?.toLowerCase() ?? '';
-    case 'sites':     return c.sites.length;
-    case 'gstin':     return (c.gstin?.trim() || c.sites.find(s => s.isPrimary)?.gstin?.trim() || c.sites[0]?.gstin?.trim() || '').toLowerCase();
     case 'contact':   return getPrimaryContact(c)?.name?.toLowerCase() ?? '';
+    case 'phone':     return getPrimaryContact(c)?.phone?.toLowerCase() ?? '';
     case 'seg':       return c.seg?.toLowerCase() ?? '';
+    case 'tier': {
+      const order: Record<string, number> = { New: 0, Bronze: 1, Silver: 2, Gold: 3, Platinum: 4 };
+      return order[c.tier ?? 'New'] ?? 0;
+    }
     case 'turnover':  return c.turnover ?? 0;
-    case 'inco':      return c.inco?.toLowerCase() ?? '';
-    case 'rating':    return computeRating(c);
     case 'nextOrder': return (c.nextOrders ?? [])[0]?.toLowerCase() ?? '';
   }
 }
@@ -991,7 +990,7 @@ export function Customers() {
             </thead>
             <tbody>
               {filteredCustomers.length === 0 ? (
-                <tr><td colSpan={10} className="text-center p-8 text-g400 text-[13px]">No customers match</td></tr>
+                <tr><td colSpan={8} className="text-center p-8 text-g400 text-[13px]">No customers match</td></tr>
               ) : filteredCustomers.map(c => {
                 const contact = getPrimaryContact(c);
                 const rating  = computeRating(c);
@@ -1009,34 +1008,8 @@ export function Customers() {
                     <td className="px-[13px] py-[11px] align-middle">
                       <div className="flex items-center gap-2.5">
                         <InitialAvatar name={c.name} />
-                        <div>
-                          <div className="font-semibold text-blk leading-snug">{c.name}</div>
-                          <TierBadge tier={c.tier} />
-                        </div>
+                        <div className="font-semibold text-blk leading-snug">{c.name}</div>
                       </div>
-                    </td>
-
-                    {/* Sites count */}
-                    <td className="px-[13px] py-[11px] align-middle">
-                      <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-blk">
-                        <MapPin size={10} className="text-red-mrt" />
-                        {c.sites.length}
-                      </span>
-                      {c.sites.length > 0 && (
-                        <div className="text-[9.5px] text-g400 mt-0.5">
-                          {c.sites.find(s => s.isPrimary)?.city || c.sites[0]?.city || ''}
-                        </div>
-                      )}
-                    </td>
-
-                    {/* GSTIN */}
-                    <td className="px-[13px] py-[11px] align-middle">
-                      {(() => {
-                        const g = c.gstin?.trim() || c.sites.find(s => s.isPrimary)?.gstin?.trim() || c.sites[0]?.gstin?.trim();
-                        return g
-                          ? <span className="font-mono text-[10px] text-g600">{g}</span>
-                          : <span className="text-g300">—</span>;
-                      })()}
                     </td>
 
                     {/* Primary contact */}
@@ -1049,27 +1022,26 @@ export function Customers() {
                       ) : <span className="text-g300">—</span>}
                     </td>
 
+                    {/* Contact Number */}
+                    <td className="px-[13px] py-[11px] align-middle">
+                      {contact?.phone
+                        ? <span className="font-mono text-[11px] text-g600">{contact.phone}</span>
+                        : <span className="text-g300">—</span>}
+                    </td>
+
                     {/* Industry */}
                     <td className="px-[13px] py-[11px] align-middle text-g600">{c.seg || '—'}</td>
+
+                    {/* Customer Type */}
+                    <td className="px-[13px] py-[11px] align-middle">
+                      <TierBadge tier={c.tier} />
+                    </td>
 
                     {/* Turnover */}
                     <td className="px-[13px] py-[11px] align-middle">
                       <span className="inline-flex items-center px-2 py-0.5 bg-g100 border border-g200 rounded-[3px] font-mono text-[11px] font-bold text-g600">
                         {formatTurnover(c.turnover)}
                       </span>
-                    </td>
-
-                    {/* Incoterms */}
-                    <td className="px-[13px] py-[11px] align-middle">
-                      <span className="inline-flex items-center px-2 py-0.5 bg-sN/10 border border-sN/20 rounded-[3px] font-mono text-[11px] font-bold text-sN">
-                        {c.inco || '—'}
-                      </span>
-                    </td>
-
-                    {/* Rating */}
-                    <td className="px-[13px] py-[11px] align-middle">
-                      <StarRating score={rating} />
-                      <div className="font-mono text-[10px] text-g500 mt-0.5">{rating}/100</div>
                     </td>
 
                     {/* Next order */}
@@ -1106,7 +1078,7 @@ export function Customers() {
 
                   {isExpanded && (
                     <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">
-                      <td colSpan={10} className="p-0">
+                      <td colSpan={8} className="p-0">
                         <div className="p-[10px_16px]">
                           <div className="text-[9px] font-mono font-bold uppercase tracking-[1.5px] text-red-mrt mb-2 flex items-center gap-1.5">
                             <MapPin size={10} /> Sites ({c.sites.length})
