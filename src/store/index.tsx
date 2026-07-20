@@ -321,6 +321,7 @@ const mapEnquiryToDB = (e: any) => {
     if (o.custom_point) obj.customPoint = o.custom_point;
     if (o.pan) obj.pan = o.pan;
     if (o.hsn) obj.hsn = o.hsn;
+    if (o.pay) obj.pay = o.pay;
     if ('authorized_person' in o) {
       obj.authorizedPerson = o.authorized_person;
       delete obj.authorized_person;
@@ -393,6 +394,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('bankAccountId' in o) obj.bank_account_id = o.bankAccountId || null;
     if ('authorizedPerson' in o) obj.authorized_person = o.authorizedPerson || null;
     if ('terms' in o) obj.terms = o.terms || null;
+    if ('pay' in o) obj.pay = o.pay || null;
 
     return obj;
   };

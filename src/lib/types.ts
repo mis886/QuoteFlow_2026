@@ -167,6 +167,7 @@ export interface Order {
   insurance?: number;      // INR only; user-applied 0.15% charge on subtotal
   inco?: string;
   curr?: string;
+  pay?: string;
   items: OrderItem[];
   created_at?: string;
   updated_at?: string;

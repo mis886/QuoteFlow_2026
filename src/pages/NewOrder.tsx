@@ -80,6 +80,7 @@ export function NewOrder() {
   const [inco, setInco] = useState('EXW');
   const [customInco, setCustomInco] = useState('');
   const [curr, setCurr] = useState('INR');
+  const [pay, setPay] = useState('');
   const [dlvPriority, setDlvPriority] = useState('Standard');
   const [shipAddr, setShipAddr] = useState('');
   const [contact, setContact] = useState('');
@@ -173,6 +174,7 @@ export function NewOrder() {
         setOrderId(o.id); setPoNo(o.poNo); setPoDate(o.poDate); setDlvDate(o.dlvDate);
         if (o.inco) { const _n = normalizeInco(o.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : o.inco); }
         setCurr(o.curr || 'INR');
+        if (o.pay) setPay(o.pay);
         setCustName(o.cust); setAuthName(o.authorizedPerson?.name || '');
         setAuthDesignation(o.authorizedPerson?.designation || ''); setAuthPhone(o.authorizedPerson?.phone || '');
         setOrderStatus(o.status as OrderStatus); setCustomTerms(parseQuoteTerms(o.terms)); setItems(o.items);
@@ -226,6 +228,7 @@ export function NewOrder() {
         setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
         if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
         setCurr(q.curr || 'INR');
+        if (q.pay) setPay(q.pay);
         setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
         setInsurance(q.insurance ?? 0);
       }
@@ -374,6 +377,7 @@ export function NewOrder() {
     insurance: curr === 'INR' ? ins : 0,
     inco: inco === 'OVERRIDE' ? customInco : inco,
     curr,
+    pay: pay || undefined,
     items, adjustments,
     poFileName: existingPoFileName || undefined,
     authorizedPerson: { name: authName, designation: authDesignation, phone: authPhone },
@@ -557,6 +561,7 @@ export function NewOrder() {
                 setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
                 if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
                 setCurr(q.curr || 'INR');
+                if (q.pay) setPay(q.pay);
                 setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
                 setInsurance(q.insurance ?? 0);
               }
@@ -810,6 +815,11 @@ export function NewOrder() {
                     <select value={curr} onChange={e => setCurr(e.target.value)} className={selectCls + ' font-bold'}>
                       <option>INR</option><option>USD</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Payment Terms</label>
+                    <input type="text" value={pay} onChange={e => setPay(e.target.value)} placeholder="e.g. Advance, 30 days..."
+                      className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Shipping Address</label>
@@ -1262,6 +1272,7 @@ export function NewOrder() {
                 <div className="text-[12px] space-y-1.5">
                   <div className="flex justify-between"><span className="text-g500">Incoterms</span><span>{inco === 'OVERRIDE' ? customInco : inco}</span></div>
                   <div className="flex justify-between"><span className="text-g500">Currency</span><span className="font-bold">{curr}</span></div>
+                  {pay && <div className="flex justify-between"><span className="text-g500">Payment Terms</span><span>{pay}</span></div>}
                   <div className="flex justify-between"><span className="text-g500">Priority</span><span>{dlvPriority}</span></div>
                   {(poFile || existingPoFileName) && <div className="flex justify-between"><span className="text-g500">PO Doc</span><span className="text-green-600 text-[11px]">✓ Attached</span></div>}
                 </div>
