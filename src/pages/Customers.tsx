@@ -662,14 +662,13 @@ function sortValue(c: Customer, key: SortKey): string | number {
 // ── Main Customers page ───────────────────────────────────────────────────────
 
 export function Customers() {
-  const { data, user, addCustomer, updateCustomer, deleteCustomer, globalSearchQuery, setGlobalSearchQuery } = useAppStore() as any;
+  const { data, user, addCustomer, updateCustomer, deleteCustomer } = useAppStore() as any;
   const canDelete = canDeleteRecords(user?.email);
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const searchQuery = globalSearchQuery;
+  const [searchQuery, setSearchQuery] = useState(() => params.get('q') ?? '');
   const segFilter   = params.get('seg') ?? '';
   const tierFilter  = params.get('tier') ?? '';
-  const setSearchQuery = (v: string) => setGlobalSearchQuery(v);
   const setSegFilter   = (v: string) => setParams(p => { const n = new URLSearchParams(p); v ? n.set('seg', v) : n.delete('seg'); return n; }, { replace: true });
   const setTierFilter  = (v: string) => setParams(p => { const n = new URLSearchParams(p); v ? n.set('tier', v) : n.delete('tier'); return n; }, { replace: true });
   const [importing, setImporting] = useState(false);
@@ -952,7 +951,7 @@ export function Customers() {
         </select>
 
         {(searchQuery || segFilter || tierFilter) && (
-          <button type="button" onClick={() => { setParams({}, { replace: true }); setGlobalSearchQuery(''); }}
+          <button type="button" onClick={() => { setParams({}, { replace: true }); setSearchQuery(''); }}
             className="flex items-center gap-1 font-mono text-[10px] text-g500 hover:text-red-mrt border border-g200 hover:border-red-lt rounded px-2 h-7 transition-colors whitespace-nowrap">
             <X size={10} /> Clear filters
           </button>

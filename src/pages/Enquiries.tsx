@@ -9,10 +9,11 @@ import { supabase } from '../lib/supabase';
 
 export function Enquiries() {
   const store = useAppStore();
-  const { data, user, globalSearchQuery, setGlobalSearchQuery, openDetailPanel, openAttachmentModal, deleteEnquiry } = store;
+  const { data, user, openDetailPanel, openAttachmentModal, deleteEnquiry } = store;
   const { globalDateRange, setGlobalDateRange } = store as any;
   const canDelete = canDeleteRecords(user?.email);
   const navigate = useNavigate();
+  const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const [tab, setTab] = useState<'All' | 'Open' | EnqStatus | 'Sample'>('All');
   const [srcFilter, setSrcFilter] = useState('');
   const [urgFilter, setUrgFilter] = useState('');
@@ -37,22 +38,17 @@ export function Enquiries() {
       .then(({ data: rows }) => { if (rows) setEnqSamples(rows); });
   }, []);
 
-  const applySearch = (search: string) => {
-    setGlobalSearchQuery(search);
-  };
-
   const filteredEnqs = useMemo(() => {
     if (tab === 'Sample') return [];
-    const q = globalSearchQuery.toLowerCase();
+    const lq = localSearch.trim().toLowerCase();
     const sq = siteDebounced.toLowerCase();
+    const matchEnq = (e: any, q: string) =>
+      e.cust.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) ||
+      e.items.some((i: any) => i.desc.toLowerCase().includes(q) || i.mat.toLowerCase().includes(q));
     const list = data.enquiries.filter(e => {
       if (tab === 'Open' && e.status !== 'New' && e.status !== 'In Review') return false;
       else if (tab !== 'All' && tab !== 'Open' && e.status !== tab) return false;
-      if (q) {
-        const match = e.cust.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) ||
-          e.items.some(i => i.desc.toLowerCase().includes(q) || i.mat.toLowerCase().includes(q));
-        if (!match) return false;
-      }
+      if (lq && !matchEnq(e, lq)) return false;
       if (srcFilter && e.src !== srcFilter) return false;
       if (urgFilter && e.urg !== urgFilter) return false;
       if (!isInDateRange(e.recv, globalDateRange)) return false;
@@ -80,7 +76,7 @@ export function Enquiries() {
       return 0;
     });
     return list;
-  }, [data.enquiries, data.customers, globalSearchQuery, siteDebounced, tab, srcFilter, urgFilter, globalDateRange, sortCol, sortDir]);
+  }, [data.enquiries, data.customers, localSearch, siteDebounced, tab, srcFilter, urgFilter, globalDateRange, sortCol, sortDir]);
 
   const totalItems = filteredEnqs.reduce((acc, e) => acc + e.items.length, 0);
 
@@ -166,8 +162,8 @@ export function Enquiries() {
           <input
             type="text"
             placeholder="Company, item, material..."
-            value={globalSearchQuery}
-            onChange={(e) => applySearch(e.target.value)}
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
           />
         </div>

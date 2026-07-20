@@ -10,10 +10,11 @@ import { supabase } from '../lib/supabase';
 
 export function Quotes() {
   const store = useAppStore();
-  const { data, user, globalSearchQuery, setGlobalSearchQuery, openDetailPanel, openAttachmentModal, updateQuote, deleteQuote, addFollowUpLog } = store;
+  const { data, user, openDetailPanel, openAttachmentModal, updateQuote, deleteQuote, addFollowUpLog } = store;
   const canDelete = canDeleteRecords(user?.email);
   const { globalDateRange, setGlobalDateRange } = store as any;
   const navigate = useNavigate();
+  const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const [tab, setTab] = useState<'All' | QuoteStatus | 'Sample'>('All');
   const [custFilter, setCustFilter] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -44,13 +45,9 @@ export function Quotes() {
       .then(({ data: rows }) => { if (rows) setQuoteSamples(rows); });
   }, []);
 
-  const applySearch = (search: string) => {
-    setGlobalSearchQuery(search);
-  };
-
   const filteredQuotes = useMemo(() => {
     if (tab === 'Sample') return [];
-    const qs = globalSearchQuery.toLowerCase();
+    const qs = localSearch.toLowerCase();
     const sq = siteDebounced.toLowerCase();
     const list = data.quotes.filter(q => {
       if (tab !== 'All' && q.status !== tab) return false;
@@ -84,7 +81,7 @@ export function Quotes() {
       return 0;
     });
     return list;
-  }, [data.quotes, data.customers, globalSearchQuery, siteDebounced, tab, custFilter, globalDateRange, sortCol, sortDir]);
+  }, [data.quotes, data.customers, localSearch, siteDebounced, tab, custFilter, globalDateRange, sortCol, sortDir]);
 
   const statusCounts = {
     Draft: data.quotes.filter(q => q.status === 'Draft').length,
@@ -172,8 +169,8 @@ export function Quotes() {
           <input
             type="text"
             placeholder="Company, item, quote no..."
-            value={globalSearchQuery}
-            onChange={(e) => applySearch(e.target.value)}
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
           />
         </div>

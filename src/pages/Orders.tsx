@@ -34,10 +34,11 @@ function punchedAtClass(createdAt: string): { text: string; title?: string } {
 
 export function Orders() {
   const store = useAppStore();
-  const { data, user, globalSearchQuery, setGlobalSearchQuery, updateOrder, deleteOrder, openAttachmentModal } = store;
+  const { data, user, updateOrder, deleteOrder, openAttachmentModal } = store;
   const canDelete = canDeleteRecords(user?.email);
   const { globalDateRange, setGlobalDateRange } = store as any;
   const navigate = useNavigate();
+  const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const [tab, setTab] = useState<'All' | 'Processing' | 'Delivered'>('All');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [downloadingPOId, setDownloadingPOId] = useState<string | null>(null);
@@ -96,12 +97,8 @@ export function Orders() {
     }
   };
 
-  const applySearch = (search: string) => {
-    setGlobalSearchQuery(search);
-  };
-
   const filteredOrders = useMemo(() => {
-    const qs = globalSearchQuery.toLowerCase();
+    const qs = localSearch.toLowerCase();
     const sq = siteDebounced.toLowerCase();
     const list = data.orders.filter(o => {
       if (tab !== 'All' && o.status !== tab) return false;
@@ -134,7 +131,7 @@ export function Orders() {
       return 0;
     });
     return list;
-  }, [data.orders, data.customers, globalSearchQuery, siteDebounced, tab, globalDateRange, sortCol, sortDir]);
+  }, [data.orders, data.customers, localSearch, siteDebounced, tab, globalDateRange, sortCol, sortDir]);
 
   const TabSelect = ({ current, label, count }: { current: string, label: string, count?: number }) => {
     const isActive = tab === current;
@@ -219,8 +216,8 @@ export function Orders() {
           <input
             type="text"
             placeholder="Company, PO No, Order No..."
-            value={globalSearchQuery}
-            onChange={(e) => applySearch(e.target.value)}
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
           />
         </div>
