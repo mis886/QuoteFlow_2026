@@ -1008,7 +1008,10 @@ export function Customers() {
                     <td className="px-[13px] py-[11px] align-middle">
                       <div className="flex items-center gap-2.5">
                         <InitialAvatar name={c.name} />
-                        <div className="font-semibold text-blk leading-snug">{c.name}</div>
+                        <div>
+                          <div className="font-semibold text-blk leading-snug">{c.name}</div>
+                          <TierBadge tier={c.tier} />
+                        </div>
                       </div>
                     </td>
 
@@ -1033,8 +1036,8 @@ export function Customers() {
                     <td className="px-[13px] py-[11px] align-middle text-g600">{c.seg || '—'}</td>
 
                     {/* Customer Type */}
-                    <td className="px-[13px] py-[11px] align-middle">
-                      <TierBadge tier={c.tier} />
+                    <td className="px-[13px] py-[11px] align-middle text-g600">
+                      {c.customerType || '—'}
                     </td>
 
                     {/* Turnover */}
