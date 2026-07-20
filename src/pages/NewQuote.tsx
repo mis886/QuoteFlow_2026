@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, formatINR, localDateStr, fmtDate } from '../lib/utils';
+import { generateId, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
@@ -68,31 +68,6 @@ const normalizeInco = (raw: string | undefined): string => {
   return '';
 };
 
-const PAY_OPTIONS = [
-  '3 Days', '7 Days', '14 Days', '30 Days Net', '45 Days', '60 Days',
-  '90 Days', '120 Days', '50% Advance, 50% on Delivery', '100% Advance',
-  'LC at Sight', 'Advance',
-];
-
-const normalizePayTerms = (raw: string | undefined): string => {
-  if (!raw) return '';
-  const lower = raw.toLowerCase().trim();
-  const exact = PAY_OPTIONS.find(o => o.toLowerCase() === lower);
-  if (exact) return exact;
-  if (/100.*adv|adv.*100/.test(lower)) return '100% Advance';
-  if (/50.*adv|adv.*50/.test(lower)) return '50% Advance, 50% on Delivery';
-  if (/lc|sight/.test(lower)) return 'LC at Sight';
-  if (/120/.test(lower)) return '120 Days';
-  if (/90/.test(lower)) return '90 Days';
-  if (/60/.test(lower)) return '60 Days';
-  if (/45/.test(lower)) return '45 Days';
-  if (/30/.test(lower)) return '30 Days Net';
-  if (/14/.test(lower)) return '14 Days';
-  if (/7/.test(lower)) return '7 Days';
-  if (/3/.test(lower)) return '3 Days';
-  if (/adv/.test(lower)) return 'Advance';
-  return '';
-};
 
 function TncComboCell({ value, suggestions, onChange, label, standalone }: {
   value: string;
