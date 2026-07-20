@@ -264,7 +264,7 @@ function getSampleProducts(s: Sample): ProductRow[] {
 
 export function Sampling() {
   const navigate = useNavigate();
-  const { user } = useAppStore() as any;
+  const { user, globalSearchQuery } = useAppStore() as any;
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const canDelete = canDeleteRecords(user?.email);
   const [samples, setSamples] = useState<Sample[]>([]);
@@ -289,6 +289,9 @@ export function Sampling() {
   };
 
   useEffect(() => { fetchSamples(); }, []);
+
+  // Seed/sync local search from global Topbar query (one-way: global → local only)
+  useEffect(() => { setSearch(globalSearchQuery); }, [globalSearchQuery]);
 
   const today = localDateStr(new Date());
   const thisMonthStart = `${today.slice(0, 7)}-01`;

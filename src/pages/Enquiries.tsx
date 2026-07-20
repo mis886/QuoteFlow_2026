@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabase';
 export function Enquiries() {
   const store = useAppStore();
   const { data, user, openDetailPanel, openAttachmentModal, deleteEnquiry } = store;
-  const { globalDateRange, setGlobalDateRange } = store as any;
+  const { globalDateRange, setGlobalDateRange, globalSearchQuery } = store as any;
   const canDelete = canDeleteRecords(user?.email);
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
@@ -28,6 +28,9 @@ export function Enquiries() {
     const t = setTimeout(() => setSiteDebounced(siteQuery), 250);
     return () => clearTimeout(t);
   }, [siteQuery]);
+
+  // Seed/sync local search from global Topbar query (one-way: global → local only)
+  useEffect(() => { setLocalSearch(globalSearchQuery); }, [globalSearchQuery]);
 
   useEffect(() => {
     supabase

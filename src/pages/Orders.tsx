@@ -36,7 +36,7 @@ export function Orders() {
   const store = useAppStore();
   const { data, user, updateOrder, deleteOrder, openAttachmentModal } = store;
   const canDelete = canDeleteRecords(user?.email);
-  const { globalDateRange, setGlobalDateRange } = store as any;
+  const { globalDateRange, setGlobalDateRange, globalSearchQuery } = store as any;
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const [tab, setTab] = useState<'All' | 'Processing' | 'Delivered'>('All');
@@ -51,6 +51,10 @@ export function Orders() {
     const t = setTimeout(() => setSiteDebounced(siteQuery), 250);
     return () => clearTimeout(t);
   }, [siteQuery]);
+
+  // Seed/sync local search from global Topbar query (one-way: global → local only)
+  useEffect(() => { setLocalSearch(globalSearchQuery); }, [globalSearchQuery]);
+
   const [sendModalOrder, setSendModalOrder] = useState<Order | null>(null);
   const [exportingSheets, setExportingSheets] = useState<string | null>(null);
   const [sheetsToast, setSheetsToast] = useState<{type: "ok"|"warn"|"err"; msg: string} | null>(null);

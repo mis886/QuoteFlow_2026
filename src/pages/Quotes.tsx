@@ -12,7 +12,7 @@ export function Quotes() {
   const store = useAppStore();
   const { data, user, openDetailPanel, openAttachmentModal, updateQuote, deleteQuote, addFollowUpLog } = store;
   const canDelete = canDeleteRecords(user?.email);
-  const { globalDateRange, setGlobalDateRange } = store as any;
+  const { globalDateRange, setGlobalDateRange, globalSearchQuery } = store as any;
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const [tab, setTab] = useState<'All' | QuoteStatus | 'Sample'>('All');
@@ -29,6 +29,9 @@ export function Quotes() {
     const t = setTimeout(() => setSiteDebounced(siteQuery), 250);
     return () => clearTimeout(t);
   }, [siteQuery]);
+
+  // Seed/sync local search from global Topbar query (one-way: global → local only)
+  useEffect(() => { setLocalSearch(globalSearchQuery); }, [globalSearchQuery]);
 
   useEffect(() => {
     supabase.from('po_submissions').select('quote_id').then(({ data: rows }) => {

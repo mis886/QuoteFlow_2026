@@ -662,7 +662,7 @@ function sortValue(c: Customer, key: SortKey): string | number {
 // ── Main Customers page ───────────────────────────────────────────────────────
 
 export function Customers() {
-  const { data, user, addCustomer, updateCustomer, deleteCustomer } = useAppStore() as any;
+  const { data, user, addCustomer, updateCustomer, deleteCustomer, globalSearchQuery } = useAppStore() as any;
   const canDelete = canDeleteRecords(user?.email);
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -684,6 +684,9 @@ export function Customers() {
     if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir('asc'); }
   };
+
+  // Seed/sync local search from global Topbar query (one-way: global → local only)
+  useEffect(() => { setSearchQuery(globalSearchQuery); }, [globalSearchQuery]);
 
   const handleDeleteCustomer = async (c: Customer) => {
     const enqCount   = data.enquiries.filter((e: any) => e.cust === c.name).length;
