@@ -885,10 +885,6 @@ export function Customers() {
     if (tierFilter && (c.tier ?? 'New') !== tierFilter) return false;
     return true;
   }).sort((a, b) => {
-    if (searchQuery) {
-      const tDiff = nameTier(a.name ?? '', searchQuery) - nameTier(b.name ?? '', searchQuery);
-      if (tDiff !== 0) return tDiff;
-    }
     const va = sortValue(a, sortKey);
     const vb = sortValue(b, sortKey);
     let cmp: number;
@@ -896,6 +892,9 @@ export function Customers() {
     else cmp = String(va).localeCompare(String(vb), 'en', { sensitivity: 'base' });
     return sortDir === 'asc' ? cmp : -cmp;
   });
+  // Second stable pass: name-starts-with first, name-contains second, other-field match last.
+  // Kept separate from the column sort above so the column order is preserved as the within-tier tiebreaker.
+  if (searchQuery) filteredCustomers.sort((a, b) => nameTier(a.name ?? '', searchQuery) - nameTier(b.name ?? '', searchQuery));
 
   const segments = Array.from(new Set(data.customers.map(c => c.seg).filter(Boolean))).sort();
 
