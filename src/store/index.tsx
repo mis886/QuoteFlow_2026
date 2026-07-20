@@ -202,6 +202,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     obj.phone = e.contact_phone ?? undefined;
     obj.ageH = e.recv ? calculateAgeHours(e.recv) : (e.age_h || 0);
     obj.qRef = e.q_ref;
+    if ('authorized_person' in e) {
+      obj.authorizedPerson = e.authorized_person;
+      delete obj.authorized_person;
+    }
 
     delete obj.site_id;
     delete obj.contact_id;
@@ -230,6 +234,7 @@ const mapEnquiryToDB = (e: any) => {
   if ('notes' in e) obj.notes = e.notes;
   if ('items' in e) obj.items = e.items;
   if ('attachments' in e) obj.attachments = e.attachments;
+  if ('authorizedPerson' in e) obj.authorized_person = e.authorizedPerson || null;
 
   // Handle snake_case conversions with defaults
   obj.site_id = e.siteId || e.site_id || null;

@@ -112,6 +112,11 @@ export interface Enquiry {
   qRef: string | null;
   items: LineItem[];
   attachments?: Attachment[];
+  authorizedPerson?: {
+    name: string;
+    designation: string;
+    phone?: string;
+  };
   gmailMessageId?: string;
   created_at?: string;     // when the enquiry was punched into the system
 }

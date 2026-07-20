@@ -2,7 +2,7 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, localDateStr, localDateTimeStr } from '../lib/utils';
-import { Enquiry, LineItem, Urgency } from '../lib/types';
+import { Enquiry, LineItem, Urgency, AuthorizedSignatory } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
@@ -15,11 +15,13 @@ import { parseRfqPdf } from '../lib/rfqParser';
 import { RfqMapDialog } from '../components/RfqMapDialog';
 import { syncContactToCustomer } from '../lib/contactSync';
 
+const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
+
 export function NewEnquiry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
-  const { data, user, addEnquiry, updateEnquiry, addCustomer, stampName, refreshData } = useAppStore();
+  const { data, user, addEnquiry, updateEnquiry, addCustomer, addSignatory, stampName, refreshData } = useAppStore();
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
   const [isSaving, setIsSaving] = useState(false);
@@ -63,6 +65,11 @@ export function NewEnquiry() {
   const [drawingDocs, setDrawingDocs] = useState<{ id: string, fileName: string, file: File | null }[]>([]);
   
   const [assigned, setAssigned] = useState('Sales Team');
+  const [authName, setAuthName] = useState('');
+  const [authDesignation, setAuthDesignation] = useState('');
+  const [authPhone, setAuthPhone] = useState('');
+  const [selectedSigId, setSelectedSigId] = useState('');
+  const [sigMsg, setSigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [reqDate, setReqDate] = useState(localDateStr(new Date(Date.now() + 86400000)));
   const [notes, setNotes] = useState('');
   
@@ -139,6 +146,13 @@ export function NewEnquiry() {
         setContactManual(false);
         setUrgency(e.urg);
         setAssigned(e.assigned || 'Sales Team');
+        setAuthName(e.authorizedPerson?.name || '');
+        setAuthDesignation(e.authorizedPerson?.designation || '');
+        setAuthPhone(e.authorizedPerson?.phone || '');
+        if (e.authorizedPerson?.name) {
+          const matched = data.signatories.find(s => s.name === e.authorizedPerson!.name);
+          if (matched) setSelectedSigId(matched.id);
+        }
         setNotes(e.notes || '');
         setItems(e.items);
         
@@ -316,6 +330,7 @@ export function NewEnquiry() {
         doer: editId ? (data.enquiries.find(x => x.id === editId)?.doer) : stampName(),
         created_by: editId ? (data.enquiries.find(x => x.id === editId)?.created_by ?? null) : (user?.email ?? null),
         notes,
+        ...(authName ? { authorizedPerson: { name: authName, designation: authDesignation, phone: authPhone } } : {}),
         ageH: editId ? (data.enquiries.find(x => x.id === editId)?.ageH || 0) : 0,
         qRef: editId ? (data.enquiries.find(x => x.id === editId)?.qRef || null) : null,
         items,
@@ -592,13 +607,35 @@ export function NewEnquiry() {
             </div>
 
             <div className="bg-white border border-g200 p-[18px_20px]">
-              <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200">Assignment & Notes</div>
+              <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200">Authorized Signatory & Notes</div>
               <div className="grid grid-cols-2 gap-[12px]">
-                <div>
-                  <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Assigned To</label>
-                  <select title="Assigned To" value={assigned} onChange={e => setAssigned(e.target.value)} className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt">
-                    <option>Sales Team</option><option>Dispatch Team</option><option>Account Team</option>
-                  </select>
+                <div className="flex flex-col gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[4px]">Select from List</label>
+                    <select value={selectedSigId}
+                      onChange={e => { const sid = e.target.value; setSelectedSigId(sid); const sig = data.signatories.find(s => s.id === sid); if (sig) { setAuthName(sig.name); setAuthDesignation(sig.designation); setAuthPhone(sig.phone || ''); } }}
+                      className={selectCls}>
+                      <option value="">-- Select or Type Below --</option>
+                      {data.signatories.map(s => <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>)}
+                    </select>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px]">Details</label>
+                    <button type="button" onClick={async () => {
+                      if (!authName.trim()) { setSigMsg({ type: 'error', text: 'Enter a name first' }); setTimeout(() => setSigMsg(null), 3000); return; }
+                      try { const ns: AuthorizedSignatory = { id: 'sig-' + Date.now(), name: authName.trim(), designation: authDesignation.trim(), phone: authPhone.trim(), is_default: false }; await addSignatory(ns); setSelectedSigId(ns.id); setSigMsg({ type: 'success', text: 'Saved' }); setTimeout(() => setSigMsg(null), 3000); }
+                      catch { setSigMsg({ type: 'error', text: 'Could not save' }); }
+                    }} className="text-[9px] font-bold text-red-mrt uppercase hover:underline">Save to List</button>
+                  </div>
+                  {sigMsg && <div className={`text-[10px] font-semibold ${sigMsg.type === 'success' ? 'text-green-600' : 'text-red-mrt'}`}>{sigMsg.text}</div>}
+                  <div className="flex flex-col gap-2">
+                    <input type="text" value={authName} onChange={e => { setAuthName(e.target.value); setSelectedSigId(''); }} placeholder="Name"
+                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
+                    <input type="text" value={authDesignation} onChange={e => { setAuthDesignation(e.target.value); setSelectedSigId(''); }} placeholder="Designation"
+                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
+                    <input type="text" value={authPhone} onChange={e => { setAuthPhone(e.target.value); setSelectedSigId(''); }} placeholder="Phone"
+                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Quote Required By</label>
