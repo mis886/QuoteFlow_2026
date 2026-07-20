@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate } from '../lib/utils';
+import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
 import { OrderItem, Order, AuthorizedSignatory, OrderStatus, OrderAdjustment, OrderAdjustmentKind } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
@@ -595,6 +595,7 @@ export function NewOrder() {
                 <select title="Order status" value={orderStatus}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setOrderStatus(e.target.value as OrderStatus)}
                   className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer">
+                  <option value="Order Confirmed">Order Confirmed</option>
                   <option value="Processing">Processing</option>
                   <option value="Delivered">Delivered</option>
                 </select>
@@ -818,8 +819,11 @@ export function NewOrder() {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Payment Terms</label>
-                    <input type="text" value={pay} onChange={e => setPay(e.target.value)} placeholder="e.g. Advance, 30 days..."
-                      className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt" />
+                    <select value={pay} onChange={e => setPay(e.target.value)} className={selectCls}>
+                      <option value="">— Select —</option>
+                      {(PAY_OPTIONS as readonly string[]).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                      {pay && !(PAY_OPTIONS as readonly string[]).includes(pay) && <option value={pay}>{pay}</option>}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Shipping Address</label>

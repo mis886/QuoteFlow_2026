@@ -3,7 +3,7 @@ import { useAppStore } from '../store';
 import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, nameTier, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -39,7 +39,7 @@ export function Orders() {
   const { globalDateRange, setGlobalDateRange, globalSearchQuery } = store as any;
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
-  const [tab, setTab] = useState<'All' | 'Processing' | 'Delivered'>('All');
+  const [tab, setTab] = useState<'All' | 'Order Confirmed' | 'Processing' | 'Delivered'>('All');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [downloadingPOId, setDownloadingPOId] = useState<string | null>(null);
   const [siteQuery, setSiteQuery] = useState('');
@@ -59,6 +59,7 @@ export function Orders() {
   const [exportingSheets, setExportingSheets] = useState<string | null>(null);
   const [sheetsToast, setSheetsToast] = useState<{type: "ok"|"warn"|"err"; msg: string} | null>(null);
   const statusCounts = {
+    'Order Confirmed': data.orders.filter(o => o.status === 'Order Confirmed').length,
     Processing: data.orders.filter(o => o.status === 'Processing').length,
     Delivered: data.orders.filter(o => o.status === 'Delivered').length,
     All: data.orders.length
@@ -210,6 +211,7 @@ export function Orders() {
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-0">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <TabSelect current="All" label="All" count={statusCounts.All} />
+          <TabSelect current="Order Confirmed" label="Order Confirmed" count={statusCounts['Order Confirmed']} />
           <TabSelect current="Processing" label="Processing" count={statusCounts.Processing} />
           <TabSelect current="Delivered" label="Delivered" count={statusCounts.Delivered} />
         </div>
@@ -334,11 +336,10 @@ export function Orders() {
                         <td className="px-[13px] py-[10px] align-middle" onClick={ev => ev.stopPropagation()}>
                           <div className="flex gap-1.5 flex-wrap">
                             {o.status !== 'Delivered' && (
-                              <Button 
-                                size="sm" 
-                                variant="dark" 
+                              <Button
+                                size="sm"
+                                variant="dark"
                                 onClick={() => {
-                                  // mark as delivered
                                   updateOrder(o.id, { status: 'Delivered' }).catch(console.error);
                                 }}
                               >
@@ -346,7 +347,19 @@ export function Orders() {
                               </Button>
                             )}
                             <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); navigate(`/orders/new?orderId=${o.id}`); }}>Edit</Button>
-                            <Button size="sm" variant="secondary" onClick={(e) => {
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={ADVANCE_PAY.has(o.pay ?? '')}
+                              className={ADVANCE_PAY.has(o.pay ?? '') ? 'bg-g100 text-g400 cursor-not-allowed' : ''}
+                              onClick={(e) => { e.stopPropagation(); updateOrder(o.id, { status: 'Order Confirmed' }).catch(console.error); }}
+                            >OC</Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={!ADVANCE_PAY.has(o.pay ?? '')}
+                              className={!ADVANCE_PAY.has(o.pay ?? '') ? 'bg-g100 text-g400 cursor-not-allowed' : ''}
+                              onClick={(e) => {
                               e.stopPropagation();
                               const qt = data.quotes.find(q => q.id === o.quoteRef);
                               const cust = data.customers.find(c => c.name === o.cust);
