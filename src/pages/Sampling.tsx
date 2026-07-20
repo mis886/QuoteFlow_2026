@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { localDateStr, canDeleteRecords } from '../lib/utils';
+import { localDateStr, canDeleteRecords, nameTier } from '../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -318,6 +318,7 @@ export function Sampling() {
         (s.quote_ref ?? '').toLowerCase().includes(q) ||
         (s.enq_ref ?? '').toLowerCase().includes(q)
       );
+      list.sort((a, b) => nameTier(a.cust, q) - nameTier(b.cust, q));
     }
     return list;
   }, [samples, tabFilter, search]);

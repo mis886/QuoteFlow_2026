@@ -337,6 +337,21 @@ export function getThisWeekRange(): { start: Date; end: Date } {
   return { start, end };
 }
 
+/**
+ * Returns a search-relevance tier for ranking rows by customer/company name match.
+ * 0 = name starts with query (shown first), 1 = name contains query elsewhere,
+ * 2 = match was against a different field (ID, item description, etc.).
+ * Apply as a stable second sort after the table's primary column sort so that
+ * within each tier the column order is preserved.
+ */
+export function nameTier(name: string, query: string): 0 | 1 | 2 {
+  const n = (name ?? '').toLowerCase();
+  const q = query.toLowerCase();
+  if (n.startsWith(q)) return 0;
+  if (n.includes(q)) return 1;
+  return 2;
+}
+
 export const generateId = (prefix: string, existingIds: (string | undefined | null)[]) => {
   const yr = new Date().getFullYear();
   let maxNum = 0;

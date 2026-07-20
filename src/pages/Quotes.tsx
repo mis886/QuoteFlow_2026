@@ -4,7 +4,7 @@ import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus, Quote } from '../lib/types';
-import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { supabase } from '../lib/supabase';
 
@@ -83,6 +83,7 @@ export function Quotes() {
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
+    if (qs) list.sort((a, b) => nameTier(a.cust, qs) - nameTier(b.cust, qs));
     return list;
   }, [data.quotes, data.customers, localSearch, siteDebounced, tab, custFilter, globalDateRange, sortCol, sortDir]);
 

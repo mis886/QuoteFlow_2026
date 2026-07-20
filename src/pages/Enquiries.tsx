@@ -3,7 +3,7 @@ import { useAppStore } from '../store';
 import { Badge, Button, SourceIcon, DateFilterBanner } from '../components/ui';
 import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords } from '../lib/utils';
+import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
 import { EnqStatus } from '../lib/types';
 import { supabase } from '../lib/supabase';
 
@@ -78,6 +78,7 @@ export function Enquiries() {
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
+    if (lq) list.sort((a, b) => nameTier(a.cust, lq) - nameTier(b.cust, lq));
     return list;
   }, [data.enquiries, data.customers, localSearch, siteDebounced, tab, srcFilter, urgFilter, globalDateRange, sortCol, sortDir]);
 

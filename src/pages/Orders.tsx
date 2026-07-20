@@ -3,7 +3,7 @@ import { useAppStore } from '../store';
 import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -134,6 +134,7 @@ export function Orders() {
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
+    if (qs) list.sort((a, b) => nameTier(a.cust, qs) - nameTier(b.cust, qs));
     return list;
   }, [data.orders, data.customers, localSearch, siteDebounced, tab, globalDateRange, sortCol, sortDir]);
 
