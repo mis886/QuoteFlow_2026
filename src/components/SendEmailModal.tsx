@@ -56,14 +56,14 @@ export function SendEmailModal(props: Props) {
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : `Proforma Invoice ${docId} — HIMALAYA TERPENES PVT. LTD.`;
 
-  // Signatory: prefer quote's saved authorizedPerson → app_settings → passed defaultSignatory
-  const quoteAuthPerson = isQuote ? (props.doc as any).authorizedPerson : undefined;
+  // Signatory: prefer doc's saved authorizedPerson → app_settings → passed defaultSignatory
+  const docAuthPerson = (props.doc as any).authorizedPerson;
   const settingsSig = props.settings?.signatory_name
     ? { name: props.settings.signatory_name, designation: props.settings.signatory_title || '' }
     : undefined;
-  const sigName = quoteAuthPerson?.name || settingsSig?.name || props.defaultSignatory?.name || 'Sales Team';
-  const sigDesig = (quoteAuthPerson?.designation || settingsSig?.designation || props.defaultSignatory?.designation)
-    ? `\n${quoteAuthPerson?.designation || settingsSig?.designation || props.defaultSignatory?.designation}`
+  const sigName = docAuthPerson?.name || settingsSig?.name || props.defaultSignatory?.name || 'Sales Team';
+  const sigDesig = (docAuthPerson?.designation || settingsSig?.designation || props.defaultSignatory?.designation)
+    ? `\n${docAuthPerson?.designation || settingsSig?.designation || props.defaultSignatory?.designation}`
     : '';
 
   const poSubmitLink = '';
