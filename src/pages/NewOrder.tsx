@@ -377,7 +377,7 @@ export function NewOrder() {
     insurance: curr === 'INR' ? ins : 0,
     inco: inco === 'OVERRIDE' ? customInco : inco,
     curr,
-    pay: pay || undefined,
+    ...(pay ? { pay } : {}),
     items, adjustments,
     poFileName: existingPoFileName || undefined,
     authorizedPerson: { name: authName, designation: authDesignation, phone: authPhone },
