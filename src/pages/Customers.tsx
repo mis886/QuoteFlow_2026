@@ -879,7 +879,10 @@ export function Customers() {
       const codeMatch  = c.code?.toLowerCase().includes(q);
       const gstinMatch = c.gstin?.toLowerCase().includes(q)
         || c.sites.some(s => s.gstin?.toLowerCase().includes(q));
-      if (!nameMatch && !codeMatch && !gstinMatch) return false;
+      const primaryContact = getPrimaryContact(c);
+      const contactMatch = primaryContact?.name?.toLowerCase().includes(q)
+        || primaryContact?.email?.toLowerCase().includes(q);
+      if (!nameMatch && !codeMatch && !gstinMatch && !contactMatch) return false;
     }
     if (segFilter && c.seg !== segFilter) return false;
     if (tierFilter && (c.tier ?? 'New') !== tierFilter) return false;
@@ -996,7 +999,7 @@ export function Customers() {
             <tbody>
               {filteredCustomers.length === 0 ? (
                 <tr><td colSpan={8} className="text-center p-8 text-g400 text-[13px]">No customers match</td></tr>
-              ) : filteredCustomers.map(c => {
+              ) : filteredCustomers.map((c, idx) => {
                 const contact = getPrimaryContact(c);
                 const rating  = computeRating(c);
                 const nextProd = (c.nextOrders ?? [])[0];
@@ -1004,7 +1007,7 @@ export function Customers() {
 
                 const isExpanded = expandedRow === c.id;
                 return (
-                  <React.Fragment key={c.id}>
+                  <React.Fragment key={`${c.id}-${idx}`}>
                   <tr
                     className={`transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 ${isExpanded ? 'bg-red-mrt/5' : ''}`}
                     onClick={() => setExpandedRow(isExpanded ? null : c.id)}
