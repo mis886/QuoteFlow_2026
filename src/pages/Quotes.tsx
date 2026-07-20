@@ -4,9 +4,10 @@ import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus, Quote } from '../lib/types';
-import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, resolveAdjustments, maxItemGstRate } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { supabase } from '../lib/supabase';
+import { CascadeDeleteModal, DownstreamRecord } from '../components/CascadeDeleteModal';
 
 export function Quotes() {
   const store = useAppStore();
@@ -23,6 +24,7 @@ export function Quotes() {
   const [siteDebounced, setSiteDebounced] = useState('');
   const [sortCol, setSortCol] = useState('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [deleteTarget, setDeleteTarget] = useState<Quote | null>(null);
   const [quoteSamples, setQuoteSamples] = useState<any[]>([]);
 
   useEffect(() => {
@@ -310,17 +312,13 @@ export function Quotes() {
                                 })()
                               )}
                               {canDelete && (
-                                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async (ev) => {
+                                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => {
                                   ev.stopPropagation();
-                                  const linkedOrder = data.orders.find(o => o.quoteRef === q.id);
-                                  if (linkedOrder) {
-                                    if (!confirm(`This quotation has a linked order ${linkedOrder.id}. Delete quotation anyway?`)) return;
-                                  }
-                                  if (!confirm(`Are you sure you want to delete ${q.id}? This action cannot be undone.`)) return;
-                                  try {
-                                    await deleteQuote(q.id);
-                                  } catch (err: any) {
-                                    alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
+                                  const linkedOrders = data.orders.filter(o => o.quoteRef === q.id);
+                                  if (linkedOrders.length === 0) {
+                                    if (confirm(`Are you sure you want to delete ${q.id}? This action cannot be undone.`)) deleteQuote(q.id).catch(err => alert(`Delete failed: ${err?.message ?? err}`));
+                                  } else {
+                                    setDeleteTarget(q);
                                   }
                                 }}>Delete</Button>
                               )}
@@ -441,7 +439,18 @@ export function Quotes() {
           </div>
         )}
       </div>
-
+      {deleteTarget && <CascadeDeleteModal
+        recordId={deleteTarget.id}
+        recordType="quote"
+        downstream={data.orders.filter(o => o.quoteRef === deleteTarget.id).map(o => {
+          const sub = o.items.reduce((s, i) => s + i.total, 0);
+          const gst = o.items.reduce((s, i) => s + i.total * i.gst / 100, 0);
+          return { id: o.id, type: 'order' as const, status: o.status, grandTotal: resolveAdjustments(o.adjustments, sub, gst, maxItemGstRate(o.items)).grand } as DownstreamRecord;
+        })}
+        onConfirm={() => deleteQuote(deleteTarget.id)}
+        onCancel={() => setDeleteTarget(null)}
+      />}
     </div>
+
   );
 }

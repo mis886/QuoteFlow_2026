@@ -480,21 +480,23 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteEnquiry = async (id: string) => {
-    try {
-      // Null enq_ref on any linked quotes before deleting (FK constraint)
-      const { error: unlinkErr } = await supabase.from('quotes').update({ enq_ref: null }).eq('enq_ref', id);
-      if (unlinkErr) throw unlinkErr;
-      const { error } = await supabase.from('enquiries').delete().eq('id', id);
-      if (error) throw error;
-      setData(prev => ({
-        ...prev,
-        enquiries: prev.enquiries.filter(e => e.id !== id),
-        quotes: prev.quotes.map(q => q.enqRef === id ? { ...q, enqRef: '' } : q),
-      }));
-    } catch (err: any) {
-      console.error('Error deleting enquiry:', err);
-      alert(`Could not delete enquiry: ${err?.message ?? err}`);
-    }
+    // Collect downstream IDs from UI state before the async delete so we can
+    // purge them from the store on success. FK CASCADE handles the DB side.
+    const linkedQuoteIds = data.quotes.filter(q => q.enqRef === id).map(q => q.id);
+    const linkedOrderIds = data.orders
+      .filter(o => linkedQuoteIds.includes(o.quoteRef) || o.enqRef === id)
+      .map(o => o.id);
+
+    const { error } = await supabase.from('enquiries').delete().eq('id', id);
+    if (error) throw error;
+
+    setData(prev => ({
+      ...prev,
+      enquiries: prev.enquiries.filter(e => e.id !== id),
+      quotes: prev.quotes.filter(q => !linkedQuoteIds.includes(q.id)),
+      orders: prev.orders.filter(o => !linkedOrderIds.includes(o.id)),
+      followups: prev.followups.filter((f: any) => !linkedQuoteIds.includes(f.quote_id)),
+    }));
   };
 
   const addQuote = async (quote: Quote) => {
@@ -522,31 +524,19 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteQuote = async (id: string) => {
-    // 1. Delete follow-up log rows for this quote (FK: followups.quote_id → quotes.id)
-    const { error: fupErr } = await supabase.from('followups').delete().eq('quote_id', id);
-    if (fupErr) { console.error('deleteQuote: followups delete failed', fupErr); throw fupErr; }
-
-    // 2. Unlink orders that reference this quote (FK: orders.quote_ref → quotes.id)
-    //    Orders are preserved — only the link is removed.
+    // Collect downstream IDs before the async delete. FK CASCADE handles the
+    // DB side (orders + followups deleted automatically with the quote).
     const linkedOrderIds = data.orders.filter(o => o.quoteRef === id).map(o => o.id);
-    if (linkedOrderIds.length > 0) {
-      const { error: ordErr } = await supabase.from('orders').update({ quote_ref: null }).in('id', linkedOrderIds);
-      if (ordErr) { console.error('deleteQuote: orders unlink failed', ordErr); throw ordErr; }
-    }
 
-    // 3. Delete the quote record (items are a JSON column, removed automatically)
     const { error } = await supabase.from('quotes').delete().eq('id', id);
-    if (!error) {
-      setData(prev => ({
-        ...prev,
-        quotes: prev.quotes.filter(q => q.id !== id),
-        followups: prev.followups.filter((f: any) => f.quote_id !== id),
-        orders: prev.orders.map(o => linkedOrderIds.includes(o.id) ? { ...o, quoteRef: undefined } : o),
-      }));
-    } else {
-      console.error('deleteQuote: quotes delete failed', error);
-      throw error;
-    }
+    if (error) { console.error('deleteQuote failed', error); throw error; }
+
+    setData(prev => ({
+      ...prev,
+      quotes: prev.quotes.filter(q => q.id !== id),
+      orders: prev.orders.filter(o => !linkedOrderIds.includes(o.id)),
+      followups: prev.followups.filter((f: any) => f.quote_id !== id),
+    }));
   };
 
   const addOrder = async (order: Order) => {

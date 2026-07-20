@@ -3,9 +3,10 @@ import { useAppStore } from '../store';
 import { Badge, Button, SourceIcon, DateFilterBanner } from '../components/ui';
 import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
-import { EnqStatus } from '../lib/types';
+import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, resolveAdjustments, maxItemGstRate } from '../lib/utils';
+import { EnqStatus, Enquiry } from '../lib/types';
 import { supabase } from '../lib/supabase';
+import { CascadeDeleteModal, DownstreamRecord } from '../components/CascadeDeleteModal';
 
 export function Enquiries() {
   const store = useAppStore();
@@ -23,6 +24,7 @@ export function Enquiries() {
   const [sortCol, setSortCol] = useState<string>('recv');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [enqSamples, setEnqSamples] = useState<any[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<Enquiry | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSiteDebounced(siteQuery), 250);
@@ -303,7 +305,16 @@ export function Enquiries() {
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openAttachmentModal('enquiry', e.id); }}>Docs</Button>
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); navigate(`/sampling/new?enqRef=${encodeURIComponent(e.id)}&cust=${encodeURIComponent(e.cust)}&source=enquiry${e.items?.[0]?.desc ? `&prod=${encodeURIComponent(e.items[0].desc)}` : ''}`); }}>+ Sample</Button>
                               {canDelete && (
-                                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id); }}>Delete</Button>
+                                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  const linkedQuotes = data.quotes.filter(q => q.enqRef === e.id);
+                                  const linkedOrders = data.orders.filter(o => linkedQuotes.some(q => q.id === o.quoteRef) || o.enqRef === e.id);
+                                  if (linkedQuotes.length === 0 && linkedOrders.length === 0) {
+                                    if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id).catch(err => alert(`Delete failed: ${err?.message ?? err}`));
+                                  } else {
+                                    setDeleteTarget(e);
+                                  }
+                                }}>Delete</Button>
                               )}
                               <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{e.authorizedPerson?.name || e.created_by || '−'}</span>
                             </div>
@@ -411,6 +422,24 @@ export function Enquiries() {
           </div>
         )}
       </div>
+      {deleteTarget && <CascadeDeleteModal
+        recordId={deleteTarget.id}
+        recordType="enquiry"
+        downstream={(() => {
+          const linkedQuotes = data.quotes.filter(q => q.enqRef === deleteTarget.id);
+          const linkedOrders = data.orders.filter(o => linkedQuotes.some(q => q.id === o.quoteRef) || o.enqRef === deleteTarget.id);
+          return [
+            ...linkedQuotes.map(q => ({ id: q.id, type: 'quote' as const, status: q.status })),
+            ...linkedOrders.map(o => {
+              const sub = o.items.reduce((s, i) => s + i.total, 0);
+              const gst = o.items.reduce((s, i) => s + i.total * i.gst / 100, 0);
+              return { id: o.id, type: 'order' as const, status: o.status, grandTotal: resolveAdjustments(o.adjustments, sub, gst, maxItemGstRate(o.items)).grand };
+            }),
+          ] as DownstreamRecord[];
+        })()}
+        onConfirm={() => deleteEnquiry(deleteTarget.id)}
+        onCancel={() => setDeleteTarget(null)}
+      />}
     </div>
   );
 }
