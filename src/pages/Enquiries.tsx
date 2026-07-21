@@ -269,11 +269,13 @@ export function Enquiries() {
                             </span>
                           </td>
                           <td className="px-[13px] py-[10px] align-middle">
-                            {(e as any).customerTier ? (() => {
-                              const t = (e as any).customerTier as string;
+                            {(() => {
+                              const saved = (e as any).customerTier as string;
+                              const t = saved || (() => { const ct = data.customers.find(c => c.name === e.cust)?.tier; return (ct && ct !== 'New') ? ct : ''; })();
+                              if (!t) return <span className="text-g300 text-[10px]">—</span>;
                               const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300';
                               return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>;
-                            })() : <span className="text-g300 text-[10px]">—</span>}
+                            })()}
                           </td>
                           <td className="px-[13px] py-[10px] align-top">
                             {e.items.length === 0

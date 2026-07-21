@@ -294,6 +294,7 @@ export function NewQuote() {
         if (matched) setSelectedSigId(matched.id);
         const c = data.customers.find(x => x.name === q.cust);
         if (c) {
+          if (!q.customerTier) setCustomerTier(c.tier || '');
           const ps = (q.siteId && (c.sites ?? []).find((s: any) => s.id === q.siteId))
             || (c.sites ?? []).find((s: any) => s.isPrimary)
             || (c.sites ?? [])[0];

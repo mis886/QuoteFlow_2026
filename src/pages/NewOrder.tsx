@@ -179,6 +179,7 @@ export function NewOrder() {
         setCustName(o.cust); setAuthName(o.authorizedPerson?.name || '');
         setAuthDesignation(o.authorizedPerson?.designation || ''); setAuthPhone(o.authorizedPerson?.phone || '');
         setCustomerTier(o.customerTier || '');
+        if (!o.customerTier && o.cust) { const _oc = data.customers.find(x => x.name === o.cust); if (_oc?.tier) setCustomerTier(_oc.tier); }
         setOrderStatus(o.status as OrderStatus); setCustomTerms(parseQuoteTerms(o.terms)); setItems(o.items);
         setInsurance(o.insurance ?? 0);
         if (Array.isArray(o.adjustments)) setAdjustments(o.adjustments);
@@ -249,7 +250,7 @@ export function NewOrder() {
         if (q.pay) setPay(q.pay);
         setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
         setInsurance(q.insurance ?? 0);
-        setCustomerTier(q.customerTier || '');
+        setCustomerTier(q.customerTier || data.customers.find(c => c.name === q.cust)?.tier || '');
       }
     } else {
       hydratedKey.current = key;

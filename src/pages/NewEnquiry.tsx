@@ -169,9 +169,7 @@ export function NewEnquiry() {
         }
         
         const c = data.customers.find(x => x.name === e.cust);
-        if (c) {
-          // Additional phone lookup if needed
-        }
+        if (c && !e.customerTier) setCustomerTier(c.tier || '');
       }
     } else {
       hydratedKey.current = key;
