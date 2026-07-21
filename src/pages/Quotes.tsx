@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../store';
 import { Badge, Button, DateFilterBanner } from '../components/ui';
-import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus, Quote } from '../lib/types';
 import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, resolveAdjustments, maxItemGstRate } from '../lib/utils';
@@ -218,6 +218,7 @@ export function Quotes() {
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote No.</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">ENQ Ref</th>
                   <SortTh col="cust">Customer - Unit</SortTh>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Tier</th>
                   <SortTh col="date">Date</SortTh>
                   <SortTh col="items">Items</SortTh>
                   <SortTh col="value" right>Value (excl. GST)</SortTh>
@@ -229,7 +230,7 @@ export function Quotes() {
               </thead>
               <tbody>
                 {filteredQuotes.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center p-8 text-g400 text-[13px]">No quotations match</td></tr>
+                  <tr><td colSpan={11} className="text-center p-8 text-g400 text-[13px]">No quotations match</td></tr>
                 ) : (
                   filteredQuotes.map(q => {
                     const subTotal = q.items.reduce((s, i) => s + i.total, 0);
@@ -249,6 +250,13 @@ export function Quotes() {
                           <td className="px-[13px] py-[10px] align-middle">{q.enqRef ? <span className="font-mono text-[10px] font-bold text-red-mrt">{q.enqRef}</span> : <span className="font-mono text-[10px] font-bold text-g400" title="Standalone quote — not linked to an enquiry">—</span>}</td>
                           <td className="px-[13px] py-[10px] align-middle">
                             <div className="font-semibold">{q.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === q.cust), (q as any).siteId || data.enquiries.find(e => e.id === q.enqRef)?.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
+                          </td>
+                          <td className="px-[13px] py-[10px] align-middle">
+                            {(q as any).customerTier ? (() => {
+                              const t = (q as any).customerTier as string;
+                              const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300';
+                              return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>;
+                            })() : <span className="text-g300 text-[10px]">—</span>}
                           </td>
                           <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
                             {q.date ? fmtIST(new Date(q.date), 'dd-MMM-yyyy') : '--'}
@@ -331,7 +339,7 @@ export function Quotes() {
 
                         {isExpanded && (
                           <tr className="bg-sQ/[0.02] border-b-2 border-sQ">
-                            <td colSpan={10} className="p-0">
+                            <td colSpan={11} className="p-0">
                               <div className="p-[10px_16px]">
                                 <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sQ mb-[7px]">Line Items -- {q.id}</div>
                                 <table className="w-full border-collapse text-[11.5px] m-0 mb-2">

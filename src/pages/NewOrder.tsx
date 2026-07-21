@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
-import { OrderItem, Order, AuthorizedSignatory, OrderStatus, OrderAdjustment, OrderAdjustmentKind } from '../lib/types';
+import { OrderItem, Order, AuthorizedSignatory, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
@@ -55,7 +55,7 @@ export function NewOrder() {
   const editOrderId = searchParams.get('orderId');
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
-  const { data, addOrder, updateOrder, updateQuote, addCustomer, addSignatory, closeFollowUp, stampName } = useAppStore();
+  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, addSignatory, closeFollowUp, stampName } = useAppStore();
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
@@ -99,6 +99,7 @@ export function NewOrder() {
   const [selectedSigId, setSelectedSigId] = useState('');
   const [customTerms, setCustomTerms] = useState('');
   const [orderStatus, setOrderStatus] = useState<OrderStatus>('Processing');
+  const [customerTier, setCustomerTier] = useState<CustomerTier | ''>('');
   const [sigMsg, setSigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [adjustments, setAdjustments] = useState<OrderAdjustment[]>([]);
@@ -177,6 +178,7 @@ export function NewOrder() {
         if (o.pay) setPay(o.pay);
         setCustName(o.cust); setAuthName(o.authorizedPerson?.name || '');
         setAuthDesignation(o.authorizedPerson?.designation || ''); setAuthPhone(o.authorizedPerson?.phone || '');
+        setCustomerTier(o.customerTier || '');
         setOrderStatus(o.status as OrderStatus); setCustomTerms(parseQuoteTerms(o.terms)); setItems(o.items);
         setInsurance(o.insurance ?? 0);
         if (Array.isArray(o.adjustments)) setAdjustments(o.adjustments);
@@ -247,6 +249,7 @@ export function NewOrder() {
         if (q.pay) setPay(q.pay);
         setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
         setInsurance(q.insurance ?? 0);
+        setCustomerTier(q.customerTier || '');
       }
     } else {
       hydratedKey.current = key;
@@ -266,6 +269,7 @@ export function NewOrder() {
       setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || ''));
       setCurr(customer.curr || 'INR');
       if (!priceBasis) setPriceBasis(ci || '');
+      if (!quoteRef) setCustomerTier(customer.tier || '');
     }
     const sites = customer.sites ?? [];
     if (siteId) {
@@ -397,6 +401,7 @@ export function NewOrder() {
     items, adjustments,
     poFileName: existingPoFileName || undefined,
     authorizedPerson: { name: authName, designation: authDesignation, phone: authPhone },
+    customerTier: customerTier || undefined,
     terms: customTerms,
     unitId: unitId || undefined,
     bankAccountId: bankAccountId || undefined,
@@ -828,6 +833,30 @@ export function NewOrder() {
                       className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
                   </div>
                 </div>
+                {(() => {
+                  const canEditTier = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
+                  return (
+                    <div className="p-[0_16px_12px]">
+                      <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">
+                        Customer Tier
+                        {!canEditTier && <span className="ml-1 text-g400 font-normal normal-case text-[10px]">(view only)</span>}
+                      </label>
+                      <select
+                        title="Customer Tier"
+                        value={customerTier}
+                        disabled={!canEditTier}
+                        onChange={e => setCustomerTier(e.target.value as CustomerTier | '')}
+                        className={`w-40 font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-60 disabled:cursor-not-allowed`}
+                      >
+                        <option value="">— No tier —</option>
+                        <option>New</option>
+                        <option>Bronze</option>
+                        <option>Silver</option>
+                        <option>Gold</option>
+                      </select>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="col-span-4 bg-white border border-g200">

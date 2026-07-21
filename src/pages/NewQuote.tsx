@@ -2,7 +2,7 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
-import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus } from '../lib/types';
+import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { ProductSearch } from '../components/ProductSearch';
@@ -130,7 +130,7 @@ export function NewQuote() {
   const editId = searchParams.get('id');
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
-  const { data, addQuote, updateQuote, updateEnquiry, addCustomer, addSignatory, stampName } = useAppStore();
+  const { data, user, addQuote, updateQuote, updateEnquiry, addCustomer, addSignatory, stampName } = useAppStore();
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
@@ -222,6 +222,7 @@ export function NewQuote() {
     [...new Set(data.quotes.map(q => q.inco).filter(v => v && !INCO_OPTIONS.includes(v)) as string[])].sort()
   , [data.quotes]);
 
+  const [customerTier, setCustomerTier] = useState<CustomerTier | ''>('');
   const [sigMsg, setSigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
@@ -281,6 +282,7 @@ export function NewQuote() {
         setInco(_ni || 'OVERRIDE'); setCustomInco(_ni ? '' : savedInco);
         setCurr(q.curr || 'INR'); setPay(normalizePayTerms(q.pay) || '30 Days Net');
         setAuthName(q.authorizedPerson?.name || ''); setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
+        setCustomerTier(q.customerTier || '');
         setQuoteStatus(q.status);
         if (q.unitId) setUnitId(q.unitId);
         if (q.custEnquiryDocNo) setCustEnquiryDocNo(q.custEnquiryDocNo);
@@ -317,6 +319,7 @@ export function NewQuote() {
         setContactManual(!enq.contactId && !!(enq.contact || enq.email));
         const cr = data.customers.find(c => c.name === enq.cust);
         if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
+        setCustomerTier(enq.customerTier || cr?.tier || '');
         setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
         if (enq.authorizedPerson?.name) {
           setAuthName(enq.authorizedPerson.name);
@@ -371,7 +374,7 @@ export function NewQuote() {
     if (!custName) return;
     const customer = data.customers.find(c => c.name === custName);
     if (!customer) return;
-    if (!editId) { const ci = customer.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(customer.curr || 'INR'); setPay(normalizePayTerms(customer.pay) || '30 Days Net'); }
+    if (!editId) { const ci = customer.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(customer.curr || 'INR'); setPay(normalizePayTerms(customer.pay) || '30 Days Net'); if (!enqRef) setCustomerTier(customer.tier || ''); }
     const sites = customer.sites ?? [];
     if (siteId) {
       const site = sites.find(s => s.id === siteId);
@@ -588,6 +591,7 @@ export function NewQuote() {
       insurance: curr === 'INR' ? ins : 0,
       notes: notes.filter(n => n.trim()),
       authorizedPerson: { name: authName, designation: authDesignation, phone: authPhone },
+      customerTier: customerTier || undefined,
       terms: JSON.stringify(tnc),
       inco: inco === 'OVERRIDE' ? customInco : inco,
       unitId: unitId || undefined,
@@ -745,6 +749,7 @@ export function NewQuote() {
                 setContactManual(!enq.contactId && !!(enq.contact || enq.email));
                 const cr = data.customers.find(c => c.name === enq.cust);
                 if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
+                setCustomerTier(enq.customerTier || cr?.tier || '');
                 setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
                 if (enq.authorizedPerson?.name) {
                   setAuthName(enq.authorizedPerson.name);
@@ -943,6 +948,30 @@ export function NewQuote() {
                       className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
                   </div>
                 </div>
+                {(() => {
+                  const canEditTier = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
+                  return (
+                    <div className="p-[0_16px_12px]">
+                      <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">
+                        Customer Tier
+                        {!canEditTier && <span className="ml-1 text-g400 font-normal normal-case text-[10px]">(view only)</span>}
+                      </label>
+                      <select
+                        title="Customer Tier"
+                        value={customerTier}
+                        disabled={!canEditTier}
+                        onChange={e => setCustomerTier(e.target.value as CustomerTier | '')}
+                        className={`w-40 font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-60 disabled:cursor-not-allowed`}
+                      >
+                        <option value="">— No tier —</option>
+                        <option>New</option>
+                        <option>Bronze</option>
+                        <option>Silver</option>
+                        <option>Gold</option>
+                      </select>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="col-span-4 bg-white border border-g200">

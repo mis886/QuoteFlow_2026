@@ -2,7 +2,7 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, localDateStr, localDateTimeStr } from '../lib/utils';
-import { Enquiry, LineItem, Urgency, AuthorizedSignatory } from '../lib/types';
+import { Enquiry, LineItem, Urgency, AuthorizedSignatory, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
@@ -65,6 +65,7 @@ export function NewEnquiry() {
   const [drawingDocs, setDrawingDocs] = useState<{ id: string, fileName: string, file: File | null }[]>([]);
   
   const [assigned, setAssigned] = useState('Sales Team');
+  const [customerTier, setCustomerTier] = useState<CustomerTier | ''>('');
   const [authName, setAuthName] = useState('');
   const [authDesignation, setAuthDesignation] = useState('');
   const [authPhone, setAuthPhone] = useState('');
@@ -146,6 +147,7 @@ export function NewEnquiry() {
         setContactManual(false);
         setUrgency(e.urg);
         setAssigned(e.assigned || 'Sales Team');
+        setCustomerTier(e.customerTier || '');
         setAuthName(e.authorizedPerson?.name || '');
         setAuthDesignation(e.authorizedPerson?.designation || '');
         setAuthPhone(e.authorizedPerson?.phone || '');
@@ -183,6 +185,8 @@ export function NewEnquiry() {
     if (!custName) return;
     const customer = data.customers.find(c => c.name === custName);
     if (!customer) return;
+
+    if (!editId) setCustomerTier(customer.tier || '');
 
     const sites = customer.sites ?? [];
     if (siteId) {
@@ -331,6 +335,7 @@ export function NewEnquiry() {
         created_by: editId ? (data.enquiries.find(x => x.id === editId)?.created_by ?? null) : (user?.email ?? null),
         notes,
         ...(authName ? { authorizedPerson: { name: authName, designation: authDesignation, phone: authPhone } } : {}),
+        ...(customerTier ? { customerTier } : {}),
         ageH: editId ? (data.enquiries.find(x => x.id === editId)?.ageH || 0) : 0,
         qRef: editId ? (data.enquiries.find(x => x.id === editId)?.qRef || null) : null,
         items,
@@ -470,6 +475,30 @@ export function NewEnquiry() {
                   })()}
                 </div>
               </div>
+              {(() => {
+                const canEditTier = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
+                return (
+                  <div className="mt-3">
+                    <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">
+                      Customer Tier
+                      {!canEditTier && <span className="ml-1 text-g400 font-normal normal-case text-[10px]">(view only)</span>}
+                    </label>
+                    <select
+                      title="Customer Tier"
+                      value={customerTier}
+                      disabled={!canEditTier}
+                      onChange={e => setCustomerTier(e.target.value as CustomerTier | '')}
+                      className={`w-40 font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-60 disabled:cursor-not-allowed`}
+                    >
+                      <option value="">— No tier —</option>
+                      <option>New</option>
+                      <option>Bronze</option>
+                      <option>Silver</option>
+                      <option>Gold</option>
+                    </select>
+                  </div>
+                );
+              })()}
               <div className="grid grid-cols-3 gap-3 mt-3">
                 <div ref={contactRef} className="relative">
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Contact Person</label>

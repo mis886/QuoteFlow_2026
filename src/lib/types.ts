@@ -117,6 +117,7 @@ export interface Enquiry {
     designation: string;
     phone?: string;
   };
+  customerTier?: CustomerTier;
   gmailMessageId?: string;
   created_at?: string;     // when the enquiry was punched into the system
 }
@@ -144,6 +145,7 @@ export interface Quote {
     designation: string;
     phone?: string;
   };
+  customerTier?: CustomerTier;
   terms?: string;
   insurance?: number;         // INR only; user-applied 0.15% charge on subtotal
   unitId?: string;
@@ -184,6 +186,7 @@ export interface Order {
     designation: string;
     phone?: string;
   };
+  customerTier?: CustomerTier;
   terms?: string;
   bankingDetails?: {
     bankName: string;
