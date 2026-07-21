@@ -210,7 +210,7 @@ export function NewOrder() {
         setLinkedQuoteRef(q.id);
         if (q.enqRef) setLinkedEnqRef(q.enqRef);
         setOrderId(generateId('ORD', data.orders.map(o => o.id)));
-        setCustName(q.cust); setAuthName(q.authorizedPerson?.name || '');
+        setCustName(q.cust);
         if (q.siteId) {
           setSiteId(q.siteId);
           const qCust = data.customers.find(c => c.name === q.cust);
@@ -225,7 +225,23 @@ export function NewOrder() {
         if (q.custEnquiryDocNo) setCustEnquiryDocNo(q.custEnquiryDocNo);
         // Preserve manual contact if quote had no contactId
         setContactManual(!q.contactId && !!(q.contact || q.email));
-        setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
+        if (q.authorizedPerson?.name) {
+          setAuthName(q.authorizedPerson.name);
+          setAuthDesignation(q.authorizedPerson.designation || '');
+          setAuthPhone(q.authorizedPerson.phone || '');
+          const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === q.authorizedPerson!.name);
+          if (matchedSig) setSelectedSigId(matchedSig.id);
+        } else {
+          const defName = data.settings?.signatory_name;
+          if (defName) {
+            setAuthName(defName); setAuthDesignation(data.settings!.signatory_title || ''); setAuthPhone(data.settings!.signatory_phone || '');
+            const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === defName);
+            if (matchedSig) setSelectedSigId(matchedSig.id);
+          } else {
+            const defSig = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
+            if (defSig) { setAuthName(defSig.name); setAuthDesignation(defSig.designation); setAuthPhone(defSig.phone || ''); setSelectedSigId(defSig.id); }
+          }
+        }
         if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
         setCurr(q.curr || 'INR');
         if (q.pay) setPay(q.pay);
@@ -545,7 +561,7 @@ export function NewOrder() {
                 setLinkedQuoteRef(q.id);
                 if (q.enqRef) setLinkedEnqRef(q.enqRef);
                 setOrderId(generateId('ORD', data.orders.map(o => o.id)));
-                setCustName(q.cust); setAuthName(q.authorizedPerson?.name || '');
+                setCustName(q.cust);
                 if ((q as any).siteId) {
                   setSiteId((q as any).siteId);
                   const qCust2 = data.customers.find(c => c.name === q.cust);
@@ -558,7 +574,23 @@ export function NewOrder() {
                 if (q.phone) setPhone(q.phone);
                 if (q.custEnquiryDocNo) setCustEnquiryDocNo(q.custEnquiryDocNo);
                 setContactManual(!q.contactId && !!(q.contact || q.email));
-                setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
+                if (q.authorizedPerson?.name) {
+                  setAuthName(q.authorizedPerson.name);
+                  setAuthDesignation(q.authorizedPerson.designation || '');
+                  setAuthPhone(q.authorizedPerson.phone || '');
+                  const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === q.authorizedPerson!.name);
+                  if (matchedSig) setSelectedSigId(matchedSig.id);
+                } else {
+                  const defName = data.settings?.signatory_name;
+                  if (defName) {
+                    setAuthName(defName); setAuthDesignation(data.settings!.signatory_title || ''); setAuthPhone(data.settings!.signatory_phone || '');
+                    const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === defName);
+                    if (matchedSig) setSelectedSigId(matchedSig.id);
+                  } else {
+                    const defSig = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
+                    if (defSig) { setAuthName(defSig.name); setAuthDesignation(defSig.designation); setAuthPhone(defSig.phone || ''); setSelectedSigId(defSig.id); }
+                  }
+                }
                 if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
                 setCurr(q.curr || 'INR');
                 if (q.pay) setPay(q.pay);
