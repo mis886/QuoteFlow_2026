@@ -230,7 +230,6 @@ export function Enquiries() {
                   <SortTh col="created_at"   label="Punched At" />
                   <SortTh col="cust"   label="Customer - Unit" />
                   <SortTh col="src"    label="Source" />
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Tier</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ minWidth: '140px' }}>Product Name</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
                   <SortTh col="urg"    label="Urgency" />
@@ -242,7 +241,7 @@ export function Enquiries() {
               </thead>
               <tbody>
                 {filteredEnqs.length === 0 ? (
-                  <tr><td colSpan={13} className="text-center p-8 text-g400 text-[13px]">No enquiries match this filter</td></tr>
+                  <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">No enquiries match this filter</td></tr>
                 ) : (
                   filteredEnqs.map(e => {
                     const d = new Date(e.recv); // Assuming ISO string is stored
@@ -261,21 +260,13 @@ export function Enquiries() {
                           </td>
                           <td className="px-[13px] py-[10px] align-middle">
                             <div className="font-semibold">{e.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === e.cust), e.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
+                            {(() => { const saved = (e as any).customerTier as string; const t = saved || (() => { const ct = data.customers.find(c => c.name === e.cust)?.tier; return (ct && ct !== 'New') ? ct : ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
                             <div className="text-[11px] text-g500">{e.contact}</div>
                           </td>
                           <td className="px-[13px] py-[10px] align-middle">
                             <span className="inline-flex items-center gap-1 text-[11px] text-g600 bg-g100 px-2 py-0.5 rounded-[3px] font-medium">
                               <SourceIcon source={e.src} /> {e.src}
                             </span>
-                          </td>
-                          <td className="px-[13px] py-[10px] align-middle">
-                            {(() => {
-                              const saved = (e as any).customerTier as string;
-                              const t = saved || (() => { const ct = data.customers.find(c => c.name === e.cust)?.tier; return (ct && ct !== 'New') ? ct : ''; })();
-                              if (!t) return <span className="text-g300 text-[10px]">—</span>;
-                              const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300';
-                              return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>;
-                            })()}
                           </td>
                           <td className="px-[13px] py-[10px] align-top">
                             {e.items.length === 0
@@ -332,7 +323,7 @@ export function Enquiries() {
                         </tr>
                         {isExpanded && (
                           <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">
-                            <td colSpan={13} className="p-0">
+                            <td colSpan={12} className="p-0">
                               <div className="p-[10px_16px]">
                                 <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-[7px]">Line Items -- {e.id}</div>
                                 <table className="w-full border-collapse text-[11.5px] m-0">
