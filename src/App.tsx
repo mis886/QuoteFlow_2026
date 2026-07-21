@@ -24,6 +24,7 @@ import { DoerKPI } from './pages/DoerKPI';
 import { DoerDetail } from './pages/DoerDetail';
 import { useAppStore } from './store';
 import { Loader2 } from 'lucide-react';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { ProductionLayout } from './production/components/ProductionLayout';
 import { ProductionDashboard } from './production/pages/ProductionDashboard';
 import { NewProductionJob } from './production/pages/NewProductionJob';
@@ -65,7 +66,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     return <Login />;
   }
 
-  return <>{children}</>;
+  return <AppErrorBoundary>{children}</AppErrorBoundary>;
 }
 
 export default function App() {

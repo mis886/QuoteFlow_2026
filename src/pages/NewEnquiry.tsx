@@ -327,7 +327,7 @@ export function NewEnquiry() {
         contactId,
         contact,
         email,
-        phone: (() => { const { value, anomaly } = normalizeIndianPhone(phone); setPhoneAnomaly(anomaly); return value; })(),
+        phone: normalizeIndianPhone(phone).value,
         urg: urgency,
         status: editId ? (data.enquiries.find(x => x.id === editId)?.status || 'New') : 'New',
         assigned,

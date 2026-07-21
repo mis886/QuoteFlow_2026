@@ -392,7 +392,7 @@ export function NewOrder() {
     contactId: contactId || undefined,
     contact: contact || undefined,
     email: email || undefined,
-    phone: (() => { const { value, anomaly } = normalizeIndianPhone(phone); setPhoneAnomaly(anomaly); return value || undefined; })(),
+    phone: normalizeIndianPhone(phone).value || undefined,
     custEnquiryDocNo: custEnquiryDocNo.trim() || undefined,
     poNo: poNo.trim(), poDate, dlvDate,
     status: editOrderId ? orderStatus : 'Processing',

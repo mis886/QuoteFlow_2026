@@ -586,7 +586,7 @@ export function NewQuote() {
       contactId: contactId || undefined,
       contact: contact || undefined,
       email: email || undefined,
-      phone: (() => { const { value, anomaly } = normalizeIndianPhone(phone); setPhoneAnomaly(anomaly); return value || undefined; })(),
+      phone: normalizeIndianPhone(phone).value || undefined,
       // Stays Draft until actually sent (email module / manual). Convert-to-order
       // sets Won separately. Don't auto-flip a saved draft to 'Sent'.
       status,
