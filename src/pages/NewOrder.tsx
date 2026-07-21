@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
+import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, AuthorizedSignatory, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
@@ -86,6 +87,7 @@ export function NewOrder() {
   const [contact, setContact] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneAnomaly, setPhoneAnomaly] = useState(false);
   const [custEnquiryDocNo, setCustEnquiryDocNo] = useState('');
   const [contactManual, setContactManual] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -390,7 +392,7 @@ export function NewOrder() {
     contactId: contactId || undefined,
     contact: contact || undefined,
     email: email || undefined,
-    phone: phone || undefined,
+    phone: (() => { const { value, anomaly } = normalizeIndianPhone(phone); setPhoneAnomaly(anomaly); return value || undefined; })(),
     custEnquiryDocNo: custEnquiryDocNo.trim() || undefined,
     poNo: poNo.trim(), poDate, dlvDate,
     status: editOrderId ? orderStatus : 'Processing',
@@ -826,8 +828,11 @@ export function NewOrder() {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Phone</label>
-                    <input type="tel" placeholder="+91 98XXX XXXXX" value={phone} onChange={e => { setContactManual(true); setPhone(e.target.value); }}
+                    <input type="tel" placeholder="+91 98XXX XXXXX" value={phone}
+                      onChange={e => { setContactManual(true); setPhone(e.target.value); setPhoneAnomaly(false); }}
+                      onBlur={() => { if (phone) { const { value, anomaly } = normalizeIndianPhone(phone); setPhone(value); setPhoneAnomaly(anomaly); } }}
                       className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
+                    {phoneAnomaly && <p className="text-amber-600 text-[11px] mt-1">Doesn't look like a standard Indian mobile number — saved as entered</p>}
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Email</label>

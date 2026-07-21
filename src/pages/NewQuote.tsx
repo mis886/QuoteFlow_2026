@@ -2,6 +2,7 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
+import { normalizeIndianPhone } from '../lib/phone';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
@@ -170,6 +171,7 @@ export function NewQuote() {
   const [contact, setContact] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneAnomaly, setPhoneAnomaly] = useState(false);
   const [contactManual, setContactManual] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
@@ -584,7 +586,7 @@ export function NewQuote() {
       contactId: contactId || undefined,
       contact: contact || undefined,
       email: email || undefined,
-      phone: phone || undefined,
+      phone: (() => { const { value, anomaly } = normalizeIndianPhone(phone); setPhoneAnomaly(anomaly); return value || undefined; })(),
       // Stays Draft until actually sent (email module / manual). Convert-to-order
       // sets Won separately. Don't auto-flip a saved draft to 'Sent'.
       status,
@@ -941,8 +943,11 @@ export function NewQuote() {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Phone</label>
-                    <input type="tel" placeholder="+91 98XXX XXXXX" value={phone} onChange={e => { setContactManual(true); setPhone(e.target.value); }}
+                    <input type="tel" placeholder="+91 98XXX XXXXX" value={phone}
+                      onChange={e => { setContactManual(true); setPhone(e.target.value); setPhoneAnomaly(false); }}
+                      onBlur={() => { if (phone) { const { value, anomaly } = normalizeIndianPhone(phone); setPhone(value); setPhoneAnomaly(anomaly); } }}
                       className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
+                    {phoneAnomaly && <p className="text-amber-600 text-[11px] mt-1">Doesn't look like a standard Indian mobile number — saved as entered</p>}
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Email</label>

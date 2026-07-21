@@ -2,6 +2,7 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, localDateStr, localDateTimeStr } from '../lib/utils';
+import { normalizeIndianPhone } from '../lib/phone';
 import { Enquiry, LineItem, Urgency, AuthorizedSignatory, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
@@ -56,6 +57,7 @@ export function NewEnquiry() {
   const [contact, setContact] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneAnomaly, setPhoneAnomaly] = useState(false);
   // True when the user has typed contact/email/phone manually — suppresses auto-fill
   const [contactManual, setContactManual] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -325,7 +327,7 @@ export function NewEnquiry() {
         contactId,
         contact,
         email,
-        phone,
+        phone: (() => { const { value, anomaly } = normalizeIndianPhone(phone); setPhoneAnomaly(anomaly); return value; })(),
         urg: urgency,
         status: editId ? (data.enquiries.find(x => x.id === editId)?.status || 'New') : 'New',
         assigned,
@@ -547,7 +549,11 @@ export function NewEnquiry() {
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Phone</label>
-                  <input type="tel" placeholder="+91 98XXX XXXXX" value={phone} onChange={e => { setContactManual(true); setPhone(e.target.value); }} className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
+                  <input type="tel" placeholder="+91 98XXX XXXXX" value={phone}
+                    onChange={e => { setContactManual(true); setPhone(e.target.value); setPhoneAnomaly(false); }}
+                    onBlur={() => { if (phone) { const { value, anomaly } = normalizeIndianPhone(phone); setPhone(value); setPhoneAnomaly(anomaly); } }}
+                    className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
+                  {phoneAnomaly && <p className="text-amber-600 text-[11px] mt-1">Doesn't look like a standard Indian mobile number — saved as entered</p>}
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Email</label>

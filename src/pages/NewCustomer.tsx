@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { Customer, Site, Contact, NextOrder } from '../lib/types';
 import { generateId, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
+import { normalizeIndianPhone } from '../lib/phone';
 import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
 
 const INCO_OPTIONS_CUST = [
@@ -201,6 +202,7 @@ export function NewCustomer() {
   const [sites, setSites] = useState<Site[]>([
     { id: 'S1', name: 'Main Office', city: '', contacts: [{ id: 'C1', name: '', role: 'Purchase', email: '', isPrimary: true }] }
   ]);
+  const [phoneAnomalies, setPhoneAnomalies] = useState<Set<string>>(new Set());
   const [creditLimit, setCreditLimit] = useState<string>('');
   const [nextOrder1, setNextOrder1] = useState<NextOrder>({ product: '' });
   const [nextOrder2, setNextOrder2] = useState<NextOrder>({ product: '' });
@@ -282,9 +284,16 @@ export function NewCustomer() {
 
   const handleSave = async () => {
     if (!validate()) return;
+    const normalizedSites = sites.map(site => ({
+      ...site,
+      contacts: site.contacts.map(ct => ({
+        ...ct,
+        phone: ct.phone ? normalizeIndianPhone(ct.phone).value : ct.phone,
+      })),
+    }));
     const cust: Customer = {
       id, code: code.trim().toUpperCase(), name: name.trim(),
-      seg, customerType, inco, curr, pay, gstin: gstin.trim().toUpperCase(), pan: pan.trim().toUpperCase() || undefined, sites,
+      seg, customerType, inco, curr, pay, gstin: gstin.trim().toUpperCase(), pan: pan.trim().toUpperCase() || undefined, sites: normalizedSites,
       creditLimit: creditLimit !== '' ? Number(creditLimit) : undefined,
       nextOrder1: nextOrder1.product ? nextOrder1 : undefined,
       nextOrder2: nextOrder2.product ? nextOrder2 : undefined,
@@ -662,10 +671,12 @@ export function NewCustomer() {
                               <Phone size={11} className="absolute left-2.5 top-[7px] text-g400" />
                               <input
                                 type="tel" value={ct.phone || ''}
-                                onChange={e => updateContact(sIdx, cIdx, 'phone', e.target.value)}
+                                onChange={e => { updateContact(sIdx, cIdx, 'phone', e.target.value); const key = `${sIdx}-${cIdx}`; setPhoneAnomalies(prev => { const n = new Set(prev); n.delete(key); return n; }); }}
+                                onBlur={() => { const v = ct.phone || ''; if (v) { const { value, anomaly } = normalizeIndianPhone(v); updateContact(sIdx, cIdx, 'phone', value); const key = `${sIdx}-${cIdx}`; setPhoneAnomalies(prev => { const n = new Set(prev); anomaly ? n.add(key) : n.delete(key); return n; }); } }}
                                 placeholder="Phone / Mobile"
                                 className="w-full bg-white border border-g300 rounded pl-7 pr-2 py-1 text-xs outline-none focus:border-red-mrt"
                               />
+                              {phoneAnomalies.has(`${sIdx}-${cIdx}`) && <p className="text-amber-600 text-[10px] mt-0.5 pl-0.5">Doesn't look like a standard Indian mobile number — saved as entered</p>}
                             </div>
                           </div>
                         </div>
