@@ -249,7 +249,7 @@ export function NewQuote() {
   // that fixes the timing race where signatories load first, set the fallback, then
   // settings loads but finds authName already set and returns early (wrong result).
   useEffect(() => {
-    if (editId) return;
+    if (editId || enqRef) return;
     if (data.settings?.signatory_name) {
       setAuthName(data.settings.signatory_name);
       setAuthDesignation(data.settings.signatory_title || '');
@@ -260,7 +260,7 @@ export function NewQuote() {
       const def = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
       if (def) { setAuthName(def.name); setAuthDesignation(def.designation); setAuthPhone(def.phone || ''); setSelectedSigId(def.id); }
     }
-  }, [data.signatories, data.settings, editId]);
+  }, [data.signatories, data.settings, editId, enqRef]);
 
   // Load / init — runs once per target (editId/enqRef) to avoid wiping unsaved
   // changes on store updates, but re-runs when the target changes (e.g. the
@@ -318,6 +318,23 @@ export function NewQuote() {
         const cr = data.customers.find(c => c.name === enq.cust);
         if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
         setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
+        if (enq.authorizedPerson?.name) {
+          setAuthName(enq.authorizedPerson.name);
+          setAuthDesignation(enq.authorizedPerson.designation || '');
+          setAuthPhone(enq.authorizedPerson.phone || '');
+          const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === enq.authorizedPerson!.name);
+          if (matchedSig) setSelectedSigId(matchedSig.id);
+        } else {
+          const defName = data.settings?.signatory_name;
+          if (defName) {
+            setAuthName(defName); setAuthDesignation(data.settings!.signatory_title || ''); setAuthPhone(data.settings!.signatory_phone || '');
+            const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === defName);
+            if (matchedSig) setSelectedSigId(matchedSig.id);
+          } else {
+            const defSig = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
+            if (defSig) { setAuthName(defSig.name); setAuthDesignation(defSig.designation); setAuthPhone(defSig.phone || ''); setSelectedSigId(defSig.id); }
+          }
+        }
       }
     } else {
       setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
@@ -729,6 +746,23 @@ export function NewQuote() {
                 const cr = data.customers.find(c => c.name === enq.cust);
                 if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
                 setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
+                if (enq.authorizedPerson?.name) {
+                  setAuthName(enq.authorizedPerson.name);
+                  setAuthDesignation(enq.authorizedPerson.designation || '');
+                  setAuthPhone(enq.authorizedPerson.phone || '');
+                  const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === enq.authorizedPerson!.name);
+                  if (matchedSig) setSelectedSigId(matchedSig.id);
+                } else {
+                  const defName = data.settings?.signatory_name;
+                  if (defName) {
+                    setAuthName(defName); setAuthDesignation(data.settings!.signatory_title || ''); setAuthPhone(data.settings!.signatory_phone || '');
+                    const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === defName);
+                    if (matchedSig) setSelectedSigId(matchedSig.id);
+                  } else {
+                    const defSig = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
+                    if (defSig) { setAuthName(defSig.name); setAuthDesignation(defSig.designation); setAuthPhone(defSig.phone || ''); setSelectedSigId(defSig.id); }
+                  }
+                }
               }
             }} className="flex-1">
               Create New Anyway
