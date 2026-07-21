@@ -70,6 +70,13 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-g300); border-radius: 4px; }
 
+/* Email modal body — wider, visible scrollbar with red hover accent */
+.email-modal-body::-webkit-scrollbar { width: 9px; }
+.email-modal-body::-webkit-scrollbar-track { background: var(--color-g100); border-radius: 4px; }
+.email-modal-body::-webkit-scrollbar-thumb { background: var(--color-g400); border-radius: 9px; border: 2px solid var(--color-g100); }
+.email-modal-body::-webkit-scrollbar-thumb:hover { background: var(--color-red-mrt); }
+.email-modal-body { scrollbar-width: auto; scrollbar-color: var(--color-g400) var(--color-g100); }
+
 /* Reusable styled select — avoids inline backgroundImage */
 .select-filter {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");

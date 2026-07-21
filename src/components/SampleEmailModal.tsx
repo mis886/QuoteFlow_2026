@@ -5,7 +5,7 @@ import { sendViaGmailAsUser, Attachment } from '../lib/gmail';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 
-const DEFAULT_CCS = ['shishir@himalayaterpene.com', 'anil@himalayaterpene.com'];
+const SHISHIR = 'shishir@himalayaterpene.com';
 const OAUTH_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 export interface SampleEmailModalProps {
@@ -79,6 +79,9 @@ function buildBody(p: SampleEmailModalProps): string {
 export function SampleEmailModal(props: SampleEmailModalProps) {
   const { activeDoer, user } = useAppStore();
   const senderEmail = activeDoer?.email ?? user?.email ?? '';
+  const defaultCCs = (user?.email ?? '').toLowerCase() === SHISHIR
+    ? ['sales@himalayaterpene.com', 'anil@himalayaterpene.com']
+    : [SHISHIR, 'anil@himalayaterpene.com'];
 
   const [to, setTo]           = useState('');
   const [toError, setToError] = useState('');
@@ -87,8 +90,8 @@ export function SampleEmailModal(props: SampleEmailModalProps) {
   );
   const [body, setBody]         = useState(() => buildBody(props));
   const [customCC, setCustomCC] = useState('');
-  const [extraCCs, setExtraCCs] = useState<string[]>([...DEFAULT_CCS]);
-  const [selectedCC, setSelectedCC] = useState<Set<string>>(() => new Set(DEFAULT_CCS));
+  const [extraCCs, setExtraCCs] = useState<string[]>([...defaultCCs]);
+  const [selectedCC, setSelectedCC] = useState<Set<string>>(() => new Set(defaultCCs));
   const [status, setStatus]     = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -168,10 +171,10 @@ export function SampleEmailModal(props: SampleEmailModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-blk/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-[4px] shadow-2xl w-full max-w-[580px] overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-[4px] shadow-2xl w-full max-w-[580px] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-g200 bg-g50">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-g200 bg-g50 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Mail size={15} className="text-red-mrt" />
             <div>
@@ -197,7 +200,10 @@ export function SampleEmailModal(props: SampleEmailModalProps) {
             <div className="text-[12px] text-g400">Dispatch notification delivered to {to}</div>
           </div>
         ) : (
-          <form onSubmit={handleSend} className="p-5 flex flex-col gap-4">
+          <form onSubmit={handleSend} className="flex flex-col flex-1 min-h-0">
+
+            {/* Scrollable body */}
+            <div className="overflow-y-auto flex-1 p-5 flex flex-col gap-4 email-modal-body">
 
             {/* To */}
             <div>
@@ -297,8 +303,10 @@ export function SampleEmailModal(props: SampleEmailModalProps) {
               </div>
             )}
 
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-3 pt-2 border-t border-g200">
+            </div>{/* end scrollable body */}
+
+            {/* Sticky footer */}
+            <div className="flex items-center justify-end gap-3 px-5 py-3.5 border-t border-g200 flex-shrink-0">
               <Button type="button" variant="secondary" onClick={props.onClose} disabled={status === 'sending'}>
                 Cancel
               </Button>
