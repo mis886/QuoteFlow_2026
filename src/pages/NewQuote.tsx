@@ -878,6 +878,7 @@ export function NewQuote() {
                         setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({ ...errors, custName: '' });
                         if (name) {
                           const cust = data.customers.find(c => c.name === name);
+                          setCustomerTier(cust?.tier || '');
                           if (cust) {
                             const sites = (cust.sites ?? []) as any[];
                             const ps = sites.find((s: any) => s.isPrimary) || sites[0];

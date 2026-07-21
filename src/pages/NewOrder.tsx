@@ -761,6 +761,7 @@ export function NewOrder() {
                         // Auto-fill primary site and primary named contact immediately (mirrors enquiry→quote hydration)
                         if (name) {
                           const cust = data.customers.find(c => c.name === name);
+                          setCustomerTier(cust?.tier || '');
                           if (cust) {
                             const sites = (cust.sites ?? []) as any[];
                             const ps = sites.find((s: any) => s.isPrimary) || sites[0];

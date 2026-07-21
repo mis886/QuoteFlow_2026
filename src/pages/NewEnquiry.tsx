@@ -445,7 +445,7 @@ export function NewEnquiry() {
                   <CustomerSearch
                     customers={data.customers}
                     value={custName}
-                    onChange={name => { setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({...errors, custName: ''}); }}
+                    onChange={name => { setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({...errors, custName: ''}); const _cust = data.customers.find(c => c.name === name); setCustomerTier(_cust?.tier || ''); }}
                     error={!!errors.custName}
                   />
                   {errors.custName && <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.custName}</div>}
