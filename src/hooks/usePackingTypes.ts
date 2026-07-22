@@ -12,9 +12,15 @@ export function usePackingTypes(): string[] {
       .then(({ data, error }) => {
         if (error) {
           console.warn('[usePackingTypes] DB fetch failed:', error.message);
+          setTypes(['Tanker']);
           return;
         }
-        if (data) setTypes(data.map((r: { name: string }) => r.name));
+        if (data) {
+          const names = data.map((r: { name: string }) => r.name);
+          // Ensure Tanker is present even if the DB row hasn't been inserted yet
+          if (!names.includes('Tanker')) names.push('Tanker');
+          setTypes(names.sort());
+        }
       });
   }, []);
 
