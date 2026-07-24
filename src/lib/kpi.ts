@@ -273,7 +273,7 @@ export function computeDoerMetrics(
   }
 
   // ── SC_1: follow-up log activity (volume) + on-time over owned cards ──
-  // ── Negotiation: authored Negotiation-stage logs (volume) + win + on-time ──
+  // ── Negotiation: open pipeline owned (volume) + win + on-time ──
   const onTimeAcc = new Map<Raw, { on: number; tot: number }>();
   const quoteById = new Map(data.quotes.map(q => [q.id, q]));
   for (const fu of data.followups) {
