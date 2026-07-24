@@ -108,7 +108,8 @@ export function Orders() {
     const list = data.orders.filter(o => {
       if (tab !== 'All' && o.status !== tab) return false;
       if (qs) {
-        const match = o.cust.toLowerCase().includes(qs) || o.id.toLowerCase().includes(qs) || o.poNo.toLowerCase().includes(qs);
+        const match = o.cust.toLowerCase().includes(qs) || o.id.toLowerCase().includes(qs) || o.poNo.toLowerCase().includes(qs) ||
+          o.items.some(i => i.desc.toLowerCase().includes(qs));
         if (!match) return false;
       }
       if (!isInDateRange(o.poDate, globalDateRange)) return false;
@@ -222,7 +223,7 @@ export function Orders() {
           <Search size={11} className="text-g400 shrink-0" />
           <input
             type="text"
-            placeholder="Company, PO No, Order No..."
+            placeholder="Company, item, PO No, Order No..."
             value={localSearch}
             onChange={(e) => setLocalSearch(e.target.value)}
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
