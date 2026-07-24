@@ -2,13 +2,20 @@ import React, { useState } from 'react';
 import { AlertTriangle, Loader2, X } from 'lucide-react';
 import { Button } from './ui';
 import { formatINR } from '../lib/utils';
+import { friendlyDeleteError } from '../lib/cascadeDelete';
 
 export interface DownstreamRecord {
   id: string;
-  type: 'quote' | 'order';
+  type: 'quote' | 'order' | 'followup';
   status: string;
   grandTotal?: number;
 }
+
+const TYPE_LABEL: Record<DownstreamRecord['type'], string> = {
+  quote: 'Quotation',
+  order: 'Order',
+  followup: 'Follow-up on',
+};
 
 interface Props {
   recordId: string;
@@ -30,7 +37,7 @@ export function CascadeDeleteModal({ recordId, recordType, downstream, onConfirm
     try {
       await onConfirm();
     } catch (err: any) {
-      setError(err?.message || 'Delete failed. Please try again.');
+      setError(err ? friendlyDeleteError(err) : 'Delete failed. Please try again.');
       setDeleting(false);
     }
   };
@@ -68,7 +75,7 @@ export function CascadeDeleteModal({ recordId, recordType, downstream, onConfirm
                 className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-100 rounded-[3px] text-[12.5px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-mrt shrink-0" />
                 <span>
-                  <span className="font-mono font-bold">{r.type === 'quote' ? 'Quotation' : 'Order'} {r.id}</span>
+                  <span className="font-mono font-bold">{TYPE_LABEL[r.type]} {r.id}</span>
                   {(r.status || r.grandTotal != null) && (
                     <span className="text-g500 ml-1.5">
                       ({[r.status, r.grandTotal != null ? formatINR(Math.round(r.grandTotal)) : null]

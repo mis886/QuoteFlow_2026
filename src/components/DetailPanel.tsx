@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router-dom';
 import { getS3SignedUrl } from '../lib/s3';
 import { FollowUpSummary } from './FollowUpSummary';
 import { generateQuotePDF, generatePIPDF } from '../lib/pdfGenerator';
+import { CascadeDeleteModal } from './CascadeDeleteModal';
+import { getEnquiryDownstream, friendlyDeleteError } from '../lib/cascadeDelete';
 
 const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
   <section>
@@ -33,6 +35,7 @@ export function DetailPanel() {
   const navigate = useNavigate();
   const [downloadingItemId, setDownloadingItemId] = React.useState<string | null>(null);
   const [showLineItems, setShowLineItems] = React.useState(false);
+  const [confirmCascadeDelete, setConfirmCascadeDelete] = React.useState(false);
 
   const handleDownload = async (path: string, id: string, name?: string) => {
     if (path.startsWith('mock') || downloadingItemId === id) return;
@@ -301,15 +304,26 @@ export function DetailPanel() {
             </select>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" className="!text-red-mrt !border-red-lt hover:!bg-red-lt" onClick={async () => {
-              if (confirm('Are you sure you want to delete this enquiry?')) {
-                await deleteEnquiry(enq.id);
-                closeDetailPanel();
+            <Button variant="secondary" className="!text-red-mrt !border-red-lt hover:!bg-red-lt" onClick={() => {
+              const downstream = getEnquiryDownstream(enq.id, data);
+              if (downstream.length === 0) {
+                if (confirm('Are you sure you want to delete this enquiry?')) {
+                  deleteEnquiry(enq.id).then(closeDetailPanel).catch(err => alert(`Delete failed: ${friendlyDeleteError(err)}`));
+                }
+              } else {
+                setConfirmCascadeDelete(true);
               }
             }}>Delete</Button>
             <Button variant="secondary" onClick={closeDetailPanel}>Close</Button>
           </div>
         </div>
+        {confirmCascadeDelete && <CascadeDeleteModal
+          recordId={enq.id}
+          recordType="enquiry"
+          downstream={getEnquiryDownstream(enq.id, data)}
+          onConfirm={async () => { await deleteEnquiry(enq.id); setConfirmCascadeDelete(false); closeDetailPanel(); }}
+          onCancel={() => setConfirmCascadeDelete(false)}
+        />}
       </div>
     );
   };

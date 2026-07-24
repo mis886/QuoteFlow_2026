@@ -4,10 +4,11 @@ import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus, Quote } from '../lib/types';
-import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, resolveAdjustments, maxItemGstRate } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { supabase } from '../lib/supabase';
-import { CascadeDeleteModal, DownstreamRecord } from '../components/CascadeDeleteModal';
+import { CascadeDeleteModal } from '../components/CascadeDeleteModal';
+import { getQuoteDownstream, friendlyDeleteError } from '../lib/cascadeDelete';
 
 export function Quotes() {
   const store = useAppStore();
@@ -315,9 +316,9 @@ export function Quotes() {
                               {canDelete && (
                                 <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => {
                                   ev.stopPropagation();
-                                  const linkedOrders = data.orders.filter(o => o.quoteRef === q.id);
-                                  if (linkedOrders.length === 0) {
-                                    if (confirm(`Are you sure you want to delete ${q.id}? This action cannot be undone.`)) deleteQuote(q.id).catch(err => alert(`Delete failed: ${err?.message ?? err}`));
+                                  const downstream = getQuoteDownstream(q.id, data);
+                                  if (downstream.length === 0) {
+                                    if (confirm(`Are you sure you want to delete ${q.id}? This action cannot be undone.`)) deleteQuote(q.id).catch(err => alert(`Delete failed: ${friendlyDeleteError(err)}`));
                                   } else {
                                     setDeleteTarget(q);
                                   }
@@ -443,11 +444,7 @@ export function Quotes() {
       {deleteTarget && <CascadeDeleteModal
         recordId={deleteTarget.id}
         recordType="quote"
-        downstream={data.orders.filter(o => o.quoteRef === deleteTarget.id).map(o => {
-          const sub = o.items.reduce((s, i) => s + i.total, 0);
-          const gst = o.items.reduce((s, i) => s + i.total * i.gst / 100, 0);
-          return { id: o.id, type: 'order' as const, status: o.status, grandTotal: resolveAdjustments(o.adjustments, sub, gst, maxItemGstRate(o.items)).grand } as DownstreamRecord;
-        })}
+        downstream={getQuoteDownstream(deleteTarget.id, data)}
         onConfirm={() => deleteQuote(deleteTarget.id)}
         onCancel={() => setDeleteTarget(null)}
       />}

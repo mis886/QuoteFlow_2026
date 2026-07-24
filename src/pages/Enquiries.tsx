@@ -3,10 +3,11 @@ import { useAppStore } from '../store';
 import { Badge, Button, SourceIcon, DateFilterBanner } from '../components/ui';
 import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, resolveAdjustments, maxItemGstRate } from '../lib/utils';
+import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
 import { EnqStatus, Enquiry } from '../lib/types';
 import { supabase } from '../lib/supabase';
-import { CascadeDeleteModal, DownstreamRecord } from '../components/CascadeDeleteModal';
+import { CascadeDeleteModal } from '../components/CascadeDeleteModal';
+import { getEnquiryDownstream, friendlyDeleteError } from '../lib/cascadeDelete';
 
 export function Enquiries() {
   const store = useAppStore();
@@ -308,10 +309,9 @@ export function Enquiries() {
                               {canDelete && (
                                 <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => {
                                   ev.stopPropagation();
-                                  const linkedQuotes = data.quotes.filter(q => q.enqRef === e.id);
-                                  const linkedOrders = data.orders.filter(o => linkedQuotes.some(q => q.id === o.quoteRef) || o.enqRef === e.id);
-                                  if (linkedQuotes.length === 0 && linkedOrders.length === 0) {
-                                    if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id).catch(err => alert(`Delete failed: ${err?.message ?? err}`));
+                                  const downstream = getEnquiryDownstream(e.id, data);
+                                  if (downstream.length === 0) {
+                                    if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id).catch(err => alert(`Delete failed: ${friendlyDeleteError(err)}`));
                                   } else {
                                     setDeleteTarget(e);
                                   }
@@ -426,18 +426,7 @@ export function Enquiries() {
       {deleteTarget && <CascadeDeleteModal
         recordId={deleteTarget.id}
         recordType="enquiry"
-        downstream={(() => {
-          const linkedQuotes = data.quotes.filter(q => q.enqRef === deleteTarget.id);
-          const linkedOrders = data.orders.filter(o => linkedQuotes.some(q => q.id === o.quoteRef) || o.enqRef === deleteTarget.id);
-          return [
-            ...linkedQuotes.map(q => ({ id: q.id, type: 'quote' as const, status: q.status })),
-            ...linkedOrders.map(o => {
-              const sub = o.items.reduce((s, i) => s + i.total, 0);
-              const gst = o.items.reduce((s, i) => s + i.total * i.gst / 100, 0);
-              return { id: o.id, type: 'order' as const, status: o.status, grandTotal: resolveAdjustments(o.adjustments, sub, gst, maxItemGstRate(o.items)).grand };
-            }),
-          ] as DownstreamRecord[];
-        })()}
+        downstream={getEnquiryDownstream(deleteTarget.id, data)}
         onConfirm={() => deleteEnquiry(deleteTarget.id)}
         onCancel={() => setDeleteTarget(null)}
       />}
