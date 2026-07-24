@@ -280,14 +280,20 @@ export function computeDoerMetrics(
     const quote = quoteById.get(fu.quote_id);
     const realLogs = (fu.logs ?? []).filter(l => !isQuoteSentLog(l.note));
 
-    // Volume: each real log credits its author. The same log can credit both an
-    // SC_1 row and a Negotiation row if those roles map to the author's identity.
+    // Volume: each real log credits its SC_1 author (activity in period).
     for (const log of realLogs) {
       if (!inRange(log.ts, range)) continue;
       const sc1 = matchDoer(log.who, 'SC_1');
       if (sc1) sc1.volume++;
-      const neg = matchDoer(log.who, 'Negotiation');
-      if (neg && fu.stage === 'Negotiation') neg.volume++;
+    }
+
+    // Negotiation volume: open pipeline currently owned by the doer. This is a
+    // live snapshot (not period-bound), matching the "at negotiation stage" card
+    // label — followups.stage never actually stores the literal 'Negotiation';
+    // the real pre-close funnel stages are 'Sent Quotation' and 'Offer Acknowledged'.
+    if (fu.status !== 'closed' && (fu.stage === 'Sent Quotation' || fu.stage === 'Offer Acknowledged')) {
+      const neg = matchDoer(fu.owner, 'Negotiation');
+      if (neg) neg.volume++;
     }
 
     if (!quote) continue;
