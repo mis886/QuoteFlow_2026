@@ -90,12 +90,28 @@ const ROLE_CONFIG: Record<DoerRole, {
     primaryMetric: 'PIs sent', primaryDesc: 'in period',
     secondaryMetric: 'Avg dispatch time', secondaryDesc: 'order → PI sent',
   },
+  'Technical': {
+    label: 'Technical', color: 'border-l-cyan-500', accent: 'text-cyan-600', accentBg: 'bg-cyan-50',
+    primaryMetric: 'Activities', primaryDesc: 'in period',
+    secondaryMetric: 'On-time rate', secondaryDesc: 'within TAT',
+  },
+  'Admin': {
+    label: 'Admin', color: 'border-l-indigo-500', accent: 'text-indigo-600', accentBg: 'bg-indigo-50',
+    primaryMetric: 'Activities', primaryDesc: 'in period',
+    secondaryMetric: 'On-time rate', secondaryDesc: 'within TAT',
+  },
   'Other': {
     label: 'Other', color: 'border-l-g400', accent: 'text-g600', accentBg: 'bg-g100',
     primaryMetric: 'Activities', primaryDesc: 'in period',
     secondaryMetric: 'On-time rate', secondaryDesc: 'within TAT',
   },
 };
+// Defensive fallback: any DoerRole not covered above (e.g. a future addition
+// to the DoerRole union that this map isn't updated for) renders with
+// Other's neutral gray styling instead of crashing on undefined.color —
+// this is exactly how 'Technical' broke the page (added to DoerRole in
+// 57ba982 but never added here) before this fix.
+const roleConfig = (role: DoerRole) => ROLE_CONFIG[role] ?? ROLE_CONFIG['Other'];
 
 export function DoerKPI() {
   const { data, globalDateRange } = useAppStore();
@@ -212,7 +228,7 @@ export function DoerKPI() {
           {sortedRows.map(m => {
             const key = doerRowKey(m.email, m.role);
             const prev = previous.get(key);
-            const cfg = ROLE_CONFIG[m.role];
+            const cfg = roleConfig(m.role);
             const deferred = ROLE_WEIGHTS[m.role] == null;
             const delta = (m.composite != null && prev?.composite != null) ? m.composite - prev.composite : null;
 
@@ -457,7 +473,7 @@ export function DoerKPI() {
                 const deferred = ROLE_WEIGHTS[m.role] == null;
                 const prev = previous.get(key);
                 const delta = (m.composite != null && prev?.composite != null) ? m.composite - prev.composite : null;
-                const cfg = ROLE_CONFIG[m.role];
+                const cfg = roleConfig(m.role);
                 return (
                   <tr key={key}
                     className="border-b border-g50 hover:bg-g50 cursor-pointer transition-colors"

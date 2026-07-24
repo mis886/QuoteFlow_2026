@@ -12,6 +12,8 @@ const ROLE_HELP: Record<DoerRole, string> = {
   'SC_1': 'Runs follow-ups per the TAT pipeline after quote sent',
   'Negotiation': 'Handles cards in the Negotiation lane',
   'PI Sender': 'Accounts; issues the Proforma Invoice (scoring coming soon)',
+  'Technical': 'MIS / system administration',
+  'Admin': 'Full-access administrator',
   'Other': 'Any other contributor',
 };
 

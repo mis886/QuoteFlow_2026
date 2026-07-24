@@ -141,6 +141,8 @@ export const ROLE_WEIGHTS: Record<DoerRole, RoleWeight | null> = {
   'SC_1':        { onTime: 0.7, volume: 0.3 },
   'Negotiation': { win: 0.7, onTime: 0.3 },
   'PI Sender':   null,                           // scoring deferred
+  'Technical':   null,                           // MIS/system admin — not part of the sales-funnel scoring
+  'Admin':       null,                           // full-access admin — same
   'Other':       { onTime: 0.5, volume: 0.5 },
 };
 
