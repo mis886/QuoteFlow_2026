@@ -310,6 +310,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('doer' in q) obj.doer = q.doer;
     if ('sent_at' in q) obj.sent_at = q.sent_at || null;
     if ('insurance' in q) obj.insurance = q.insurance ?? 0;
+    if ('negotiations' in q) obj.negotiations = q.negotiations ?? [];
 
     return obj;
   };

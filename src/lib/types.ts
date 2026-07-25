@@ -153,6 +153,20 @@ export interface Quote {
   doer?: string;
   created_at?: string;        // when the quote was punched into the system
   sent_at?: string;           // when "Mark Sent" was clicked (sent to customer)
+  negotiations?: NegotiationRound[];
+}
+
+// One round of price/terms negotiation on a quote. Keys match the jsonb shape
+// stored in quotes.negotiations exactly — no camelCase translation layer.
+export interface NegotiationRound {
+  round: number;
+  date: string;
+  requested_by: 'customer' | 'internal';
+  revised_price?: number;
+  discount_pct?: number;
+  notes?: string;
+  doer: string;
+  created_at: string;
 }
 
 export interface Order {
@@ -274,7 +288,7 @@ export interface Customer {
 export interface FollowUpLog {
   ts: string;
   who: string;
-  channel: 'Called' | 'To Call' | 'WhatsApp' | 'Email' | 'Meeting' | 'Visit';
+  channel: 'Called' | 'To Call' | 'WhatsApp' | 'Email' | 'Meeting' | 'Visit' | 'Internal';
   note: string;
   nextDate?: string;
   nextTime?: string;

@@ -6,6 +6,7 @@ import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail
 import { useNavigate } from 'react-router-dom';
 import { getS3SignedUrl } from '../lib/s3';
 import { FollowUpSummary } from './FollowUpSummary';
+import { NegotiationRounds } from './NegotiationRounds';
 import { generateQuotePDF, generatePIPDF } from '../lib/pdfGenerator';
 import { CascadeDeleteModal } from './CascadeDeleteModal';
 import { getEnquiryDownstream, friendlyDeleteError } from '../lib/cascadeDelete';
@@ -491,6 +492,7 @@ export function DetailPanel() {
           </section>
 
           <FollowUpSummary quote={q} />
+          <NegotiationRounds quote={q} />
         </div>
         <div className="p-4 border-t border-g200 flex items-center justify-between bg-g100/30">
           <div className="flex items-center gap-2">

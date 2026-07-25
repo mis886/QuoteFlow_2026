@@ -13,6 +13,7 @@ import { CustomerSearch } from '../components/CustomerSearch';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { downloadQuoteDOCX } from '../lib/quoteDocx';
 import { SendEmailModal } from '../components/SendEmailModal';
+import { NegotiationRounds } from '../components/NegotiationRounds';
 import { Copy, Upload, X, AlertCircle } from 'lucide-react';
 import { syncContactToCustomer } from '../lib/contactSync';
 
@@ -782,6 +783,8 @@ export function NewQuote() {
     );
   }
 
+  const editingQuote = editId ? data.quotes.find(q => q.id === editId) : undefined;
+
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
 
@@ -1522,6 +1525,8 @@ export function NewQuote() {
                 </table>
               </div>
             </div>
+
+            {editingQuote && <NegotiationRounds quote={editingQuote} />}
           </div>
         )}
       </div>
