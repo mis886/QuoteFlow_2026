@@ -162,11 +162,21 @@ export interface NegotiationRound {
   round: number;
   date: string;
   requested_by: 'customer' | 'internal';
-  revised_price?: number;
-  discount_pct?: number;
   notes?: string;
   doer: string;
   created_at: string;
+  items: NegotiationRoundItem[];
+}
+
+// Snapshot of one quote line item as it stood when this round was added —
+// seq/desc/original_unit_price are copied at save time, not live-joined back
+// to quotes.items later (items can themselves be edited/reordered after).
+export interface NegotiationRoundItem {
+  seq: number;
+  desc: string;
+  original_unit_price: number;
+  revised_unit_price: number | null;
+  discount_pct: number | null;
 }
 
 export interface Order {

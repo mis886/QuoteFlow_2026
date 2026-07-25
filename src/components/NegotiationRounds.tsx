@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppStore } from '../store';
-import { Quote, NegotiationRound } from '../lib/types';
+import { Quote, NegotiationRound, NegotiationRoundItem } from '../lib/types';
 import { Plus, X, CheckCircle2 } from 'lucide-react';
 import { cn, fmtIST } from '../lib/utils';
 import { parseISO } from 'date-fns';
@@ -9,10 +9,40 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function roundSummary(r: { revised_price?: number; discount_pct?: number }): string {
-  if (r.discount_pct != null) return `${r.discount_pct}% discount requested`;
-  if (r.revised_price != null) return `Revised price ₹${r.revised_price.toLocaleString('en-IN')}`;
-  return 'Terms discussion';
+// A discount_pct with no explicit revised_unit_price is applied against
+// original_unit_price rather than requiring the user to hand-calculate it.
+function effectivePrice(it: NegotiationRoundItem): number | null {
+  if (it.revised_unit_price != null) return it.revised_unit_price;
+  if (it.discount_pct != null) return it.original_unit_price * (1 - it.discount_pct / 100);
+  return null;
+}
+
+function fmtPrice(n: number): string {
+  return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+function roundSummary(round: NegotiationRound): string {
+  const touched = round.items.filter(it => it.revised_unit_price != null || it.discount_pct != null);
+  const total = round.items.length;
+  if (touched.length === 0) return 'Terms discussion';
+  if (touched.length === 1) {
+    const it = touched[0];
+    const price = effectivePrice(it);
+    const detail = [
+      price != null ? `${fmtPrice(it.original_unit_price)} → ${fmtPrice(price)}` : null,
+      it.discount_pct != null ? `-${it.discount_pct}%` : null,
+    ].filter(Boolean).join(', ');
+    return `revised pricing on 1 of ${total} item${total === 1 ? '' : 's'} (${it.desc}: ${detail})`;
+  }
+  return `revised pricing on ${touched.length} of ${total} items`;
+}
+
+interface ItemRow {
+  seq: number;
+  desc: string;
+  original_unit_price: number;
+  revisedUnitPrice: string;
+  discountPct: string;
 }
 
 export function NegotiationRounds({ quote }: { quote: Quote }) {
@@ -23,19 +53,32 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
   const [showForm, setShowForm] = useState(false);
   const [date, setDate] = useState(todayISO());
   const [requestedBy, setRequestedBy] = useState<'customer' | 'internal'>('customer');
-  const [revisedPrice, setRevisedPrice] = useState('');
-  const [discountPct, setDiscountPct] = useState('');
   const [notes, setNotes] = useState('');
+  const [itemRows, setItemRows] = useState<ItemRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  const openForm = () => {
+    setItemRows(quote.items.map(it => ({
+      seq: it.seq,
+      desc: it.desc,
+      original_unit_price: it.unitPrice,
+      revisedUnitPrice: '',
+      discountPct: '',
+    })));
+    setShowForm(true);
+  };
 
   const resetForm = () => {
     setDate(todayISO());
     setRequestedBy('customer');
-    setRevisedPrice('');
-    setDiscountPct('');
     setNotes('');
+    setItemRows([]);
     setErrorMsg('');
+  };
+
+  const updateRow = (seq: number, field: 'revisedUnitPrice' | 'discountPct', value: string) => {
+    setItemRows(rows => rows.map(r => r.seq === seq ? { ...r, [field]: value } : r));
   };
 
   const handleSave = async () => {
@@ -43,15 +86,21 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
     setErrorMsg('');
     try {
       const round = rounds.length + 1;
+      const items: NegotiationRoundItem[] = itemRows.map(r => ({
+        seq: r.seq,
+        desc: r.desc,
+        original_unit_price: r.original_unit_price,
+        revised_unit_price: r.revisedUnitPrice ? Number(r.revisedUnitPrice) : null,
+        discount_pct: r.discountPct ? Number(r.discountPct) : null,
+      }));
       const newRound: NegotiationRound = {
         round,
         date,
         requested_by: requestedBy,
-        revised_price: revisedPrice ? Number(revisedPrice) : undefined,
-        discount_pct: discountPct ? Number(discountPct) : undefined,
         notes: notes.trim() || undefined,
         doer: stampName(),
         created_at: new Date().toISOString(),
+        items,
       };
       await updateQuote(quote.id, { negotiations: [...rounds, newRound] });
 
@@ -99,7 +148,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
         ) : (
           <button
             type="button"
-            onClick={() => setShowForm(true)}
+            onClick={openForm}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-[4px] border border-red-mrt bg-red-mrt text-white hover:bg-red-h transition-colors shadow-sm"
           >
             <Plus size={12} /> Add Negotiation Round
@@ -136,19 +185,34 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
                   <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-0.5 uppercase">Requested By</div>
                   <div className="text-blk font-medium capitalize">{current.requested_by}</div>
                 </div>
-                {current.revised_price != null && (
-                  <div>
-                    <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-0.5 uppercase">Revised Price</div>
-                    <div className="text-blk font-medium">₹{current.revised_price.toLocaleString('en-IN')}</div>
-                  </div>
-                )}
-                {current.discount_pct != null && (
-                  <div>
-                    <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-0.5 uppercase">Discount</div>
-                    <div className="text-blk font-medium">{current.discount_pct}%</div>
-                  </div>
-                )}
               </div>
+
+              <div className="bg-white">
+                <table className="w-full text-[11.5px]">
+                  <thead>
+                    <tr className="text-g400 font-mono text-[9px] uppercase tracking-wider">
+                      <th className="text-left px-3 py-2 font-bold">Product</th>
+                      <th className="text-right px-3 py-2 font-bold">Original Price</th>
+                      <th className="text-right px-3 py-2 font-bold">Revised Price</th>
+                      <th className="text-right px-3 py-2 font-bold">Discount %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {current.items.map(it => {
+                      const price = effectivePrice(it);
+                      return (
+                        <tr key={it.seq} className="border-t border-g100">
+                          <td className="px-3 py-1.5 text-blk">{it.desc}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-g600">{fmtPrice(it.original_unit_price)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-blk font-medium">{price != null ? fmtPrice(price) : '—'}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-g600">{it.discount_pct != null ? `${it.discount_pct}%` : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
               {current.notes && (
                 <div className="p-3 bg-white">
                   <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-1 uppercase">Notes</div>
@@ -167,7 +231,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
 
       {showForm && (
         <div className="px-3 py-3 bg-red-lt/30 border border-red-mrt/20 rounded-[4px] space-y-2.5">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-[9px] font-bold tracking-[1px] uppercase text-g500 mb-1">Date</label>
               <input
@@ -190,29 +254,48 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
                 <option value="internal">Internal</option>
               </select>
             </div>
-            <div>
-              <label className="block text-[9px] font-bold tracking-[1px] uppercase text-g500 mb-1">Discount % (optional)</label>
-              <input
-                type="number"
-                title="Discount percentage requested"
-                placeholder="e.g. 5"
-                value={discountPct}
-                onChange={e => setDiscountPct(e.target.value)}
-                className="w-full bg-white border border-g300 rounded-[3px] px-2 py-[5px] text-[11.5px] outline-none focus:border-red-mrt"
-              />
-            </div>
           </div>
 
-          <div>
-            <label className="block text-[9px] font-bold tracking-[1px] uppercase text-g500 mb-1">Revised Price (optional)</label>
-            <input
-              type="number"
-              title="Revised price for this round"
-              placeholder="e.g. 1234.50"
-              value={revisedPrice}
-              onChange={e => setRevisedPrice(e.target.value)}
-              className="w-full bg-white border border-g300 rounded-[3px] px-2 py-[5px] text-[11.5px] outline-none focus:border-red-mrt"
-            />
+          <div className="border border-g200 rounded-[3px] overflow-hidden">
+            <table className="w-full text-[11.5px]">
+              <thead>
+                <tr className="bg-g50 text-g400 font-mono text-[9px] uppercase tracking-wider">
+                  <th className="text-left px-2 py-1.5 font-bold">Product</th>
+                  <th className="text-right px-2 py-1.5 font-bold w-[110px]">Revised Price</th>
+                  <th className="text-right px-2 py-1.5 font-bold w-[90px]">Discount %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemRows.map(row => (
+                  <tr key={row.seq} className="border-t border-g100">
+                    <td className="px-2 py-1.5 text-blk bg-white">
+                      {row.desc}
+                      <span className="block text-[9px] text-g400">was {fmtPrice(row.original_unit_price)}</span>
+                    </td>
+                    <td className="px-2 py-1 bg-white">
+                      <input
+                        type="number"
+                        title={`Revised unit price for ${row.desc}`}
+                        placeholder="—"
+                        value={row.revisedUnitPrice}
+                        onChange={e => updateRow(row.seq, 'revisedUnitPrice', e.target.value)}
+                        className="w-full text-right bg-white border border-g300 rounded-[3px] px-2 py-[4px] text-[11.5px] outline-none focus:border-red-mrt"
+                      />
+                    </td>
+                    <td className="px-2 py-1 bg-white">
+                      <input
+                        type="number"
+                        title={`Discount percentage for ${row.desc}`}
+                        placeholder="—"
+                        value={row.discountPct}
+                        onChange={e => updateRow(row.seq, 'discountPct', e.target.value)}
+                        className="w-full text-right bg-white border border-g300 rounded-[3px] px-2 py-[4px] text-[11.5px] outline-none focus:border-red-mrt"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           <textarea
