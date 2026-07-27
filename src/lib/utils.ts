@@ -143,6 +143,36 @@ export const formatUSD = (value: number) => {
   }).format(value);
 };
 
+// ── Quote line-item totals — shared by the quote form/edit item table and
+// the negotiation-round picker/display, so both compute Amount / Subtotal /
+// GST Total / Grand Total identically. ───────────────────────────────────
+
+// Amount for one line item: qty * packing-size * price-basis-conversion * unit price.
+// Mirrors NewQuote.tsx's updateItem() total calc exactly.
+export function computeItemTotal(qty: number, packing: string | undefined, unitPrice: number, priceBasisConv: number = 1): number {
+  const packingNum = parseFloat(packing || '') || 0;
+  const totalQty = Number(qty) * (packingNum || 1);
+  return totalQty * (Number(priceBasisConv) || 1) * Number(unitPrice);
+}
+
+export interface QuoteTotals {
+  subTotal: number;
+  gstTotal: number;
+  grandTotal: number;
+}
+
+// Subtotal / GST total / grand total for a set of items — mirrors NewQuote.tsx's
+// totals calc exactly (GST base = subtotal + insurance; non-INR skips GST/insurance).
+export function computeQuoteTotals(items: { total: number; gst: number }[], curr: string, insurance: number): QuoteTotals {
+  const subTotal = items.reduce((s, i) => s + i.total, 0);
+  const ins = curr === 'INR' ? insurance : 0;
+  const gstTotal = curr === 'INR' && subTotal > 0
+    ? items.reduce((s, i) => s + i.total * i.gst / 100, 0) * (subTotal + ins) / subTotal
+    : 0;
+  const grandTotal = curr === 'INR' ? Math.round(subTotal + ins + gstTotal) : subTotal;
+  return { subTotal, gstTotal, grandTotal };
+}
+
 // Format a Date in Asia/Kolkata (IST, UTC+5:30) using date-fns-style tokens.
 // Supported tokens: yyyy, yy, MMM, MM, dd, d, EEE, HH, hh, mm, a, aa
 const IST_TZ = 'Asia/Kolkata';

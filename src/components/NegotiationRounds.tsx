@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAppStore } from '../store';
 import { Quote, NegotiationRound, NegotiationRoundItem } from '../lib/types';
 import { Plus, X, CheckCircle2 } from 'lucide-react';
-import { cn, fmtIST } from '../lib/utils';
+import { cn, fmtIST, formatINR, formatUSD, computeItemTotal, computeQuoteTotals } from '../lib/utils';
 import { parseISO } from 'date-fns';
 
 function todayISO(): string {
@@ -53,11 +53,21 @@ interface ItemRow {
   packing?: string;
   packingType?: string;
   priceBasis?: string;
+  priceBasisConv?: number;
   gst: number;
   original_unit_price: number;
   checked: boolean;
   revisedUnitPrice: string;
   discountPct: string;
+}
+
+// Effective price for a row mid-edit: revised rate wins, else discount % off
+// original, else the item's own unrevised price (mirrors effectivePrice()
+// for saved NegotiationRoundItems, but sourced from live form state).
+function rowEffectivePrice(row: ItemRow): number {
+  if (row.checked && row.revisedUnitPrice) return Number(row.revisedUnitPrice);
+  if (row.checked && row.discountPct) return row.original_unit_price * (1 - Number(row.discountPct) / 100);
+  return row.original_unit_price;
 }
 
 const th = 'font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-left border border-g300';
@@ -66,6 +76,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
   const { data, updateQuote, addFollowUpLog, stampName } = useAppStore();
   const rounds = quote.negotiations ?? [];
   const sym = quote.curr === 'USD' ? '$' : '₹';
+  const fmtAmt = (v: number) => quote.curr === 'USD' ? formatUSD(v) : formatINR(v);
 
   const [activeRound, setActiveRound] = useState(rounds.length > 0 ? rounds.length - 1 : 0);
   const [showForm, setShowForm] = useState(false);
@@ -85,6 +96,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
       packing: it.packing,
       packingType: it.packingType,
       priceBasis: it.priceBasis,
+      priceBasisConv: it.priceBasisConv,
       gst: it.gst,
       original_unit_price: it.unitPrice,
       checked: false,
@@ -113,6 +125,20 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
   const checkedRows = itemRows.filter(r => r.checked);
   const invalidCheckedRow = checkedRows.find(r => !r.revisedUnitPrice && !r.discountPct);
   const canSave = checkedRows.length > 0 && !invalidCheckedRow;
+
+  // Live preview: every quote item at its negotiated price if checked (revised
+  // rate or discount % applied), else its normal unitPrice — run through the
+  // same totals calc the real Line Items table uses, so this is what the
+  // quote's Grand Total would become if these negotiated prices were applied.
+  // Preview only — does not touch the quote's own items/totals.
+  const previewTotals = computeQuoteTotals(
+    itemRows.map(row => ({
+      total: computeItemTotal(row.qty, row.packing, rowEffectivePrice(row), row.priceBasisConv),
+      gst: row.gst,
+    })),
+    quote.curr,
+    quote.insurance ?? 0,
+  );
 
   const handleSave = async () => {
     if (checkedRows.length === 0) { setErrorMsg('Select at least one item for this round.'); return; }
@@ -172,6 +198,17 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
   };
 
   const current = rounds[activeRound];
+  // Totals for just this round's items (not the whole quote — round.items is
+  // only the subset that was selected, so this is a "this round" subtotal,
+  // not a reconstructed whole-quote grand total for that point in time).
+  const currentTotals = current ? computeQuoteTotals(
+    current.items.map(it => ({
+      total: computeItemTotal(it.qty, it.packing, effectivePrice(it) ?? it.original_unit_price, 1),
+      gst: it.gst,
+    })),
+    quote.curr,
+    quote.insurance ?? 0,
+  ) : null;
 
   return (
     <section>
@@ -270,6 +307,20 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
                   </tbody>
                 </table>
               </div>
+
+              {currentTotals && (
+                <div className="p-3 bg-g50">
+                  <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-1.5 uppercase">Negotiated Total (this round's items)</div>
+                  <div className="w-[220px] ml-auto text-[11.5px] space-y-1">
+                    <div className="flex justify-between text-g500"><span>Subtotal</span><span className="font-mono">{fmtAmt(currentTotals.subTotal)}</span></div>
+                    {quote.curr === 'INR' && (quote.insurance ?? 0) > 0 && (
+                      <div className="flex justify-between text-g500"><span>Insurance</span><span className="font-mono">{fmtAmt(quote.insurance ?? 0)}</span></div>
+                    )}
+                    {quote.curr === 'INR' && <div className="flex justify-between text-g500"><span>GST Total</span><span className="font-mono">{fmtAmt(currentTotals.gstTotal)}</span></div>}
+                    <div className="flex justify-between font-bold text-blk border-t border-g200 pt-1"><span>Grand Total</span><span className="font-mono text-red-mrt">{fmtAmt(currentTotals.grandTotal)}</span></div>
+                  </div>
+                </div>
+              )}
 
               {current.notes && (
                 <div className="p-3 bg-white">
@@ -380,6 +431,18 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="bg-white border border-g200 rounded-[3px] p-3">
+            <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-1.5 uppercase">Negotiated Total (preview — whole quote, not saved)</div>
+            <div className="w-[220px] ml-auto text-[11.5px] space-y-1">
+              <div className="flex justify-between text-g500"><span>Subtotal</span><span className="font-mono">{fmtAmt(previewTotals.subTotal)}</span></div>
+              {quote.curr === 'INR' && (quote.insurance ?? 0) > 0 && (
+                <div className="flex justify-between text-g500"><span>Insurance</span><span className="font-mono">{fmtAmt(quote.insurance ?? 0)}</span></div>
+              )}
+              {quote.curr === 'INR' && <div className="flex justify-between text-g500"><span>GST Total</span><span className="font-mono">{fmtAmt(previewTotals.gstTotal)}</span></div>}
+              <div className="flex justify-between font-bold text-blk border-t border-g200 pt-1"><span>Grand Total</span><span className="font-mono text-red-mrt">{fmtAmt(previewTotals.grandTotal)}</span></div>
+            </div>
           </div>
 
           <textarea

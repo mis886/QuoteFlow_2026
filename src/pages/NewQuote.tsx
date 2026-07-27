@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
+import { generateId, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
@@ -411,17 +411,12 @@ export function NewQuote() {
   const updateItem = (idx: number, field: keyof QuoteItem, value: any) => {
     const ni = [...items]; (ni[idx] as any)[field] = value;
     if (field === 'qty' || field === 'unitPrice' || field === 'priceBasisConv' || field === 'packing') {
-      const packingNum = parseFloat(ni[idx].packing || '') || 0;
-      const totalQty = Number(ni[idx].qty) * (packingNum || 1);
-      const conv = Number(ni[idx].priceBasisConv) || 1;
-      ni[idx].total = totalQty * conv * Number(ni[idx].unitPrice);
+      ni[idx].total = computeItemTotal(ni[idx].qty, ni[idx].packing, ni[idx].unitPrice, ni[idx].priceBasisConv);
     }
     // Clear conv when priceBasis is cleared
     if (field === 'priceBasis' && !value) {
       ni[idx].priceBasisConv = undefined;
-      const packingNum = parseFloat(ni[idx].packing || '') || 0;
-      const totalQty = Number(ni[idx].qty) * (packingNum || 1);
-      ni[idx].total = totalQty * Number(ni[idx].unitPrice);
+      ni[idx].total = computeItemTotal(ni[idx].qty, ni[idx].packing, ni[idx].unitPrice);
     }
     setItems(ni);
   };
@@ -550,13 +545,8 @@ export function NewQuote() {
     return results;
   };
 
-  const subTotal = items.reduce((s, i) => s + i.total, 0);
   const ins = curr === 'INR' ? insurance : 0;
-  // GST base = subtotal + insurance (insurance contributes to taxable amount)
-  const gstTotal = curr === 'INR' && subTotal > 0
-    ? items.reduce((s, i) => s + i.total * i.gst / 100, 0) * (subTotal + ins) / subTotal
-    : 0;
-  const grandTotal = curr === 'INR' ? Math.round(subTotal + ins + gstTotal) : subTotal;
+  const { subTotal, gstTotal, grandTotal } = computeQuoteTotals(items, curr, insurance);
   const sym = curr === 'USD' ? '$' : '₹';
   const fmtAmt = (v: number) => curr === 'USD'
     ? '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
