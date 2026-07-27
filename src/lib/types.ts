@@ -169,11 +169,19 @@ export interface NegotiationRound {
 }
 
 // Snapshot of one quote line item as it stood when this round was added —
-// seq/desc/original_unit_price are copied at save time, not live-joined back
-// to quotes.items later (items can themselves be edited/reordered after).
+// copied at save time, not live-joined back to quotes.items later (items
+// can themselves be edited/reordered after). Mirrors the fields shown in
+// the quote's own Line Items table so the historical record is self-
+// contained (same HSN/packing/GST/etc. detail the doer saw when negotiating).
 export interface NegotiationRoundItem {
   seq: number;
   desc: string;
+  hsn: string;
+  qty: number;
+  packing?: string;
+  packingType?: string;
+  priceBasis?: string;
+  gst: number;
   original_unit_price: number;
   revised_unit_price: number | null;
   discount_pct: number | null;

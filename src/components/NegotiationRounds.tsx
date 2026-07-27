@@ -9,16 +9,24 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function fmtPrice(n: number): string {
+  return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+// Same derivation as the quote's own Line Items table: qty * packing size,
+// only shown when both are meaningful numbers.
+function totalQty(qty: number, packing?: string): string {
+  const p = parseFloat(packing || '');
+  const t = qty * p;
+  return (p > 0 && qty > 0) ? String(Number.isInteger(t) ? t : t) : '—';
+}
+
 // A discount_pct with no explicit revised_unit_price is applied against
 // original_unit_price rather than requiring the user to hand-calculate it.
 function effectivePrice(it: NegotiationRoundItem): number | null {
   if (it.revised_unit_price != null) return it.revised_unit_price;
   if (it.discount_pct != null) return it.original_unit_price * (1 - it.discount_pct / 100);
   return null;
-}
-
-function fmtPrice(n: number): string {
-  return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 }
 
 // items are only ever the ones the user selected for this round — total is
@@ -40,15 +48,24 @@ function roundSummary(items: NegotiationRoundItem[], total: number): string {
 interface ItemRow {
   seq: number;
   desc: string;
+  hsn: string;
+  qty: number;
+  packing?: string;
+  packingType?: string;
+  priceBasis?: string;
+  gst: number;
   original_unit_price: number;
   checked: boolean;
   revisedUnitPrice: string;
   discountPct: string;
 }
 
+const th = 'font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-left border border-g300';
+
 export function NegotiationRounds({ quote }: { quote: Quote }) {
   const { data, updateQuote, addFollowUpLog, stampName } = useAppStore();
   const rounds = quote.negotiations ?? [];
+  const sym = quote.curr === 'USD' ? '$' : '₹';
 
   const [activeRound, setActiveRound] = useState(rounds.length > 0 ? rounds.length - 1 : 0);
   const [showForm, setShowForm] = useState(false);
@@ -63,6 +80,12 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
     setItemRows(quote.items.map(it => ({
       seq: it.seq,
       desc: it.desc,
+      hsn: it.hsn,
+      qty: it.qty,
+      packing: it.packing,
+      packingType: it.packingType,
+      priceBasis: it.priceBasis,
+      gst: it.gst,
       original_unit_price: it.unitPrice,
       checked: false,
       revisedUnitPrice: '',
@@ -102,6 +125,12 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
       const items: NegotiationRoundItem[] = checkedRows.map(r => ({
         seq: r.seq,
         desc: r.desc,
+        hsn: r.hsn,
+        qty: r.qty,
+        packing: r.packing,
+        packingType: r.packingType,
+        priceBasis: r.priceBasis,
+        gst: r.gst,
         original_unit_price: r.original_unit_price,
         revised_unit_price: r.revisedUnitPrice ? Number(r.revisedUnitPrice) : null,
         discount_pct: r.discountPct ? Number(r.discountPct) : null,
@@ -200,25 +229,41 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
                 </div>
               </div>
 
-              <div className="bg-white">
-                <table className="w-full text-[11.5px]">
-                  <thead>
-                    <tr className="text-g400 font-mono text-[9px] uppercase tracking-wider">
-                      <th className="text-left px-3 py-2 font-bold">Product</th>
-                      <th className="text-right px-3 py-2 font-bold">Original Price</th>
-                      <th className="text-right px-3 py-2 font-bold">Revised Price</th>
-                      <th className="text-right px-3 py-2 font-bold">Discount %</th>
+              <div className="bg-white overflow-x-auto">
+                <table className="w-full border-collapse text-[11px]">
+                  <thead className="bg-g100">
+                    <tr>
+                      <th className={cn(th, 'w-8')}>#</th>
+                      <th className={cn(th, 'text-red-mrt')}>Product Name</th>
+                      <th className={cn(th, 'w-20')}>HSN Code</th>
+                      <th className={cn(th, 'text-center w-20')}>No of Barrels</th>
+                      <th className={cn(th, 'text-center w-16')}>Packing</th>
+                      <th className={cn(th, 'text-center w-16')}>Total Qty</th>
+                      <th className={cn(th, 'text-center w-24')}>Packing Type</th>
+                      <th className={cn(th, 'text-center w-20')}>Price Basis</th>
+                      <th className={cn(th, 'text-right w-20')}>Unit Rate ({sym})</th>
+                      <th className={cn(th, 'text-center w-14')}>GST %</th>
+                      <th className={cn(th, 'text-right w-20')}>Revised Rate ({sym})</th>
+                      <th className={cn(th, 'text-center w-16')}>Discount %</th>
                     </tr>
                   </thead>
                   <tbody>
                     {current.items.map(it => {
                       const price = effectivePrice(it);
                       return (
-                        <tr key={it.seq} className="border-t border-g100">
-                          <td className="px-3 py-1.5 text-blk">{it.desc}</td>
-                          <td className="px-3 py-1.5 text-right font-mono text-g600">{fmtPrice(it.original_unit_price)}</td>
-                          <td className="px-3 py-1.5 text-right font-mono text-blk font-medium">{price != null ? fmtPrice(price) : '—'}</td>
-                          <td className="px-3 py-1.5 text-right font-mono text-g600">{it.discount_pct != null ? `${it.discount_pct}%` : '—'}</td>
+                        <tr key={it.seq}>
+                          <td className="px-2 py-1.5 border border-g200 font-mono font-bold text-g400">{it.seq}</td>
+                          <td className="px-2 py-1.5 border border-g200 text-blk">{it.desc}</td>
+                          <td className="px-2 py-1.5 border border-g200 font-mono text-g500">{it.hsn || '—'}</td>
+                          <td className="px-2 py-1.5 border border-g200 text-center">{it.qty}</td>
+                          <td className="px-2 py-1.5 border border-g200 text-center">{it.packing || '—'}</td>
+                          <td className="px-2 py-1.5 border border-g200 text-center bg-g50 text-g500">{totalQty(it.qty, it.packing)}</td>
+                          <td className="px-2 py-1.5 border border-g200 text-center">{it.packingType || '—'}</td>
+                          <td className="px-2 py-1.5 border border-g200 text-center">{it.priceBasis || '—'}</td>
+                          <td className="px-2 py-1.5 border border-g200 text-right font-mono text-g600">{fmtPrice(it.original_unit_price)}</td>
+                          <td className="px-2 py-1.5 border border-g200 text-center font-mono">{it.gst}%</td>
+                          <td className="px-2 py-1.5 border border-g200 text-right font-mono text-blk font-bold">{price != null ? fmtPrice(price) : '—'}</td>
+                          <td className="px-2 py-1.5 border border-g200 text-center font-mono text-g600">{it.discount_pct != null ? `${it.discount_pct}%` : '—'}</td>
                         </tr>
                       );
                     })}
@@ -269,59 +314,67 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
             </div>
           </div>
 
-          <div className="border border-g200 rounded-[3px] overflow-hidden">
-            <table className="w-full text-[11.5px]">
-              <thead>
-                <tr className="bg-g50 text-g400 font-mono text-[9px] uppercase tracking-wider">
-                  <th className="text-left px-2 py-1.5 font-bold w-6"></th>
-                  <th className="text-left px-2 py-1.5 font-bold">Product</th>
-                  <th className="text-right px-2 py-1.5 font-bold w-[110px]">Revised Price</th>
-                  <th className="text-right px-2 py-1.5 font-bold w-[90px]">Discount %</th>
+          <div className="overflow-x-auto border border-g300 rounded-[3px]">
+            <table className="w-full border-collapse text-[11px]">
+              <thead className="bg-g100">
+                <tr>
+                  <th className={cn(th, 'w-6')}></th>
+                  <th className={cn(th, 'w-8')}>#</th>
+                  <th className={cn(th, 'text-red-mrt')}>Product Name</th>
+                  <th className={cn(th, 'w-20')}>HSN Code</th>
+                  <th className={cn(th, 'text-center w-20')}>No of Barrels</th>
+                  <th className={cn(th, 'text-center w-16')}>Packing</th>
+                  <th className={cn(th, 'text-center w-16')}>Total Qty</th>
+                  <th className={cn(th, 'text-center w-24')}>Packing Type</th>
+                  <th className={cn(th, 'text-center w-20')}>Price Basis</th>
+                  <th className={cn(th, 'text-right w-20')}>Unit Rate ({sym})</th>
+                  <th className={cn(th, 'text-center w-14')}>GST %</th>
+                  <th className={cn(th, 'text-right w-24')}>Revised Rate ({sym})</th>
+                  <th className={cn(th, 'text-center w-20')}>Discount %</th>
                 </tr>
               </thead>
               <tbody>
                 {itemRows.map(row => (
-                  <tr key={row.seq} className={cn('border-t border-g100', !row.checked && 'opacity-50')}>
-                    <td className="px-2 py-1.5 bg-white align-top">
+                  <tr key={row.seq} className={cn(!row.checked && 'opacity-50')}>
+                    <td className="px-2 py-1.5 border border-g200 align-middle bg-white">
                       <input
                         type="checkbox"
-                        title={`Include in this round`}
+                        title="Include in this round"
                         checked={row.checked}
                         onChange={() => toggleRow(row.seq)}
-                        className="mt-0.5"
                       />
                     </td>
-                    <td className="px-2 py-1.5 text-blk bg-white">
-                      {row.desc}
-                      <span className="block text-[9px] text-g400">was {fmtPrice(row.original_unit_price)}</span>
+                    <td className="px-2 py-1.5 border border-g200 font-mono font-bold text-g400 bg-white">{row.seq}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-blk bg-white">{row.desc}</td>
+                    <td className="px-2 py-1.5 border border-g200 font-mono text-g500 bg-white">{row.hsn || '—'}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.qty}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.packing || '—'}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center bg-g50 text-g500">{totalQty(row.qty, row.packing)}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.packingType || '—'}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.priceBasis || '—'}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-right font-mono text-g600 bg-white">{fmtPrice(row.original_unit_price)}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center font-mono bg-white">{row.gst}%</td>
+                    <td className="px-1 py-1 border border-g200 bg-white">
+                      <input
+                        type="number"
+                        title={`Revised unit price for ${row.desc}`}
+                        placeholder="—"
+                        value={row.revisedUnitPrice}
+                        disabled={!row.checked}
+                        onChange={e => updateRow(row.seq, 'revisedUnitPrice', e.target.value)}
+                        className="w-full text-right bg-white border border-g300 rounded-[3px] px-1.5 py-[4px] text-[11px] outline-none focus:border-red-mrt disabled:bg-g100 disabled:cursor-not-allowed"
+                      />
                     </td>
-                    <td className="px-2 py-1 bg-white">
-                      {row.checked ? (
-                        <input
-                          type="number"
-                          title={`Revised unit price for ${row.desc}`}
-                          placeholder="—"
-                          value={row.revisedUnitPrice}
-                          onChange={e => updateRow(row.seq, 'revisedUnitPrice', e.target.value)}
-                          className="w-full text-right bg-white border border-g300 rounded-[3px] px-2 py-[4px] text-[11.5px] outline-none focus:border-red-mrt"
-                        />
-                      ) : (
-                        <div className="w-full text-right text-g300 text-[11.5px]">—</div>
-                      )}
-                    </td>
-                    <td className="px-2 py-1 bg-white">
-                      {row.checked ? (
-                        <input
-                          type="number"
-                          title={`Discount percentage for ${row.desc}`}
-                          placeholder="—"
-                          value={row.discountPct}
-                          onChange={e => updateRow(row.seq, 'discountPct', e.target.value)}
-                          className="w-full text-right bg-white border border-g300 rounded-[3px] px-2 py-[4px] text-[11.5px] outline-none focus:border-red-mrt"
-                        />
-                      ) : (
-                        <div className="w-full text-right text-g300 text-[11.5px]">—</div>
-                      )}
+                    <td className="px-1 py-1 border border-g200 bg-white">
+                      <input
+                        type="number"
+                        title={`Discount percentage for ${row.desc}`}
+                        placeholder="—"
+                        value={row.discountPct}
+                        disabled={!row.checked}
+                        onChange={e => updateRow(row.seq, 'discountPct', e.target.value)}
+                        className="w-full text-right bg-white border border-g300 rounded-[3px] px-1.5 py-[4px] text-[11px] outline-none focus:border-red-mrt disabled:bg-g100 disabled:cursor-not-allowed"
+                      />
                     </td>
                   </tr>
                 ))}
