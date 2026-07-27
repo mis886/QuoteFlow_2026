@@ -3,6 +3,7 @@ import { useAppStore } from '../store';
 import { Quote, NegotiationRound, NegotiationRoundItem } from '../lib/types';
 import { Plus, X, CheckCircle2 } from 'lucide-react';
 import { cn, fmtIST, formatINR, formatUSD, computeItemTotal, computeQuoteTotals } from '../lib/utils';
+import { QuoteTotalsFooter } from './QuoteTotalsFooter';
 import { parseISO } from 'date-fns';
 
 function todayISO(): string {
@@ -84,10 +85,15 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
   const [requestedBy, setRequestedBy] = useState<'customer' | 'internal'>('customer');
   const [notes, setNotes] = useState('');
   const [itemRows, setItemRows] = useState<ItemRow[]>([]);
+  // Preview-only insurance override for the negotiated-total footer below —
+  // starts at the quote's actual current insurance, but toggling/editing it
+  // here never writes back to the quote (this whole table is a live preview).
+  const [previewInsurance, setPreviewInsurance] = useState(0);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const openForm = () => {
+    setPreviewInsurance(quote.insurance ?? 0);
     setItemRows(quote.items.map(it => ({
       seq: it.seq,
       desc: it.desc,
@@ -137,7 +143,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
       gst: row.gst,
     })),
     quote.curr,
-    quote.insurance ?? 0,
+    previewInsurance,
   );
 
   const handleSave = async () => {
@@ -309,16 +315,19 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
               </div>
 
               {currentTotals && (
-                <div className="p-3 bg-g50">
-                  <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-1.5 uppercase">Negotiated Total (this round's items)</div>
-                  <div className="w-[220px] ml-auto text-[11.5px] space-y-1">
-                    <div className="flex justify-between text-g500"><span>Subtotal</span><span className="font-mono">{fmtAmt(currentTotals.subTotal)}</span></div>
-                    {quote.curr === 'INR' && (quote.insurance ?? 0) > 0 && (
-                      <div className="flex justify-between text-g500"><span>Insurance</span><span className="font-mono">{fmtAmt(quote.insurance ?? 0)}</span></div>
-                    )}
-                    {quote.curr === 'INR' && <div className="flex justify-between text-g500"><span>GST Total</span><span className="font-mono">{fmtAmt(currentTotals.gstTotal)}</span></div>}
-                    <div className="flex justify-between font-bold text-blk border-t border-g200 pt-1"><span>Grand Total</span><span className="font-mono text-red-mrt">{fmtAmt(currentTotals.grandTotal)}</span></div>
-                  </div>
+                <div className="p-3 bg-white">
+                  <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">Negotiated Total (this round's items)</div>
+                  <table className="w-full border-collapse text-[11px]">
+                    <QuoteTotalsFooter
+                      colSpan={1}
+                      curr={quote.curr}
+                      subTotal={currentTotals.subTotal}
+                      gstTotal={currentTotals.gstTotal}
+                      grandTotal={currentTotals.grandTotal}
+                      fmtAmt={fmtAmt}
+                      insurance={quote.insurance ?? 0}
+                    />
+                  </table>
                 </div>
               )}
 
@@ -434,15 +443,20 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
           </div>
 
           <div className="bg-white border border-g200 rounded-[3px] p-3">
-            <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-1.5 uppercase">Negotiated Total (preview — whole quote, not saved)</div>
-            <div className="w-[220px] ml-auto text-[11.5px] space-y-1">
-              <div className="flex justify-between text-g500"><span>Subtotal</span><span className="font-mono">{fmtAmt(previewTotals.subTotal)}</span></div>
-              {quote.curr === 'INR' && (quote.insurance ?? 0) > 0 && (
-                <div className="flex justify-between text-g500"><span>Insurance</span><span className="font-mono">{fmtAmt(quote.insurance ?? 0)}</span></div>
-              )}
-              {quote.curr === 'INR' && <div className="flex justify-between text-g500"><span>GST Total</span><span className="font-mono">{fmtAmt(previewTotals.gstTotal)}</span></div>}
-              <div className="flex justify-between font-bold text-blk border-t border-g200 pt-1"><span>Grand Total</span><span className="font-mono text-red-mrt">{fmtAmt(previewTotals.grandTotal)}</span></div>
-            </div>
+            <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">Negotiated Total (preview — not saved)</div>
+            <table className="w-full border-collapse text-[11px]">
+              <QuoteTotalsFooter
+                colSpan={1}
+                curr={quote.curr}
+                subTotal={previewTotals.subTotal}
+                gstTotal={previewTotals.gstTotal}
+                grandTotal={previewTotals.grandTotal}
+                fmtAmt={fmtAmt}
+                insurance={previewInsurance}
+                onApplyInsurance={() => setPreviewInsurance(Math.round(previewTotals.subTotal * 0.0015 * 100) / 100)}
+                onInsuranceChange={setPreviewInsurance}
+              />
+            </table>
           </div>
 
           <textarea

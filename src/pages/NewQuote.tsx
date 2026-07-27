@@ -14,6 +14,7 @@ import { generateQuotePDF } from '../lib/pdfGenerator';
 import { downloadQuoteDOCX } from '../lib/quoteDocx';
 import { SendEmailModal } from '../components/SendEmailModal';
 import { NegotiationRounds } from '../components/NegotiationRounds';
+import { QuoteTotalsFooter } from '../components/QuoteTotalsFooter';
 import { Copy, Upload, X, AlertCircle } from 'lucide-react';
 import { syncContactToCustomer } from '../lib/contactSync';
 
@@ -1224,49 +1225,18 @@ export function NewQuote() {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot>
-                      <tr className="border-t border-g200 bg-g50/50">
-                        <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
-                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{fmtAmt(subTotal)}</td>
-                        <td></td>
-                      </tr>
-                      {curr === 'INR' && (
-                        <tr className="border-b border-g200 bg-g50/50">
-                          <td colSpan={8} className="px-3 py-2 text-right">
-                            <span className="text-[11px] text-g500">Insurance</span>
-                            <button
-                              type="button"
-                              onClick={() => setInsurance(Math.round(subTotal * 0.0015 * 100) / 100)}
-                              className="block ml-auto text-[10px] text-blue-600 hover:text-blue-800 underline underline-offset-2 leading-tight"
-                            >Apply 0.15%</button>
-                          </td>
-                          <td className="px-3 py-1 text-right">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={insurance === 0 ? '' : insurance}
-                              onChange={e => setInsurance(e.target.value === '' ? 0 : Math.round(parseFloat(e.target.value) * 100) / 100)}
-                              placeholder="0.00"
-                              className="w-full text-right font-mono text-[12px] font-bold text-blk bg-transparent border-b border-g300 focus:border-blue-500 outline-none py-0.5 pr-0"
-                            />
-                          </td>
-                          <td></td>
-                        </tr>
-                      )}
-                      {curr === 'INR' && (
-                        <tr className="border-b border-g200 bg-g50/50">
-                          <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
-                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{fmtAmt(gstTotal)}</td>
-                          <td></td>
-                        </tr>
-                      )}
-                      <tr className="bg-[#1e293b]">
-                        <td colSpan={8} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Grand Total</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{fmtAmt(grandTotal)}</td>
-                        <td className="bg-[#1e293b]"></td>
-                      </tr>
-                    </tfoot>
+                    <QuoteTotalsFooter
+                      colSpan={8}
+                      curr={curr}
+                      subTotal={subTotal}
+                      gstTotal={gstTotal}
+                      grandTotal={grandTotal}
+                      fmtAmt={fmtAmt}
+                      insurance={insurance}
+                      onApplyInsurance={() => setInsurance(Math.round(subTotal * 0.0015 * 100) / 100)}
+                      onInsuranceChange={setInsurance}
+                      trailingCell
+                    />
                   </table>
                 </div>
                 <div className="p-[8px_12px] flex items-start gap-3 flex-wrap">
