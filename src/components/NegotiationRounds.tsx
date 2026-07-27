@@ -21,12 +21,12 @@ function fmtPrice(n: number): string {
   return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 }
 
-function roundSummary(round: NegotiationRound): string {
-  const touched = round.items.filter(it => it.revised_unit_price != null || it.discount_pct != null);
-  const total = round.items.length;
-  if (touched.length === 0) return 'Terms discussion';
-  if (touched.length === 1) {
-    const it = touched[0];
+// items are only ever the ones the user selected for this round — total is
+// the quote's full item count at save time, for the "N of M" phrasing.
+function roundSummary(items: NegotiationRoundItem[], total: number): string {
+  if (items.length === 0) return 'Terms discussion';
+  if (items.length === 1) {
+    const it = items[0];
     const price = effectivePrice(it);
     const detail = [
       price != null ? `${fmtPrice(it.original_unit_price)} → ${fmtPrice(price)}` : null,
@@ -34,13 +34,14 @@ function roundSummary(round: NegotiationRound): string {
     ].filter(Boolean).join(', ');
     return `revised pricing on 1 of ${total} item${total === 1 ? '' : 's'} (${it.desc}: ${detail})`;
   }
-  return `revised pricing on ${touched.length} of ${total} items`;
+  return `revised pricing on ${items.length} of ${total} items`;
 }
 
 interface ItemRow {
   seq: number;
   desc: string;
   original_unit_price: number;
+  checked: boolean;
   revisedUnitPrice: string;
   discountPct: string;
 }
@@ -63,6 +64,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
       seq: it.seq,
       desc: it.desc,
       original_unit_price: it.unitPrice,
+      checked: false,
       revisedUnitPrice: '',
       discountPct: '',
     })));
@@ -77,16 +79,27 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
     setErrorMsg('');
   };
 
+  const toggleRow = (seq: number) => {
+    setItemRows(rows => rows.map(r => r.seq === seq ? { ...r, checked: !r.checked } : r));
+  };
+
   const updateRow = (seq: number, field: 'revisedUnitPrice' | 'discountPct', value: string) => {
     setItemRows(rows => rows.map(r => r.seq === seq ? { ...r, [field]: value } : r));
   };
 
+  const checkedRows = itemRows.filter(r => r.checked);
+  const invalidCheckedRow = checkedRows.find(r => !r.revisedUnitPrice && !r.discountPct);
+  const canSave = checkedRows.length > 0 && !invalidCheckedRow;
+
   const handleSave = async () => {
+    if (checkedRows.length === 0) { setErrorMsg('Select at least one item for this round.'); return; }
+    if (invalidCheckedRow) { setErrorMsg(`Enter a revised price or discount % for ${invalidCheckedRow.desc}.`); return; }
+
     setSaving(true);
     setErrorMsg('');
     try {
       const round = rounds.length + 1;
-      const items: NegotiationRoundItem[] = itemRows.map(r => ({
+      const items: NegotiationRoundItem[] = checkedRows.map(r => ({
         seq: r.seq,
         desc: r.desc,
         original_unit_price: r.original_unit_price,
@@ -110,7 +123,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
         {
           ts: new Date().toISOString(),
           who: stampName(),
-          note: `Negotiation round ${round} added — ${roundSummary(newRound)}`,
+          note: `Negotiation round ${round} added — ${roundSummary(items, itemRows.length)}`,
           channel: 'Internal',
         },
         existing?.next_date ?? null,
@@ -260,6 +273,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
             <table className="w-full text-[11.5px]">
               <thead>
                 <tr className="bg-g50 text-g400 font-mono text-[9px] uppercase tracking-wider">
+                  <th className="text-left px-2 py-1.5 font-bold w-6"></th>
                   <th className="text-left px-2 py-1.5 font-bold">Product</th>
                   <th className="text-right px-2 py-1.5 font-bold w-[110px]">Revised Price</th>
                   <th className="text-right px-2 py-1.5 font-bold w-[90px]">Discount %</th>
@@ -267,30 +281,47 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
               </thead>
               <tbody>
                 {itemRows.map(row => (
-                  <tr key={row.seq} className="border-t border-g100">
+                  <tr key={row.seq} className={cn('border-t border-g100', !row.checked && 'opacity-50')}>
+                    <td className="px-2 py-1.5 bg-white align-top">
+                      <input
+                        type="checkbox"
+                        title={`Include in this round`}
+                        checked={row.checked}
+                        onChange={() => toggleRow(row.seq)}
+                        className="mt-0.5"
+                      />
+                    </td>
                     <td className="px-2 py-1.5 text-blk bg-white">
                       {row.desc}
                       <span className="block text-[9px] text-g400">was {fmtPrice(row.original_unit_price)}</span>
                     </td>
                     <td className="px-2 py-1 bg-white">
-                      <input
-                        type="number"
-                        title={`Revised unit price for ${row.desc}`}
-                        placeholder="—"
-                        value={row.revisedUnitPrice}
-                        onChange={e => updateRow(row.seq, 'revisedUnitPrice', e.target.value)}
-                        className="w-full text-right bg-white border border-g300 rounded-[3px] px-2 py-[4px] text-[11.5px] outline-none focus:border-red-mrt"
-                      />
+                      {row.checked ? (
+                        <input
+                          type="number"
+                          title={`Revised unit price for ${row.desc}`}
+                          placeholder="—"
+                          value={row.revisedUnitPrice}
+                          onChange={e => updateRow(row.seq, 'revisedUnitPrice', e.target.value)}
+                          className="w-full text-right bg-white border border-g300 rounded-[3px] px-2 py-[4px] text-[11.5px] outline-none focus:border-red-mrt"
+                        />
+                      ) : (
+                        <div className="w-full text-right text-g300 text-[11.5px]">—</div>
+                      )}
                     </td>
                     <td className="px-2 py-1 bg-white">
-                      <input
-                        type="number"
-                        title={`Discount percentage for ${row.desc}`}
-                        placeholder="—"
-                        value={row.discountPct}
-                        onChange={e => updateRow(row.seq, 'discountPct', e.target.value)}
-                        className="w-full text-right bg-white border border-g300 rounded-[3px] px-2 py-[4px] text-[11.5px] outline-none focus:border-red-mrt"
-                      />
+                      {row.checked ? (
+                        <input
+                          type="number"
+                          title={`Discount percentage for ${row.desc}`}
+                          placeholder="—"
+                          value={row.discountPct}
+                          onChange={e => updateRow(row.seq, 'discountPct', e.target.value)}
+                          className="w-full text-right bg-white border border-g300 rounded-[3px] px-2 py-[4px] text-[11.5px] outline-none focus:border-red-mrt"
+                        />
+                      ) : (
+                        <div className="w-full text-right text-g300 text-[11.5px]">—</div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -320,7 +351,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !canSave}
               className="h-7 inline-flex items-center gap-1 px-3 bg-red-mrt text-white text-[10px] font-bold tracking-wider uppercase rounded-[3px] hover:bg-red-h disabled:opacity-50"
             >
               <CheckCircle2 size={10} /> Save
