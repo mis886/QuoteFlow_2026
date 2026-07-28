@@ -243,6 +243,9 @@ export async function downloadQuoteDOCX(
       return c > 0 ? { label: s.slice(0, c).trim(), value: s.slice(c + 1).trim() } : { label: String(i + 1), value: s };
     });
   }
+  // Standing delivery term, shown on every quote regardless of what's in
+  // quote.terms — not the quote-specific "Delivery point" field above.
+  tncRows.push({ label: 'Delivery', value: 'Ex Godown Bhiwandi' });
 
   const pdfNotes = ((quote as any).notes ?? []).filter((n: string) => n.trim());
 
@@ -252,7 +255,7 @@ export async function downloadQuoteDOCX(
       children: [
         // ── Company header
         para([r('HIMALAYA TERPENES PVT. LTD.', { bold: true, size: 26 })], AlignmentType.LEFT, 10),
-        para([r('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', { size: 16, color: C_GRAY })], AlignmentType.LEFT, 10),
+        para([r('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', { size: 16, color: C_GRAY })], AlignmentType.LEFT, 10),
         para([r('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 6),
         para([r('Tel.: 91-22-35397800/01 | E Mail: mum@himalayaterpene.com | Web.: www.himalayaterpene.com', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 40),
         hrPara(),
@@ -447,10 +450,12 @@ export async function downloadPIDOCX(
     if (settings?.bank_swift) bankLines.push({ label: 'SWIFT', value: settings.bank_swift });
   }
 
-  // Terms lines
-  const termsLines: string[] = order.terms
-    ? order.terms.split('\n').filter(Boolean)
-    : ['Payment: Balance before dispatch.', 'Delivery as per schedule.'];
+  // Terms lines. "Delivery: Ex Godown Bhiwandi" is a standing term shown on
+  // every order regardless of order.terms.
+  const termsLines: string[] = [
+    ...(order.terms ? order.terms.split('\n').filter(Boolean) : ['Payment: Balance before dispatch.', 'Delivery as per schedule.']),
+    'Delivery: Ex Godown Bhiwandi',
+  ];
 
   const poDateShort = order.poDate ? fmtShort(order.poDate) : '—';
   const dlvDateShort = order.dlvDate ? fmtShort(order.dlvDate) : '—';
@@ -491,7 +496,7 @@ export async function downloadPIDOCX(
       children: [
         // ── Header
         para([r('HIMALAYA TERPENES PVT. LTD.', { bold: true, size: 26 })], AlignmentType.LEFT, 10),
-        para([r('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', { size: 16, color: C_GRAY })], AlignmentType.LEFT, 10),
+        para([r('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', { size: 16, color: C_GRAY })], AlignmentType.LEFT, 10),
         para([r('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 6),
         para([r('Tel.: 91-22-35397800/01 | E Mail: mum@himalayaterpene.com | Web.: www.himalayaterpene.com', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 40),
         hrPara(),

@@ -72,7 +72,7 @@ export function generateQuotePDF(
   doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
   doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, y, { align: 'center' }); y += 6;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(40, 40, 40);
-  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, y, { align: 'center' }); y += 5;
+  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', pw / 2, y, { align: 'center' }); y += 5;
   doc.setFontSize(7);
   doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, y, { align: 'center' }); y += 4;
   doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, y, { align: 'center' }); y += 5;
@@ -338,6 +338,9 @@ export function generateQuotePDF(
         : { label: String(i + 1), value: stripped };
     });
   }
+  // Standing delivery term, shown on every quote regardless of what's in
+  // quote.terms — not the quote-specific "Delivery point" field above.
+  tncRows.push({ label: 'Delivery', value: 'Ex Godown Bhiwandi' });
 
   if (y > ph - 60) { doc.addPage(); y = 20; }
 
@@ -457,7 +460,7 @@ export function generatePIPDF(
   doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
   doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, 10, { align: 'center' });
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
-  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL ETC.', pw / 2, 16, { align: 'center' });
+  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', pw / 2, 16, { align: 'center' });
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
   doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, 22, { align: 'center' });
   doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, 28, { align: 'center' });
@@ -700,6 +703,8 @@ export function generatePIPDF(
     doc.text('• Payment: Balance before dispatch.', termsX, yTerms); yTerms += 4.5;
     doc.text('• Delivery as per schedule.', termsX, yTerms); yTerms += 4.5;
   }
+  // Standing delivery term, shown on every order regardless of order.terms.
+  doc.text('• Delivery: Ex Godown Bhiwandi', termsX, yTerms); yTerms += 4.5;
 
   // Draw a visible bordered rectangle around each side so banking/terms read as a structured box
   const boxTop = headingY - 4;
