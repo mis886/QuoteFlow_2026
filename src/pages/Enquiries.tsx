@@ -427,7 +427,7 @@ export function Enquiries() {
         recordId={deleteTarget.id}
         recordType="enquiry"
         downstream={getEnquiryDownstream(deleteTarget.id, data)}
-        onConfirm={() => deleteEnquiry(deleteTarget.id)}
+        onConfirm={async () => { await deleteEnquiry(deleteTarget.id); setDeleteTarget(null); }}
         onCancel={() => setDeleteTarget(null)}
       />}
     </div>

@@ -36,8 +36,13 @@ export function CascadeDeleteModal({ recordId, recordType, downstream, onConfirm
     setError('');
     try {
       await onConfirm();
+      // On success the caller is expected to close this modal (clear whatever
+      // state renders it) — no explicit action needed here. The `finally`
+      // below is a safety net: if a caller ever forgets, the buttons still
+      // re-enable instead of the modal staying permanently stuck mid-delete.
     } catch (err: any) {
       setError(err ? friendlyDeleteError(err) : 'Delete failed. Please try again.');
+    } finally {
       setDeleting(false);
     }
   };

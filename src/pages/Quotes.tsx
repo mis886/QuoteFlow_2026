@@ -449,7 +449,7 @@ export function Quotes() {
         recordId={deleteTarget.id}
         recordType="quote"
         downstream={getQuoteDownstream(deleteTarget.id, data)}
-        onConfirm={() => deleteQuote(deleteTarget.id)}
+        onConfirm={async () => { await deleteQuote(deleteTarget.id); setDeleteTarget(null); }}
         onCancel={() => setDeleteTarget(null)}
       />}
     </div>
