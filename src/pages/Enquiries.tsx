@@ -4,10 +4,9 @@ import { Badge, Button, SourceIcon, DateFilterBanner } from '../components/ui';
 import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
-import { EnqStatus, Enquiry } from '../lib/types';
+import { EnqStatus } from '../lib/types';
 import { supabase } from '../lib/supabase';
-import { CascadeDeleteModal } from '../components/CascadeDeleteModal';
-import { getEnquiryDownstream, friendlyDeleteError } from '../lib/cascadeDelete';
+import { friendlyDeleteError } from '../lib/cascadeDelete';
 
 export function Enquiries() {
   const store = useAppStore();
@@ -25,7 +24,6 @@ export function Enquiries() {
   const [sortCol, setSortCol] = useState<string>('recv');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [enqSamples, setEnqSamples] = useState<any[]>([]);
-  const [deleteTarget, setDeleteTarget] = useState<Enquiry | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSiteDebounced(siteQuery), 250);
@@ -309,12 +307,7 @@ export function Enquiries() {
                               {canDelete && (
                                 <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => {
                                   ev.stopPropagation();
-                                  const downstream = getEnquiryDownstream(e.id, data);
-                                  if (downstream.length === 0) {
-                                    if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id).catch(err => alert(`Delete failed: ${friendlyDeleteError(err)}`));
-                                  } else {
-                                    setDeleteTarget(e);
-                                  }
+                                  if (confirm(`Are you sure you want to delete ${e.id}? This cannot be undone.`)) deleteEnquiry(e.id).catch(err => alert(`Delete failed: ${friendlyDeleteError(err)}`));
                                 }}>Delete</Button>
                               )}
                               <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{e.authorizedPerson?.name || e.created_by || '−'}</span>
@@ -423,13 +416,6 @@ export function Enquiries() {
           </div>
         )}
       </div>
-      {deleteTarget && <CascadeDeleteModal
-        recordId={deleteTarget.id}
-        recordType="enquiry"
-        downstream={getEnquiryDownstream(deleteTarget.id, data)}
-        onConfirm={async () => { await deleteEnquiry(deleteTarget.id); setDeleteTarget(null); }}
-        onCancel={() => setDeleteTarget(null)}
-      />}
     </div>
   );
 }

@@ -124,7 +124,7 @@ export interface Enquiry {
 
 export interface Quote {
   id: string;
-  enqRef: string;
+  enqRef: string | null; // ON DELETE SET NULL if the enquiry it was raised from is deleted
   cust: string;
   siteId?: string;
   contactId?: string;
@@ -189,8 +189,8 @@ export interface NegotiationRoundItem {
 
 export interface Order {
   id: string;
-  quoteRef: string;
-  enqRef: string;
+  quoteRef: string | null; // ON DELETE SET NULL if the source quotation is deleted
+  enqRef: string | null;   // ON DELETE SET NULL if the source enquiry is deleted
   cust: string;
   siteId?: string;
   contactId?: string;
@@ -374,7 +374,7 @@ export const DEFAULT_STAGE_TAT_H: Record<BoardLane, number> = {
 
 export interface FollowUp {
   id: string; // quote_id
-  quote_id: string;
+  quote_id: string | null; // ON DELETE SET NULL if the quote is deleted — row survives, orphaned
   owner: string;
   next_date: string | null;
   next_time?: string | null;

@@ -459,15 +459,19 @@ export function Dashboard() {
 
     // Follow-up logs this week
     data.followups.forEach(fu => {
+      // Skip orphaned follow-ups (quote_id nulled after its quote was
+      // deleted) — nothing to open, no quote to attribute the log to.
+      const quoteId = fu.quote_id;
+      if (!quoteId || !data.quotes.some(q => q.id === quoteId)) return;
       (fu.logs || []).forEach(log => {
         if (!inThisWeek(log.ts)) return;
         items.push({
           ts: log.ts,
           type: 'followup',
           who: log.who || fu.owner || 'Team',
-          title: `Follow-up logged on ${fu.quote_id}`,
+          title: `Follow-up logged on ${quoteId}`,
           subtitle: `${log.channel} · ${log.note?.slice(0, 60) || '—'}`,
-          refId: fu.quote_id,
+          refId: quoteId,
           refType: 'quote',
         });
       });
@@ -482,8 +486,10 @@ export function Dashboard() {
   const mdoPendingFollowups = useMemo(() =>
     data.followups.filter(fu =>
       fu.status === 'open' && fu.next_date && inThisWeek(fu.next_date) &&
-      (!activeDoer || fu.owner === activeDoer.display_name)
-    ), [data.followups, weekStart.getTime(), activeDoer]);
+      (!activeDoer || fu.owner === activeDoer.display_name) &&
+      // Skip orphaned follow-ups (quote_id nulled after its quote was deleted).
+      fu.quote_id && data.quotes.some(q => q.id === fu.quote_id)
+    ), [data.followups, data.quotes, weekStart.getTime(), activeDoer]);
 
   const mdoOverdueEnqs = useMemo(() =>
     data.enquiries.filter(e =>
@@ -531,7 +537,10 @@ export function Dashboard() {
       if (!fu.next_date || fu.status === 'closed') return;
       const key = fu.next_date.slice(0, 10);
       const quote = data.quotes.find(q => q.id === fu.quote_id);
-      const cust = quote ? data.customers.find(c => c.name === quote.cust) : undefined;
+      // Skip orphaned follow-ups (quote_id nulled after its quote was
+      // deleted) — nothing to show/open for them.
+      if (!quote) return;
+      const cust = data.customers.find(c => c.name === quote.cust);
       const site = cust?.sites.find(s => s.isPrimary) ?? cust?.sites[0];
       const contact = site?.contacts.find(ct => ct.isPrimary) ?? site?.contacts[0];
       const contactLine = contact
@@ -540,11 +549,11 @@ export function Dashboard() {
       addEvent(key, {
         id: fu.id,
         type: 'followup',
-        label: fu.quote_id,
-        sublabel: quote?.cust || fu.owner || 'Team',
+        label: quote.id,
+        sublabel: quote.cust || fu.owner || 'Team',
         contact: contactLine,
         color: 'purple',
-        onClick: () => openDetailPanel('quote' as any, fu.quote_id),
+        onClick: () => openDetailPanel('quote' as any, quote.id),
       });
     });
 
@@ -817,8 +826,8 @@ export function Dashboard() {
                 emptyText="No follow-ups due this week"
               >
                 {mdoPendingFollowups.map(fu => (
-                  <button type="button" key={fu.id} onClick={() => openDetailPanel('quote' as any, fu.quote_id)} className="w-full text-left px-3 py-2 hover:bg-g50 border-b border-g100 last:border-0 focus:outline-none">
-                    <div className="font-mono text-[10px] font-bold text-purple-600">{fu.quote_id}</div>
+                  <button type="button" key={fu.id} onClick={() => openDetailPanel('quote' as any, fu.id)} className="w-full text-left px-3 py-2 hover:bg-g50 border-b border-g100 last:border-0 focus:outline-none">
+                    <div className="font-mono text-[10px] font-bold text-purple-600">{fu.id}</div>
                     <div className="text-[11.5px] text-blk font-medium">{fu.owner}</div>
                     <div className="text-[11px] text-g400">{fu.next_date} {fu.next_time}</div>
                   </button>

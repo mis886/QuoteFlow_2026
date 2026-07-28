@@ -496,22 +496,18 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteEnquiry = async (id: string) => {
-    // Collect downstream IDs from UI state before the async delete so we can
-    // purge them from the store on success. FK CASCADE handles the DB side.
-    const linkedQuoteIds = data.quotes.filter(q => q.enqRef === id).map(q => q.id);
-    const linkedOrderIds = data.orders
-      .filter(o => linkedQuoteIds.includes(o.quoteRef) || o.enqRef === id)
-      .map(o => o.id);
-
+    // Deletes are independent per module — only this enquiry row is removed.
+    // FK is ON DELETE SET NULL, not CASCADE: any quote/order that referenced
+    // it survives in the DB with enqRef nulled, so mirror that in local state
+    // (map, don't filter) rather than making them vanish from the UI.
     const { error } = await supabase.from('enquiries').delete().eq('id', id);
     if (error) throw error;
 
     setData(prev => ({
       ...prev,
       enquiries: prev.enquiries.filter(e => e.id !== id),
-      quotes: prev.quotes.filter(q => !linkedQuoteIds.includes(q.id)),
-      orders: prev.orders.filter(o => !linkedOrderIds.includes(o.id)),
-      followups: prev.followups.filter((f: any) => !linkedQuoteIds.includes(f.quote_id)),
+      quotes: prev.quotes.map(q => q.enqRef === id ? { ...q, enqRef: null } : q),
+      orders: prev.orders.map(o => o.enqRef === id ? { ...o, enqRef: null } : o),
     }));
   };
 
@@ -540,18 +536,18 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteQuote = async (id: string) => {
-    // Collect downstream IDs before the async delete. FK CASCADE handles the
-    // DB side (orders + followups deleted automatically with the quote).
-    const linkedOrderIds = data.orders.filter(o => o.quoteRef === id).map(o => o.id);
-
+    // Deletes are independent per module — only this quote row is removed.
+    // FK is ON DELETE SET NULL, not CASCADE: any order/followup that
+    // referenced it survives in the DB with its ref nulled, so mirror that
+    // in local state (map, don't filter) rather than making them vanish.
     const { error } = await supabase.from('quotes').delete().eq('id', id);
     if (error) { console.error('deleteQuote failed', error); throw error; }
 
     setData(prev => ({
       ...prev,
       quotes: prev.quotes.filter(q => q.id !== id),
-      orders: prev.orders.filter(o => !linkedOrderIds.includes(o.id)),
-      followups: prev.followups.filter((f: any) => f.quote_id !== id),
+      orders: prev.orders.map(o => o.quoteRef === id ? { ...o, quoteRef: null } : o),
+      followups: prev.followups.map((f: any) => f.quote_id === id ? { ...f, quote_id: null } : f),
     }));
   };
 

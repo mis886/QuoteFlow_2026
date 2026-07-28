@@ -3,12 +3,11 @@ import { useAppStore } from '../store';
 import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { QuoteStatus, Quote } from '../lib/types';
+import { QuoteStatus } from '../lib/types';
 import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, getCurrentQuoteItems } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { supabase } from '../lib/supabase';
-import { CascadeDeleteModal } from '../components/CascadeDeleteModal';
-import { getQuoteDownstream, friendlyDeleteError } from '../lib/cascadeDelete';
+import { friendlyDeleteError } from '../lib/cascadeDelete';
 
 export function Quotes() {
   const store = useAppStore();
@@ -25,7 +24,6 @@ export function Quotes() {
   const [siteDebounced, setSiteDebounced] = useState('');
   const [sortCol, setSortCol] = useState('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [deleteTarget, setDeleteTarget] = useState<Quote | null>(null);
   const [quoteSamples, setQuoteSamples] = useState<any[]>([]);
 
   useEffect(() => {
@@ -320,12 +318,7 @@ export function Quotes() {
                               {canDelete && (
                                 <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => {
                                   ev.stopPropagation();
-                                  const downstream = getQuoteDownstream(q.id, data);
-                                  if (downstream.length === 0) {
-                                    if (confirm(`Are you sure you want to delete ${q.id}? This action cannot be undone.`)) deleteQuote(q.id).catch(err => alert(`Delete failed: ${friendlyDeleteError(err)}`));
-                                  } else {
-                                    setDeleteTarget(q);
-                                  }
+                                  if (confirm(`Are you sure you want to delete ${q.id}? This action cannot be undone.`)) deleteQuote(q.id).catch(err => alert(`Delete failed: ${friendlyDeleteError(err)}`));
                                 }}>Delete</Button>
                               )}
                               {q.authorizedPerson?.name && (
@@ -445,13 +438,6 @@ export function Quotes() {
           </div>
         )}
       </div>
-      {deleteTarget && <CascadeDeleteModal
-        recordId={deleteTarget.id}
-        recordType="quote"
-        downstream={getQuoteDownstream(deleteTarget.id, data)}
-        onConfirm={async () => { await deleteQuote(deleteTarget.id); setDeleteTarget(null); }}
-        onCancel={() => setDeleteTarget(null)}
-      />}
     </div>
 
   );
