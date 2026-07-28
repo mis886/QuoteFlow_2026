@@ -13,9 +13,9 @@ import { CustomerSearch } from '../components/CustomerSearch';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { downloadQuoteDOCX } from '../lib/quoteDocx';
 import { SendEmailModal } from '../components/SendEmailModal';
-import { NegotiationRoundDetail } from '../components/NegotiationRounds';
+import { NegotiationRoundDetail, NegotiationRoundForm } from '../components/NegotiationRounds';
 import { QuoteTotalsFooter } from '../components/QuoteTotalsFooter';
-import { Copy, Upload, X, AlertCircle } from 'lucide-react';
+import { Copy, Upload, X, AlertCircle, Plus } from 'lucide-react';
 import { syncContactToCustomer } from '../lib/contactSync';
 
 const STEPS = ['Form', 'Preview'];
@@ -163,6 +163,7 @@ export function NewQuote() {
   const [step, setStep] = useState(1);
   const [insurance, setInsurance] = useState(0);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showAddNegRound, setShowAddNegRound] = useState(false);
   const [dupQuoteAlert, setDupQuoteAlert] = useState<{ existingId: string } | null>(null);
 
   const [date, setDate] = useState(localDateStr(new Date()));
@@ -1285,22 +1286,58 @@ export function NewQuote() {
                 )}
             </div>
 
-            {/* Negotiation rounds — display only; original Line Items above stays
-                the 1st-time-quoted record, unchanged. The Preview step below shows
-                the merged/current totals instead (no separate negotiation panel
-                there); "Add Negotiation Round" lives on the quote's Detail panel
-                (DetailPanel.tsx, opened from the Quotations Register). This just
-                stacks every existing round's own detail, one section per round. */}
-            {editingQuote && editingQuote.negotiations && editingQuote.negotiations.length > 0 && (
-              <div className="space-y-4">
-                {editingQuote.negotiations.map(r => (
-                  <div key={r.round}>
-                    <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">
-                      Negotiation {r.round} — Line Items
-                    </div>
-                    <NegotiationRoundDetail quote={editingQuote} round={r} />
+            {/* Negotiation rounds — unconditional on every quote regardless of
+                status or existing round count; original Line Items above stays
+                the 1st-time-quoted record, unchanged. Existing rounds (if any)
+                still stack below exactly as before; the add button/form is new
+                here — it previously only existed on the quote's Detail panel. */}
+            {editingQuote && (
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt">
+                    Negotiation Rounds
+                  </span>
+                  {showAddNegRound ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddNegRound(false)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-[4px] border border-g200 text-g500 bg-white hover:bg-g50 hover:text-blk transition-colors"
+                    >
+                      <X size={12} /> Cancel
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddNegRound(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-[4px] border border-red-mrt bg-red-mrt text-white hover:bg-red-h transition-colors shadow-sm"
+                    >
+                      <Plus size={12} /> Add Negotiation Round
+                    </button>
+                  )}
+                </div>
+
+                {showAddNegRound && (
+                  <div className="mb-4">
+                    <NegotiationRoundForm
+                      quote={editingQuote}
+                      onCancel={() => setShowAddNegRound(false)}
+                      onSaved={() => setShowAddNegRound(false)}
+                    />
                   </div>
-                ))}
+                )}
+
+                {editingQuote.negotiations && editingQuote.negotiations.length > 0 && (
+                  <div className="space-y-4">
+                    {editingQuote.negotiations.map(r => (
+                      <div key={r.round}>
+                        <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">
+                          Negotiation {r.round} — Line Items
+                        </div>
+                        <NegotiationRoundDetail quote={editingQuote} round={r} />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

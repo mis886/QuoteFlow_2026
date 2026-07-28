@@ -170,52 +170,50 @@ export function NegotiationRoundDetail({ quote, round }: { quote: Quote; round: 
   );
 }
 
-export function NegotiationRounds({ quote }: { quote: Quote }) {
+// The "add a round" inline form: item picker (checkboxes + revised rate/
+// discount %), live negotiated-total preview, notes, save/cancel. Fully
+// self-contained (owns its own field state, seeded from quote.items at
+// mount) and controlled only via onCancel/onSaved, so it can be dropped
+// in wherever a round needs to be addable — NegotiationRounds' own header
+// button (Preview/DetailPanel) and the quote edit Form step both render
+// this the same way, each behind their own "+ Add Negotiation Round"
+// toggle button.
+export function NegotiationRoundForm({
+  quote, onCancel, onSaved,
+}: {
+  quote: Quote;
+  onCancel: () => void;
+  onSaved: (round: number) => void;
+}) {
   const { data, updateQuote, addFollowUpLog, stampName } = useAppStore();
   const rounds = quote.negotiations ?? [];
   const sym = quote.curr === 'USD' ? '$' : '₹';
   const fmtAmt = (v: number) => quote.curr === 'USD' ? formatUSD(v) : formatINR(v);
 
-  const [activeRound, setActiveRound] = useState(rounds.length > 0 ? rounds.length - 1 : 0);
-  const [showForm, setShowForm] = useState(false);
   const [date, setDate] = useState(todayISO());
   const [requestedBy, setRequestedBy] = useState<'customer' | 'internal'>('customer');
   const [notes, setNotes] = useState('');
-  const [itemRows, setItemRows] = useState<ItemRow[]>([]);
+  const [itemRows, setItemRows] = useState<ItemRow[]>(() => quote.items.map(it => ({
+    seq: it.seq,
+    desc: it.desc,
+    hsn: it.hsn,
+    qty: it.qty,
+    packing: it.packing,
+    packingType: it.packingType,
+    priceBasis: it.priceBasis,
+    priceBasisConv: it.priceBasisConv,
+    gst: it.gst,
+    original_unit_price: it.unitPrice,
+    checked: false,
+    revisedUnitPrice: '',
+    discountPct: '',
+  })));
   // Preview-only insurance override for the negotiated-total footer below —
   // starts at the quote's actual current insurance, but toggling/editing it
   // here never writes back to the quote (this whole table is a live preview).
-  const [previewInsurance, setPreviewInsurance] = useState(0);
+  const [previewInsurance, setPreviewInsurance] = useState(quote.insurance ?? 0);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-
-  const openForm = () => {
-    setPreviewInsurance(quote.insurance ?? 0);
-    setItemRows(quote.items.map(it => ({
-      seq: it.seq,
-      desc: it.desc,
-      hsn: it.hsn,
-      qty: it.qty,
-      packing: it.packing,
-      packingType: it.packingType,
-      priceBasis: it.priceBasis,
-      priceBasisConv: it.priceBasisConv,
-      gst: it.gst,
-      original_unit_price: it.unitPrice,
-      checked: false,
-      revisedUnitPrice: '',
-      discountPct: '',
-    })));
-    setShowForm(true);
-  };
-
-  const resetForm = () => {
-    setDate(todayISO());
-    setRequestedBy('customer');
-    setNotes('');
-    setItemRows([]);
-    setErrorMsg('');
-  };
 
   const toggleRow = (seq: number) => {
     setItemRows(rows => rows.map(r => r.seq === seq ? { ...r, checked: !r.checked } : r));
@@ -290,15 +288,167 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
         'Negotiation',
       );
 
-      resetForm();
-      setShowForm(false);
-      setActiveRound(round - 1);
+      onSaved(round);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Failed to save negotiation round');
     } finally {
       setSaving(false);
     }
   };
+
+  return (
+    <div className="px-3 py-3 bg-red-lt/30 border border-red-mrt/20 rounded-[4px] space-y-2.5">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[9px] font-bold tracking-[1px] uppercase text-g500 mb-1">Date</label>
+          <input
+            type="date"
+            title="Negotiation round date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="w-full bg-white border border-g300 rounded-[3px] px-2 py-[5px] text-[11.5px] outline-none focus:border-red-mrt"
+          />
+        </div>
+        <div>
+          <label className="block text-[9px] font-bold tracking-[1px] uppercase text-g500 mb-1">Requested By</label>
+          <select
+            title="Who initiated this round"
+            value={requestedBy}
+            onChange={e => setRequestedBy(e.target.value as 'customer' | 'internal')}
+            className="w-full bg-white border border-g300 rounded-[3px] px-2 py-[5px] text-[11.5px] outline-none focus:border-red-mrt"
+          >
+            <option value="customer">Customer</option>
+            <option value="internal">Internal</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto border border-g300 rounded-[3px]">
+        <table className="w-full border-collapse text-[11px]">
+          <thead className="bg-g100">
+            <tr>
+              <th className={cn(th, 'w-6')}></th>
+              <th className={cn(th, 'w-8')}>#</th>
+              <th className={cn(th, 'text-red-mrt')}>Product Name</th>
+              <th className={cn(th, 'w-20')}>HSN Code</th>
+              <th className={cn(th, 'text-center w-20')}>No of Barrels</th>
+              <th className={cn(th, 'text-center w-16')}>Packing</th>
+              <th className={cn(th, 'text-center w-16')}>Total Qty</th>
+              <th className={cn(th, 'text-center w-24')}>Packing Type</th>
+              <th className={cn(th, 'text-center w-20')}>Price Basis</th>
+              <th className={cn(th, 'text-right w-20')}>Unit Rate ({sym})</th>
+              <th className={cn(th, 'text-center w-14')}>GST %</th>
+              <th className={cn(th, 'text-right w-24')}>Revised Rate ({sym})</th>
+              <th className={cn(th, 'text-center w-20')}>Discount %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {itemRows.map(row => (
+              <tr key={row.seq} className={cn(!row.checked && 'opacity-50')}>
+                <td className="px-2 py-1.5 border border-g200 align-middle bg-white">
+                  <input
+                    type="checkbox"
+                    title="Include in this round"
+                    checked={row.checked}
+                    onChange={() => toggleRow(row.seq)}
+                  />
+                </td>
+                <td className="px-2 py-1.5 border border-g200 font-mono font-bold text-g400 bg-white">{row.seq}</td>
+                <td className="px-2 py-1.5 border border-g200 text-blk bg-white">{row.desc}</td>
+                <td className="px-2 py-1.5 border border-g200 font-mono text-g500 bg-white">{row.hsn || '—'}</td>
+                <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.qty}</td>
+                <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.packing || '—'}</td>
+                <td className="px-2 py-1.5 border border-g200 text-center bg-g50 text-g500">{totalQty(row.qty, row.packing)}</td>
+                <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.packingType || '—'}</td>
+                <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.priceBasis || '—'}</td>
+                <td className="px-2 py-1.5 border border-g200 text-right font-mono text-g600 bg-white">{fmtPrice(row.original_unit_price)}</td>
+                <td className="px-2 py-1.5 border border-g200 text-center font-mono bg-white">{row.gst}%</td>
+                <td className="px-1 py-1 border border-g200 bg-white">
+                  <input
+                    type="number"
+                    title={`Revised unit price for ${row.desc}`}
+                    placeholder="—"
+                    value={row.revisedUnitPrice}
+                    disabled={!row.checked}
+                    onChange={e => updateRow(row.seq, 'revisedUnitPrice', e.target.value)}
+                    className="w-full text-right bg-white border border-g300 rounded-[3px] px-1.5 py-[4px] text-[11px] outline-none focus:border-red-mrt disabled:bg-g100 disabled:cursor-not-allowed"
+                  />
+                </td>
+                <td className="px-1 py-1 border border-g200 bg-white">
+                  <input
+                    type="number"
+                    title={`Discount percentage for ${row.desc}`}
+                    placeholder="—"
+                    value={row.discountPct}
+                    disabled={!row.checked}
+                    onChange={e => updateRow(row.seq, 'discountPct', e.target.value)}
+                    className="w-full text-right bg-white border border-g300 rounded-[3px] px-1.5 py-[4px] text-[11px] outline-none focus:border-red-mrt disabled:bg-g100 disabled:cursor-not-allowed"
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="bg-white border border-g200 rounded-[3px] p-3">
+        <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">Negotiated Total (preview — not saved)</div>
+        <table className="w-full border-collapse text-[11px]">
+          <QuoteTotalsFooter
+            colSpan={1}
+            curr={quote.curr}
+            subTotal={previewTotals.subTotal}
+            gstTotal={previewTotals.gstTotal}
+            grandTotal={previewTotals.grandTotal}
+            fmtAmt={fmtAmt}
+            insurance={previewInsurance}
+            onApplyInsurance={() => setPreviewInsurance(Math.round(previewTotals.subTotal * 0.0015 * 100) / 100)}
+            onInsuranceChange={setPreviewInsurance}
+          />
+        </table>
+      </div>
+
+      <textarea
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+        placeholder="What was discussed / requested?"
+        rows={2}
+        className="w-full bg-white border border-g300 rounded-[3px] px-2 py-1.5 text-[12px] outline-none focus:border-red-mrt resize-none"
+      />
+
+      {errorMsg && <div className="text-[10px] text-red-mrt font-medium">{errorMsg}</div>}
+
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={saving}
+          className="h-7 px-3 border border-g200 rounded-[3px] text-[10px] font-medium text-g500 hover:bg-white disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !canSave}
+          className="h-7 inline-flex items-center gap-1 px-3 bg-red-mrt text-white text-[10px] font-bold tracking-wider uppercase rounded-[3px] hover:bg-red-h disabled:opacity-50"
+        >
+          <CheckCircle2 size={10} /> Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Full negotiation section for Preview/DetailPanel: header (round count +
+// add/cancel toggle), a tab per round with NegotiationRoundDetail, and
+// NegotiationRoundForm when adding. Unconditional on quote.status — every
+// quote can have rounds added regardless of Draft/Sent/Won/Lost/etc.
+export function NegotiationRounds({ quote }: { quote: Quote }) {
+  const rounds = quote.negotiations ?? [];
+
+  const [activeRound, setActiveRound] = useState(rounds.length > 0 ? rounds.length - 1 : 0);
+  const [showForm, setShowForm] = useState(false);
 
   const current = rounds[activeRound];
 
@@ -311,7 +461,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
         {showForm ? (
           <button
             type="button"
-            onClick={() => { resetForm(); setShowForm(false); }}
+            onClick={() => setShowForm(false)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-[4px] border border-g200 text-g500 bg-white hover:bg-g50 hover:text-blk transition-colors"
           >
             <X size={12} /> Cancel
@@ -319,7 +469,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
         ) : (
           <button
             type="button"
-            onClick={openForm}
+            onClick={() => setShowForm(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded-[4px] border border-red-mrt bg-red-mrt text-white hover:bg-red-h transition-colors shadow-sm"
           >
             <Plus size={12} /> Add Negotiation Round
@@ -350,146 +500,11 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
       )}
 
       {showForm && (
-        <div className="px-3 py-3 bg-red-lt/30 border border-red-mrt/20 rounded-[4px] space-y-2.5">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-[9px] font-bold tracking-[1px] uppercase text-g500 mb-1">Date</label>
-              <input
-                type="date"
-                title="Negotiation round date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="w-full bg-white border border-g300 rounded-[3px] px-2 py-[5px] text-[11.5px] outline-none focus:border-red-mrt"
-              />
-            </div>
-            <div>
-              <label className="block text-[9px] font-bold tracking-[1px] uppercase text-g500 mb-1">Requested By</label>
-              <select
-                title="Who initiated this round"
-                value={requestedBy}
-                onChange={e => setRequestedBy(e.target.value as 'customer' | 'internal')}
-                className="w-full bg-white border border-g300 rounded-[3px] px-2 py-[5px] text-[11.5px] outline-none focus:border-red-mrt"
-              >
-                <option value="customer">Customer</option>
-                <option value="internal">Internal</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto border border-g300 rounded-[3px]">
-            <table className="w-full border-collapse text-[11px]">
-              <thead className="bg-g100">
-                <tr>
-                  <th className={cn(th, 'w-6')}></th>
-                  <th className={cn(th, 'w-8')}>#</th>
-                  <th className={cn(th, 'text-red-mrt')}>Product Name</th>
-                  <th className={cn(th, 'w-20')}>HSN Code</th>
-                  <th className={cn(th, 'text-center w-20')}>No of Barrels</th>
-                  <th className={cn(th, 'text-center w-16')}>Packing</th>
-                  <th className={cn(th, 'text-center w-16')}>Total Qty</th>
-                  <th className={cn(th, 'text-center w-24')}>Packing Type</th>
-                  <th className={cn(th, 'text-center w-20')}>Price Basis</th>
-                  <th className={cn(th, 'text-right w-20')}>Unit Rate ({sym})</th>
-                  <th className={cn(th, 'text-center w-14')}>GST %</th>
-                  <th className={cn(th, 'text-right w-24')}>Revised Rate ({sym})</th>
-                  <th className={cn(th, 'text-center w-20')}>Discount %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {itemRows.map(row => (
-                  <tr key={row.seq} className={cn(!row.checked && 'opacity-50')}>
-                    <td className="px-2 py-1.5 border border-g200 align-middle bg-white">
-                      <input
-                        type="checkbox"
-                        title="Include in this round"
-                        checked={row.checked}
-                        onChange={() => toggleRow(row.seq)}
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 border border-g200 font-mono font-bold text-g400 bg-white">{row.seq}</td>
-                    <td className="px-2 py-1.5 border border-g200 text-blk bg-white">{row.desc}</td>
-                    <td className="px-2 py-1.5 border border-g200 font-mono text-g500 bg-white">{row.hsn || '—'}</td>
-                    <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.qty}</td>
-                    <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.packing || '—'}</td>
-                    <td className="px-2 py-1.5 border border-g200 text-center bg-g50 text-g500">{totalQty(row.qty, row.packing)}</td>
-                    <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.packingType || '—'}</td>
-                    <td className="px-2 py-1.5 border border-g200 text-center bg-white">{row.priceBasis || '—'}</td>
-                    <td className="px-2 py-1.5 border border-g200 text-right font-mono text-g600 bg-white">{fmtPrice(row.original_unit_price)}</td>
-                    <td className="px-2 py-1.5 border border-g200 text-center font-mono bg-white">{row.gst}%</td>
-                    <td className="px-1 py-1 border border-g200 bg-white">
-                      <input
-                        type="number"
-                        title={`Revised unit price for ${row.desc}`}
-                        placeholder="—"
-                        value={row.revisedUnitPrice}
-                        disabled={!row.checked}
-                        onChange={e => updateRow(row.seq, 'revisedUnitPrice', e.target.value)}
-                        className="w-full text-right bg-white border border-g300 rounded-[3px] px-1.5 py-[4px] text-[11px] outline-none focus:border-red-mrt disabled:bg-g100 disabled:cursor-not-allowed"
-                      />
-                    </td>
-                    <td className="px-1 py-1 border border-g200 bg-white">
-                      <input
-                        type="number"
-                        title={`Discount percentage for ${row.desc}`}
-                        placeholder="—"
-                        value={row.discountPct}
-                        disabled={!row.checked}
-                        onChange={e => updateRow(row.seq, 'discountPct', e.target.value)}
-                        className="w-full text-right bg-white border border-g300 rounded-[3px] px-1.5 py-[4px] text-[11px] outline-none focus:border-red-mrt disabled:bg-g100 disabled:cursor-not-allowed"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="bg-white border border-g200 rounded-[3px] p-3">
-            <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">Negotiated Total (preview — not saved)</div>
-            <table className="w-full border-collapse text-[11px]">
-              <QuoteTotalsFooter
-                colSpan={1}
-                curr={quote.curr}
-                subTotal={previewTotals.subTotal}
-                gstTotal={previewTotals.gstTotal}
-                grandTotal={previewTotals.grandTotal}
-                fmtAmt={fmtAmt}
-                insurance={previewInsurance}
-                onApplyInsurance={() => setPreviewInsurance(Math.round(previewTotals.subTotal * 0.0015 * 100) / 100)}
-                onInsuranceChange={setPreviewInsurance}
-              />
-            </table>
-          </div>
-
-          <textarea
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            placeholder="What was discussed / requested?"
-            rows={2}
-            className="w-full bg-white border border-g300 rounded-[3px] px-2 py-1.5 text-[12px] outline-none focus:border-red-mrt resize-none"
-          />
-
-          {errorMsg && <div className="text-[10px] text-red-mrt font-medium">{errorMsg}</div>}
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => { resetForm(); setShowForm(false); }}
-              disabled={saving}
-              className="h-7 px-3 border border-g200 rounded-[3px] text-[10px] font-medium text-g500 hover:bg-white disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || !canSave}
-              className="h-7 inline-flex items-center gap-1 px-3 bg-red-mrt text-white text-[10px] font-bold tracking-wider uppercase rounded-[3px] hover:bg-red-h disabled:opacity-50"
-            >
-              <CheckCircle2 size={10} /> Save
-            </button>
-          </div>
-        </div>
+        <NegotiationRoundForm
+          quote={quote}
+          onCancel={() => setShowForm(false)}
+          onSaved={(round) => { setShowForm(false); setActiveRound(round - 1); }}
+        />
       )}
     </section>
   );
