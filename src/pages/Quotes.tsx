@@ -4,7 +4,7 @@ import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus, Quote } from '../lib/types';
-import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, getCurrentQuoteItems } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { supabase } from '../lib/supabase';
 import { CascadeDeleteModal } from '../components/CascadeDeleteModal';
@@ -233,9 +233,13 @@ export function Quotes() {
                   <tr><td colSpan={10} className="text-center p-8 text-g400 text-[13px]">No quotations match</td></tr>
                 ) : (
                   filteredQuotes.map(q => {
-                    const subTotal = q.items.reduce((s, i) => s + i.total, 0);
+                    // Latest negotiation round's revised prices, if any, replace the
+                    // items they touched; everything else (incl. quotes with no
+                    // rounds) keeps the original quote data — see getCurrentQuoteItems.
+                    const currentItems = getCurrentQuoteItems(q.items, q.negotiations);
+                    const subTotal = currentItems.reduce((s, i) => s + i.total, 0);
                     const ins = (q as any).insurance ?? 0;
-                    const rawItemGst = q.items.reduce((s, i) => s + i.total * i.gst / 100, 0);
+                    const rawItemGst = currentItems.reduce((s, i) => s + i.total * i.gst / 100, 0);
                     const scaledItemGst = subTotal > 0 ? rawItemGst * (subTotal + ins) / subTotal : rawItemGst;
                     const grandTotal = Math.round(subTotal + ins + scaledItemGst);
                     const isExpanded = expandedRow === q.id;
@@ -352,7 +356,7 @@ export function Quotes() {
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {q.items.map(i => {
+                                    {currentItems.map(i => {
                                       const packNum = parseFloat(i.packing || '');
                                       const totalQty = i.qty > 0 && packNum > 0 ? i.qty * packNum : null;
                                       return (

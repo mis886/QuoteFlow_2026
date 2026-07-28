@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAppStore } from '../store';
 import { Quote, NegotiationRound, NegotiationRoundItem } from '../lib/types';
 import { Plus, X, CheckCircle2 } from 'lucide-react';
-import { cn, fmtIST, formatINR, formatUSD, computeItemTotal, computeQuoteTotals } from '../lib/utils';
+import { cn, fmtIST, formatINR, formatUSD, computeItemTotal, computeQuoteTotals, effectiveNegotiatedPrice as effectivePrice } from '../lib/utils';
 import { QuoteTotalsFooter } from './QuoteTotalsFooter';
 import { parseISO } from 'date-fns';
 
@@ -20,14 +20,6 @@ function totalQty(qty: number, packing?: string): string {
   const p = parseFloat(packing || '');
   const t = qty * p;
   return (p > 0 && qty > 0) ? String(Number.isInteger(t) ? t : t) : '—';
-}
-
-// A discount_pct with no explicit revised_unit_price is applied against
-// original_unit_price rather than requiring the user to hand-calculate it.
-function effectivePrice(it: NegotiationRoundItem): number | null {
-  if (it.revised_unit_price != null) return it.revised_unit_price;
-  if (it.discount_pct != null) return it.original_unit_price * (1 - it.discount_pct / 100);
-  return null;
 }
 
 // items are only ever the ones the user selected for this round — total is

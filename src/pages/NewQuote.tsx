@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals } from '../lib/utils';
+import { generateId, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals, getCurrentQuoteItems } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
@@ -775,6 +775,12 @@ export function NewQuote() {
   }
 
   const editingQuote = editId ? data.quotes.find(q => q.id === editId) : undefined;
+  // Preview-step display only: if this quote has negotiation rounds, blend the
+  // latest round's revised prices onto the current item list (by seq) so the
+  // top summary shows the negotiated total instead of stale pre-negotiation
+  // figures. Doesn't affect what gets saved — buildQuoteData still uses `items`.
+  const previewItems = getCurrentQuoteItems(items, editingQuote?.negotiations);
+  const previewTotals = computeQuoteTotals(previewItems, curr, insurance);
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -1420,11 +1426,11 @@ export function NewQuote() {
             <div className="bg-white border border-g200 rounded-[3px]">
               <div className="p-[11px_16px] border-b border-g200 flex justify-between items-center">
                 <span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600">{items.length} Line Item{items.length !== 1 ? 's' : ''}</span>
-                <span className="font-mono text-[12px] font-bold text-red-mrt">{fmtAmt(grandTotal)}</span>
+                <span className="font-mono text-[12px] font-bold text-red-mrt">{fmtAmt(previewTotals.grandTotal)}</span>
               </div>
               <table className="w-full text-[12px]">
                 <tbody>
-                  {items.map(item => (
+                  {previewItems.map(item => (
                     <tr key={item.seq} className="border-b border-g200 last:border-0">
                       <td className="px-4 py-2 font-mono text-g400 text-[10px] w-8">{item.seq}</td>
                       <td className="px-4 py-2 text-blk">
@@ -1454,10 +1460,10 @@ export function NewQuote() {
               </table>
               <div className="flex justify-end p-4">
                 <div className="w-[240px] text-[12px] space-y-1.5">
-                  <div className="flex justify-between text-g500"><span>Sub-Total</span><span className="font-mono">{fmtAmt(subTotal)}</span></div>
+                  <div className="flex justify-between text-g500"><span>Sub-Total</span><span className="font-mono">{fmtAmt(previewTotals.subTotal)}</span></div>
                   {curr === 'INR' && ins > 0 && <div className="flex justify-between text-g500"><span>Insurance</span><span className="font-mono">{fmtAmt(ins)}</span></div>}
-                  {curr === 'INR' && <div className="flex justify-between text-g500"><span>GST</span><span className="font-mono">{fmtAmt(gstTotal)}</span></div>}
-                  <div className="flex justify-between font-bold text-blk border-t border-g200 pt-2 text-[14px]"><span>Grand Total</span><span className="font-mono text-red-mrt">{fmtAmt(grandTotal)}</span></div>
+                  {curr === 'INR' && <div className="flex justify-between text-g500"><span>GST</span><span className="font-mono">{fmtAmt(previewTotals.gstTotal)}</span></div>}
+                  <div className="flex justify-between font-bold text-blk border-t border-g200 pt-2 text-[14px]"><span>Grand Total</span><span className="font-mono text-red-mrt">{fmtAmt(previewTotals.grandTotal)}</span></div>
                 </div>
               </div>
             </div>

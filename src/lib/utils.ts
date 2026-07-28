@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import type { OrderAdjustment, Customer } from './types';
+import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, QuoteItem } from './types';
 
 export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'];
 
@@ -171,6 +171,43 @@ export function computeQuoteTotals(items: { total: number; gst: number }[], curr
     : 0;
   const grandTotal = curr === 'INR' ? Math.round(subTotal + ins + gstTotal) : subTotal;
   return { subTotal, gstTotal, grandTotal };
+}
+
+// ── Negotiation rounds — "what's the current price" for a quote ──────────
+
+// A discount_pct with no explicit revised_unit_price is applied against
+// original_unit_price rather than requiring the caller to hand-calculate it.
+export function effectiveNegotiatedPrice(it: NegotiationRoundItem): number | null {
+  if (it.revised_unit_price != null) return it.revised_unit_price;
+  if (it.discount_pct != null) return it.original_unit_price * (1 - it.discount_pct / 100);
+  return null;
+}
+
+// Rounds are always appended in order with round = (prior length + 1), so
+// the last array element is both the highest round number and the most
+// recent by date — the two can't diverge given how rounds are created.
+export function getLatestNegotiationRound(negotiations: NegotiationRound[] | undefined): NegotiationRound | undefined {
+  return negotiations && negotiations.length > 0 ? negotiations[negotiations.length - 1] : undefined;
+}
+
+// Current effective items for a quote: if a negotiation round exists, the
+// latest round's revised price replaces each item it touched (matched by
+// seq); items the round didn't touch — including all items when no round
+// exists yet — keep their original price. A round only ever stores the
+// items it actually touched, so this merges by seq rather than treating
+// the round's items[] as the whole item list: a negotiation amends prices
+// on the existing quote, it doesn't redefine which products are being quoted.
+export function getCurrentQuoteItems(items: QuoteItem[], negotiations: NegotiationRound[] | undefined): QuoteItem[] {
+  const latest = getLatestNegotiationRound(negotiations);
+  if (!latest) return items;
+  const revisedBySeq = new Map(latest.items.map(it => [it.seq, it]));
+  return items.map(item => {
+    const revised = revisedBySeq.get(item.seq);
+    if (!revised) return item;
+    const price = effectiveNegotiatedPrice(revised);
+    if (price == null) return item;
+    return { ...item, unitPrice: price, total: computeItemTotal(item.qty, item.packing, price, item.priceBasisConv) };
+  });
 }
 
 // Format a Date in Asia/Kolkata (IST, UTC+5:30) using date-fns-style tokens.
