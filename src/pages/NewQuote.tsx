@@ -594,6 +594,14 @@ export function NewQuote() {
       // Preserve original doer on edit; stamp submitter email on new
       doer: editId ? (existing?.doer) : stampName(),
       sent_at,
+      // Preserve existing negotiation rounds on edit (this form never edits
+      // them directly — that's NegotiationRounds' own save path via
+      // updateQuote). Without this, qData here — and therefore the PDF/DOCX
+      // generated from it via handleGeneratePDF/handleGenerateDOCX below —
+      // silently carried no negotiations data at all, so exported documents
+      // never showed a negotiation table even though the render code for it
+      // was correct and already live.
+      negotiations: existing?.negotiations ?? [],
     };
   };
 
