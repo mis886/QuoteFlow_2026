@@ -272,8 +272,9 @@ export function generateQuotePDF(
 
   // ── Negotiation round tables — one per round, same column set as the main
   // item table above (which stays untouched, showing the original 1st-time-
-  // quoted values), each with its own Subtotal/Insurance/GST/Grand Total.
-  // No-op when the quote has no negotiation rounds.
+  // quoted values). No totals block — the table itself is the record; the
+  // exported document intentionally does not repeat Sub-Total/Insurance/
+  // GST Total/Grand Total under it. No-op when the quote has no rounds.
   for (const round of getNegotiationExportTables(quote)) {
     if (y > ph - 70) { doc.addPage(); y = 20; }
 
@@ -311,26 +312,7 @@ export function generateQuotePDF(
       margin: { left: mx, right: mx },
     });
 
-    y = (doc as any).lastAutoTable.finalY + 4;
-
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(80, 80, 80);
-    doc.text('Sub-Total', rx - 55, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
-    doc.text(fmtAmount(round.totals.subTotal, sym), rx, y, { align: 'right' }); y += 4.5;
-
-    if (quote.curr === 'INR' && round.insurance > 0) {
-      doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
-      doc.text('Insurance', rx - 55, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
-      doc.text(fmtAmount(round.insurance, sym), rx, y, { align: 'right' }); y += 4.5;
-    }
-    if (quote.curr === 'INR') {
-      doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
-      doc.text('GST Total', rx - 55, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
-      doc.text(fmtAmount(round.totals.gstTotal, sym), rx, y, { align: 'right' }); y += 4.5;
-    }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-    doc.text('Grand Total', rx - 55, y);
-    doc.text(fmtAmount(round.totals.grandTotal, sym), rx, y, { align: 'right' });
-    y += 8;
+    y = (doc as any).lastAutoTable.finalY + 8;
   }
 
   // ── Terms & Conditions table ─────────────────────────────────────────────

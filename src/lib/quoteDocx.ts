@@ -101,8 +101,10 @@ function sectionHeading(text: string) {
 }
 
 // One "Negotiation N — Revised Pricing" table per round, same column set as
-// the main item table (which stays untouched), each with its own Subtotal/
-// Insurance/GST/Grand Total. Returns [] when the quote has no rounds.
+// the main item table (which stays untouched). No totals block — the table
+// itself is the record; the exported document intentionally does not
+// repeat Sub-Total/Insurance/GST Total/Grand Total under it. Returns [] when
+// the quote has no rounds.
 function negotiationTableNodes(quote: Quote): (Paragraph | Table)[] {
   const sym = getCurrSym(quote.curr);
   const PAGE_W = 8640;
@@ -146,14 +148,7 @@ function negotiationTableNodes(quote: Quote): (Paragraph | Table)[] {
       ],
     }));
 
-    nodes.push(para([r('Sub-Total:  ', { size: 16, color: C_GRAY }), r(fmtRate(round.totals.subTotal, sym), { size: 16 })], AlignmentType.RIGHT, 20));
-    if (quote.curr === 'INR' && round.insurance > 0) {
-      nodes.push(para([r('Insurance:  ', { size: 16, color: C_GRAY }), r(fmtRate(round.insurance, sym), { size: 16 })], AlignmentType.RIGHT, 20));
-    }
-    if (quote.curr === 'INR') {
-      nodes.push(para([r('GST Total:  ', { size: 16, color: C_GRAY }), r(fmtRate(round.totals.gstTotal, sym), { size: 16 })], AlignmentType.RIGHT, 20));
-    }
-    nodes.push(para([r('Grand Total:  ', { bold: true, size: 18 }), r(fmtRate(round.totals.grandTotal, sym), { bold: true, size: 18 })], AlignmentType.RIGHT, 60));
+    nodes.push(para([], AlignmentType.LEFT, 80));
   }
   return nodes;
 }
