@@ -13,7 +13,7 @@ import { CustomerSearch } from '../components/CustomerSearch';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { downloadQuoteDOCX } from '../lib/quoteDocx';
 import { SendEmailModal } from '../components/SendEmailModal';
-import { NegotiationRounds } from '../components/NegotiationRounds';
+import { NegotiationRounds, NegotiationRoundDetail } from '../components/NegotiationRounds';
 import { QuoteTotalsFooter } from '../components/QuoteTotalsFooter';
 import { Copy, Upload, X, AlertCircle } from 'lucide-react';
 import { syncContactToCustomer } from '../lib/contactSync';
@@ -1276,6 +1276,23 @@ export function NewQuote() {
                   </div>
                 )}
             </div>
+
+            {/* Negotiation rounds — display only; original Line Items above stays
+                the 1st-time-quoted record, unchanged. "Add Negotiation Round" stays
+                on the Preview step only (NegotiationRounds there); this just stacks
+                every existing round's own detail, one section per round, in order. */}
+            {editingQuote && editingQuote.negotiations && editingQuote.negotiations.length > 0 && (
+              <div className="space-y-4">
+                {editingQuote.negotiations.map(r => (
+                  <div key={r.round}>
+                    <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">
+                      Negotiation {r.round} — Line Items
+                    </div>
+                    <NegotiationRoundDetail quote={editingQuote} round={r} />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Company Unit for PDF */}
             <div className="bg-white border border-g200">

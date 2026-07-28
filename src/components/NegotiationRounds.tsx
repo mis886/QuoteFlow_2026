@@ -65,6 +65,111 @@ function rowEffectivePrice(row: ItemRow): number {
 
 const th = 'font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 text-left border border-g300';
 
+// Read-only detail for a single saved round: items table + its own
+// Subtotal/Insurance/GST/Grand Total + notes/doer. Shared by the tabbed
+// view inside NegotiationRounds (Preview / DetailPanel) and by the quote
+// edit Form step, which stacks every round's detail one after another
+// instead of tab-switching between them.
+export function NegotiationRoundDetail({ quote, round }: { quote: Quote; round: NegotiationRound }) {
+  const sym = quote.curr === 'USD' ? '$' : '₹';
+  const fmtAmt = (v: number) => quote.curr === 'USD' ? formatUSD(v) : formatINR(v);
+  // Totals for just this round's items (not the whole quote — round.items is
+  // only the subset that was selected, so this is a "this round" subtotal,
+  // not a reconstructed whole-quote grand total for that point in time).
+  const totals = computeQuoteTotals(
+    round.items.map(it => ({
+      total: computeItemTotal(it.qty, it.packing, effectivePrice(it) ?? it.original_unit_price, 1),
+      gst: it.gst,
+    })),
+    quote.curr,
+    quote.insurance ?? 0,
+  );
+
+  return (
+    <div className="border border-g200 rounded-[4px] divide-y divide-g100 text-[12px]">
+      <div className="p-3 bg-g50 grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-0.5 uppercase">Date</div>
+          <div className="text-blk font-medium">{round.date}</div>
+        </div>
+        <div>
+          <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-0.5 uppercase">Requested By</div>
+          <div className="text-blk font-medium capitalize">{round.requested_by}</div>
+        </div>
+      </div>
+
+      <div className="bg-white overflow-x-auto">
+        <table className="w-full border-collapse text-[11px]">
+          <thead className="bg-g100">
+            <tr>
+              <th className={cn(th, 'w-8')}>#</th>
+              <th className={cn(th, 'text-red-mrt')}>Product Name</th>
+              <th className={cn(th, 'w-20')}>HSN Code</th>
+              <th className={cn(th, 'text-center w-20')}>No of Barrels</th>
+              <th className={cn(th, 'text-center w-16')}>Packing</th>
+              <th className={cn(th, 'text-center w-16')}>Total Qty</th>
+              <th className={cn(th, 'text-center w-24')}>Packing Type</th>
+              <th className={cn(th, 'text-center w-20')}>Price Basis</th>
+              <th className={cn(th, 'text-right w-20')}>Unit Rate ({sym})</th>
+              <th className={cn(th, 'text-center w-14')}>GST %</th>
+              <th className={cn(th, 'text-right w-20')}>Revised Rate ({sym})</th>
+              <th className={cn(th, 'text-center w-16')}>Discount %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {round.items.map(it => {
+              const price = effectivePrice(it);
+              return (
+                <tr key={it.seq}>
+                  <td className="px-2 py-1.5 border border-g200 font-mono font-bold text-g400">{it.seq}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-blk">{it.desc}</td>
+                  <td className="px-2 py-1.5 border border-g200 font-mono text-g500">{it.hsn || '—'}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center">{it.qty}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center">{it.packing || '—'}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center bg-g50 text-g500">{totalQty(it.qty, it.packing)}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center">{it.packingType || '—'}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center">{it.priceBasis || '—'}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-right font-mono text-g600">{fmtPrice(it.original_unit_price)}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center font-mono">{it.gst}%</td>
+                  <td className="px-2 py-1.5 border border-g200 text-right font-mono text-blk font-bold">{price != null ? fmtPrice(price) : '—'}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center font-mono text-g600">{it.discount_pct != null ? `${it.discount_pct}%` : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="p-3 bg-white">
+        <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">Negotiated Total (this round's items)</div>
+        <table className="w-full border-collapse text-[11px]">
+          <QuoteTotalsFooter
+            colSpan={1}
+            curr={quote.curr}
+            subTotal={totals.subTotal}
+            gstTotal={totals.gstTotal}
+            grandTotal={totals.grandTotal}
+            fmtAmt={fmtAmt}
+            insurance={quote.insurance ?? 0}
+          />
+        </table>
+      </div>
+
+      {round.notes && (
+        <div className="p-3 bg-white">
+          <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-1 uppercase">Notes</div>
+          <div className="text-g600 leading-relaxed whitespace-pre-wrap">{round.notes}</div>
+        </div>
+      )}
+      <div className="p-3 bg-white text-[10px] text-g400">
+        <span className="font-semibold text-g500">{round.doer}</span>
+        {' · '}
+        {fmtIST(parseISO(round.created_at), 'dd MMM, HH:mm')}
+      </div>
+    </div>
+  );
+}
+
 export function NegotiationRounds({ quote }: { quote: Quote }) {
   const { data, updateQuote, addFollowUpLog, stampName } = useAppStore();
   const rounds = quote.negotiations ?? [];
@@ -196,17 +301,6 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
   };
 
   const current = rounds[activeRound];
-  // Totals for just this round's items (not the whole quote — round.items is
-  // only the subset that was selected, so this is a "this round" subtotal,
-  // not a reconstructed whole-quote grand total for that point in time).
-  const currentTotals = current ? computeQuoteTotals(
-    current.items.map(it => ({
-      total: computeItemTotal(it.qty, it.packing, effectivePrice(it) ?? it.original_unit_price, 1),
-      gst: it.gst,
-    })),
-    quote.curr,
-    quote.insurance ?? 0,
-  ) : null;
 
   return (
     <section>
@@ -251,91 +345,7 @@ export function NegotiationRounds({ quote }: { quote: Quote }) {
             ))}
           </div>
 
-          {current && (
-            <div className="border border-g200 rounded-[4px] divide-y divide-g100 text-[12px]">
-              <div className="p-3 bg-g50 grid grid-cols-2 gap-3">
-                <div>
-                  <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-0.5 uppercase">Date</div>
-                  <div className="text-blk font-medium">{current.date}</div>
-                </div>
-                <div>
-                  <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-0.5 uppercase">Requested By</div>
-                  <div className="text-blk font-medium capitalize">{current.requested_by}</div>
-                </div>
-              </div>
-
-              <div className="bg-white overflow-x-auto">
-                <table className="w-full border-collapse text-[11px]">
-                  <thead className="bg-g100">
-                    <tr>
-                      <th className={cn(th, 'w-8')}>#</th>
-                      <th className={cn(th, 'text-red-mrt')}>Product Name</th>
-                      <th className={cn(th, 'w-20')}>HSN Code</th>
-                      <th className={cn(th, 'text-center w-20')}>No of Barrels</th>
-                      <th className={cn(th, 'text-center w-16')}>Packing</th>
-                      <th className={cn(th, 'text-center w-16')}>Total Qty</th>
-                      <th className={cn(th, 'text-center w-24')}>Packing Type</th>
-                      <th className={cn(th, 'text-center w-20')}>Price Basis</th>
-                      <th className={cn(th, 'text-right w-20')}>Unit Rate ({sym})</th>
-                      <th className={cn(th, 'text-center w-14')}>GST %</th>
-                      <th className={cn(th, 'text-right w-20')}>Revised Rate ({sym})</th>
-                      <th className={cn(th, 'text-center w-16')}>Discount %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {current.items.map(it => {
-                      const price = effectivePrice(it);
-                      return (
-                        <tr key={it.seq}>
-                          <td className="px-2 py-1.5 border border-g200 font-mono font-bold text-g400">{it.seq}</td>
-                          <td className="px-2 py-1.5 border border-g200 text-blk">{it.desc}</td>
-                          <td className="px-2 py-1.5 border border-g200 font-mono text-g500">{it.hsn || '—'}</td>
-                          <td className="px-2 py-1.5 border border-g200 text-center">{it.qty}</td>
-                          <td className="px-2 py-1.5 border border-g200 text-center">{it.packing || '—'}</td>
-                          <td className="px-2 py-1.5 border border-g200 text-center bg-g50 text-g500">{totalQty(it.qty, it.packing)}</td>
-                          <td className="px-2 py-1.5 border border-g200 text-center">{it.packingType || '—'}</td>
-                          <td className="px-2 py-1.5 border border-g200 text-center">{it.priceBasis || '—'}</td>
-                          <td className="px-2 py-1.5 border border-g200 text-right font-mono text-g600">{fmtPrice(it.original_unit_price)}</td>
-                          <td className="px-2 py-1.5 border border-g200 text-center font-mono">{it.gst}%</td>
-                          <td className="px-2 py-1.5 border border-g200 text-right font-mono text-blk font-bold">{price != null ? fmtPrice(price) : '—'}</td>
-                          <td className="px-2 py-1.5 border border-g200 text-center font-mono text-g600">{it.discount_pct != null ? `${it.discount_pct}%` : '—'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {currentTotals && (
-                <div className="p-3 bg-white">
-                  <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">Negotiated Total (this round's items)</div>
-                  <table className="w-full border-collapse text-[11px]">
-                    <QuoteTotalsFooter
-                      colSpan={1}
-                      curr={quote.curr}
-                      subTotal={currentTotals.subTotal}
-                      gstTotal={currentTotals.gstTotal}
-                      grandTotal={currentTotals.grandTotal}
-                      fmtAmt={fmtAmt}
-                      insurance={quote.insurance ?? 0}
-                    />
-                  </table>
-                </div>
-              )}
-
-              {current.notes && (
-                <div className="p-3 bg-white">
-                  <div className="text-g500 font-mono text-[9px] font-bold tracking-wider mb-1 uppercase">Notes</div>
-                  <div className="text-g600 leading-relaxed whitespace-pre-wrap">{current.notes}</div>
-                </div>
-              )}
-              <div className="p-3 bg-white text-[10px] text-g400">
-                <span className="font-semibold text-g500">{current.doer}</span>
-                {' · '}
-                {fmtIST(parseISO(current.created_at), 'dd MMM, HH:mm')}
-              </div>
-            </div>
-          )}
+          {current && <NegotiationRoundDetail quote={quote} round={current} />}
         </>
       )}
 
