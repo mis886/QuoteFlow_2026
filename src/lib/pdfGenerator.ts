@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Customer, Quote, Order, AppSettings, CompanyUnit, BankAccount } from './types';
-import { formatINR, resolveAdjustments, maxItemGstRate, fmtDate, type ResolvedAdjustment } from './utils';
+import { formatINR, resolveAdjustments, maxItemGstRate, fmtDate, getNegotiationExportTables, type ResolvedAdjustment } from './utils';
 import { supabase } from './supabase';
 
 export function getQuoteTotals(q: Quote) {
@@ -268,6 +268,69 @@ export function generateQuotePDF(
     y += 4;
   } else {
     y += 4;
+  }
+
+  // ── Negotiation round tables — one per round, same column set as the main
+  // item table above (which stays untouched, showing the original 1st-time-
+  // quoted values), each with its own Subtotal/Insurance/GST/Grand Total.
+  // No-op when the quote has no negotiation rounds.
+  for (const round of getNegotiationExportTables(quote)) {
+    if (y > ph - 70) { doc.addPage(); y = 20; }
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    doc.text(`Negotiation ${round.round} — Revised Pricing (${fmtDate(round.date)})`, mx, y);
+    y += 4;
+
+    const negBody = round.items.map((i, idx) => [
+      idx + 1, i.desc, i.hsn, String(i.qty), i.packing, i.totalQty, i.packingType, fmtRate(i.rate, sym), i.perUnit,
+    ]);
+
+    autoTable(doc, {
+      startY: y,
+      head: tableHead,
+      body: negBody,
+      theme: 'grid',
+      headStyles: {
+        fillColor: TRUST_BLUE,
+        textColor: [0, 0, 0],
+        fontStyle: 'bold',
+        fontSize: 8,
+        cellPadding: 1,
+        lineColor: HEAD_BORDER,
+        lineWidth: 0.5,
+        halign: 'center',
+      },
+      bodyStyles: {
+        fontSize: 9,
+        cellPadding: 1.5,
+        textColor: [30, 30, 30],
+        lineColor: [80, 80, 80],
+        lineWidth: 0.35,
+      },
+      columnStyles: tableColStyles,
+      margin: { left: mx, right: mx },
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 4;
+
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(80, 80, 80);
+    doc.text('Sub-Total', rx - 55, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
+    doc.text(fmtAmount(round.totals.subTotal, sym), rx, y, { align: 'right' }); y += 4.5;
+
+    if (quote.curr === 'INR' && round.insurance > 0) {
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
+      doc.text('Insurance', rx - 55, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
+      doc.text(fmtAmount(round.insurance, sym), rx, y, { align: 'right' }); y += 4.5;
+    }
+    if (quote.curr === 'INR') {
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
+      doc.text('GST Total', rx - 55, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
+      doc.text(fmtAmount(round.totals.gstTotal, sym), rx, y, { align: 'right' }); y += 4.5;
+    }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    doc.text('Grand Total', rx - 55, y);
+    doc.text(fmtAmount(round.totals.grandTotal, sym), rx, y, { align: 'right' });
+    y += 8;
   }
 
   // ── Terms & Conditions table ─────────────────────────────────────────────

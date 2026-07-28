@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, QuoteItem } from './types';
+import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, QuoteItem, Quote } from './types';
 
 export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'];
 
@@ -207,6 +207,67 @@ export function getCurrentQuoteItems(items: QuoteItem[], negotiations: Negotiati
     const price = effectiveNegotiatedPrice(revised);
     if (price == null) return item;
     return { ...item, unitPrice: price, total: computeItemTotal(item.qty, item.packing, price, item.priceBasisConv) };
+  });
+}
+
+// Per-item row shape for a negotiation round's export table — same fields
+// the PDF/DOCX item table already renders (Sr No/desc/hsn/qty/packing/
+// totalQty/packingType/rate/per), just sourced from the round's own items
+// (the touched subset, matching what the in-app Form step's negotiation
+// sections show) rather than the whole quote.
+export interface NegotiationExportItem {
+  seq: number;
+  desc: string;
+  hsn: string;
+  qty: number;
+  packing: string;
+  totalQty: string;
+  packingType: string;
+  rate: number;
+  perUnit: string;
+}
+
+export interface NegotiationExportTable {
+  round: number;
+  date: string;
+  items: NegotiationExportItem[];
+  totals: QuoteTotals;
+  insurance: number;
+}
+
+// One export-ready table per negotiation round, in round order — used by
+// both the PDF and DOCX generators to render a "Negotiation N — Revised
+// Pricing" table after the main item table, mirroring the same column set.
+export function getNegotiationExportTables(quote: Pick<Quote, 'negotiations' | 'curr' | 'insurance'>): NegotiationExportTable[] {
+  const rounds = quote.negotiations ?? [];
+  const insurance = quote.insurance ?? 0;
+  return rounds.map(r => {
+    const items: NegotiationExportItem[] = r.items.map(it => {
+      const packingNum = parseFloat(it.packing || '') || 0;
+      const totalQty = it.qty && packingNum ? String(it.qty * packingNum) : '';
+      const pb = it.priceBasis?.trim();
+      const perUnit = !pb ? 'kg' : pb.startsWith('Per ') ? pb.slice(4) : pb;
+      return {
+        seq: it.seq,
+        desc: it.desc,
+        hsn: it.hsn,
+        qty: it.qty,
+        packing: it.packing || '',
+        totalQty,
+        packingType: it.packingType || '',
+        rate: effectiveNegotiatedPrice(it) ?? it.original_unit_price,
+        perUnit,
+      };
+    });
+    const totals = computeQuoteTotals(
+      r.items.map(it => ({
+        total: computeItemTotal(it.qty, it.packing, effectiveNegotiatedPrice(it) ?? it.original_unit_price, 1),
+        gst: it.gst,
+      })),
+      quote.curr,
+      insurance,
+    );
+    return { round: r.round, date: r.date, items, totals, insurance };
   });
 }
 

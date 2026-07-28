@@ -4,7 +4,7 @@ import {
   convertInchesToTwip, HeadingLevel, UnderlineType,
 } from 'docx';
 import type { Quote, Order, Customer, AppSettings, CompanyUnit, BankAccount } from './types';
-import { formatINR, resolveAdjustments, maxItemGstRate, fmtDate as utilFmtDate } from './utils';
+import { formatINR, resolveAdjustments, maxItemGstRate, fmtDate as utilFmtDate, getNegotiationExportTables } from './utils';
 
 // ── colour palette (mirrors PDF)
 const C_DARK    = '1E1E1E';
@@ -98,6 +98,64 @@ function sectionHeading(text: string) {
     spacing: { before: 120, after: 60 },
     border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CCCCCC' } },
   });
+}
+
+// One "Negotiation N — Revised Pricing" table per round, same column set as
+// the main item table (which stays untouched), each with its own Subtotal/
+// Insurance/GST/Grand Total. Returns [] when the quote has no rounds.
+function negotiationTableNodes(quote: Quote): (Paragraph | Table)[] {
+  const sym = getCurrSym(quote.curr);
+  const PAGE_W = 8640;
+  const wSno = 430, wHsn = 1060, wBarrels = 1060, wPacking = 670, wTotalQty = 770, wPackType = 1110, wRate = 1200, wPerUnit = 720;
+  const wProdName = PAGE_W - wSno - wHsn - wBarrels - wPacking - wTotalQty - wPackType - wRate - wPerUnit;
+
+  const nodes: (Paragraph | Table)[] = [];
+  for (const round of getNegotiationExportTables(quote)) {
+    nodes.push(para([r(`Negotiation ${round.round} — Revised Pricing (${fmtShort(round.date)})`, { bold: true, size: 18 })], AlignmentType.LEFT, 40));
+
+    nodes.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({
+          tableHeader: true,
+          children: [
+            thCell('Sr No', wSno),
+            thCell('Product Name', wProdName),
+            thCell('HSN Code', wHsn),
+            thCell('No of Barrels', wBarrels),
+            thCell('Packing', wPacking),
+            thCell('Total Qty', wTotalQty),
+            thCell('Packing Type', wPackType),
+            thCell(`Rates (${quote.curr})`, wRate, AlignmentType.RIGHT),
+            thCell('Per', wPerUnit),
+          ],
+        }),
+        ...round.items.map((i, idx) => new TableRow({
+          children: [
+            tdCell(String(idx + 1), wSno, AlignmentType.CENTER),
+            tdCell(i.desc, wProdName),
+            tdCell(i.hsn, wHsn, AlignmentType.CENTER),
+            tdCell(String(i.qty), wBarrels, AlignmentType.CENTER),
+            tdCell(i.packing, wPacking, AlignmentType.CENTER),
+            tdCell(i.totalQty, wTotalQty, AlignmentType.CENTER),
+            tdCell(i.packingType, wPackType, AlignmentType.CENTER),
+            tdCell(fmtRate(i.rate, sym), wRate, AlignmentType.RIGHT),
+            tdCell(i.perUnit, wPerUnit, AlignmentType.CENTER),
+          ],
+        })),
+      ],
+    }));
+
+    nodes.push(para([r('Sub-Total:  ', { size: 16, color: C_GRAY }), r(fmtRate(round.totals.subTotal, sym), { size: 16 })], AlignmentType.RIGHT, 20));
+    if (quote.curr === 'INR' && round.insurance > 0) {
+      nodes.push(para([r('Insurance:  ', { size: 16, color: C_GRAY }), r(fmtRate(round.insurance, sym), { size: 16 })], AlignmentType.RIGHT, 20));
+    }
+    if (quote.curr === 'INR') {
+      nodes.push(para([r('GST Total:  ', { size: 16, color: C_GRAY }), r(fmtRate(round.totals.gstTotal, sym), { size: 16 })], AlignmentType.RIGHT, 20));
+    }
+    nodes.push(para([r('Grand Total:  ', { bold: true, size: 18 }), r(fmtRate(round.totals.grandTotal, sym), { bold: true, size: 18 })], AlignmentType.RIGHT, 60));
+  }
+  return nodes;
 }
 
 // ── QUOTE DOCX ──────────────────────────────────────────────────────────────
@@ -271,6 +329,9 @@ export async function downloadQuoteDOCX(
           ),
           para([], AlignmentType.LEFT, 60),
         ] : []),
+
+        // ── Negotiation round tables (none if the quote has no rounds)
+        ...negotiationTableNodes(quote),
 
         // ── T&C table
         new Table({
