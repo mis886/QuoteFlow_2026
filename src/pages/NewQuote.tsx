@@ -13,7 +13,7 @@ import { CustomerSearch } from '../components/CustomerSearch';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { downloadQuoteDOCX } from '../lib/quoteDocx';
 import { SendEmailModal } from '../components/SendEmailModal';
-import { NegotiationRounds, NegotiationRoundDetail } from '../components/NegotiationRounds';
+import { NegotiationRoundDetail } from '../components/NegotiationRounds';
 import { QuoteTotalsFooter } from '../components/QuoteTotalsFooter';
 import { Copy, Upload, X, AlertCircle } from 'lucide-react';
 import { syncContactToCustomer } from '../lib/contactSync';
@@ -1278,9 +1278,11 @@ export function NewQuote() {
             </div>
 
             {/* Negotiation rounds — display only; original Line Items above stays
-                the 1st-time-quoted record, unchanged. "Add Negotiation Round" stays
-                on the Preview step only (NegotiationRounds there); this just stacks
-                every existing round's own detail, one section per round, in order. */}
+                the 1st-time-quoted record, unchanged. The Preview step below shows
+                the merged/current totals instead (no separate negotiation panel
+                there); "Add Negotiation Round" lives on the quote's Detail panel
+                (DetailPanel.tsx, opened from the Quotations Register). This just
+                stacks every existing round's own detail, one section per round. */}
             {editingQuote && editingQuote.negotiations && editingQuote.negotiations.length > 0 && (
               <div className="space-y-4">
                 {editingQuote.negotiations.map(r => (
@@ -1484,8 +1486,6 @@ export function NewQuote() {
                 </div>
               </div>
             </div>
-
-            {editingQuote && <NegotiationRounds quote={editingQuote} />}
 
             {/* Signatory & T&C */}
             <div className="grid grid-cols-2 gap-[12px]">
