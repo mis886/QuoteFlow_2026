@@ -1485,6 +1485,8 @@ export function NewQuote() {
               </div>
             </div>
 
+            {editingQuote && <NegotiationRounds quote={editingQuote} />}
+
             {/* Signatory & T&C */}
             <div className="grid grid-cols-2 gap-[12px]">
               <div className="bg-white border border-g200 rounded-[3px] p-4">
@@ -1508,8 +1510,6 @@ export function NewQuote() {
                 </table>
               </div>
             </div>
-
-            {editingQuote && <NegotiationRounds quote={editingQuote} />}
           </div>
         )}
       </div>
