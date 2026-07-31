@@ -152,10 +152,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       const validatedUser = checkUserDomain(session?.user ?? null);
       setUser(validatedUser);
+      // TOKEN_REFRESHED fires automatically in the background every time Supabase
+      // silently renews the session (no user action, nothing on screen changed).
+      // It used to trigger a full 10-table refreshData() reload here, which was
+      // the main driver of our egress overage — skip it, nothing needs re-fetching.
+      if (event === 'TOKEN_REFRESHED') return;
       if (validatedUser) {
         refreshData().finally(() => {
           if (mounted) setLoading(false);
