@@ -241,7 +241,7 @@ export function NewEnquiry() {
 
   const updateItem = (index: number, field: keyof LineItem, value: any) => {
     const newItems = [...items];
-    (newItems[index] as any)[field] = value;
+    newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
   };
 

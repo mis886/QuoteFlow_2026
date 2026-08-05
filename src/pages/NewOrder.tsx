@@ -324,19 +324,21 @@ export function NewOrder() {
 
   // Item helpers
   const updateItem = (idx: number, field: keyof OrderItem, value: any) => {
-    const ni = [...items]; (ni[idx] as any)[field] = value;
+    const ni = [...items];
+    const updated = { ...ni[idx], [field]: value };
     if (field === 'qty' || field === 'agreedRate' || field === 'priceBasisConv' || field === 'packing') {
-      const packingNum = parseFloat(ni[idx].packing || '') || 0;
-      const totalQty = Number(ni[idx].qty) * (packingNum || 1);
-      const conv = Number(ni[idx].priceBasisConv) || 1;
-      ni[idx].total = totalQty * conv * Number(ni[idx].agreedRate);
+      const packingNum = parseFloat(updated.packing || '') || 0;
+      const totalQty = Number(updated.qty) * (packingNum || 1);
+      const conv = Number(updated.priceBasisConv) || 1;
+      updated.total = totalQty * conv * Number(updated.agreedRate);
     }
     if (field === 'priceBasis' && !value) {
-      ni[idx].priceBasisConv = undefined;
-      const packingNum = parseFloat(ni[idx].packing || '') || 0;
-      const totalQty = Number(ni[idx].qty) * (packingNum || 1);
-      ni[idx].total = totalQty * Number(ni[idx].agreedRate);
+      updated.priceBasisConv = undefined;
+      const packingNum = parseFloat(updated.packing || '') || 0;
+      const totalQty = Number(updated.qty) * (packingNum || 1);
+      updated.total = totalQty * Number(updated.agreedRate);
     }
+    ni[idx] = updated;
     setItems(ni);
   };
   const addItem = () => setItems([...items, { seq: items.length + 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', priceBasis: 'Per kg', agreedRate: 0, gst: 18, total: 0 }]);

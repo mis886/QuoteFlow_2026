@@ -411,15 +411,17 @@ export function NewQuote() {
 
   // Item helpers
   const updateItem = (idx: number, field: keyof QuoteItem, value: any) => {
-    const ni = [...items]; (ni[idx] as any)[field] = value;
+    const ni = [...items];
+    const updated = { ...ni[idx], [field]: value };
     if (field === 'qty' || field === 'unitPrice' || field === 'priceBasisConv' || field === 'packing') {
-      ni[idx].total = computeItemTotal(ni[idx].qty, ni[idx].packing, ni[idx].unitPrice, ni[idx].priceBasisConv);
+      updated.total = computeItemTotal(updated.qty, updated.packing, updated.unitPrice, updated.priceBasisConv);
     }
     // Clear conv when priceBasis is cleared
     if (field === 'priceBasis' && !value) {
-      ni[idx].priceBasisConv = undefined;
-      ni[idx].total = computeItemTotal(ni[idx].qty, ni[idx].packing, ni[idx].unitPrice);
+      updated.priceBasisConv = undefined;
+      updated.total = computeItemTotal(updated.qty, updated.packing, updated.unitPrice);
     }
+    ni[idx] = updated;
     setItems(ni);
   };
   const addItem = () => setItems([...items, { seq: items.length + 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', priceBasis: 'Per kg', unitPrice: 0, gst: 18, total: 0, rateOverride: false, rateText: '' }]);
