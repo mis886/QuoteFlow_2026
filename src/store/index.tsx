@@ -102,7 +102,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     bankAccounts: [],
     roster: [],
   });
-  
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[DIAG-R2][store.data changed]', {
+      enquiries: data.enquiries.length, quotes: data.quotes.length, orders: data.orders.length,
+      customers: data.customers.length, t: performance.now(),
+    });
+  }, [data]);
+
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);

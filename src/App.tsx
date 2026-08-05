@@ -69,9 +69,41 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   return <AppErrorBoundary>{children}</AppErrorBoundary>;
 }
 
+function DiagR2Listener() {
+  React.useEffect(() => {
+    const isRelevant = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      if (!el || !el.tagName) return false;
+      return el.tagName === 'SELECT' || el.tagName === 'OPTION';
+    };
+    const logCapture = (name: string) => (e: Event) => {
+      if (!isRelevant(e.target)) return;
+      const el = e.target as HTMLSelectElement;
+      // eslint-disable-next-line no-console
+      console.log(`[DIAG-R2][document ${name} capture]`, {
+        tag: el.tagName,
+        value: (el as any).value,
+        defaultPrevented: e.defaultPrevented,
+        t: performance.now(),
+      });
+    };
+    const events: Array<keyof DocumentEventMap> = ['mousedown', 'mouseup', 'click', 'focusin', 'focusout', 'input', 'change'];
+    const handlers = events.map(evt => {
+      const h = logCapture(evt);
+      document.addEventListener(evt, h, true); // capture phase — fires before any other listener
+      return { evt, h };
+    });
+    // eslint-disable-next-line no-console
+    console.log('[DIAG-R2] global capture-phase listener attached');
+    return () => { handlers.forEach(({ evt, h }) => document.removeEventListener(evt, h, true)); };
+  }, []);
+  return null;
+}
+
 export default function App() {
   return (
     <AppProvider>
+      <DiagR2Listener />
       <BrowserRouter>
         <Routes>
           {/* Public route — no auth required */}
