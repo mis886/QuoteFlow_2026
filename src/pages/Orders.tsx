@@ -349,13 +349,21 @@ export function Orders() {
                               </Button>
                             )}
                             <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); navigate(`/orders/new?orderId=${o.id}`); }}>Edit</Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled={ADVANCE_PAY.has(o.pay ?? '')}
-                              className={ADVANCE_PAY.has(o.pay ?? '') ? 'bg-g100 text-g400 cursor-not-allowed' : ''}
-                              onClick={(e) => { e.stopPropagation(); updateOrder(o.id, { status: 'Order Confirmed' }).catch(console.error); }}
-                            >OC</Button>
+                            {ADVANCE_PAY.has(o.pay ?? '') && o.status === 'Processing' ? (
+                              <Button
+                                size="sm"
+                                variant="success"
+                                onClick={(e) => { e.stopPropagation(); updateOrder(o.id, { status: 'Order Confirmed' }).catch(console.error); }}
+                              >Payment Received</Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={ADVANCE_PAY.has(o.pay ?? '')}
+                                className={ADVANCE_PAY.has(o.pay ?? '') ? 'bg-g100 text-g400 cursor-not-allowed' : ''}
+                                onClick={(e) => { e.stopPropagation(); updateOrder(o.id, { status: 'Order Confirmed' }).catch(console.error); }}
+                              >OC</Button>
+                            )}
                             <Button
                               size="sm"
                               variant="secondary"
