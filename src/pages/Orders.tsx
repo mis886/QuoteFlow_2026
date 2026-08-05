@@ -3,7 +3,7 @@ import { useAppStore } from '../store';
 import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, nameTier, ADVANCE_PAY } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, nameTier, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -36,6 +36,7 @@ export function Orders() {
   const store = useAppStore();
   const { data, user, updateOrder, deleteOrder, openAttachmentModal } = store;
   const canDelete = canDeleteRecords(user?.email);
+  const canConfirmPmt = canConfirmPayment(user?.email);
   const { globalDateRange, setGlobalDateRange, globalSearchQuery } = store as any;
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
@@ -353,7 +354,14 @@ export function Orders() {
                               <Button
                                 size="sm"
                                 variant="success"
-                                onClick={(e) => { e.stopPropagation(); updateOrder(o.id, { status: 'Order Confirmed' }).catch(console.error); }}
+                                disabled={!canConfirmPmt}
+                                className={!canConfirmPmt ? 'bg-g100 text-g400 cursor-not-allowed' : ''}
+                                title={!canConfirmPmt ? 'Only Accounts can confirm payment' : undefined}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!canConfirmPmt) return;
+                                  updateOrder(o.id, { status: 'Order Confirmed' }).catch(console.error);
+                                }}
                               >Payment Received</Button>
                             ) : (
                               <Button

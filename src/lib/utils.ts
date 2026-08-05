@@ -15,6 +15,10 @@ export const PAY_OPTIONS = [
 /** Advance-type terms that require a PI (Proforma Invoice) rather than an OC (Order Confirmation). */
 export const ADVANCE_PAY = new Set<string>(['Advance', '100% Advance']);
 
+export const ALLOWED_PAYMENT_CONFIRM_EMAILS = ['accounts@himalayaterpene.com'];
+export const canConfirmPayment = (email: string | null | undefined): boolean =>
+  ALLOWED_PAYMENT_CONFIRM_EMAILS.includes((email ?? '').toLowerCase());
+
 export function normalizePayTerms(raw: string | undefined): string {
   if (!raw) return '';
   const lower = raw.toLowerCase().trim();
