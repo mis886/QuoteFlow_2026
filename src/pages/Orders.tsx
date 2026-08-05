@@ -355,7 +355,7 @@ export function Orders() {
                                 size="sm"
                                 variant="success"
                                 disabled={!canConfirmPmt}
-                                className={!canConfirmPmt ? 'bg-g100 text-g400 cursor-not-allowed' : ''}
+                                className={!canConfirmPmt ? 'bg-g100 text-g400 border-g200 hover:bg-g100 cursor-not-allowed' : ''}
                                 title={!canConfirmPmt ? 'Only Accounts can confirm payment' : undefined}
                                 onClick={(e) => {
                                   e.stopPropagation();
