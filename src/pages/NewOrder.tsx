@@ -324,10 +324,6 @@ export function NewOrder() {
 
   // Item helpers
   const updateItem = (idx: number, field: keyof OrderItem, value: any) => {
-    if (field === 'priceBasis') {
-      // eslint-disable-next-line no-console
-      console.log('[DIAG-R2][NewOrder.updateItem] called', { idx, field, value, prevValue: items[idx]?.priceBasis, t: performance.now() });
-    }
     const ni = [...items];
     const updated = { ...ni[idx], [field]: value };
     if (field === 'qty' || field === 'agreedRate' || field === 'priceBasisConv' || field === 'packing') {
@@ -345,8 +341,6 @@ export function NewOrder() {
     ni[idx] = updated;
     setItems(ni);
   };
-  // eslint-disable-next-line no-console
-  useEffect(() => { console.log('[DIAG-R2][NewOrder.items changed]', items.map(i => i.priceBasis), { t: performance.now() }); }, [items]);
   const addItem = () => setItems([...items, { seq: items.length + 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', priceBasis: 'Per kg', agreedRate: 0, gst: 18, total: 0 }]);
   const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 }))); };
 
@@ -655,7 +649,7 @@ export function NewOrder() {
       </div>
 
       {/* Content */}
-      <div className="px-5 pb-6 pt-3 flex-1 overflow-y-auto" onInput={markDirty} onChange={markDirty}>
+      <div className="px-5 pb-6 pt-3 flex-1 overflow-y-auto" onChange={markDirty}>
 
         {/* ══ STEP 1: Form ══ */}
         {step === 1 && (
