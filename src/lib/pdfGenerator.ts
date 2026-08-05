@@ -75,6 +75,7 @@ export function generateQuotePDF(
   doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', pw / 2, y, { align: 'center' }); y += 5;
   doc.setFontSize(7);
   doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, y, { align: 'center' }); y += 4;
+  doc.text('GSTIN: 27AAACH6788H1Z6', pw / 2, y, { align: 'center' }); y += 4;
   doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, y, { align: 'center' }); y += 5;
   doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.4);
   doc.line(mx, y, rx, y); y += 2;
@@ -454,7 +455,7 @@ export function generatePIPDF(
   const sigImg = unit?.sig_url || settings?.sig_url || localStorage.getItem('mrt_sig_img');
 
   // ── Header (hardcoded text — no letterhead image) ────────────────────────
-  const headerH = 33;
+  const headerH = 37;
   let y: number;
 
   doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
@@ -463,7 +464,8 @@ export function generatePIPDF(
   doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', pw / 2, 16, { align: 'center' });
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
   doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, 22, { align: 'center' });
-  doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, 28, { align: 'center' });
+  doc.text('GSTIN: 27AAACH6788H1Z6', pw / 2, 26, { align: 'center' });
+  doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, 32, { align: 'center' });
   y = headerH;
 
   // ── PROFORMA INVOICE heading + details ──────────────────────────────────
