@@ -344,7 +344,7 @@ export function Orders() {
                                 size="sm"
                                 variant="dark"
                                 disabled={!canComplete}
-                                className={!canComplete ? 'bg-g100 text-g400 border-g200 hover:bg-g100 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
+                                className={!canComplete ? 'cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
                                 title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -361,7 +361,7 @@ export function Orders() {
                                 size="sm"
                                 variant="success"
                                 disabled={!canConfirmPmt}
-                                className={!canConfirmPmt ? 'bg-g100 text-g400 border-g200 hover:bg-g100 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
+                                className={!canConfirmPmt ? 'cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
                                 title={!canConfirmPmt ? 'Only Accounts can confirm payment' : undefined}
                                 onClick={(e) => {
                                   e.stopPropagation();
