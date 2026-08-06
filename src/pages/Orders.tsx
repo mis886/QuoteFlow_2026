@@ -344,7 +344,7 @@ export function Orders() {
                                 size="sm"
                                 variant="dark"
                                 disabled={!canComplete}
-                                className={!canComplete ? 'bg-g100 text-g400 border-g200 hover:bg-g100 cursor-not-allowed' : ''}
+                                className={!canComplete ? 'bg-g100 text-g400 border-g200 hover:bg-g100 cursor-not-allowed disabled:pointer-events-auto' : ''}
                                 title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -361,7 +361,7 @@ export function Orders() {
                                 size="sm"
                                 variant="success"
                                 disabled={!canConfirmPmt}
-                                className={!canConfirmPmt ? 'bg-g100 text-g400 border-g200 hover:bg-g100 cursor-not-allowed' : ''}
+                                className={!canConfirmPmt ? 'bg-g100 text-g400 border-g200 hover:bg-g100 cursor-not-allowed disabled:pointer-events-auto' : ''}
                                 title={!canConfirmPmt ? 'Only Accounts can confirm payment' : undefined}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -382,7 +382,8 @@ export function Orders() {
                               size="sm"
                               variant="secondary"
                               disabled={!ADVANCE_PAY.has(o.pay ?? '')}
-                              className={!ADVANCE_PAY.has(o.pay ?? '') ? 'bg-g100 text-g400 cursor-not-allowed' : ''}
+                              className={!ADVANCE_PAY.has(o.pay ?? '') ? 'bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto' : ''}
+                              title={!ADVANCE_PAY.has(o.pay ?? '') ? 'PI is only available for Advance / 100% Advance payment terms' : undefined}
                               onClick={(e) => {
                               e.stopPropagation();
                               const qt = data.quotes.find(q => q.id === o.quoteRef);
