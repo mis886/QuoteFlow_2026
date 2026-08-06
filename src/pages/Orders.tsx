@@ -258,6 +258,7 @@ export function Orders() {
                 <SortTh col="cust">Customer - Unit</SortTh>
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">PO Number</th>
                 <SortTh col="poDate">PO Date</SortTh>
+                <SortTh col="dlvDate">Delivery Date</SortTh>
                 <SortTh col="items">Items</SortTh>
                 <SortTh col="value" right>Order Value</SortTh>
                 <SortTh col="created_at">Punched At</SortTh>
@@ -267,7 +268,7 @@ export function Orders() {
             </thead>
             <tbody>
               {filteredOrders.length === 0 ? (
-                <tr><td colSpan={10} className="text-center p-8 text-g400 text-[13px]">No orders yet</td></tr>
+                <tr><td colSpan={11} className="text-center p-8 text-g400 text-[13px]">No orders yet</td></tr>
               ) : (
                 filteredOrders.map(o => {
                   const subTotal = o.items.reduce((s, i) => s + i.total, 0);
@@ -316,20 +317,15 @@ export function Orders() {
                         <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
                           {o.poDate ? fmtIST(new Date(o.poDate), 'dd-MMM-yyyy') : '--'}
                         </td>
+                        <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                          {o.dlvDate ? fmtIST(new Date(o.dlvDate), 'dd-MMM-yyyy') : '--'}
+                        </td>
                         <td className="px-[13px] py-[10px] align-middle">
                           <span className="font-mono text-[10px] font-bold bg-g100 text-g600 px-[7px] py-[2px] rounded-full inline-flex items-center">
                             {o.items.length} item(s)
                           </span>
                         </td>
                         <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
-                        {/* <td className="px-[13px] py-[10px] align-middle text-[11.5px] whitespace-nowrap">
-                          {o.dlvDate ? (() => {
-                            // Colour the due date only while the order is still open:
-                            // red = past due, amber = within 7 days, green = safe.
-                            const cls = dlvDateClass(o.dlvDate, o.status);
-                            return <span className={cls.text} title={cls.title}>{fmtIST(new Date(o.dlvDate), 'dd-MMM-yyyy')}</span>;
-                          })() : <span className="text-g600">--</span>}
-                        </td> */}
                         <td className="px-[13px] py-[10px] align-middle text-[11.5px] whitespace-nowrap">
                           {(o as any).created_at ? (() => {
                             const cls = punchedAtClass((o as any).created_at);
@@ -430,7 +426,7 @@ export function Orders() {
 
                       {isExpanded && (
                         <tr className="bg-sW/[0.02] border-b-2 border-sW">
-                          <td colSpan={10} className="p-0">
+                          <td colSpan={11} className="p-0">
                             <div className="p-[10px_16px]">
                               <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sW mb-[7px]">Order Line Items -- {o.id}</div>
                               <table className="w-full border-collapse text-[11.5px] m-0 mb-2">
