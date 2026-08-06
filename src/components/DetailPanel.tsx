@@ -36,6 +36,7 @@ export function DetailPanel() {
   const canComplete = canCompleteOrder(user?.email);
   const [downloadingItemId, setDownloadingItemId] = React.useState<string | null>(null);
   const [showLineItems, setShowLineItems] = React.useState(false);
+  const [orderTab, setOrderTab] = React.useState<'Details' | 'Schedule'>('Details');
 
   const handleDownload = async (path: string, id: string, name?: string) => {
     if (path.startsWith('mock') || downloadingItemId === id) return;
@@ -572,6 +573,37 @@ export function DetailPanel() {
             <X size={16} />
           </button>
         </div>
+        <div className="px-6 pt-4">
+          <div className="inline-flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
+            {(['Details', 'Schedule'] as const).map(t => (
+              <div
+                key={t}
+                onClick={() => setOrderTab(t)}
+                className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${orderTab === t ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
+              >
+                {t}
+              </div>
+            ))}
+          </div>
+        </div>
+        {orderTab === 'Schedule' ? (
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <Section title="Schedule">
+              <Grid>
+                <InfoItem label="Order Date" value={o.created_at ? fmtIST(new Date(o.created_at), 'dd-MMM-yyyy') : '—'} />
+                <div>
+                  <div className="text-g500 font-mono text-[10.5px] font-bold tracking-wider mb-0.5 uppercase">Scheduled Delivery Date</div>
+                  <input
+                    type="date"
+                    value={o.dlvDate || ''}
+                    onChange={(e) => { updateOrder(o.id, { dlvDate: e.target.value }).catch(console.error); }}
+                    className="font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[6px_8px] outline-none focus:border-red-mrt"
+                  />
+                </div>
+              </Grid>
+            </Section>
+          </div>
+        ) : (
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           <Section title="Order Meta">
             <Grid>
@@ -642,6 +674,7 @@ export function DetailPanel() {
             )}
           </section>
         </div>
+        )}
         <div className="p-4 border-t border-g200 flex items-center justify-between bg-g100/30">
           <div className="flex items-center gap-2">
             <select
