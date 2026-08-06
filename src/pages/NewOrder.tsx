@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
+import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, AuthorizedSignatory, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -57,6 +57,7 @@ export function NewOrder() {
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
   const { data, user, addOrder, updateOrder, updateQuote, addCustomer, addSignatory, closeFollowUp, stampName } = useAppStore();
+  const canComplete = canCompleteOrder(user?.email);
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
@@ -635,11 +636,14 @@ export function NewOrder() {
               <div className="flex items-center gap-2">
                 <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
                 <select title="Order status" value={orderStatus}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setOrderStatus(e.target.value as OrderStatus)}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                    if (e.target.value === 'Delivered' && !canComplete) return;
+                    setOrderStatus(e.target.value as OrderStatus);
+                  }}
                   className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer">
                   <option value="Order Confirmed">Order Confirmed</option>
                   <option value="Processing">Processing</option>
-                  <option value="Delivered">Delivered</option>
+                  <option value="Delivered" disabled={!canComplete} title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}>Delivered</option>
                 </select>
               </div>
             )}

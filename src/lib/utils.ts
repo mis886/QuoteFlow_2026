@@ -19,6 +19,10 @@ export const ALLOWED_PAYMENT_CONFIRM_EMAILS = ['accounts@himalayaterpene.com'];
 export const canConfirmPayment = (email: string | null | undefined): boolean =>
   ALLOWED_PAYMENT_CONFIRM_EMAILS.includes((email ?? '').toLowerCase());
 
+export const ALLOWED_ORDER_COMPLETE_EMAILS = ['mum@himalayaterpene.com'];
+export const canCompleteOrder = (email: string | null | undefined): boolean =>
+  ALLOWED_ORDER_COMPLETE_EMAILS.includes((email ?? '').toLowerCase());
+
 export function normalizePayTerms(raw: string | undefined): string {
   if (!raw) return '';
   const lower = raw.toLowerCase().trim();

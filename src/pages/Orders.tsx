@@ -3,7 +3,7 @@ import { useAppStore } from '../store';
 import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, nameTier, ADVANCE_PAY } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, nameTier, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -37,6 +37,7 @@ export function Orders() {
   const { data, user, updateOrder, deleteOrder, openAttachmentModal } = store;
   const canDelete = canDeleteRecords(user?.email);
   const canConfirmPmt = canConfirmPayment(user?.email);
+  const canComplete = canCompleteOrder(user?.email);
   const { globalDateRange, setGlobalDateRange, globalSearchQuery } = store as any;
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
@@ -342,7 +343,12 @@ export function Orders() {
                               <Button
                                 size="sm"
                                 variant="dark"
-                                onClick={() => {
+                                disabled={!canComplete}
+                                className={!canComplete ? 'bg-g100 text-g400 border-g200 hover:bg-g100 cursor-not-allowed' : ''}
+                                title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!canComplete) return;
                                   updateOrder(o.id, { status: 'Delivered' }).catch(console.error);
                                 }}
                               >

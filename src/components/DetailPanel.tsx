@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../store';
-import { fmtIST } from '../lib/utils';
+import { fmtIST, canCompleteOrder } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -31,8 +31,9 @@ const InfoItem = ({ label, value }: { label: string, value: string }) => (
 );
 
 export function DetailPanel() {
-  const { detailPanel, closeDetailPanel, openDetailPanel, data, updateEnquiry, updateQuote, updateOrder, deleteEnquiry, closeFollowUp } = useAppStore();
+  const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, deleteEnquiry, closeFollowUp } = useAppStore();
   const navigate = useNavigate();
+  const canComplete = canCompleteOrder(user?.email);
   const [downloadingItemId, setDownloadingItemId] = React.useState<string | null>(null);
   const [showLineItems, setShowLineItems] = React.useState(false);
 
@@ -647,12 +648,13 @@ export function DetailPanel() {
               title="Order status"
               value={o.status}
               onChange={async (e) => {
+                if (e.target.value === 'Delivered' && !canComplete) return;
                 await updateOrder(o.id, { status: e.target.value as any });
               }}
               className="font-sans text-[12px] text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none hover:border-g400"
             >
               <option value="Processing">Processing</option>
-              <option value="Delivered">Delivered</option>
+              <option value="Delivered" disabled={!canComplete} title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}>Delivered</option>
             </select>
           </div>
           <div className="flex gap-2">
