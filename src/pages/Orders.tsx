@@ -350,7 +350,7 @@ export function Orders() {
                                 variant="dark"
                                 disabled={!canComplete}
                                 className={!canComplete ? 'cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
-                                title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}
+                                title={!canComplete ? 'Only Accounts can mark orders as Delivered' : undefined}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (!canComplete) return;

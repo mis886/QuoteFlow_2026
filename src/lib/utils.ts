@@ -15,11 +15,11 @@ export const PAY_OPTIONS = [
 /** Advance-type terms that require a PI (Proforma Invoice) rather than an OC (Order Confirmation). */
 export const ADVANCE_PAY = new Set<string>(['Advance', '100% Advance']);
 
-export const ALLOWED_PAYMENT_CONFIRM_EMAILS = ['accounts@himalayaterpene.com'];
+export const ALLOWED_PAYMENT_CONFIRM_EMAILS = ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'];
 export const canConfirmPayment = (email: string | null | undefined): boolean =>
   ALLOWED_PAYMENT_CONFIRM_EMAILS.includes((email ?? '').toLowerCase());
 
-export const ALLOWED_ORDER_COMPLETE_EMAILS = ['mum@himalayaterpene.com'];
+export const ALLOWED_ORDER_COMPLETE_EMAILS = ['accounts@himalayaterpene.com'];
 export const canCompleteOrder = (email: string | null | undefined): boolean =>
   ALLOWED_ORDER_COMPLETE_EMAILS.includes((email ?? '').toLowerCase());
 
