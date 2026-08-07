@@ -201,6 +201,7 @@ export interface Order {
   poNo: string;
   poDate: string;
   dlvDate: string;
+  scheduleDate?: string;
   status: OrderStatus;
   value: number;
   insurance?: number;      // INR only; user-applied 0.15% charge on subtotal

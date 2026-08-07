@@ -79,6 +79,7 @@ export function NewOrder() {
   const [existingPoFileName, setExistingPoFileName] = useState<string | null>(null);
   const [poDate, setPoDate] = useState(localDateStr(new Date()));
   const [dlvDate, setDlvDate] = useState(localDateStr(new Date(Date.now() + 86400000)));
+  const [scheduleDate, setScheduleDate] = useState('');
   const [inco, setInco] = useState('EXW');
   const [customInco, setCustomInco] = useState('');
   const [curr, setCurr] = useState('INR');
@@ -175,7 +176,7 @@ export function NewOrder() {
         if (o.quoteRef) setLinkedQuoteRef(o.quoteRef);
         if (o.enqRef) setLinkedEnqRef(o.enqRef);
         else if (o.quoteRef) { const q = data.quotes.find(x => x.id === o.quoteRef); if (q?.enqRef) setLinkedEnqRef(q.enqRef); }
-        setOrderId(o.id); setPoNo(o.poNo); setPoDate(o.poDate); setDlvDate(o.dlvDate);
+        setOrderId(o.id); setPoNo(o.poNo); setPoDate(o.poDate); setDlvDate(o.dlvDate); setScheduleDate(o.scheduleDate || '');
         if (o.inco) { const _n = normalizeInco(o.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : o.inco); }
         setCurr(o.curr || 'INR');
         if (o.pay) setPay(o.pay);
@@ -398,6 +399,7 @@ export function NewOrder() {
     phone: normalizeIndianPhone(phone).value || undefined,
     custEnquiryDocNo: custEnquiryDocNo.trim() || undefined,
     poNo: poNo.trim(), poDate, dlvDate,
+    scheduleDate: scheduleDate || undefined,
     status: editOrderId ? orderStatus : 'Processing',
     value: grandTotal,
     insurance: curr === 'INR' ? ins : 0,
@@ -720,6 +722,11 @@ export function NewOrder() {
                 <label className="block text-[10px] font-bold text-red-mrt uppercase tracking-[0.5px] mb-[3px]">Required Delivery By</label>
                 <input type="date" value={dlvDate} onChange={e => setDlvDate(e.target.value)}
                   className="font-mono text-[13px] font-bold text-blk bg-white border-2 border-red-mrt/30 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">Schedule Date</label>
+                <input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)}
+                  className="font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">PO Document</label>

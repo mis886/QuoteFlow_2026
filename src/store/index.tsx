@@ -331,6 +331,7 @@ const mapEnquiryToDB = (e: any) => {
     obj.poNo = o.po_no;
     obj.poDate = o.po_date;
     obj.dlvDate = o.dlv_date;
+    if (o.schedule_date) obj.scheduleDate = o.schedule_date;
     if (o.po_filename) obj.poFileName = o.po_filename;
     if (o.sheets_exported_at) obj.sheetsExportedAt = o.sheets_exported_at;
     if (o.company_unit_id) obj.unitId = o.company_unit_id;
@@ -361,6 +362,7 @@ const mapEnquiryToDB = (e: any) => {
     delete obj.po_no;
     delete obj.po_date;
     delete obj.dlv_date;
+    delete obj.schedule_date;
     delete obj.po_filename;
     delete obj.sheets_exported_at;
     delete obj.company_unit_id;
@@ -404,6 +406,9 @@ const mapEnquiryToDB = (e: any) => {
 
     if ('dlvDate' in o) obj.dlv_date = o.dlvDate;
     else if ('dlv_date' in o) obj.dlv_date = o.dlv_date;
+
+    if ('scheduleDate' in o) obj.schedule_date = o.scheduleDate || null;
+    else if ('schedule_date' in o) obj.schedule_date = o.schedule_date || null;
 
     if ('poFileName' in o) obj.po_filename = o.poFileName;
     else if ('po_filename' in o) obj.po_filename = o.po_filename;

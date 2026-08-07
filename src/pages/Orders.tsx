@@ -132,6 +132,7 @@ export function Orders() {
       else if (sortCol === 'value') { av = a.items.reduce((s, i) => s + i.total, 0); bv = b.items.reduce((s, i) => s + i.total, 0); }
       else if (sortCol === 'items') { av = a.items.length; bv = b.items.length; }
       else if (sortCol === 'dlvDate') { av = a.dlvDate || ''; bv = b.dlvDate || ''; }
+      else if (sortCol === 'scheduleDate') { av = a.scheduleDate || ''; bv = b.scheduleDate || ''; }
       else if (sortCol === 'created_at') { av = a.created_at || ''; bv = b.created_at || ''; }
       else { av = a.poDate; bv = b.poDate; }
       if (av < bv) return sortDir === 'asc' ? -1 : 1;
@@ -258,6 +259,7 @@ export function Orders() {
                 <SortTh col="cust">Customer - Unit</SortTh>
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">PO Number</th>
                 <SortTh col="poDate">PO Date</SortTh>
+                <SortTh col="scheduleDate">Schedule Date</SortTh>
                 <SortTh col="items">Items</SortTh>
                 <SortTh col="value" right>Order Value</SortTh>
                 <SortTh col="created_at">Punched At</SortTh>
@@ -267,7 +269,7 @@ export function Orders() {
             </thead>
             <tbody>
               {filteredOrders.length === 0 ? (
-                <tr><td colSpan={10} className="text-center p-8 text-g400 text-[13px]">No orders yet</td></tr>
+                <tr><td colSpan={11} className="text-center p-8 text-g400 text-[13px]">No orders yet</td></tr>
               ) : (
                 filteredOrders.map(o => {
                   const subTotal = o.items.reduce((s, i) => s + i.total, 0);
@@ -315,6 +317,9 @@ export function Orders() {
                         </td>
                         <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
                           {o.poDate ? fmtIST(new Date(o.poDate), 'dd-MMM-yyyy') : '--'}
+                        </td>
+                        <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                          {o.scheduleDate ? fmtIST(new Date(o.scheduleDate), 'dd-MMM-yyyy') : '--'}
                         </td>
                         <td className="px-[13px] py-[10px] align-middle">
                           <span className="font-mono text-[10px] font-bold bg-g100 text-g600 px-[7px] py-[2px] rounded-full inline-flex items-center">
@@ -430,7 +435,7 @@ export function Orders() {
 
                       {isExpanded && (
                         <tr className="bg-sW/[0.02] border-b-2 border-sW">
-                          <td colSpan={10} className="p-0">
+                          <td colSpan={11} className="p-0">
                             <div className="p-[10px_16px]">
                               <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sW mb-[7px]">Order Line Items -- {o.id}</div>
                               <table className="w-full border-collapse text-[11.5px] m-0 mb-2">
