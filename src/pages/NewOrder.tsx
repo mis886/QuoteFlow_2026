@@ -711,15 +711,15 @@ export function NewOrder() {
                   className="font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-red-mrt uppercase tracking-[0.5px] mb-[3px]">Required Delivery By</label>
-                <input type="date" value={dlvDate} onChange={e => setDlvDate(e.target.value)}
-                  className="font-mono text-[13px] font-bold text-blk bg-white border-2 border-red-mrt/30 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-              </div>
-              <div>
                 <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">Priority</label>
                 <select title="Priority" value={dlvPriority} onChange={e => setDlvPriority(e.target.value)} className={selectCls + ' w-[160px]'}>
                   <option>Standard</option><option>Priority</option><option>Critical - Expedite</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-red-mrt uppercase tracking-[0.5px] mb-[3px]">Required Delivery By</label>
+                <input type="date" value={dlvDate} onChange={e => setDlvDate(e.target.value)}
+                  className="font-mono text-[13px] font-bold text-blk bg-white border-2 border-red-mrt/30 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">PO Document</label>
