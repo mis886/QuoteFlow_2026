@@ -41,7 +41,7 @@ export function Orders() {
   const { globalDateRange, setGlobalDateRange, globalSearchQuery } = store as any;
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
-  const [tab, setTab] = useState<'All' | 'Order Confirmed' | 'Processing' | 'Delivered'>('All');
+  const [tab, setTab] = useState<'All' | 'Order Confirmed' | 'Processing' | 'Scheduled' | 'Delivered'>('All');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [downloadingPOId, setDownloadingPOId] = useState<string | null>(null);
   const [siteQuery, setSiteQuery] = useState('');
@@ -63,6 +63,7 @@ export function Orders() {
   const statusCounts = {
     'Order Confirmed': data.orders.filter(o => o.status === 'Order Confirmed').length,
     Processing: data.orders.filter(o => o.status === 'Processing').length,
+    Scheduled: data.orders.filter(o => o.status !== 'Delivered').length,
     Delivered: data.orders.filter(o => o.status === 'Delivered').length,
     All: data.orders.length
   };
@@ -108,7 +109,8 @@ export function Orders() {
     const qs = localSearch.toLowerCase();
     const sq = siteDebounced.toLowerCase();
     const list = data.orders.filter(o => {
-      if (tab !== 'All' && o.status !== tab) return false;
+      if (tab === 'Scheduled') { if (o.status === 'Delivered') return false; }
+      else if (tab !== 'All' && o.status !== tab) return false;
       if (qs) {
         const match = o.cust.toLowerCase().includes(qs) || o.id.toLowerCase().includes(qs) || o.poNo.toLowerCase().includes(qs) ||
           o.items.some(i => i.desc.toLowerCase().includes(qs));
@@ -142,11 +144,19 @@ export function Orders() {
     return list;
   }, [data.orders, data.customers, localSearch, siteDebounced, tab, globalDateRange, sortCol, sortDir]);
 
+  // "Scheduled" (everything not yet Delivered) defaults to soonest-delivery-first
+  // on entry, since that's the whole point of the tab — but once there, the user
+  // can still re-sort by any column normally via the existing header toggles.
+  const handleTabClick = (t: typeof tab) => {
+    setTab(t);
+    if (t === 'Scheduled') { setSortCol('dlvDate'); setSortDir('asc'); }
+  };
+
   const TabSelect = ({ current, label, count }: { current: string, label: string, count?: number }) => {
     const isActive = tab === current;
     return (
-      <div 
-        onClick={() => setTab(current as any)}
+      <div
+        onClick={() => handleTabClick(current as any)}
         className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${isActive ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
       >
         {label} {count !== undefined && `(${count})`}
@@ -216,6 +226,7 @@ export function Orders() {
           <TabSelect current="All" label="All" count={statusCounts.All} />
           <TabSelect current="Order Confirmed" label="Order Confirmed" count={statusCounts['Order Confirmed']} />
           <TabSelect current="Processing" label="Processing" count={statusCounts.Processing} />
+          <TabSelect current="Scheduled" label="Scheduled" count={statusCounts.Scheduled} />
           <TabSelect current="Delivered" label="Delivered" count={statusCounts.Delivered} />
         </div>
         
