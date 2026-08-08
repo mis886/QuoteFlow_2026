@@ -43,9 +43,12 @@ export function SendEmailModal(props: Props) {
   const { customer, siteId, onClose, onSent } = props;
   const { activeDoer, user, data } = useAppStore();
   const senderEmail = activeDoer?.email ?? user?.email ?? '';
-  const defaultCCs = (user?.email ?? '').toLowerCase() === SHISHIR
-    ? ['sales@himalayaterpene.com', 'anil@himalayaterpene.com']
-    : [SHISHIR, 'anil@himalayaterpene.com'];
+  const defaultCCs = [
+    ...((user?.email ?? '').toLowerCase() === SHISHIR
+      ? ['sales@himalayaterpene.com', 'anil@himalayaterpene.com']
+      : [SHISHIR, 'anil@himalayaterpene.com']),
+    ...(props.mode === 'order' ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'] : []),
+  ];
 
   const siteContacts = getSiteContacts(customer, siteId);
   const primaryContact = getPrimaryContact(customer, siteId);
