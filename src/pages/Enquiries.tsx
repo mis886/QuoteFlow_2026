@@ -50,8 +50,10 @@ export function Enquiries() {
       e.cust.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) ||
       e.items.some((i: any) => i.desc.toLowerCase().includes(q) || i.mat.toLowerCase().includes(q));
     const list = data.enquiries.filter(e => {
-      if (tab === 'Open' && e.status !== 'New' && e.status !== 'In Review') return false;
-      else if (tab !== 'All' && tab !== 'Open' && e.status !== tab) return false;
+      if (!lq) {
+        if (tab === 'Open' && e.status !== 'New' && e.status !== 'In Review') return false;
+        else if (tab !== 'All' && tab !== 'Open' && e.status !== tab) return false;
+      }
       if (lq && !matchEnq(e, lq)) return false;
       if (srcFilter && e.src !== srcFilter) return false;
       if (urgFilter && e.urg !== urgFilter) return false;
@@ -79,7 +81,7 @@ export function Enquiries() {
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
-    if (lq) list.sort((a, b) => nameTier(a.cust, lq) - nameTier(b.cust, lq));
+    if (lq) list.sort((a, b) => nameTier(a.cust, lq, [a.id]) - nameTier(b.cust, lq, [b.id]));
     return list;
   }, [data.enquiries, data.customers, localSearch, siteDebounced, tab, srcFilter, urgFilter, globalDateRange, sortCol, sortDir]);
 

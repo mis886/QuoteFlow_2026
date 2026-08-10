@@ -306,9 +306,11 @@ export function Sampling() {
 
   const filtered = useMemo(() => {
     let list = samples;
-    if (tabFilter === 'pending') list = list.filter(s => s.status === 'pending' || s.status === 'dispatched');
-    else if (tabFilter === 'delivered') list = list.filter(s => s.status === 'delivered' || s.status === 'approved' || s.status === 'rejected');
-    else if (tabFilter !== 'all') list = list.filter(s => s.status === tabFilter);
+    if (!search.trim()) {
+      if (tabFilter === 'pending') list = list.filter(s => s.status === 'pending' || s.status === 'dispatched');
+      else if (tabFilter === 'delivered') list = list.filter(s => s.status === 'delivered' || s.status === 'approved' || s.status === 'rejected');
+      else if (tabFilter !== 'all') list = list.filter(s => s.status === tabFilter);
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(s =>
@@ -318,7 +320,7 @@ export function Sampling() {
         (s.quote_ref ?? '').toLowerCase().includes(q) ||
         (s.enq_ref ?? '').toLowerCase().includes(q)
       );
-      list.sort((a, b) => nameTier(a.cust, q) - nameTier(b.cust, q));
+      list.sort((a, b) => nameTier(a.cust, q, [a.id, a.quote_ref, a.enq_ref]) - nameTier(b.cust, q, [b.id, b.quote_ref, b.enq_ref]));
     }
     return list;
   }, [samples, tabFilter, search]);

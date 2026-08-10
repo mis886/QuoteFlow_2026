@@ -54,7 +54,7 @@ export function Quotes() {
     const qs = localSearch.toLowerCase();
     const sq = siteDebounced.toLowerCase();
     const list = data.quotes.filter(q => {
-      if (tab !== 'All' && q.status !== tab) return false;
+      if (!qs && tab !== 'All' && q.status !== tab) return false;
       if (qs) {
         const match = q.cust.toLowerCase().includes(qs) || q.id.toLowerCase().includes(qs) ||
           q.items.some(i => i.desc.toLowerCase().includes(qs));
@@ -84,7 +84,7 @@ export function Quotes() {
       if (av > bv) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
-    if (qs) list.sort((a, b) => nameTier(a.cust, qs) - nameTier(b.cust, qs));
+    if (qs) list.sort((a, b) => nameTier(a.cust, qs, [a.id]) - nameTier(b.cust, qs, [b.id]));
     return list;
   }, [data.quotes, data.customers, localSearch, siteDebounced, tab, custFilter, globalDateRange, sortCol, sortDir]);
 

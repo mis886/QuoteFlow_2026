@@ -10,7 +10,7 @@
 // corrected per-item prices.
 
 import assert from 'node:assert/strict';
-import { getCurrentQuoteItems, getEffectiveTotals, getEffectiveTotalsUpToRound, getEffectiveItemsUpToRound } from './utils';
+import { getCurrentQuoteItems, getEffectiveTotals, getEffectiveTotalsUpToRound, getEffectiveItemsUpToRound, nameTier } from './utils';
 import type { QuoteItem, NegotiationRound } from './types';
 
 const items: QuoteItem[] = [
@@ -161,3 +161,18 @@ const round4Totals = getEffectiveTotalsUpToRound(quoteAfterRound4, 4);
 assert.equal(round4Totals.subTotal, 1020, `Round 4's running total should be ₹1,020.00 (₹1,000 Alpha Pinene + ₹20 Anthamber Residue), got ₹${round4Totals.subTotal}`);
 
 console.log('PASS: round 4 table row count matches asOfItems.length (2), not round.items.length (1) — reconciles with ₹1,020.00 total');
+
+// ── nameTier: exact ref/PO/ID match ranks with exact name match, above loose
+// name matches ────────────────────────────────────────────────────────────
+// An order whose customer name only loosely contains the query, but whose PO
+// number is an exact hit, must rank at the very top tier (0) — same as an
+// exact customer-name match — not buried below it.
+assert.equal(nameTier('Acme Corp', 'acme corp'), 0, 'Exact (case-insensitive) name match should be tier 0');
+assert.equal(nameTier('Beta Industries', 'PO-2024-777', ['PO-2024-777']), 0, 'Exact match on an extra ref (PO number) should be tier 0 even though the name has nothing to do with the query');
+assert.equal(nameTier('Acme Corporation', 'acme'), 1, 'Name starting with the query (no exact match) should be tier 1');
+assert.equal(nameTier('Global Acme Traders', 'acme'), 2, 'Name containing the query elsewhere should be tier 2');
+assert.equal(nameTier('Unrelated Customer', 'acme'), 3, 'No match at all (fallback, e.g. matched only via item description) should be tier 3');
+// Existing Customers.tsx call style (no extra list) must keep working.
+assert.equal(nameTier('Acme Corp', 'acme corp', []), 0, 'nameTier must still work with an explicit empty extra-match list');
+
+console.log('PASS: nameTier — exact ref/PO/ID match (tier 0) ranks above starts-with (1), contains (2), and fallback (3)');

@@ -542,18 +542,29 @@ export function getThisWeekRange(): { start: Date; end: Date } {
 }
 
 /**
- * Returns a search-relevance tier for ranking rows by customer/company name match.
- * 0 = name starts with query (shown first), 1 = name contains query elsewhere,
- * 2 = match was against a different field (ID, item description, etc.).
+ * Returns a search-relevance tier for ranking rows by customer/company name
+ * match, optionally boosted by exact matches on other reference fields (ID,
+ * PO number, linked quote/enquiry ref, etc.) that the same search box also
+ * matches against.
+ * 0 = name is an exact match, OR one of exactMatches is an exact match
+ *     (case-insensitive) — an exact ref/PO/ID hit is as strong a signal as an
+ *     exact name hit, so both share the top tier.
+ * 1 = name starts with query, 2 = name contains query elsewhere,
+ * 3 = match was against some other field only partially (item description,
+ *     etc.) — deliberately excludes exactMatches' fields, which are already
+ *     covered by tier 0; a partial hit there isn't a strong enough signal to
+ *     rank above a loose name match.
  * Apply as a stable second sort after the table's primary column sort so that
  * within each tier the column order is preserved.
  */
-export function nameTier(name: string, query: string): 0 | 1 | 2 {
+export function nameTier(name: string, query: string, exactMatches: (string | undefined | null)[] = []): 0 | 1 | 2 | 3 {
   const n = (name ?? '').toLowerCase();
   const q = query.toLowerCase();
-  if (n.startsWith(q)) return 0;
-  if (n.includes(q)) return 1;
-  return 2;
+  if (n === q) return 0;
+  if (exactMatches.some(v => (v ?? '').toLowerCase() === q)) return 0;
+  if (n.startsWith(q)) return 1;
+  if (n.includes(q)) return 2;
+  return 3;
 }
 
 export const generateId = (prefix: string, existingIds: (string | undefined | null)[]) => {
