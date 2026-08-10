@@ -4,7 +4,7 @@ import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus } from '../lib/types';
-import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, getCurrentQuoteItems } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, getCurrentQuoteItems, getEffectiveTotals } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { supabase } from '../lib/supabase';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
@@ -231,15 +231,12 @@ export function Quotes() {
                   <tr><td colSpan={10} className="text-center p-8 text-g400 text-[13px]">No quotations match</td></tr>
                 ) : (
                   filteredQuotes.map(q => {
-                    // Latest negotiation round's revised prices, if any, replace the
-                    // items they touched; everything else (incl. quotes with no
-                    // rounds) keeps the original quote data — see getCurrentQuoteItems.
+                    // Every negotiation round's revised prices, folded in round order
+                    // (a later round only overwrites the seqs it touched — see
+                    // getCurrentQuoteItems), then fed through the same totals formula
+                    // used everywhere else via getEffectiveTotals — not re-derived here.
                     const currentItems = getCurrentQuoteItems(q.items, q.negotiations);
-                    const subTotal = currentItems.reduce((s, i) => s + i.total, 0);
-                    const ins = (q as any).insurance ?? 0;
-                    const rawItemGst = currentItems.reduce((s, i) => s + i.total * i.gst / 100, 0);
-                    const scaledItemGst = subTotal > 0 ? rawItemGst * (subTotal + ins) / subTotal : rawItemGst;
-                    const grandTotal = Math.round(subTotal + ins + scaledItemGst);
+                    const { subTotal, gstTotal, grandTotal } = getEffectiveTotals(q);
                     const isExpanded = expandedRow === q.id;
 
                     return (
@@ -371,7 +368,7 @@ export function Quotes() {
                                 </table>
                                 <div className="flex justify-end pt-2 border-t border-g200 gap-5 items-center">
                                   <span className="text-[12px] text-g600">Sub-Total: <strong className="text-blk font-bold font-mono">{formatINR(subTotal)}</strong></span>
-                                  <span className="text-[12px] text-g600">GST: <strong className="text-blk font-bold font-mono">{formatINR(Math.round(scaledItemGst))}</strong></span>
+                                  <span className="text-[12px] text-g600">GST: <strong className="text-blk font-bold font-mono">{formatINR(Math.round(gstTotal))}</strong></span>
                                   <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(grandTotal)}</span>
                                 </div>
                               </div>

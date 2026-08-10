@@ -194,31 +194,46 @@ export function effectiveNegotiatedPrice(it: NegotiationRoundItem): number | nul
   return null;
 }
 
-// Rounds are always appended in order with round = (prior length + 1), so
-// the last array element is both the highest round number and the most
-// recent by date — the two can't diverge given how rounds are created.
-export function getLatestNegotiationRound(negotiations: NegotiationRound[] | undefined): NegotiationRound | undefined {
-  return negotiations && negotiations.length > 0 ? negotiations[negotiations.length - 1] : undefined;
-}
-
-// Current effective items for a quote: if a negotiation round exists, the
-// latest round's revised price replaces each item it touched (matched by
-// seq); items the round didn't touch — including all items when no round
-// exists yet — keep their original price. A round only ever stores the
-// items it actually touched, so this merges by seq rather than treating
-// the round's items[] as the whole item list: a negotiation amends prices
-// on the existing quote, it doesn't redefine which products are being quoted.
+// Current effective items for a quote: fold every negotiation round in order
+// (oldest to newest), tracking the latest revised price found per seq. A
+// later round only overwrites the seqs it actually touched — an item a later
+// round doesn't mention keeps whatever revision an earlier round gave it,
+// instead of resetting to the original price just because the most recent
+// round happened not to mention it. A round only ever stores the items it
+// actually touched, so this merges by seq rather than treating any single
+// round's items[] as the whole item list: a negotiation amends prices on the
+// existing quote, it doesn't redefine which products are being quoted.
+//
+// Sorted by `round` ascending rather than trusting array order: rounds are
+// always appended in order with round = (prior length + 1) today, but
+// sorting explicitly means this can't silently regress if that invariant
+// ever stops holding (e.g. a future edit/reorder feature).
 export function getCurrentQuoteItems(items: QuoteItem[], negotiations: NegotiationRound[] | undefined): QuoteItem[] {
-  const latest = getLatestNegotiationRound(negotiations);
-  if (!latest) return items;
-  const revisedBySeq = new Map(latest.items.map(it => [it.seq, it]));
+  const rounds = [...(negotiations ?? [])].sort((a, b) => a.round - b.round);
+  const latestPriceBySeq = new Map<number, number>();
+  for (const round of rounds) {
+    for (const it of round.items) {
+      const price = effectiveNegotiatedPrice(it);
+      if (price != null) latestPriceBySeq.set(it.seq, price);
+    }
+  }
+  if (latestPriceBySeq.size === 0) return items;
   return items.map(item => {
-    const revised = revisedBySeq.get(item.seq);
-    if (!revised) return item;
-    const price = effectiveNegotiatedPrice(revised);
+    const price = latestPriceBySeq.get(item.seq);
     if (price == null) return item;
     return { ...item, unitPrice: price, total: computeItemTotal(item.qty, item.packing, price, item.priceBasisConv) };
   });
+}
+
+// Subtotal/GST/Grand Total for a quote's *current* (post-negotiation) state —
+// getCurrentQuoteItems()'s resolved prices fed through the exact same
+// computeQuoteTotals() formula used for a quote's original totals, so the
+// two can never compute the math differently. Call sites should use this
+// instead of re-deriving subtotal/GST/grand total by hand from
+// getCurrentQuoteItems()'s output.
+export function getEffectiveTotals(quote: Pick<Quote, 'items' | 'negotiations' | 'curr' | 'insurance'>): QuoteTotals {
+  const effectiveItems = getCurrentQuoteItems(quote.items, quote.negotiations);
+  return computeQuoteTotals(effectiveItems, quote.curr, quote.insurance ?? 0);
 }
 
 // Per-item row shape for a negotiation round's export table — same fields

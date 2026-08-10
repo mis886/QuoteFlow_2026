@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder } from '../lib/utils';
+import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, AuthorizedSignatory, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -252,7 +252,7 @@ export function NewOrder() {
         if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
         setCurr(q.curr || 'INR');
         if (q.pay) setPay(q.pay);
-        setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
+        setItems(getCurrentQuoteItems(q.items, q.negotiations).map(i => ({ ...i, agreedRate: i.unitPrice })));
         setInsurance(q.insurance ?? 0);
         setCustomerTier(q.customerTier || data.customers.find(c => c.name === q.cust)?.tier || '');
       }
@@ -607,7 +607,7 @@ export function NewOrder() {
                 if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
                 setCurr(q.curr || 'INR');
                 if (q.pay) setPay(q.pay);
-                setItems(q.items.map(i => ({ ...i, agreedRate: i.unitPrice })));
+                setItems(getCurrentQuoteItems(q.items, q.negotiations).map(i => ({ ...i, agreedRate: i.unitPrice })));
                 setInsurance(q.insurance ?? 0);
               }
             }} className="flex-1">
