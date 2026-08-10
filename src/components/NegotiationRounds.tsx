@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAppStore } from '../store';
 import { Quote, NegotiationRound, NegotiationRoundItem } from '../lib/types';
 import { Plus, X, CheckCircle2 } from 'lucide-react';
-import { cn, fmtIST, formatINR, formatUSD, computeItemTotal, computeQuoteTotals, effectiveNegotiatedPrice as effectivePrice, getEffectiveTotalsUpToRound } from '../lib/utils';
+import { cn, fmtIST, formatINR, formatUSD, computeItemTotal, computeQuoteTotals, effectiveNegotiatedPrice as effectivePrice, getEffectiveTotalsUpToRound, getCurrentQuoteItems } from '../lib/utils';
 import { QuoteTotalsFooter } from './QuoteTotalsFooter';
 import { parseISO } from 'date-fns';
 
@@ -189,7 +189,14 @@ export function NegotiationRoundForm({
   const [date, setDate] = useState(todayISO());
   const [requestedBy, setRequestedBy] = useState<'customer' | 'internal'>('customer');
   const [notes, setNotes] = useState('');
-  const [itemRows, setItemRows] = useState<ItemRow[]>(() => quote.items.map(it => ({
+  // Seeded from the item's CURRENT effective price (every already-saved
+  // negotiation round folded in via getCurrentQuoteItems), not the quote's
+  // original pre-negotiation price — this is the baseline a new round is
+  // actually negotiating from. Both the "Unit Rate" reference column and the
+  // original_unit_price saved onto this round (used for its Discount % math
+  // and its own "original → revised" display) derive from this seed, so
+  // fixing it here fixes both.
+  const [itemRows, setItemRows] = useState<ItemRow[]>(() => getCurrentQuoteItems(quote.items, quote.negotiations).map(it => ({
     seq: it.seq,
     desc: it.desc,
     hsn: it.hsn,

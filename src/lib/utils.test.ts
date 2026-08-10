@@ -86,3 +86,46 @@ assert.notEqual(round2Totals.subTotal, 500, 'Round 2\'s running total must not b
 assert.equal(round2Totals.subTotal, subTotal, 'getEffectiveTotalsUpToRound at the latest round number should match getEffectiveTotals');
 
 console.log('PASS: per-round running totals — round 1 = ₹400.00, round 2 = ₹700.00 (not ₹500.00)');
+
+// ── "Add Negotiation Round" form's baseline (getCurrentQuoteItems, not
+// quote.items) ──────────────────────────────────────────────────────────────
+// NegotiationRoundForm seeds its editable rows — and therefore its "Unit
+// Rate" reference column, its live preview total, and the original_unit_price
+// it saves onto the new round — from getCurrentQuoteItems(quote.items,
+// quote.negotiations), not from quote.items directly. Round 3 below revises
+// both items down to ₹1 each, mirroring HTP-2026-413: opening a new round
+// after that must show both items' current price as ₹1 (not the original
+// ₹10/₹30), and the "preview — not saved" total (nothing ticked yet) must
+// equal round 3's own running total of ₹30.00, not ₹700.00.
+const round3: NegotiationRound = {
+  round: 3,
+  date: '2026-08-08',
+  requested_by: 'customer',
+  doer: 'test',
+  created_at: '2026-08-08T00:00:00Z',
+  items: [
+    { seq: 1, desc: 'Alpha Pinene', hsn: '29021900', qty: 10, gst: 18, original_unit_price: 50, revised_unit_price: 1, discount_pct: null },
+    { seq: 2, desc: 'Anthamber Residue', hsn: '29021900', qty: 20, gst: 18, original_unit_price: 10, revised_unit_price: 1, discount_pct: null },
+  ],
+};
+const quoteAfterRound3 = { items, negotiations: [...negotiations, round3], curr: 'INR', insurance: 0 };
+
+// This is exactly what NegotiationRoundForm's itemRows seed calls.
+const newRoundBaseline = getCurrentQuoteItems(quoteAfterRound3.items, quoteAfterRound3.negotiations);
+const baselineSeq1 = newRoundBaseline.find(i => i.seq === 1)!;
+const baselineSeq2 = newRoundBaseline.find(i => i.seq === 2)!;
+
+assert.equal(baselineSeq1.unitPrice, 1, `New round's baseline Unit Rate for Alpha Pinene should be ₹1 (current effective price), got ₹${baselineSeq1.unitPrice}`);
+assert.equal(baselineSeq2.unitPrice, 1, `New round's baseline Unit Rate for Anthamber Residue should be ₹1 (current effective price), got ₹${baselineSeq2.unitPrice}`);
+assert.notEqual(baselineSeq1.unitPrice, 10, 'New round baseline must not fall back to the quote\'s original ₹10 for Alpha Pinene');
+assert.notEqual(baselineSeq2.unitPrice, 30, 'New round baseline must not fall back to the quote\'s original ₹30 for Anthamber Residue');
+
+// The live "preview — not saved" total with nothing ticked must match round
+// 3's own running total (₹30.00), not the wrong ₹700.00 the original-price
+// baseline would have produced.
+const newRoundPreviewTotals = getEffectiveTotals(quoteAfterRound3);
+assert.equal(newRoundPreviewTotals.subTotal, 30, `New round's unedited preview Subtotal should be ₹30.00, got ₹${newRoundPreviewTotals.subTotal}`);
+assert.notEqual(newRoundPreviewTotals.subTotal, 700, 'New round preview must not show the wrong ₹700.00 (i.e. must not be seeded from the quote\'s original prices)');
+assert.equal(newRoundPreviewTotals.subTotal, getEffectiveTotalsUpToRound(quoteAfterRound3, 3).subTotal, 'New round\'s unedited preview must match round 3\'s own running total');
+
+console.log('PASS: new-round form baseline — Unit Rate ₹1/₹1 (current effective price), preview Subtotal ₹30.00 (not ₹700.00)');
