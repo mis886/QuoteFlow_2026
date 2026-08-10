@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAppStore } from '../store';
 import { Quote, NegotiationRound, NegotiationRoundItem } from '../lib/types';
 import { Plus, X, CheckCircle2 } from 'lucide-react';
-import { cn, fmtIST, formatINR, formatUSD, computeItemTotal, computeQuoteTotals, effectiveNegotiatedPrice as effectivePrice, getEffectiveTotalsUpToRound, getCurrentQuoteItems } from '../lib/utils';
+import { cn, fmtIST, formatINR, formatUSD, computeItemTotal, computeQuoteTotals, effectiveNegotiatedPrice as effectivePrice, getEffectiveTotalsUpToRound, getEffectiveItemsUpToRound, getCurrentQuoteItems } from '../lib/utils';
 import { QuoteTotalsFooter } from './QuoteTotalsFooter';
 import { parseISO } from 'date-fns';
 
@@ -77,9 +77,15 @@ export function NegotiationRoundDetail({ quote, round }: { quote: Quote; round: 
   // to its latest known price at this point in the negotiation history
   // (carrying forward an earlier round's revision for anything this round
   // didn't touch), not just the subset of items round.items happens to list.
-  // The line-items table below still only shows what this round itself
-  // negotiated; only this summary box reflects the cumulative state.
   const totals = getEffectiveTotalsUpToRound(quote, round.round);
+  // Same fold, but the resolved items themselves rather than just their
+  // totals — the table below renders one row per item here (sorted by seq),
+  // not one row per round.items entry, so the visible rows always reconcile
+  // with the Subtotal/Grand Total shown above: round.items alone is only
+  // what THIS round touched, which under-represents carried-forward items
+  // from earlier rounds that the totals box already accounts for.
+  const asOfItems = [...getEffectiveItemsUpToRound(quote, round.round)].sort((a, b) => a.seq - b.seq);
+  const touchedBySeq = new Map(round.items.map(it => [it.seq, it]));
 
   return (
     <div className="border border-g200 rounded-[4px] divide-y divide-g100 text-[12px]">
@@ -113,22 +119,48 @@ export function NegotiationRoundDetail({ quote, round }: { quote: Quote; round: 
             </tr>
           </thead>
           <tbody>
-            {round.items.map(it => {
-              const price = effectivePrice(it);
+            {asOfItems.map(item => {
+              const touched = touchedBySeq.get(item.seq);
+              if (touched) {
+                const price = effectivePrice(touched);
+                return (
+                  <tr key={item.seq}>
+                    <td className="px-2 py-1.5 border border-g200 font-mono font-bold text-g400">{touched.seq}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-blk">{touched.desc}</td>
+                    <td className="px-2 py-1.5 border border-g200 font-mono text-g500">{touched.hsn || '—'}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center">{touched.qty}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center">{touched.packing || '—'}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center bg-g50 text-g500">{totalQty(touched.qty, touched.packing)}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center">{touched.packingType || '—'}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center">{touched.priceBasis || '—'}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-right font-mono text-g600">{fmtPrice(touched.original_unit_price)}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center font-mono">{touched.gst}%</td>
+                    <td className="px-2 py-1.5 border border-g200 text-right font-mono text-blk font-bold">{price != null ? fmtPrice(price) : '—'}</td>
+                    <td className="px-2 py-1.5 border border-g200 text-center font-mono text-g600">{touched.discount_pct != null ? `${touched.discount_pct}%` : '—'}</td>
+                  </tr>
+                );
+              }
+              // Carried forward: not touched in this round, resolved price
+              // (same for both columns, since nothing changed this round) comes
+              // from asOfItems rather than a round.items entry — muted so it
+              // reads as reference context, not something this round negotiated.
               return (
-                <tr key={it.seq}>
-                  <td className="px-2 py-1.5 border border-g200 font-mono font-bold text-g400">{it.seq}</td>
-                  <td className="px-2 py-1.5 border border-g200 text-blk">{it.desc}</td>
-                  <td className="px-2 py-1.5 border border-g200 font-mono text-g500">{it.hsn || '—'}</td>
-                  <td className="px-2 py-1.5 border border-g200 text-center">{it.qty}</td>
-                  <td className="px-2 py-1.5 border border-g200 text-center">{it.packing || '—'}</td>
-                  <td className="px-2 py-1.5 border border-g200 text-center bg-g50 text-g500">{totalQty(it.qty, it.packing)}</td>
-                  <td className="px-2 py-1.5 border border-g200 text-center">{it.packingType || '—'}</td>
-                  <td className="px-2 py-1.5 border border-g200 text-center">{it.priceBasis || '—'}</td>
-                  <td className="px-2 py-1.5 border border-g200 text-right font-mono text-g600">{fmtPrice(it.original_unit_price)}</td>
-                  <td className="px-2 py-1.5 border border-g200 text-center font-mono">{it.gst}%</td>
-                  <td className="px-2 py-1.5 border border-g200 text-right font-mono text-blk font-bold">{price != null ? fmtPrice(price) : '—'}</td>
-                  <td className="px-2 py-1.5 border border-g200 text-center font-mono text-g600">{it.discount_pct != null ? `${it.discount_pct}%` : '—'}</td>
+                <tr key={item.seq} className="opacity-50">
+                  <td className="px-2 py-1.5 border border-g200 font-mono font-bold text-g400">{item.seq}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-blk">
+                    {item.desc}
+                    <span className="ml-1.5 font-mono text-[8px] tracking-wider uppercase text-g400">Carried forward</span>
+                  </td>
+                  <td className="px-2 py-1.5 border border-g200 font-mono text-g500">{item.hsn || '—'}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center">{item.qty}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center">{item.packing || '—'}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center bg-g50 text-g500">{totalQty(item.qty, item.packing)}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center">{item.packingType || '—'}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center">{item.priceBasis || '—'}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-right font-mono text-g600">{fmtPrice(item.unitPrice)}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center font-mono">{item.gst}%</td>
+                  <td className="px-2 py-1.5 border border-g200 text-right font-mono text-g600">{fmtPrice(item.unitPrice)}</td>
+                  <td className="px-2 py-1.5 border border-g200 text-center font-mono text-g500">—</td>
                 </tr>
               );
             })}

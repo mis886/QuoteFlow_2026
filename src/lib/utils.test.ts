@@ -10,7 +10,7 @@
 // corrected per-item prices.
 
 import assert from 'node:assert/strict';
-import { getCurrentQuoteItems, getEffectiveTotals, getEffectiveTotalsUpToRound } from './utils';
+import { getCurrentQuoteItems, getEffectiveTotals, getEffectiveTotalsUpToRound, getEffectiveItemsUpToRound } from './utils';
 import type { QuoteItem, NegotiationRound } from './types';
 
 const items: QuoteItem[] = [
@@ -129,3 +129,35 @@ assert.notEqual(newRoundPreviewTotals.subTotal, 700, 'New round preview must not
 assert.equal(newRoundPreviewTotals.subTotal, getEffectiveTotalsUpToRound(quoteAfterRound3, 3).subTotal, 'New round\'s unedited preview must match round 3\'s own running total');
 
 console.log('PASS: new-round form baseline — Unit Rate ₹1/₹1 (current effective price), preview Subtotal ₹30.00 (not ₹700.00)');
+
+// ── NegotiationRoundDetail's saved-round table must show a row per
+// as-of-round item, not per round.items entry ───────────────────────────────
+// Round 4 below (mirroring HTP-2026-413) only touches Alpha Pinene (revised
+// to ₹100) — round.items has length 1 — but Anthamber Residue, carried
+// forward from round 3's ₹1 revision, must still be represented so the
+// visible rows reconcile with the ₹1,020.00 total shown below the table
+// (₹1,000 Alpha Pinene + ₹20 Anthamber Residue).
+const round4: NegotiationRound = {
+  round: 4,
+  date: '2026-08-09',
+  requested_by: 'customer',
+  doer: 'test',
+  created_at: '2026-08-09T00:00:00Z',
+  items: [
+    { seq: 1, desc: 'Alpha Pinene', hsn: '29021900', qty: 10, gst: 18, original_unit_price: 1, revised_unit_price: 100, discount_pct: null },
+  ],
+};
+const quoteAfterRound4 = { items, negotiations: [...negotiations, round3, round4], curr: 'INR', insurance: 0 };
+
+// This is exactly what NegotiationRoundDetail's table now renders one row per.
+const round4AsOfItems = getEffectiveItemsUpToRound(quoteAfterRound4, 4);
+assert.equal(round4AsOfItems.length, quoteAfterRound4.items.length, `Round 4's rendered row count should match the full item set (${quoteAfterRound4.items.length}), not round.items.length (${round4.items.length})`);
+assert.notEqual(round4AsOfItems.length, round4.items.length, 'Round 4 must not render only round.items.length rows — that drops carried-forward Anthamber Residue');
+
+const round4Seq2 = round4AsOfItems.find(i => i.seq === 2)!;
+assert.equal(round4Seq2.unitPrice, 1, `Carried-forward Anthamber Residue in round 4's table should show ₹1 (round 3's revision), got ₹${round4Seq2.unitPrice}`);
+
+const round4Totals = getEffectiveTotalsUpToRound(quoteAfterRound4, 4);
+assert.equal(round4Totals.subTotal, 1020, `Round 4's running total should be ₹1,020.00 (₹1,000 Alpha Pinene + ₹20 Anthamber Residue), got ₹${round4Totals.subTotal}`);
+
+console.log('PASS: round 4 table row count matches asOfItems.length (2), not round.items.length (1) — reconciles with ₹1,020.00 total');
