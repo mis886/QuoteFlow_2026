@@ -10,7 +10,7 @@
 // corrected per-item prices.
 
 import assert from 'node:assert/strict';
-import { getCurrentQuoteItems, getEffectiveTotals } from './utils';
+import { getCurrentQuoteItems, getEffectiveTotals, getEffectiveTotalsUpToRound } from './utils';
 import type { QuoteItem, NegotiationRound } from './types';
 
 const items: QuoteItem[] = [
@@ -68,3 +68,21 @@ assert.equal(grandTotal, expectedGrand, `Grand total should be ₹${expectedGran
 console.log('PASS: negotiation round price resolution — seq 2 correctly carries forward round 1\'s revised price');
 console.log(`  seq 1 = ₹${seq1.unitPrice}, seq 2 = ₹${seq2.unitPrice}`);
 console.log(`  Subtotal = ₹${subTotal.toFixed(2)}, GST = ₹${gstTotal.toFixed(2)}, Grand Total = ₹${grandTotal.toFixed(2)}`);
+
+// ── Per-round "running total as of this round" (each round's summary box on
+// the quote edit page) ──────────────────────────────────────────────────────
+// Round 1 touches every item on the quote, so "as of round 1" is just round
+// 1's own items: (20×10) + (10×20) = 200 + 200 = ₹400.
+const round1Totals = getEffectiveTotalsUpToRound(quote, 1);
+assert.equal(round1Totals.subTotal, 400, `Round 1's running total should be ₹400.00, got ₹${round1Totals.subTotal}`);
+
+// Round 2 only revises seq 1 — "as of round 2" must still include seq 2 at
+// its round-1-revised ₹10, not just round 2's own touched-items subset
+// (which would wrongly total ₹500 — Alpha Pinene only, Anthamber dropped).
+const round2Totals = getEffectiveTotalsUpToRound(quote, 2);
+assert.equal(round2Totals.subTotal, 700, `Round 2's running total should be ₹700.00, got ₹${round2Totals.subTotal}`);
+assert.notEqual(round2Totals.subTotal, 500, 'Round 2\'s running total must not be the wrong ₹500.00 (i.e. must not silently drop seq 2 just because round 2 didn\'t mention it)');
+// "As of the latest round" must agree with the plain "current" total.
+assert.equal(round2Totals.subTotal, subTotal, 'getEffectiveTotalsUpToRound at the latest round number should match getEffectiveTotals');
+
+console.log('PASS: per-round running totals — round 1 = ₹400.00, round 2 = ₹700.00 (not ₹500.00)');

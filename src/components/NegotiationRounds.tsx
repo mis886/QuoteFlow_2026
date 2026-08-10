@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAppStore } from '../store';
 import { Quote, NegotiationRound, NegotiationRoundItem } from '../lib/types';
 import { Plus, X, CheckCircle2 } from 'lucide-react';
-import { cn, fmtIST, formatINR, formatUSD, computeItemTotal, computeQuoteTotals, effectiveNegotiatedPrice as effectivePrice } from '../lib/utils';
+import { cn, fmtIST, formatINR, formatUSD, computeItemTotal, computeQuoteTotals, effectiveNegotiatedPrice as effectivePrice, getEffectiveTotalsUpToRound } from '../lib/utils';
 import { QuoteTotalsFooter } from './QuoteTotalsFooter';
 import { parseISO } from 'date-fns';
 
@@ -73,17 +73,13 @@ const th = 'font-mono text-[8px] tracking-[1px] uppercase text-g500 px-2 py-1.5 
 export function NegotiationRoundDetail({ quote, round }: { quote: Quote; round: NegotiationRound }) {
   const sym = quote.curr === 'USD' ? '$' : '₹';
   const fmtAmt = (v: number) => quote.curr === 'USD' ? formatUSD(v) : formatINR(v);
-  // Totals for just this round's items (not the whole quote — round.items is
-  // only the subset that was selected, so this is a "this round" subtotal,
-  // not a reconstructed whole-quote grand total for that point in time).
-  const totals = computeQuoteTotals(
-    round.items.map(it => ({
-      total: computeItemTotal(it.qty, it.packing, effectivePrice(it) ?? it.original_unit_price, 1),
-      gst: it.gst,
-    })),
-    quote.curr,
-    quote.insurance ?? 0,
-  );
+  // Running total for the whole quote as of this round — every item resolved
+  // to its latest known price at this point in the negotiation history
+  // (carrying forward an earlier round's revision for anything this round
+  // didn't touch), not just the subset of items round.items happens to list.
+  // The line-items table below still only shows what this round itself
+  // negotiated; only this summary box reflects the cumulative state.
+  const totals = getEffectiveTotalsUpToRound(quote, round.round);
 
   return (
     <div className="border border-g200 rounded-[4px] divide-y divide-g100 text-[12px]">
@@ -141,7 +137,7 @@ export function NegotiationRoundDetail({ quote, round }: { quote: Quote; round: 
       </div>
 
       <div className="p-3 bg-white">
-        <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">Negotiated Total (this round's items)</div>
+        <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-2">Negotiated Total (running total as of this round)</div>
         <table className="w-full border-collapse text-[11px]">
           <QuoteTotalsFooter
             colSpan={1}

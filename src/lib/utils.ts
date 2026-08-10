@@ -194,22 +194,27 @@ export function effectiveNegotiatedPrice(it: NegotiationRoundItem): number | nul
   return null;
 }
 
-// Current effective items for a quote: fold every negotiation round in order
-// (oldest to newest), tracking the latest revised price found per seq. A
-// later round only overwrites the seqs it actually touched — an item a later
-// round doesn't mention keeps whatever revision an earlier round gave it,
-// instead of resetting to the original price just because the most recent
-// round happened not to mention it. A round only ever stores the items it
+// Effective items for a quote as of a given round in its negotiation
+// history: fold every round with round <= roundNumber, in order (oldest to
+// newest), tracking the latest revised price found per seq. A later round
+// only overwrites the seqs it actually touched — an item a later round
+// doesn't mention keeps whatever revision an earlier round gave it, instead
+// of resetting to the original price just because the most recent round
+// considered didn't mention it. A round only ever stores the items it
 // actually touched, so this merges by seq rather than treating any single
 // round's items[] as the whole item list: a negotiation amends prices on the
 // existing quote, it doesn't redefine which products are being quoted.
 //
-// Sorted by `round` ascending rather than trusting array order: rounds are
-// always appended in order with round = (prior length + 1) today, but
-// sorting explicitly means this can't silently regress if that invariant
-// ever stops holding (e.g. a future edit/reorder feature).
-export function getCurrentQuoteItems(items: QuoteItem[], negotiations: NegotiationRound[] | undefined): QuoteItem[] {
-  const rounds = [...(negotiations ?? [])].sort((a, b) => a.round - b.round);
+// Filtered/sorted by `round` explicitly rather than trusting array order or
+// slicing the array: rounds are always appended in order with
+// round = (prior length + 1) today, but doing this by round number means it
+// can't silently regress if that invariant ever stops holding (e.g. a future
+// edit/reorder feature), and lets callers ask "as of round N" for any N, not
+// just "all rounds" or "up to array index N".
+export function getEffectiveItemsUpToRound(quote: Pick<Quote, 'items' | 'negotiations'>, roundNumber: number): QuoteItem[] {
+  const rounds = (quote.negotiations ?? [])
+    .filter(r => r.round <= roundNumber)
+    .sort((a, b) => a.round - b.round);
   const latestPriceBySeq = new Map<number, number>();
   for (const round of rounds) {
     for (const it of round.items) {
@@ -217,23 +222,37 @@ export function getCurrentQuoteItems(items: QuoteItem[], negotiations: Negotiati
       if (price != null) latestPriceBySeq.set(it.seq, price);
     }
   }
-  if (latestPriceBySeq.size === 0) return items;
-  return items.map(item => {
+  if (latestPriceBySeq.size === 0) return quote.items;
+  return quote.items.map(item => {
     const price = latestPriceBySeq.get(item.seq);
     if (price == null) return item;
     return { ...item, unitPrice: price, total: computeItemTotal(item.qty, item.packing, price, item.priceBasisConv) };
   });
 }
 
-// Subtotal/GST/Grand Total for a quote's *current* (post-negotiation) state —
-// getCurrentQuoteItems()'s resolved prices fed through the exact same
-// computeQuoteTotals() formula used for a quote's original totals, so the
-// two can never compute the math differently. Call sites should use this
-// instead of re-deriving subtotal/GST/grand total by hand from
-// getCurrentQuoteItems()'s output.
-export function getEffectiveTotals(quote: Pick<Quote, 'items' | 'negotiations' | 'curr' | 'insurance'>): QuoteTotals {
-  const effectiveItems = getCurrentQuoteItems(quote.items, quote.negotiations);
+// Current (i.e. as of the latest round — every negotiation applied) effective
+// items for a quote. Thin wrapper over getEffectiveItemsUpToRound so there's
+// one fold implementation, not two that could drift apart.
+export function getCurrentQuoteItems(items: QuoteItem[], negotiations: NegotiationRound[] | undefined): QuoteItem[] {
+  return getEffectiveItemsUpToRound({ items, negotiations }, Number.POSITIVE_INFINITY);
+}
+
+// Subtotal/GST/Grand Total for a quote as of a given round in its negotiation
+// history — getEffectiveItemsUpToRound()'s resolved prices fed through the
+// exact same computeQuoteTotals() formula used for a quote's original
+// totals, so per-round boxes, the "current" total, and the original total
+// can never compute the math differently from one another.
+export function getEffectiveTotalsUpToRound(quote: Pick<Quote, 'items' | 'negotiations' | 'curr' | 'insurance'>, roundNumber: number): QuoteTotals {
+  const effectiveItems = getEffectiveItemsUpToRound(quote, roundNumber);
   return computeQuoteTotals(effectiveItems, quote.curr, quote.insurance ?? 0);
+}
+
+// Current (as of the latest round) totals for a quote. Thin wrapper over
+// getEffectiveTotalsUpToRound — call sites should use this instead of
+// re-deriving subtotal/GST/grand total by hand from getCurrentQuoteItems()'s
+// output.
+export function getEffectiveTotals(quote: Pick<Quote, 'items' | 'negotiations' | 'curr' | 'insurance'>): QuoteTotals {
+  return getEffectiveTotalsUpToRound(quote, Number.POSITIVE_INFINITY);
 }
 
 // Per-item row shape for a negotiation round's export table — same fields
