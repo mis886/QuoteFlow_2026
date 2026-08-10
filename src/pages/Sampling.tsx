@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { localDateStr, canDeleteRecords, nameTier } from '../lib/utils';
+import { localDateStr, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -313,9 +313,10 @@ export function Sampling() {
     }
     if (search.trim()) {
       const q = search.toLowerCase();
+      const qNorm = normalizeSearchText(q);
       list = list.filter(s =>
         s.id.toLowerCase().includes(q) ||
-        s.cust.toLowerCase().includes(q) ||
+        normalizeSearchText(s.cust).includes(qNorm) ||
         s.product_name.toLowerCase().includes(q) ||
         (s.quote_ref ?? '').toLowerCase().includes(q) ||
         (s.enq_ref ?? '').toLowerCase().includes(q)

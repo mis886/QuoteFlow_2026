@@ -3,7 +3,7 @@ import { useAppStore } from '../store';
 import { Badge, Button, SourceIcon, DateFilterBanner } from '../components/ui';
 import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier } from '../lib/utils';
+import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
 import { EnqStatus } from '../lib/types';
 import { supabase } from '../lib/supabase';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
@@ -47,7 +47,7 @@ export function Enquiries() {
     const lq = localSearch.trim().toLowerCase();
     const sq = siteDebounced.toLowerCase();
     const matchEnq = (e: any, q: string) =>
-      e.cust.toLowerCase().includes(q) || e.id.toLowerCase().includes(q) ||
+      normalizeSearchText(e.cust).includes(normalizeSearchText(q)) || e.id.toLowerCase().includes(q) ||
       e.items.some((i: any) => i.desc.toLowerCase().includes(q) || i.mat.toLowerCase().includes(q));
     const list = data.enquiries.filter(e => {
       if (!lq) {

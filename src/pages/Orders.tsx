@@ -3,7 +3,7 @@ import { useAppStore } from '../store';
 import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, nameTier, ADVANCE_PAY } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -110,7 +110,8 @@ export function Orders() {
     const list = data.orders.filter(o => {
       if (!qs && tab !== 'All' && o.status !== tab) return false;
       if (qs) {
-        const match = o.cust.toLowerCase().includes(qs) || o.id.toLowerCase().includes(qs) || o.poNo.toLowerCase().includes(qs) ||
+        const qsNorm = normalizeSearchText(qs);
+        const match = normalizeSearchText(o.cust).includes(qsNorm) || o.id.toLowerCase().includes(qs) || o.poNo.toLowerCase().includes(qs) ||
           o.items.some(i => i.desc.toLowerCase().includes(qs));
         if (!match) return false;
       }

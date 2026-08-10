@@ -4,7 +4,7 @@ import { Badge, Button, DateFilterBanner } from '../components/ui';
 import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus } from '../lib/types';
-import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, getCurrentQuoteItems, getEffectiveTotals } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText, getCurrentQuoteItems, getEffectiveTotals } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { supabase } from '../lib/supabase';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
@@ -56,7 +56,8 @@ export function Quotes() {
     const list = data.quotes.filter(q => {
       if (!qs && tab !== 'All' && q.status !== tab) return false;
       if (qs) {
-        const match = q.cust.toLowerCase().includes(qs) || q.id.toLowerCase().includes(qs) ||
+        const qsNorm = normalizeSearchText(qs);
+        const match = normalizeSearchText(q.cust).includes(qsNorm) || q.id.toLowerCase().includes(qs) ||
           q.items.some(i => i.desc.toLowerCase().includes(qs));
         if (!match) return false;
       }
