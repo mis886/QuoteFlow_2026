@@ -875,14 +875,7 @@ export function Customers() {
   const filteredCustomers = data.customers.filter(c => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      const nameMatch  = c.name?.toLowerCase().includes(q);
-      const codeMatch  = c.code?.toLowerCase().includes(q);
-      const gstinMatch = c.gstin?.toLowerCase().includes(q)
-        || c.sites.some(s => s.gstin?.toLowerCase().includes(q));
-      const primaryContact = getPrimaryContact(c);
-      const contactMatch = primaryContact?.name?.toLowerCase().includes(q)
-        || primaryContact?.email?.toLowerCase().includes(q);
-      if (!nameMatch && !codeMatch && !gstinMatch && !contactMatch) return false;
+      if (!c.name?.toLowerCase().includes(q)) return false;
     }
     if (segFilter && c.seg !== segFilter) return false;
     if (tierFilter && (c.tier ?? 'New') !== tierFilter) return false;
@@ -937,7 +930,7 @@ export function Customers() {
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-2">
         <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[220px] focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
           <Search size={11} className="text-g400 shrink-0" />
-          <input type="text" placeholder="Company, code, GSTIN…" value={searchQuery}
+          <input type="text" placeholder="Company name…" value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400" />
           {searchQuery && (
