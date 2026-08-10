@@ -424,7 +424,7 @@ export function Sampling() {
                 <th className={thCls}>Outcome</th>
                 <th className={thCls}>COA</th>
                 <th className={thCls}>Lot No</th>
-                <th className={thCls}>Actions</th>
+                <th className={`${thCls} sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]`}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -447,7 +447,7 @@ export function Sampling() {
                 </tr>
               ) : (
                 filtered.map(s => (
-                  <tr key={s.id} className="border-b border-g100 last:border-b-0 hover:bg-g50 transition-colors">
+                  <tr key={s.id} className="group border-b border-g100 last:border-b-0 hover:bg-g50 transition-colors">
                     <td className={tdCls}>
                       <span className="font-mono text-[10.5px] font-bold text-red-mrt">{s.id}</span>
                     </td>
@@ -507,7 +507,7 @@ export function Sampling() {
                         </div>
                       ))}
                     </td>
-                    <td className={tdCls}>
+                    <td className={`${tdCls} sticky right-0 z-[1] bg-white group-hover:bg-g50 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]`}>
                       <div className="flex flex-col gap-[3px]">
                         <div className="flex items-center gap-1.5">
                           <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>

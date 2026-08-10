@@ -237,7 +237,7 @@ export function Enquiries() {
                   <SortTh col="status" label="Status" />
                   <SortTh col="age"    label="Age" />
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -251,7 +251,7 @@ export function Enquiries() {
                     return (
                       <React.Fragment key={e.id}>
                         <tr
-                          className={`transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 ${isExpanded ? 'bg-red-mrt/5' : ''}`}
+                          className={`group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 ${isExpanded ? 'bg-red-mrt/5' : ''}`}
                           onClick={() => setExpandedRow(isExpanded ? null : e.id)}
                         >
                           <td className="px-[13px] py-[10px] align-middle"><span className="font-mono text-[10.5px] font-bold text-red-mrt">{e.id}</span></td>
@@ -299,7 +299,7 @@ export function Enquiries() {
                           <td className="px-[13px] py-[10px] align-middle">
                             {e.qRef ? <span className="font-mono text-[10.5px] font-bold text-sQ">{e.qRef}</span> : <span className="text-g400 text-[11px]">--</span>}
                           </td>
-                          <td className="px-[13px] py-[10px] align-middle" onClick={ev => ev.stopPropagation()}>
+                          <td className={`px-[13px] py-[10px] align-middle sticky right-0 z-[1] border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] ${isExpanded ? 'bg-red-mrt/5' : 'bg-white group-hover:bg-red-mrt/5'}`} onClick={ev => ev.stopPropagation()}>
                             <div className="flex gap-1.5 flex-wrap">
                               <Button size="sm" variant="secondary" onClick={() => navigate(`/enquiries/new?id=${e.id}`)}>Edit</Button>
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('enquiry', e.id); }}>Detail</Button>
@@ -378,7 +378,7 @@ export function Enquiries() {
                   <th className={thCls}>Email Sent At</th>
                   <th className={thCls}>Status</th>
                   <th className={thCls}>Outcome</th>
-                  <th className={thCls}>Actions</th>
+                  <th className={`${thCls} sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]`}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -386,7 +386,7 @@ export function Enquiries() {
                   <tr><td colSpan={9} className="text-center p-8 text-g400 text-[13px]">No emailed samples linked to enquiries yet</td></tr>
                 ) : (
                   enqSamples.map(s => (
-                    <tr key={s.id} className="border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 transition-colors">
+                    <tr key={s.id} className="group border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 transition-colors">
                       <td className="px-[13px] py-[10px] align-middle">
                         <span className="font-mono text-[10.5px] font-bold text-red-mrt">{s.id}</span>
                       </td>
@@ -407,7 +407,7 @@ export function Enquiries() {
                       <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600">
                         {s.outcome || <span className="text-g400">—</span>}
                       </td>
-                      <td className="px-[13px] py-[10px] align-middle">
+                      <td className="px-[13px] py-[10px] align-middle sticky right-0 z-[1] bg-white group-hover:bg-red-mrt/5 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">
                         <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
                       </td>
                     </tr>
