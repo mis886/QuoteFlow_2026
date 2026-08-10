@@ -254,17 +254,17 @@ export function Enquiries() {
                           className={`group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 ${isExpanded ? 'bg-red-mrt/5' : ''}`}
                           onClick={() => setExpandedRow(isExpanded ? null : e.id)}
                         >
-                          <td className="px-[13px] py-[10px] align-middle"><span className="font-mono text-[10.5px] font-bold text-red-mrt">{e.id}</span></td>
-                          <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">{fmtIST(d, 'dd MMM HH:mm')}</td>
-                          <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                          <td className="px-[13px] py-[10px] align-top"><span className="font-mono text-[10.5px] font-bold text-red-mrt">{e.id}</span></td>
+                          <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">{fmtIST(d, 'dd MMM HH:mm')}</td>
+                          <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
                             {e.created_at ? fmtIST(new Date(e.created_at), 'dd MMM HH:mm') : '--'}
                           </td>
-                          <td className="px-[13px] py-[10px] align-middle">
+                          <td className="px-[13px] py-[10px] align-top">
                             <div className="font-semibold">{e.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === e.cust), e.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
                             {(() => { const saved = (e as any).customerTier as string; const t = saved || (() => { const ct = data.customers.find(c => c.name === e.cust)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
                             <div className="text-[11px] text-g500">{e.contact}</div>
                           </td>
-                          <td className="px-[13px] py-[10px] align-middle">
+                          <td className="px-[13px] py-[10px] align-top">
                             <span className="inline-flex items-center gap-1 text-[11px] text-g600 bg-g100 px-2 py-0.5 rounded-[3px] font-medium">
                               <SourceIcon source={e.src} /> {e.src}
                             </span>
@@ -287,19 +287,19 @@ export function Enquiries() {
                                 })
                             }
                           </td>
-                          <td className="px-[13px] py-[10px] align-middle"><Badge status={e.urg} /></td>
-                          <td className="px-[13px] py-[10px] align-middle"><Badge status={e.status} /></td>
-                          <td className="px-[13px] py-[10px] align-middle font-mono text-[10.5px] font-bold">
+                          <td className="px-[13px] py-[10px] align-top"><Badge status={e.urg} /></td>
+                          <td className="px-[13px] py-[10px] align-top"><Badge status={e.status} /></td>
+                          <td className="px-[13px] py-[10px] align-top font-mono text-[10.5px] font-bold">
                             {e.ageH < 1 ? <span className="text-sW"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sW mr-1"></span>Now</span> :
                              e.ageH < 4 ? <span className="text-sW"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sW mr-1"></span>{e.ageH.toFixed(1)}h</span> :
                              e.ageH < 24 ? <span className="text-sR"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sR mr-1"></span>{Math.round(e.ageH)}h</span> :
                              <span className="text-red-mrt"><span className="inline-block w-[7px] h-[7px] rounded-full bg-red-mrt mr-1 animate-pulse"></span>{Math.floor(e.ageH/24)}d {Math.round(e.ageH%24)}h</span>
                             }
                           </td>
-                          <td className="px-[13px] py-[10px] align-middle">
+                          <td className="px-[13px] py-[10px] align-top">
                             {e.qRef ? <span className="font-mono text-[10.5px] font-bold text-sQ">{e.qRef}</span> : <span className="text-g400 text-[11px]">--</span>}
                           </td>
-                          <td className={`px-[13px] py-[10px] align-middle sticky right-0 z-[1] border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] ${isExpanded ? 'bg-red-mrt/5' : 'bg-white group-hover:bg-red-mrt/5'}`} onClick={ev => ev.stopPropagation()}>
+                          <td className={`px-[13px] py-[10px] align-top sticky right-0 z-[1] border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] ${isExpanded ? 'bg-red-mrt/5' : 'bg-white group-hover:bg-red-mrt/5'}`} onClick={ev => ev.stopPropagation()}>
                             <div className="flex gap-1.5 flex-wrap">
                               <Button size="sm" variant="secondary" onClick={() => navigate(`/enquiries/new?id=${e.id}`)}>Edit</Button>
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('enquiry', e.id); }}>Detail</Button>
@@ -387,27 +387,27 @@ export function Enquiries() {
                 ) : (
                   enqSamples.map(s => (
                     <tr key={s.id} className="group border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 transition-colors">
-                      <td className="px-[13px] py-[10px] align-middle">
+                      <td className="px-[13px] py-[10px] align-top">
                         <span className="font-mono text-[10.5px] font-bold text-red-mrt">{s.id}</span>
                       </td>
-                      <td className="px-[13px] py-[10px] align-middle">
+                      <td className="px-[13px] py-[10px] align-top">
                         {s.enq_ref
                           ? <span className="font-mono text-[10.5px] font-bold text-red-mrt">{s.enq_ref}</span>
                           : <span className="text-g400 text-[11px]">—</span>}
                       </td>
-                      <td className="px-[13px] py-[10px] align-middle font-medium">{s.cust}</td>
-                      <td className="px-[13px] py-[10px] align-middle">{s.product_name}</td>
-                      <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[11.5px]">
+                      <td className="px-[13px] py-[10px] align-top font-medium">{s.cust}</td>
+                      <td className="px-[13px] py-[10px] align-top">{s.product_name}</td>
+                      <td className="px-[13px] py-[10px] align-top text-right font-mono text-[11.5px]">
                         {s.quantity != null ? `${s.quantity} ${s.unit || ''}`.trim() : '—'}
                       </td>
-                      <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                      <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
                         {s.email_sent_at ? fmtIST(new Date(s.email_sent_at), 'dd MMM HH:mm') : '—'}
                       </td>
-                      <td className="px-[13px] py-[10px] align-middle"><Badge status={s.status} /></td>
-                      <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600">
+                      <td className="px-[13px] py-[10px] align-top"><Badge status={s.status} /></td>
+                      <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600">
                         {s.outcome || <span className="text-g400">—</span>}
                       </td>
-                      <td className="px-[13px] py-[10px] align-middle sticky right-0 z-[1] bg-white group-hover:bg-red-mrt/5 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">
+                      <td className="px-[13px] py-[10px] align-top sticky right-0 z-[1] bg-white group-hover:bg-red-mrt/5 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">
                         <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
                       </td>
                     </tr>

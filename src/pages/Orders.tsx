@@ -284,13 +284,13 @@ export function Orders() {
                         className={`group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-sW/5 ${isExpanded ? 'bg-sW/5' : ''}`}
                         onClick={() => setExpandedRow(isExpanded ? null : o.id)}
                       >
-                        <td className="px-[13px] py-[10px] align-middle"><span className="font-mono text-[10.5px] font-bold text-sW">{o.id}</span></td>
-                        <td className="px-[13px] py-[10px] align-middle"><span className="font-mono text-[10px] font-bold text-sQ">{o.quoteRef}</span></td>
-                        <td className="px-[13px] py-[10px] align-middle">
+                        <td className="px-[13px] py-[10px] align-top"><span className="font-mono text-[10.5px] font-bold text-sW">{o.id}</span></td>
+                        <td className="px-[13px] py-[10px] align-top"><span className="font-mono text-[10px] font-bold text-sQ">{o.quoteRef}</span></td>
+                        <td className="px-[13px] py-[10px] align-top">
                           <div className="font-semibold">{o.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === o.cust), (o as any).siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
                           {(() => { const saved = (o as any).customerTier as string; const t = saved || (() => { const ct = data.customers.find(c => c.name === o.cust)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
                         </td>
-                        <td className="px-[13px] py-[10px] align-middle font-mono text-[11px] font-bold text-g700">
+                        <td className="px-[13px] py-[10px] align-top font-mono text-[11px] font-bold text-g700">
                           <div className="flex items-center gap-1.5">
                             {o.poNo}
                             {o.poFileName && o.poFileName.startsWith('http') && (
@@ -316,19 +316,19 @@ export function Orders() {
                             )}
                           </div>
                         </td>
-                        <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                        <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
                           {o.poDate ? fmtIST(new Date(o.poDate), 'dd-MMM-yyyy') : '--'}
                         </td>
-                        <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
+                        <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
                           {o.scheduleDate ? fmtIST(new Date(o.scheduleDate), 'dd-MMM-yyyy') : '--'}
                         </td>
-                        <td className="px-[13px] py-[10px] align-middle">
+                        <td className="px-[13px] py-[10px] align-top">
                           <span className="font-mono text-[10px] font-bold bg-g100 text-g600 px-[7px] py-[2px] rounded-full inline-flex items-center">
                             {o.items.length} item(s)
                           </span>
                         </td>
-                        <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
-                        {/* <td className="px-[13px] py-[10px] align-middle text-[11.5px] whitespace-nowrap">
+                        <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
+                        {/* <td className="px-[13px] py-[10px] align-top text-[11.5px] whitespace-nowrap">
                           {o.dlvDate ? (() => {
                             // Colour the due date only while the order is still open:
                             // red = past due, amber = within 7 days, green = safe.
@@ -336,14 +336,14 @@ export function Orders() {
                             return <span className={cls.text} title={cls.title}>{fmtIST(new Date(o.dlvDate), 'dd-MMM-yyyy')}</span>;
                           })() : <span className="text-g600">--</span>}
                         </td> */}
-                        <td className="px-[13px] py-[10px] align-middle text-[11.5px] whitespace-nowrap">
+                        <td className="px-[13px] py-[10px] align-top text-[11.5px] whitespace-nowrap">
                           {(o as any).created_at ? (() => {
                             const cls = punchedAtClass((o as any).created_at);
                             return <span className={cls.text} title={cls.title}>{fmtIST(new Date((o as any).created_at), 'dd-MMM-yyyy')}</span>;
                           })() : <span className="text-g600">--</span>}
                         </td>
-                        <td className="px-[13px] py-[10px] align-middle"><Badge status={o.status} /></td>
-                        <td className={`px-[13px] py-[10px] align-middle sticky right-0 z-[1] border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] ${isExpanded ? 'bg-sW/5' : 'bg-white group-hover:bg-sW/5'}`} onClick={ev => ev.stopPropagation()}>
+                        <td className="px-[13px] py-[10px] align-top"><Badge status={o.status} /></td>
+                        <td className={`px-[13px] py-[10px] align-top sticky right-0 z-[1] border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] ${isExpanded ? 'bg-sW/5' : 'bg-white group-hover:bg-sW/5'}`} onClick={ev => ev.stopPropagation()}>
                           <div className="flex gap-1.5 flex-wrap">
                             {o.status !== 'Delivered' && (
                               <Button

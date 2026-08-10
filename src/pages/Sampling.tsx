@@ -347,7 +347,7 @@ export function Sampling() {
   );
 
   const thCls = "font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200";
-  const tdCls = "px-[13px] py-[10px] align-middle";
+  const tdCls = "px-[13px] py-[10px] align-top";
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
