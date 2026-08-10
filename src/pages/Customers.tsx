@@ -5,7 +5,7 @@ import { DuplicateReviewPanel } from '../components/DuplicateReviewPanel';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Customer, Contact, CustomerTier, FollowUpLog } from '../lib/types';
-import { formatINR, fmtIST, generateId, canDeleteRecords, nameTier } from '../lib/utils';
+import { formatINR, fmtIST, generateId, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
 import { parseISO } from 'date-fns';
 import Papa from 'papaparse';
 
@@ -874,8 +874,8 @@ export function Customers() {
 
   const filteredCustomers = data.customers.filter(c => {
     if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      if (!c.name?.toLowerCase().includes(q)) return false;
+      const q = normalizeSearchText(searchQuery);
+      if (!normalizeSearchText(c.name ?? '').includes(q)) return false;
     }
     if (segFilter && c.seg !== segFilter) return false;
     if (tierFilter && (c.tier ?? 'New') !== tierFilter) return false;

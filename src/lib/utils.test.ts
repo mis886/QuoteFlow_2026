@@ -10,7 +10,7 @@
 // corrected per-item prices.
 
 import assert from 'node:assert/strict';
-import { getCurrentQuoteItems, getEffectiveTotals, getEffectiveTotalsUpToRound, getEffectiveItemsUpToRound, nameTier } from './utils';
+import { getCurrentQuoteItems, getEffectiveTotals, getEffectiveTotalsUpToRound, getEffectiveItemsUpToRound, nameTier, normalizeSearchText } from './utils';
 import type { QuoteItem, NegotiationRound } from './types';
 
 const items: QuoteItem[] = [
@@ -176,3 +176,22 @@ assert.equal(nameTier('Unrelated Customer', 'acme'), 3, 'No match at all (fallba
 assert.equal(nameTier('Acme Corp', 'acme corp', []), 0, 'nameTier must still work with an explicit empty extra-match list');
 
 console.log('PASS: nameTier — exact ref/PO/ID match (tier 0) ranks above starts-with (1), contains (2), and fallback (3)');
+
+// ── normalizeSearchText + nameTier: punctuation-separated names match an
+// unpunctuated query ─────────────────────────────────────────────────────
+// "A.K BHAYANI & SONS" collapses to "akbhayanisons" (periods, spaces, and
+// "&" all stripped) — a search for "ak" should therefore find it, ranked in
+// the top (starts-with) tier, not buried in the fallback tier just because
+// the raw strings "ak" and "a.k bhayani & sons" don't literally line up.
+assert.equal(normalizeSearchText('A.K BHAYANI & SONS'), 'akbhayanisons', `normalizeSearchText('A.K BHAYANI & SONS') should be 'akbhayanisons', got '${normalizeSearchText('A.K BHAYANI & SONS')}'`);
+assert.equal(normalizeSearchText('V.D.H.ORGANICS (P) LTD.'), 'vdhorganicspltd', `normalizeSearchText('V.D.H.ORGANICS (P) LTD.') should be 'vdhorganicspltd', got '${normalizeSearchText('V.D.H.ORGANICS (P) LTD.')}'`);
+
+assert.equal(nameTier('A.K BHAYANI & SONS', 'ak'), 1, `"A.K BHAYANI & SONS" should rank in the starts-with tier (1) for query "ak" once punctuation is normalized away, got tier ${nameTier('A.K BHAYANI & SONS', 'ak')}`);
+assert.notEqual(nameTier('A.K BHAYANI & SONS', 'ak'), 3, '"A.K BHAYANI & SONS" must not fall back to tier 3 for query "ak" — that was the bug being fixed');
+assert.equal(nameTier('V.D.H.ORGANICS (P) LTD.', 'vdh'), 1, `"V.D.H.ORGANICS (P) LTD." should rank in the starts-with tier (1) for query "vdh", got tier ${nameTier('V.D.H.ORGANICS (P) LTD.', 'vdh')}`);
+
+// exactMatches (ref/PO/ID tier-0 behavior from the previous fix) is compared
+// on raw lowercased values, not normalized — must still pass unchanged.
+assert.equal(nameTier('Beta Industries', 'PO-2024-777', ['PO-2024-777']), 0, 'exactMatches tier-0 behavior from the previous fix must still work unchanged after normalization was added to the name-based tiers');
+
+console.log('PASS: normalizeSearchText + nameTier — punctuation-separated names ("A.K BHAYANI & SONS" -> "akbhayanisons") match an unpunctuated query, exactMatches tier-0 unaffected');

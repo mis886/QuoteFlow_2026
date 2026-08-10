@@ -542,6 +542,16 @@ export function getThisWeekRange(): { start: Date; end: Date } {
 }
 
 /**
+ * Lowercases and strips everything that isn't a letter or digit, so
+ * punctuation/spacing differences ("A.K BHAYANI & SONS" vs "ak bhayani sons")
+ * don't prevent a match — e.g. "A.K BHAYANI & SONS" normalizes to
+ * "akbhayanisons", so a search for "ak" (no period) still finds it.
+ */
+export function normalizeSearchText(s: string): string {
+  return (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
  * Returns a search-relevance tier for ranking rows by customer/company name
  * match, optionally boosted by exact matches on other reference fields (ID,
  * PO number, linked quote/enquiry ref, etc.) that the same search box also
@@ -554,16 +564,22 @@ export function getThisWeekRange(): { start: Date; end: Date } {
  *     etc.) — deliberately excludes exactMatches' fields, which are already
  *     covered by tier 0; a partial hit there isn't a strong enough signal to
  *     rank above a loose name match.
+ * The three name-based checks compare normalizeSearchText(name) against
+ * normalizeSearchText(query), so punctuation differences don't push a
+ * genuine match down to the fallback tier. exactMatches is intentionally
+ * compared on raw lowercased values, not normalized — those are exact
+ * ref/ID/PO hits from a different, unrelated fix and are out of scope here.
  * Apply as a stable second sort after the table's primary column sort so that
  * within each tier the column order is preserved.
  */
 export function nameTier(name: string, query: string, exactMatches: (string | undefined | null)[] = []): 0 | 1 | 2 | 3 {
-  const n = (name ?? '').toLowerCase();
   const q = query.toLowerCase();
-  if (n === q) return 0;
   if (exactMatches.some(v => (v ?? '').toLowerCase() === q)) return 0;
-  if (n.startsWith(q)) return 1;
-  if (n.includes(q)) return 2;
+  const n = normalizeSearchText(name);
+  const nq = normalizeSearchText(query);
+  if (n === nq) return 0;
+  if (n.startsWith(nq)) return 1;
+  if (n.includes(nq)) return 2;
   return 3;
 }
 
