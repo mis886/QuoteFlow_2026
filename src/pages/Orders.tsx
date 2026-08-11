@@ -252,7 +252,7 @@ export function Orders() {
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
-          <table className="w-full border-collapse text-[12.5px]">
+          <table className="w-full border-separate border-spacing-0 text-[12.5px]">
             <thead className="bg-g100">
               <tr>
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Order No.</th>
@@ -265,7 +265,7 @@ export function Orders() {
                 <SortTh col="value" right>Order Value</SortTh>
                 <SortTh col="created_at">Punched At</SortTh>
                 <SortTh col="status">Status</SortTh>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">Actions</th>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -343,7 +343,7 @@ export function Orders() {
                           })() : <span className="text-g600">--</span>}
                         </td>
                         <td className="px-[13px] py-[10px] align-top"><Badge status={o.status} /></td>
-                        <td className={`px-[13px] py-[10px] align-top sticky right-0 z-[1] border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] ${isExpanded ? 'bg-sW/5' : 'bg-white group-hover:bg-sW/5'}`} onClick={ev => ev.stopPropagation()}>
+                        <td className={`px-[13px] py-[10px] align-top sticky right-0 z-[1] border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px] ${isExpanded ? 'bg-sW/5' : 'bg-white group-hover:bg-sW/5'}`} onClick={ev => ev.stopPropagation()}>
                           <div className="flex gap-1.5 flex-wrap">
                             {o.status !== 'Delivered' && (
                               <Button

@@ -223,7 +223,7 @@ export function Enquiries() {
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         {tab !== 'Sample' ? (
           <div className="bg-white border border-g200 overflow-x-auto m-0">
-            <table className="w-full border-collapse text-[12.5px]">
+            <table className="w-full border-separate border-spacing-0 text-[12.5px]">
               <thead className="bg-g100">
                 <tr>
                   <SortTh col="id"     label="ENQ No." />
@@ -237,7 +237,7 @@ export function Enquiries() {
                   <SortTh col="status" label="Status" />
                   <SortTh col="age"    label="Age" />
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">Actions</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -299,7 +299,7 @@ export function Enquiries() {
                           <td className="px-[13px] py-[10px] align-top">
                             {e.qRef ? <span className="font-mono text-[10.5px] font-bold text-sQ">{e.qRef}</span> : <span className="text-g400 text-[11px]">--</span>}
                           </td>
-                          <td className={`px-[13px] py-[10px] align-top sticky right-0 z-[1] border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] ${isExpanded ? 'bg-red-mrt/5' : 'bg-white group-hover:bg-red-mrt/5'}`} onClick={ev => ev.stopPropagation()}>
+                          <td className={`px-[13px] py-[10px] align-top sticky right-0 z-[1] border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px] ${isExpanded ? 'bg-red-mrt/5' : 'bg-white group-hover:bg-red-mrt/5'}`} onClick={ev => ev.stopPropagation()}>
                             <div className="flex gap-1.5 flex-wrap">
                               <Button size="sm" variant="secondary" onClick={() => navigate(`/enquiries/new?id=${e.id}`)}>Edit</Button>
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('enquiry', e.id); }}>Detail</Button>
@@ -367,7 +367,7 @@ export function Enquiries() {
           </div>
         ) : (
           <div className="bg-white border border-g200 overflow-x-auto m-0">
-            <table className="w-full border-collapse text-[12.5px]">
+            <table className="w-full border-separate border-spacing-0 text-[12.5px]">
               <thead className="bg-g100">
                 <tr>
                   <th className={thCls}>Sample ID</th>
@@ -378,7 +378,7 @@ export function Enquiries() {
                   <th className={thCls}>Email Sent At</th>
                   <th className={thCls}>Status</th>
                   <th className={thCls}>Outcome</th>
-                  <th className={`${thCls} sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]`}>Actions</th>
+                  <th className={`${thCls} sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]`}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -407,7 +407,7 @@ export function Enquiries() {
                       <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600">
                         {s.outcome || <span className="text-g400">—</span>}
                       </td>
-                      <td className="px-[13px] py-[10px] align-top sticky right-0 z-[1] bg-white group-hover:bg-red-mrt/5 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]">
+                      <td className="px-[13px] py-[10px] align-top sticky right-0 z-[1] bg-white group-hover:bg-red-mrt/5 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]">
                         <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
                       </td>
                     </tr>

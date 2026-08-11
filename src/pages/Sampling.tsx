@@ -410,7 +410,7 @@ export function Sampling() {
       {/* Sample register table */}
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto">
-          <table className="w-full border-collapse text-[12.5px]">
+          <table className="w-full border-separate border-spacing-0 text-[12.5px]">
             <thead className="bg-g100">
               <tr>
                 <th className={thCls}>Sample ID</th>
@@ -424,7 +424,7 @@ export function Sampling() {
                 <th className={thCls}>Outcome</th>
                 <th className={thCls}>COA</th>
                 <th className={thCls}>Lot No</th>
-                <th className={`${thCls} sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]`}>Actions</th>
+                <th className={`${thCls} sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]`}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -507,7 +507,7 @@ export function Sampling() {
                         </div>
                       ))}
                     </td>
-                    <td className={`${tdCls} sticky right-0 z-[1] bg-white group-hover:bg-g50 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)]`}>
+                    <td className={`${tdCls} sticky right-0 z-[1] bg-white group-hover:bg-g50 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]`}>
                       <div className="flex flex-col gap-[3px]">
                         <div className="flex items-center gap-1.5">
                           <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
