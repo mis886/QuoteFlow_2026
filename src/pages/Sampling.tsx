@@ -410,21 +410,21 @@ export function Sampling() {
       {/* Sample register table */}
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto">
-          <table className="table-fixed border-separate border-spacing-0 text-[12.5px]" style={{ width: '1493px' }}>
+          <table className="table-fixed border-separate border-spacing-0 text-[12.5px]" style={{ width: '1119px' }}>
             <thead className="bg-g100">
               <tr>
-                <th className={thCls} style={{ width: 108 }}>Sample ID</th>
-                <th className={thCls} style={{ width: 292 }}>Customer</th>
-                <th className={thCls} style={{ width: 168 }}>Product</th>
-                <th className={thCls} style={{ width: 79 }}>Qty Sent</th>
-                <th className={thCls} style={{ width: 92 }}>Linked Ref</th>
-                <th className={thCls} style={{ width: 99 }}>Sent Date</th>
-                <th className={thCls} style={{ width: 112 }}>Follow-Up Due</th>
-                <th className={thCls} style={{ width: 99 }}>Status</th>
-                <th className={thCls} style={{ width: 98 }}>Outcome</th>
+                <th className={thCls} style={{ width: 85 }}>Sample ID</th>
+                <th className={thCls} style={{ width: 180 }}>Customer</th>
+                <th className={thCls} style={{ width: 115 }}>Product</th>
+                <th className={thCls} style={{ width: 65 }}>Qty Sent</th>
+                <th className={thCls} style={{ width: 75 }}>Linked Ref</th>
+                <th className={thCls} style={{ width: 78 }}>Sent Date</th>
+                <th className={thCls} style={{ width: 85 }}>Follow-Up Due</th>
+                <th className={thCls} style={{ width: 80 }}>Status</th>
+                <th className={thCls} style={{ width: 80 }}>Outcome</th>
                 <th className={thCls} style={{ width: 46 }}>COA</th>
-                <th className={thCls} style={{ width: 132 }}>Lot No</th>
-                <th className={`${thCls} sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]`} style={{ width: 168 }}>Actions</th>
+                <th className={thCls} style={{ width: 80 }}>Lot No</th>
+                <th className={`${thCls} border-l border-g200`} style={{ width: 150 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -507,7 +507,7 @@ export function Sampling() {
                         </div>
                       ))}
                     </td>
-                    <td className={`${tdCls} sticky right-0 z-[1] bg-white group-hover:bg-g50 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]`}>
+                    <td className={`${tdCls} bg-white group-hover:bg-g50 border-l border-g200`}>
                       <div className="flex flex-col gap-[3px]">
                         <div className="flex items-center gap-1.5">
                           <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
