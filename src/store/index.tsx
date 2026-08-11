@@ -3,7 +3,7 @@ import type { Customer, Site, Contact, DataStore, Enquiry, Order, Quote, FollowU
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { calculateAgeHours } from '../lib/utils';
+import { calculateAgeHours, generateId } from '../lib/utils';
 import { User } from '@supabase/supabase-js';
 
 // Static email → identity mapping; eliminates the manual "Who's working?" popup.
@@ -88,6 +88,39 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+// generateId() computes "next" as (max existing number + 1) from whatever's
+// in local React state — if two tabs/people insert within the same window,
+// before either's state has refreshed with the other's save, they compute
+// the identical ID and race. quotes/enquiries/orders have `id` as PRIMARY
+// KEY so a collision errors loudly; customers.customer_id now has a unique
+// constraint too (added directly in Supabase), so it errors instead of
+// silently duplicating. This retries on that specific error by re-fetching
+// IDs fresh from the DB (not stale local state) and regenerating, so a
+// collision self-heals instead of failing the user's save.
+async function insertWithIdRetry<T extends { id: string }>(
+  table: string,
+  record: T,
+  mapToDB: (r: T) => any,
+  idPrefix: string,
+  fetchExistingIds: () => Promise<string[]>,
+  maxAttempts = 3,
+): Promise<{ error: any; finalRecord: T }> {
+  let current = record;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const { error } = await supabase.from(table).insert([mapToDB(current)]);
+    if (!error) return { error: null, finalRecord: current };
+    // 23505 = Postgres unique_violation. Only retry on that; anything else
+    // is a real error the caller should surface as-is.
+    if (error.code !== '23505' || attempt === maxAttempts - 1) {
+      return { error, finalRecord: current };
+    }
+    const freshIds = await fetchExistingIds();
+    const newId = generateId(idPrefix, freshIds);
+    current = { ...current, id: newId } as T;
+  }
+  return { error: new Error('Could not generate a unique ID after retries'), finalRecord: current };
+}
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<DataStore>({
@@ -482,9 +515,18 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const addEnquiry = async (enquiry: Enquiry) => {
-    const { error } = await supabase.from('enquiries').insert([mapEnquiryToDB(enquiry)]);
+    const { error, finalRecord } = await insertWithIdRetry<Enquiry>(
+      'enquiries',
+      enquiry,
+      mapEnquiryToDB,
+      'ENQ',
+      async () => {
+        const { data: rows } = await supabase.from('enquiries').select('id');
+        return (rows ?? []).map(r => r.id);
+      },
+    );
     if (!error) {
-      setData(prev => ({ ...prev, enquiries: [enquiry, ...prev.enquiries] }));
+      setData(prev => ({ ...prev, enquiries: [finalRecord, ...prev.enquiries] }));
     } else {
       console.error('Error adding enquiry:', error);
       throw new Error(error.message || 'Error adding enquiry');
@@ -522,9 +564,18 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const addQuote = async (quote: Quote) => {
-    const { error } = await supabase.from('quotes').insert([mapQuoteToDB(quote)]);
+    const { error, finalRecord } = await insertWithIdRetry<Quote>(
+      'quotes',
+      quote,
+      mapQuoteToDB,
+      'HTP',
+      async () => {
+        const { data: rows } = await supabase.from('quotes').select('id');
+        return (rows ?? []).map(r => r.id);
+      },
+    );
     if (!error) {
-      setData(prev => ({ ...prev, quotes: [quote, ...prev.quotes] }));
+      setData(prev => ({ ...prev, quotes: [finalRecord, ...prev.quotes] }));
     } else {
       console.error('Error adding quote:', error);
       throw error;
@@ -562,9 +613,18 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const addOrder = async (order: Order) => {
-    const { error } = await supabase.from('orders').insert([mapOrderToDB(order)]);
+    const { error, finalRecord } = await insertWithIdRetry<Order>(
+      'orders',
+      order,
+      mapOrderToDB,
+      'ORD',
+      async () => {
+        const { data: rows } = await supabase.from('orders').select('id');
+        return (rows ?? []).map(r => r.id);
+      },
+    );
     if (!error) {
-      setData(prev => ({ ...prev, orders: [order, ...prev.orders] }));
+      setData(prev => ({ ...prev, orders: [finalRecord, ...prev.orders] }));
     } else {
       console.error('Error adding order:', error);
       throw error;
@@ -760,9 +820,23 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const addCustomer = async (customer: Customer) => {
-    const { error } = await supabase.from('customers').insert([mapCustomerToDB(customer)]);
+    // mapCustomerToDB derives customer_id from `c.id ?? c.code` — every call
+    // site sets `id`, so `code` is never the value actually written or
+    // constrained; regenerating `.id` alone (what insertWithIdRetry does) is
+    // sufficient to resolve a customer_id collision. `code` has no DB
+    // uniqueness constraint of its own and doesn't need parallel retry.
+    const { error, finalRecord } = await insertWithIdRetry<Customer>(
+      'customers',
+      customer,
+      mapCustomerToDB,
+      'CUST',
+      async () => {
+        const { data: rows } = await supabase.from('customers').select('customer_id');
+        return (rows ?? []).map(r => r.customer_id);
+      },
+    );
     if (!error) {
-      setData(prev => ({ ...prev, customers: [...prev.customers, customer] }));
+      setData(prev => ({ ...prev, customers: [...prev.customers, finalRecord] }));
     } else {
       console.error('Error adding customer:', error);
       throw error;
