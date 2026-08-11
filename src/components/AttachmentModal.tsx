@@ -4,7 +4,7 @@ import { uploadToS3, getS3SignedUrl } from '../lib/s3';
 import { supabase, uploadPublicFile } from '../lib/supabase';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { fmtIST } from '../lib/utils';
-import { Paperclip, Download, X, Loader2, Search, FlaskConical } from 'lucide-react';
+import { Paperclip, Download, X, Loader2, Search } from 'lucide-react';
 
 interface AttachmentModalProps {
   entityType: 'enquiry' | 'quote' | 'order';
@@ -21,9 +21,10 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [poSubmissions, setPoSubmissions] = useState<any[]>([]);
 
-  // COA/GC library — quote-only tab, see below.
+  // COA/GC library — quote-only panel, see below. Quotes show this panel
+  // exclusively (no Upload File option); Enquiries/Orders keep the plain
+  // upload panel below since they don't have a COA/GC concept.
   const { names: catalogProductNames } = useProductCatalog();
-  const [activeTab, setActiveTab] = useState<'upload' | 'coagc'>('upload');
   const [coaSearch, setCoaSearch] = useState('');
   const [coaResults, setCoaResults] = useState<any[]>([]);
   const [coaSearchLoading, setCoaSearchLoading] = useState(false);
@@ -72,11 +73,11 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
       .then(({ data: rows }) => setPoSubmissions(rows ?? []));
   }, [isOpen, quoteIdsForPoLookup.join(',')]);
 
-  // COA/GC search — quote-only tab. Placed above the early return (hooks
+  // COA/GC search — quote-only panel. Placed above the early return (hooks
   // rule) and reads `data` directly (rather than the later-declared
   // currentEntityAttachments) to pre-check results already on this quote.
   useEffect(() => {
-    if (!isOpen || entityType !== 'quote' || activeTab !== 'coagc') return;
+    if (!isOpen || entityType !== 'quote') return;
     setCoaSearchLoading(true);
     const term = coaSearch.trim();
     let query = supabase.from('coa_gc_documents').select('*').order('created_at', { ascending: false }).limit(50);
@@ -93,7 +94,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
       });
       setCoaSearchLoading(false);
     });
-  }, [isOpen, entityType, activeTab, coaSearch, entityId]);
+  }, [isOpen, entityType, coaSearch, entityId]);
 
   if (!isOpen) return null;
 
@@ -304,24 +305,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
         </div>
 
         <div className="p-5 overflow-y-auto">
-          {entityType === 'quote' && (
-            <div className="flex gap-1 mb-4 border-b border-g200">
-              <button
-                type="button" onClick={() => setActiveTab('upload')}
-                className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide border-b-2 -mb-px transition-colors ${activeTab === 'upload' ? 'border-red-mrt text-red-mrt' : 'border-transparent text-g500 hover:text-blk'}`}
-              >
-                Upload File
-              </button>
-              <button
-                type="button" onClick={() => setActiveTab('coagc')}
-                className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide border-b-2 -mb-px transition-colors inline-flex items-center gap-1.5 ${activeTab === 'coagc' ? 'border-red-mrt text-red-mrt' : 'border-transparent text-g500 hover:text-blk'}`}
-              >
-                <FlaskConical size={12} /> COA / GC
-              </button>
-            </div>
-          )}
-
-          {(entityType !== 'quote' || activeTab === 'upload') && (
+          {entityType !== 'quote' && (
             <>
               <div className="flex gap-4">
                 <div className="w-1/3">
@@ -347,7 +331,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
             </>
           )}
 
-          {entityType === 'quote' && activeTab === 'coagc' && (
+          {entityType === 'quote' && (
             <div className="space-y-4">
               {/* Search */}
               <div>
