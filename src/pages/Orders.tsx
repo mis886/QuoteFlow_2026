@@ -253,20 +253,20 @@ export function Orders() {
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
-          <table className="table-fixed border-separate border-spacing-0 text-[12.5px]" style={{ width: '1095px' }}>
+          <table className="w-full border-collapse text-[12.5px]">
             <thead className="bg-g100">
               <tr>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ width: 80 }}>Order No.</th>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ width: 80 }}>Quote Ref</th>
-                <SortTh col="cust" width={200}>Customer - Unit</SortTh>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ width: 90 }}>PO Number</th>
-                <SortTh col="poDate" width={78}>PO Date</SortTh>
-                <SortTh col="scheduleDate" width={85}>Schedule Date</SortTh>
-                <SortTh col="items" width={60}>Items</SortTh>
-                <SortTh col="value" right width={95}>Order Value</SortTh>
-                <SortTh col="created_at" width={82}>Punched At</SortTh>
-                <SortTh col="status" width={95}>Status</SortTh>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 border-l border-g200" style={{ width: 150 }}>Actions</th>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Order No.</th>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
+                <SortTh col="cust">Customer - Unit</SortTh>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">PO Number</th>
+                <SortTh col="poDate">PO Date</SortTh>
+                <SortTh col="scheduleDate">Schedule Date</SortTh>
+                <SortTh col="items">Items</SortTh>
+                <SortTh col="value" right>Order Value</SortTh>
+                <SortTh col="created_at">Punched At</SortTh>
+                <SortTh col="status">Status</SortTh>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -344,7 +344,7 @@ export function Orders() {
                           })() : <span className="text-g600">--</span>}
                         </td>
                         <td className="px-[13px] py-[10px] align-top"><Badge status={o.status} /></td>
-                        <td className={`px-[13px] py-[10px] align-top border-l border-g200 ${isExpanded ? 'bg-sW/5' : 'bg-white group-hover:bg-sW/5'}`} onClick={ev => ev.stopPropagation()}>
+                        <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
                           <div className="flex gap-1.5 flex-wrap">
                             {o.status !== 'Delivered' && (
                               <Button

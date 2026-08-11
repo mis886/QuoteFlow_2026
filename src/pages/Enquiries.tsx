@@ -224,21 +224,21 @@ export function Enquiries() {
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         {tab !== 'Sample' ? (
           <div className="bg-white border border-g200 overflow-x-auto m-0">
-            <table className="table-fixed border-separate border-spacing-0 text-[12.5px]" style={{ width: '1122px' }}>
+            <table className="w-full border-collapse text-[12.5px]">
               <thead className="bg-g100">
                 <tr>
-                  <SortTh col="id"     label="ENQ No." width={75} />
-                  <SortTh col="recv"   label="Received" width={72} />
-                  <SortTh col="created_at"   label="Punched At" width={75} />
-                  <SortTh col="cust"   label="Customer - Unit" width={180} />
-                  <SortTh col="src"    label="Source" width={85} />
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ width: 145 }}>Product Name</th>
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200" style={{ width: 65 }}>Total Qty</th>
-                  <SortTh col="urg"    label="Urgency" width={75} />
-                  <SortTh col="status" label="Status" width={75} />
-                  <SortTh col="age"    label="Age" width={50} />
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ width: 75 }}>Quote Ref</th>
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 border-l border-g200" style={{ width: 150 }}>Actions</th>
+                  <SortTh col="id"     label="ENQ No." />
+                  <SortTh col="recv"   label="Received" />
+                  <SortTh col="created_at"   label="Punched At" />
+                  <SortTh col="cust"   label="Customer - Unit" />
+                  <SortTh col="src"    label="Source" />
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ minWidth: '140px' }}>Product Name</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
+                  <SortTh col="urg"    label="Urgency" />
+                  <SortTh col="status" label="Status" />
+                  <SortTh col="age"    label="Age" />
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -300,7 +300,7 @@ export function Enquiries() {
                           <td className="px-[13px] py-[10px] align-top">
                             {e.qRef ? <span className="font-mono text-[10.5px] font-bold text-sQ">{e.qRef}</span> : <span className="text-g400 text-[11px]">--</span>}
                           </td>
-                          <td className={`px-[13px] py-[10px] align-top border-l border-g200 ${isExpanded ? 'bg-red-mrt/5' : 'bg-white group-hover:bg-red-mrt/5'}`} onClick={ev => ev.stopPropagation()}>
+                          <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
                             <div className="flex gap-1.5 flex-wrap">
                               <Button size="sm" variant="secondary" onClick={() => navigate(`/enquiries/new?id=${e.id}`)}>Edit</Button>
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('enquiry', e.id); }}>Detail</Button>
@@ -368,7 +368,7 @@ export function Enquiries() {
           </div>
         ) : (
           <div className="bg-white border border-g200 overflow-x-auto m-0">
-            <table className="w-full border-separate border-spacing-0 text-[12.5px]">
+            <table className="w-full border-collapse text-[12.5px]">
               <thead className="bg-g100">
                 <tr>
                   <th className={thCls}>Sample ID</th>
@@ -379,7 +379,7 @@ export function Enquiries() {
                   <th className={thCls}>Email Sent At</th>
                   <th className={thCls}>Status</th>
                   <th className={thCls}>Outcome</th>
-                  <th className={`${thCls} border-l border-g200`}>Actions</th>
+                  <th className={thCls}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -408,7 +408,7 @@ export function Enquiries() {
                       <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600">
                         {s.outcome || <span className="text-g400">—</span>}
                       </td>
-                      <td className="px-[13px] py-[10px] align-top bg-white group-hover:bg-red-mrt/5 border-l border-g200">
+                      <td className="px-[13px] py-[10px] align-top">
                         <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
                       </td>
                     </tr>

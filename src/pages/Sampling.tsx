@@ -410,21 +410,21 @@ export function Sampling() {
       {/* Sample register table */}
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto">
-          <table className="table-fixed border-separate border-spacing-0 text-[12.5px]" style={{ width: '1119px' }}>
+          <table className="w-full border-collapse text-[12.5px]">
             <thead className="bg-g100">
               <tr>
-                <th className={thCls} style={{ width: 85 }}>Sample ID</th>
-                <th className={thCls} style={{ width: 180 }}>Customer</th>
-                <th className={thCls} style={{ width: 115 }}>Product</th>
-                <th className={thCls} style={{ width: 65 }}>Qty Sent</th>
-                <th className={thCls} style={{ width: 75 }}>Linked Ref</th>
-                <th className={thCls} style={{ width: 78 }}>Sent Date</th>
-                <th className={thCls} style={{ width: 85 }}>Follow-Up Due</th>
-                <th className={thCls} style={{ width: 80 }}>Status</th>
-                <th className={thCls} style={{ width: 80 }}>Outcome</th>
-                <th className={thCls} style={{ width: 46 }}>COA</th>
-                <th className={thCls} style={{ width: 80 }}>Lot No</th>
-                <th className={`${thCls} border-l border-g200`} style={{ width: 150 }}>Actions</th>
+                <th className={thCls}>Sample ID</th>
+                <th className={thCls}>Customer</th>
+                <th className={thCls}>Product</th>
+                <th className={thCls}>Qty Sent</th>
+                <th className={thCls}>Linked Ref</th>
+                <th className={thCls}>Sent Date</th>
+                <th className={thCls}>Follow-Up Due</th>
+                <th className={thCls}>Status</th>
+                <th className={thCls}>Outcome</th>
+                <th className={thCls}>COA</th>
+                <th className={thCls}>Lot No</th>
+                <th className={thCls}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -507,7 +507,7 @@ export function Sampling() {
                         </div>
                       ))}
                     </td>
-                    <td className={`${tdCls} bg-white group-hover:bg-g50 border-l border-g200`}>
+                    <td className={tdCls}>
                       <div className="flex flex-col gap-[3px]">
                         <div className="flex items-center gap-1.5">
                           <Button size="sm" variant="secondary" onClick={() => navigate(`/sampling/new?id=${s.id}`)}>Edit</Button>
