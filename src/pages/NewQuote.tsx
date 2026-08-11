@@ -133,7 +133,7 @@ export function NewQuote() {
   const editId = searchParams.get('id');
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
-  const { data, user, addQuote, updateQuote, updateEnquiry, addCustomer, addSignatory, stampName } = useAppStore();
+  const { data, user, addQuote, updateQuote, updateEnquiry, addCustomer, addSignatory, stampName, openAttachmentModal } = useAppStore();
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
@@ -1596,6 +1596,13 @@ export function NewQuote() {
                 <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M2 4h12v8H2zM3 5l5 3.5L13 5v-.5L8 8 3 4.5V5z" /></svg>
                 Email to Client
               </button>
+              {editId && (
+                <button type="button" onClick={() => openAttachmentModal('quote', editId)} disabled={isSaving}
+                  className="bg-g700 text-white font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-blk disabled:opacity-50 flex items-center gap-2">
+                  <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M2 2a1 1 0 0 1 1-1h6l4 4v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2zm7 0v3a1 1 0 0 0 1 1h3l-4-4z" /></svg>
+                  Docs
+                </button>
+              )}
               <div className="h-5 w-px bg-g200" />
               <button type="button" onClick={() => { if (confirmLeave()) navigate('/quotes'); }} disabled={isSaving} className="bg-white border border-g300 text-g600 font-mono text-[10px] font-bold tracking-widest uppercase px-[16px] py-[9px] rounded-[3px] hover:bg-g50 disabled:opacity-50">
                 Cancel

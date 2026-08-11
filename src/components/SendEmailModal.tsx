@@ -38,6 +38,20 @@ function getPrimaryContact(customer?: Customer, siteId?: string): CCCandidate | 
   return contacts.find(c => c.isPrimary) ?? contacts[0];
 }
 
+// Mirrors SampleEmailModal.tsx's urlToBase64 exactly — that one isn't
+// exported, so duplicated here rather than importing it.
+async function urlToBase64(url: string): Promise<{ base64: string; mimeType: string }> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch attachment (HTTP ${res.status})`);
+  const blob = await res.blob();
+  const mimeType = blob.type || 'application/octet-stream';
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return { base64: btoa(binary), mimeType };
+}
+
 // ── types ─────────────────────────────────────────────────────────────────────
 interface BaseProps {
   customer?: Customer;
@@ -73,6 +87,10 @@ export function SendEmailModal(props: Props) {
   const isQuote = props.mode === 'quote';
   const pdfName = isQuote ? `${docId}.pdf` : `${docId}_PI.pdf`;
 
+  // Orders don't have a DB `attachments` column yet, so this is quote-only —
+  // (props.doc as any).attachments is simply undefined for orders.
+  const coaGcDocs = isQuote ? ((props.doc as any).attachments ?? []).filter((a: any) => a.docType === 'COA' || a.docType === 'GC') : [];
+
   const defaultSubject = isQuote
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : `Proforma Invoice ${docId} — HIMALAYA TERPENES PVT. LTD.`;
@@ -106,6 +124,10 @@ export function SendEmailModal(props: Props) {
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody]       = useState(defaultBody);
   const [toError, setToError] = useState('');
+
+  // COA/GC docs already on this quote — pre-checked by default (opt-out),
+  // matching how CC defaults already work in this file.
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(() => new Set(coaGcDocs.map((d: any) => d.id)));
 
   // Pre-select other site contacts + default CCs + customer contact email (all removable).
   const docContactEmail = (props.doc as any).email ?? '';
@@ -165,6 +187,11 @@ export function SendEmailModal(props: Props) {
       const dataUri: string = doc.output('datauristring');
       const pdfBase64 = dataUri.split(',')[1];
       const attachments = [{ base64: pdfBase64, fileName: pdfName, mimeType: 'application/pdf' }];
+
+      for (const d of coaGcDocs.filter((d: any) => selectedDocs.has(d.id))) {
+        const { base64, mimeType } = await urlToBase64(d.storagePath);
+        attachments.push({ base64, fileName: d.fileName, mimeType });
+      }
 
       await sendViaGmailAsUser({ to: to.trim(), cc: ccString, subject, body, attachments, poLink: poSubmitLink || undefined }, senderEmail);
 
@@ -299,6 +326,30 @@ export function SendEmailModal(props: Props) {
                 <div className="text-[10px] text-blue-500">PDF generated and attached automatically</div>
               </div>
             </div>
+
+            {/* COA/GC attachments already on this quote — togglable, pre-checked */}
+            {coaGcDocs.length > 0 && (
+              <div>
+                <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1.5">COA / GC Attachments</label>
+                <div className="flex flex-col gap-1.5">
+                  {coaGcDocs.map((d: any) => (
+                    <label key={d.id} className="flex items-center gap-2.5 bg-g50 border border-g200 rounded-[3px] p-[8px_12px] cursor-pointer hover:border-g400 transition-colors">
+                      <input
+                        type="checkbox" checked={selectedDocs.has(d.id)}
+                        onChange={() => setSelectedDocs(prev => {
+                          const next = new Set(prev);
+                          next.has(d.id) ? next.delete(d.id) : next.add(d.id);
+                          return next;
+                        })}
+                        className="w-3.5 h-3.5 accent-red-mrt shrink-0"
+                      />
+                      <span className={`text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${d.docType === 'COA' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>{d.docType}</span>
+                      <span className="text-[11.5px] font-medium text-blk truncate">{d.fileName}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* OAuth not configured notice */}
             {!OAUTH_CONFIGURED && (

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { uploadToS3, getS3SignedUrl } from '../lib/s3';
-import { supabase } from '../lib/supabase';
+import { supabase, uploadPublicFile } from '../lib/supabase';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 import { fmtIST } from '../lib/utils';
-import { Paperclip, Download, X, Loader2 } from 'lucide-react';
+import { Paperclip, Download, X, Loader2, Search, FlaskConical } from 'lucide-react';
 
 interface AttachmentModalProps {
   entityType: 'enquiry' | 'quote' | 'order';
@@ -13,12 +14,27 @@ interface AttachmentModalProps {
 }
 
 export function AttachmentModal({ entityType, entityId, isOpen, onClose }: AttachmentModalProps) {
-  const { data, updateEnquiry, updateQuote, updateOrder } = useAppStore();
+  const { data, user, activeDoer, updateEnquiry, updateQuote, updateOrder } = useAppStore();
   const [docType, setDocType] = useState('Enquiry Doc');
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [poSubmissions, setPoSubmissions] = useState<any[]>([]);
+
+  // COA/GC library — quote-only tab, see below.
+  const { names: catalogProductNames } = useProductCatalog();
+  const [activeTab, setActiveTab] = useState<'upload' | 'coagc'>('upload');
+  const [coaSearch, setCoaSearch] = useState('');
+  const [coaResults, setCoaResults] = useState<any[]>([]);
+  const [coaSearchLoading, setCoaSearchLoading] = useState(false);
+  const [selectedCoaIds, setSelectedCoaIds] = useState<Set<string>>(new Set());
+  const [attachingCoa, setAttachingCoa] = useState(false);
+  const [newCoaProduct, setNewCoaProduct] = useState('');
+  const [newCoaLot, setNewCoaLot] = useState('');
+  const [newCoaType, setNewCoaType] = useState<'COA' | 'GC'>('COA');
+  const [newCoaFile, setNewCoaFile] = useState<File | null>(null);
+  const [coaUploading, setCoaUploading] = useState(false);
+  const [coaUploadError, setCoaUploadError] = useState('');
 
   // Resolve the full enquiry → quote(s) → order(s) chain from any entry point
   let rootEnq: any = null;
@@ -55,6 +71,29 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
     supabase.from('po_submissions').select('*').in('quote_id', quoteIdsForPoLookup)
       .then(({ data: rows }) => setPoSubmissions(rows ?? []));
   }, [isOpen, quoteIdsForPoLookup.join(',')]);
+
+  // COA/GC search — quote-only tab. Placed above the early return (hooks
+  // rule) and reads `data` directly (rather than the later-declared
+  // currentEntityAttachments) to pre-check results already on this quote.
+  useEffect(() => {
+    if (!isOpen || entityType !== 'quote' || activeTab !== 'coagc') return;
+    setCoaSearchLoading(true);
+    const term = coaSearch.trim();
+    let query = supabase.from('coa_gc_documents').select('*').order('created_at', { ascending: false }).limit(50);
+    if (term) query = query.or(`product_name.ilike.%${term}%,lot_no.ilike.%${term}%`);
+    query.then(({ data: rows, error }) => {
+      if (error) { console.error(error); setCoaResults([]); setCoaSearchLoading(false); return; }
+      const q = data.quotes.find((qq: any) => qq.id === entityId) as any;
+      const attachedPaths = new Set((q?.attachments ?? []).map((a: any) => a.storagePath));
+      setCoaResults(rows ?? []);
+      setSelectedCoaIds(prev => {
+        const next = new Set(prev);
+        for (const r of (rows ?? []) as any[]) if (attachedPaths.has(r.storage_path)) next.add(r.id);
+        return next;
+      });
+      setCoaSearchLoading(false);
+    });
+  }, [isOpen, entityType, activeTab, coaSearch, entityId]);
 
   if (!isOpen) return null;
 
@@ -179,6 +218,80 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
     }
   };
 
+  const uploaderEmail = activeDoer?.email ?? user?.email ?? null;
+
+  // Merges a set of coa_gc_documents rows into the current quote's
+  // attachments, deduping by storagePath so re-attaching an already-attached
+  // cert doesn't create a duplicate chip.
+  const attachCoaDocs = async (docs: any[]) => {
+    const existingPaths = new Set(currentEntityAttachments.map((a: any) => a.storagePath));
+    const toAdd = docs
+      .filter(doc => !existingPaths.has(doc.storage_path))
+      .map(doc => ({
+        id: doc.id,
+        fileName: doc.file_name,
+        docType: doc.doc_type,
+        storagePath: doc.storage_path,
+        uploadedAt: doc.created_at,
+      }));
+    if (toAdd.length === 0) return;
+    const merged = [...currentEntityAttachments, ...toAdd];
+    await updateQuote(entityId, { attachments: merged } as any);
+  };
+
+  const handleAttachSelected = async () => {
+    const docs = coaResults.filter(r => selectedCoaIds.has(r.id));
+    if (docs.length === 0) return;
+    setAttachingCoa(true);
+    try {
+      await attachCoaDocs(docs);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to attach selected document(s) to this quote.');
+    }
+    setAttachingCoa(false);
+  };
+
+  const handleUploadNewCoa = async () => {
+    setCoaUploadError('');
+    if (!newCoaProduct.trim()) { setCoaUploadError('Product name is required.'); return; }
+    if (!newCoaFile) { setCoaUploadError('Choose a file to upload.'); return; }
+
+    setCoaUploading(true);
+    try {
+      const ext = newCoaFile.name.split('.').pop() || 'bin';
+      const safeProductName = newCoaProduct.trim().replace(/[^a-zA-Z0-9]/g, '_');
+      const path = `${newCoaType}/${safeProductName}_${newCoaLot.trim() || 'nolot'}_${Date.now()}.${ext}`;
+      const { data: url, error: uploadError } = await uploadPublicFile('coa-gc-documents', path, newCoaFile);
+      if (uploadError || !url) throw uploadError || new Error('Upload failed');
+
+      const { data: row, error: insertError } = await supabase.from('coa_gc_documents').insert({
+        product_name: newCoaProduct.trim(),
+        lot_no: newCoaLot.trim() || null,
+        doc_type: newCoaType,
+        file_name: newCoaFile.name,
+        storage_path: url,
+        file_size: newCoaFile.size,
+        uploaded_by: uploaderEmail,
+      }).select().single();
+      if (insertError || !row) throw insertError || new Error('Could not save document reference');
+
+      await attachCoaDocs([row]);
+
+      // Refresh the search list so the new doc shows up if searched again.
+      setCoaResults(prev => [row, ...prev]);
+      setSelectedCoaIds(prev => new Set([...prev, row.id]));
+
+      setNewCoaProduct('');
+      setNewCoaLot('');
+      setNewCoaFile(null);
+    } catch (e: any) {
+      console.error(e);
+      setCoaUploadError(e?.message || 'Failed to upload document.');
+    }
+    setCoaUploading(false);
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] border border-g300">
@@ -191,27 +304,148 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
         </div>
 
         <div className="p-5 overflow-y-auto">
-          <div className="flex gap-4">
-            <div className="w-1/3">
-              <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Document Type</label>
-              <select value={docType} onChange={(e) => setDocType(e.target.value)} className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none">
-                <option>Enquiry Doc</option>
-                <option>Drawing</option>
-                <option>PO Doc</option>
-                <option>General</option>
-              </select>
+          {entityType === 'quote' && (
+            <div className="flex gap-1 mb-4 border-b border-g200">
+              <button
+                type="button" onClick={() => setActiveTab('upload')}
+                className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide border-b-2 -mb-px transition-colors ${activeTab === 'upload' ? 'border-red-mrt text-red-mrt' : 'border-transparent text-g500 hover:text-blk'}`}
+              >
+                Upload File
+              </button>
+              <button
+                type="button" onClick={() => setActiveTab('coagc')}
+                className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide border-b-2 -mb-px transition-colors inline-flex items-center gap-1.5 ${activeTab === 'coagc' ? 'border-red-mrt text-red-mrt' : 'border-transparent text-g500 hover:text-blk'}`}
+              >
+                <FlaskConical size={12} /> COA / GC
+              </button>
             </div>
-            <div className="flex-1">
-              <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Choose File(s)</label>
-              <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-g100 file:text-g700 hover:file:bg-g200" />
+          )}
+
+          {(entityType !== 'quote' || activeTab === 'upload') && (
+            <>
+              <div className="flex gap-4">
+                <div className="w-1/3">
+                  <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Document Type</label>
+                  <select value={docType} onChange={(e) => setDocType(e.target.value)} className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none">
+                    <option>Enquiry Doc</option>
+                    <option>Drawing</option>
+                    <option>PO Doc</option>
+                    <option>General</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Choose File(s)</label>
+                  <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files || []))} className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-g100 file:text-g700 hover:file:bg-g200" />
+                </div>
+              </div>
+
+              <div className="flex justify-end mt-4">
+                <button onClick={handleUpload} disabled={isUploading || files.length === 0} className="bg-red-mrt hover:bg-red-900 text-white text-xs font-semibold px-4 py-2 rounded shadow-sm disabled:opacity-50 transition-colors inline-flex items-center gap-2">
+                  {isUploading ? <><Loader2 size={14} className="animate-spin"/> Uploading...</> : 'Upload'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {entityType === 'quote' && activeTab === 'coagc' && (
+            <div className="space-y-4">
+              {/* Search */}
+              <div>
+                <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Search by Product Name or Lot No.</label>
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-g400 pointer-events-none" />
+                  <input
+                    type="text" value={coaSearch} onChange={(e) => setCoaSearch(e.target.value)}
+                    placeholder="e.g. Terpineol, or lot HT-2026-041"
+                    className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] pl-8 pr-3 py-2 outline-none focus:border-red-mrt"
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-[220px] overflow-y-auto border border-g200 rounded-[3px] divide-y divide-g100">
+                {coaSearchLoading ? (
+                  <div className="flex items-center justify-center gap-2 text-g400 text-xs py-6"><Loader2 size={14} className="animate-spin" /> Searching…</div>
+                ) : coaResults.length === 0 ? (
+                  <div className="text-center py-6 text-g400 text-xs italic">No matching COA/GC documents found.</div>
+                ) : (
+                  coaResults.map(doc => (
+                    <label key={doc.id} className="flex items-center gap-3 p-2.5 hover:bg-g50 cursor-pointer">
+                      <input
+                        type="checkbox" checked={selectedCoaIds.has(doc.id)}
+                        onChange={() => setSelectedCoaIds(prev => {
+                          const next = new Set(prev);
+                          next.has(doc.id) ? next.delete(doc.id) : next.add(doc.id);
+                          return next;
+                        })}
+                        className="w-3.5 h-3.5 accent-red-mrt"
+                      />
+                      <span className={`text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded ${doc.doc_type === 'COA' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>{doc.doc_type}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[12px] font-semibold text-blk truncate">{doc.product_name}{doc.lot_no ? ` — Lot ${doc.lot_no}` : ''}</div>
+                        <div className="text-[10px] text-g500 truncate">{doc.file_name} · {fmtIST(new Date(doc.created_at), 'dd-MMM-yyyy')}</div>
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+
+              <div className="flex justify-end">
+                <button onClick={handleAttachSelected} disabled={attachingCoa || selectedCoaIds.size === 0} className="bg-red-mrt hover:bg-red-900 text-white text-xs font-semibold px-4 py-2 rounded shadow-sm disabled:opacity-50 transition-colors inline-flex items-center gap-2">
+                  {attachingCoa ? <><Loader2 size={14} className="animate-spin"/> Attaching...</> : 'Attach Selected'}
+                </button>
+              </div>
+
+              {/* Upload new COA/GC */}
+              <div className="pt-4 border-t border-g200">
+                <div className="text-[11px] font-medium text-g500 mb-3 uppercase tracking-wider font-mono">Upload New COA/GC</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Product Name</label>
+                    <input
+                      type="text" value={newCoaProduct} onChange={(e) => setNewCoaProduct(e.target.value)}
+                      list="coa-gc-product-datalist" placeholder="Product name"
+                      className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt"
+                    />
+                    <datalist id="coa-gc-product-datalist">
+                      {catalogProductNames.map(n => <option key={n} value={n} />)}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Lot / Batch No.</label>
+                    <input
+                      type="text" value={newCoaLot} onChange={(e) => setNewCoaLot(e.target.value)}
+                      placeholder="Optional"
+                      className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 mt-3">
+                  <div className="flex items-center gap-3">
+                    {(['COA', 'GC'] as const).map(t => (
+                      <label key={t} className="flex items-center gap-1.5 text-[11px] font-medium text-g600 cursor-pointer">
+                        <input type="radio" name="newCoaType" checked={newCoaType === t} onChange={() => setNewCoaType(t)} className="w-3.5 h-3.5 accent-red-mrt" />
+                        {t}
+                      </label>
+                    ))}
+                  </div>
+                  <input
+                    type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    onChange={(e) => setNewCoaFile(e.target.files?.[0] ?? null)}
+                    className="flex-1 font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-g100 file:text-g700 hover:file:bg-g200"
+                  />
+                </div>
+
+                {coaUploadError && <p className="mt-2 text-[10.5px] text-red-mrt font-medium">{coaUploadError}</p>}
+
+                <div className="flex justify-end mt-3">
+                  <button onClick={handleUploadNewCoa} disabled={coaUploading} className="bg-blk hover:bg-g700 text-white text-xs font-semibold px-4 py-2 rounded shadow-sm disabled:opacity-50 transition-colors inline-flex items-center gap-2">
+                    {coaUploading ? <><Loader2 size={14} className="animate-spin"/> Uploading...</> : 'Upload & Attach'}
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-          
-          <div className="flex justify-end mt-4">
-            <button onClick={handleUpload} disabled={isUploading || files.length === 0} className="bg-red-mrt hover:bg-red-900 text-white text-xs font-semibold px-4 py-2 rounded shadow-sm disabled:opacity-50 transition-colors inline-flex items-center gap-2">
-              {isUploading ? <><Loader2 size={14} className="animate-spin"/> Uploading...</> : 'Upload'}
-            </button>
-          </div>
+          )}
 
           <div className="mt-6 pt-5 border-t border-g200">
             <div className="text-[11px] font-medium text-g500 mb-3 uppercase tracking-wider font-mono">Uploaded Files ({attachments.length})</div>
