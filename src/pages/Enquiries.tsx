@@ -103,9 +103,10 @@ export function Enquiries() {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortCol(col); setSortDir('asc'); }
   };
-  const SortTh = ({ col, label, right }: { col: string; label: string; right?: boolean }) => (
+  const SortTh = ({ col, label, right, width }: { col: string; label: string; right?: boolean; width?: number }) => (
     <th onClick={() => toggleSort(col)}
-      className={`font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 cursor-pointer select-none hover:bg-g200 transition-colors ${right ? 'text-right' : 'text-left'} ${sortCol === col ? 'text-red-mrt bg-red-lt/40' : 'text-g500'}`}>
+      className={`font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 cursor-pointer select-none hover:bg-g200 transition-colors ${right ? 'text-right' : 'text-left'} ${sortCol === col ? 'text-red-mrt bg-red-lt/40' : 'text-g500'}`}
+      style={width ? { width } : undefined}>
       <span className="inline-flex items-center gap-1">
         {label}
         {sortCol === col ? (sortDir === 'asc' ? <ChevronUp size={9} /> : <ChevronDown size={9} />) : <ChevronsUpDown size={9} className="text-g300" />}
@@ -223,21 +224,21 @@ export function Enquiries() {
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         {tab !== 'Sample' ? (
           <div className="bg-white border border-g200 overflow-x-auto m-0">
-            <table className="w-full border-separate border-spacing-0 text-[12.5px]">
+            <table className="table-fixed border-separate border-spacing-0 text-[12.5px]" style={{ width: '1559px' }}>
               <thead className="bg-g100">
                 <tr>
-                  <SortTh col="id"     label="ENQ No." />
-                  <SortTh col="recv"   label="Received" />
-                  <SortTh col="created_at"   label="Punched At" />
-                  <SortTh col="cust"   label="Customer - Unit" />
-                  <SortTh col="src"    label="Source" />
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ minWidth: '140px' }}>Product Name</th>
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
-                  <SortTh col="urg"    label="Urgency" />
-                  <SortTh col="status" label="Status" />
-                  <SortTh col="age"    label="Age" />
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]">Actions</th>
+                  <SortTh col="id"     label="ENQ No." width={86} />
+                  <SortTh col="recv"   label="Received" width={97} />
+                  <SortTh col="created_at"   label="Punched At" width={105} />
+                  <SortTh col="cust"   label="Customer - Unit" width={338} />
+                  <SortTh col="src"    label="Source" width={111} />
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ width: 245 }}>Product Name</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200" style={{ width: 86 }}>Total Qty</th>
+                  <SortTh col="urg"    label="Urgency" width={89} />
+                  <SortTh col="status" label="Status" width={89} />
+                  <SortTh col="age"    label="Age" width={59} />
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ width: 86 }}>Quote Ref</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]" style={{ width: 168 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>

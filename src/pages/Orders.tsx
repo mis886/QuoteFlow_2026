@@ -160,11 +160,12 @@ export function Orders() {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortCol(col); setSortDir('asc'); }
   };
-  const SortTh = ({ col, children, right }: { col: string; children: React.ReactNode; right?: boolean }) => {
+  const SortTh = ({ col, children, right, width }: { col: string; children: React.ReactNode; right?: boolean; width?: number }) => {
     const active = sortCol === col;
     return (
       <th
         className={`font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] whitespace-nowrap border-b border-g200 cursor-pointer select-none hover:text-blk group ${right ? 'text-right' : 'text-left'}`}
+        style={width ? { width } : undefined}
         onClick={() => toggleSort(col)}
       >
         <span className="inline-flex items-center gap-1">
@@ -252,20 +253,20 @@ export function Orders() {
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
-          <table className="w-full border-separate border-spacing-0 text-[12.5px]">
+          <table className="table-fixed border-separate border-spacing-0 text-[12.5px]" style={{ width: '1533px' }}>
             <thead className="bg-g100">
               <tr>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Order No.</th>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
-                <SortTh col="cust">Customer - Unit</SortTh>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">PO Number</th>
-                <SortTh col="poDate">PO Date</SortTh>
-                <SortTh col="scheduleDate">Schedule Date</SortTh>
-                <SortTh col="items">Items</SortTh>
-                <SortTh col="value" right>Order Value</SortTh>
-                <SortTh col="created_at">Punched At</SortTh>
-                <SortTh col="status">Status</SortTh>
-                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]">Actions</th>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ width: 86 }}>Order No.</th>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ width: 86 }}>Quote Ref</th>
+                <SortTh col="cust" width={338}>Customer - Unit</SortTh>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200" style={{ width: 174 }}>PO Number</th>
+                <SortTh col="poDate" width={98}>PO Date</SortTh>
+                <SortTh col="scheduleDate" width={126}>Schedule Date</SortTh>
+                <SortTh col="items" width={82}>Items</SortTh>
+                <SortTh col="value" right width={134}>Order Value</SortTh>
+                <SortTh col="created_at" width={106}>Punched At</SortTh>
+                <SortTh col="status" width={135}>Status</SortTh>
+                <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 sticky right-0 z-[2] bg-g100 border-l border-g200 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.15)] min-w-[168px] max-w-[168px]" style={{ width: 168 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
