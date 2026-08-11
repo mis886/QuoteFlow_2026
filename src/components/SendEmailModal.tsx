@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, Paperclip, Mail, Loader2 } from 'lucide-react';
-import { Quote, Order, Customer, Contact, AppSettings, AuthorizedSignatory } from '../lib/types';
+import { Quote, Order, Customer, AppSettings, AuthorizedSignatory } from '../lib/types';
 import { Button } from './ui';
 import { generateQuotePDF, generateOrderPDF } from '../lib/pdfGenerator';
 import { sendViaGmailAsUser } from '../lib/gmail';
@@ -9,16 +9,31 @@ import { useAppStore } from '../store';
 const SHISHIR = 'shishir@himalayaterpene.com';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-function getSiteContacts(customer?: Customer, siteId?: string): Contact[] {
+interface CCCandidate { name: string; role?: string; email: string; isPrimary?: boolean; }
+
+// One entry per email address, not per contact — a contact's main email
+// (Contact.email) and each of its extraEmails (see commit 209c9aa) all
+// become separate CC candidates pointing back to the same name/role. The
+// main email is always pushed first and is the only one that can carry
+// isPrimary: true, so getPrimaryContact below still resolves to exactly the
+// contact's main email, never an extra.
+function getSiteContacts(customer?: Customer, siteId?: string): CCCandidate[] {
   if (!customer) return [];
   // If siteId provided, restrict to that site only
   const site = siteId
     ? customer.sites.find(s => s.id === siteId) ?? customer.sites.find(s => s.isPrimary) ?? customer.sites[0]
     : customer.sites.find(s => s.isPrimary) ?? customer.sites[0];
-  return (site?.contacts ?? []).filter(c => c.email);
+  const out: CCCandidate[] = [];
+  for (const c of site?.contacts ?? []) {
+    if (c.email) out.push({ name: c.name, role: c.role, email: c.email, isPrimary: c.isPrimary });
+    for (const extra of c.extraEmails ?? []) {
+      if (extra) out.push({ name: c.name, role: c.role, email: extra, isPrimary: false });
+    }
+  }
+  return out;
 }
 
-function getPrimaryContact(customer?: Customer, siteId?: string): Contact | undefined {
+function getPrimaryContact(customer?: Customer, siteId?: string): CCCandidate | undefined {
   const contacts = getSiteContacts(customer, siteId);
   return contacts.find(c => c.isPrimary) ?? contacts[0];
 }
@@ -228,6 +243,11 @@ export function SendEmailModal(props: Props) {
                   <button key={c.email} type="button" onClick={() => toggleCC(c.email)} className={chipCls(selectedCC.has(c.email))}>
                     {selectedCC.has(c.email) && <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>}
                     <span className="font-medium">{c.name || c.email}</span>
+                    {/* One contact can now produce several chips (main email +
+                        each extraEmail) sharing the same name — show the
+                        actual address on every chip so they stay
+                        distinguishable, not just when name is missing. */}
+                    {c.name && <span className="opacity-60 text-[9px]">{c.email}</span>}
                     {c.role && !c.name && <span className="opacity-60">· {c.role}</span>}
                   </button>
                 ))}
