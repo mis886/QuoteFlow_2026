@@ -605,13 +605,13 @@ const mapEnquiryToDB = (e: any) => {
   const mapCustomerFromDB = (c: any): Customer => {
     const contacts: Contact[] = [];
     if (c.primary_contact_name || c.primary_contact_email) {
-      contacts.push({ id: 'C1', name: c.primary_contact_name || '', role: c.primary_contact_designation || '', email: c.primary_contact_email || '', phone: fixPhone(c.primary_contact_phone), isPrimary: true });
+      contacts.push({ id: 'C1', name: c.primary_contact_name || '', role: c.primary_contact_designation || '', email: c.primary_contact_email || '', extraEmails: c.primary_contact_extra_emails || undefined, phone: fixPhone(c.primary_contact_phone), extraPhones: c.primary_contact_extra_phones || undefined, isPrimary: true });
     }
     if (c.contact2_name || c.contact2_email) {
-      contacts.push({ id: 'C2', name: c.contact2_name || '', role: c.contact2_designation || '', email: c.contact2_email || '', phone: fixPhone(c.contact2_phone) });
+      contacts.push({ id: 'C2', name: c.contact2_name || '', role: c.contact2_designation || '', email: c.contact2_email || '', extraEmails: c.contact2_extra_emails || undefined, phone: fixPhone(c.contact2_phone), extraPhones: c.contact2_extra_phones || undefined });
     }
     if (c.contact3_name || c.contact3_email) {
-      contacts.push({ id: 'C3', name: c.contact3_name || '', role: c.contact3_designation || '', email: c.contact3_email || '', phone: fixPhone(c.contact3_phone) });
+      contacts.push({ id: 'C3', name: c.contact3_name || '', role: c.contact3_designation || '', email: c.contact3_email || '', extraEmails: c.contact3_extra_emails || undefined, phone: fixPhone(c.contact3_phone), extraPhones: c.contact3_extra_phones || undefined });
     }
     if (contacts.length === 0) {
       contacts.push({ id: 'C1', name: '', role: 'Purchase', email: '', isPrimary: true });
@@ -723,19 +723,25 @@ const mapEnquiryToDB = (e: any) => {
       obj.primary_contact_name        = c1?.name;
       obj.primary_contact_designation = c1?.role;
       obj.primary_contact_email       = c1?.email;
+      obj.primary_contact_extra_emails = c1?.extraEmails?.length ? c1.extraEmails : null;
       obj.primary_contact_phone       = c1?.phone;
+      obj.primary_contact_extra_phones = c1?.extraPhones?.length ? c1.extraPhones : null;
     }
     if (c2 !== undefined) {
       obj.contact2_name        = c2?.name;
       obj.contact2_designation = c2?.role;
       obj.contact2_email       = c2?.email;
+      obj.contact2_extra_emails = c2?.extraEmails?.length ? c2.extraEmails : null;
       obj.contact2_phone       = c2?.phone;
+      obj.contact2_extra_phones = c2?.extraPhones?.length ? c2.extraPhones : null;
     }
     if (c3 !== undefined) {
       obj.contact3_name        = c3?.name;
       obj.contact3_designation = c3?.role;
       obj.contact3_email       = c3?.email;
+      obj.contact3_extra_emails = c3?.extraEmails?.length ? c3.extraEmails : null;
       obj.contact3_phone       = c3?.phone;
+      obj.contact3_extra_phones = c3?.extraPhones?.length ? c3.extraPhones : null;
     }
 
     // Next orders

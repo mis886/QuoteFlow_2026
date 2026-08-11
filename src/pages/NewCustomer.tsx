@@ -275,6 +275,68 @@ export function NewCustomer() {
     const s = [...sites]; s[sIdx].contacts = s[sIdx].contacts.filter((_, i) => i !== cIdx); setSites(s);
   };
 
+  const addExtraEmail = (sIdx: number, cIdx: number) => {
+    const s = [...sites];
+    const ct = s[sIdx].contacts[cIdx];
+    s[sIdx].contacts[cIdx] = { ...ct, extraEmails: [...(ct.extraEmails ?? []), ''] };
+    setSites(s);
+  };
+  const updateExtraEmail = (sIdx: number, cIdx: number, eIdx: number, value: string) => {
+    const s = [...sites];
+    const arr = [...(s[sIdx].contacts[cIdx].extraEmails ?? [])];
+    arr[eIdx] = value;
+    s[sIdx].contacts[cIdx] = { ...s[sIdx].contacts[cIdx], extraEmails: arr };
+    setSites(s);
+  };
+  const removeExtraEmail = (sIdx: number, cIdx: number, eIdx: number) => {
+    const s = [...sites];
+    const arr = (s[sIdx].contacts[cIdx].extraEmails ?? []).filter((_, i) => i !== eIdx);
+    s[sIdx].contacts[cIdx] = { ...s[sIdx].contacts[cIdx], extraEmails: arr };
+    setSites(s);
+  };
+  // Instead of just rejecting a pasted "a@x.com, b@y.com" style value, split
+  // it into the main email + auto-created extra chips — that's clearly how
+  // people are actually using this field (see the 32-customer cleanup).
+  const splitPastedEmails = (sIdx: number, cIdx: number, value: string) => {
+    const parts = value.split(/[,;]/).map(s => s.trim()).filter(s => s.includes('@'));
+    if (parts.length <= 1) return;
+    const s = [...sites];
+    const ct = s[sIdx].contacts[cIdx];
+    s[sIdx].contacts[cIdx] = { ...ct, email: parts[0], extraEmails: [...(ct.extraEmails ?? []), ...parts.slice(1)] };
+    setSites(s);
+  };
+
+  const addExtraPhone = (sIdx: number, cIdx: number) => {
+    const s = [...sites];
+    const ct = s[sIdx].contacts[cIdx];
+    s[sIdx].contacts[cIdx] = { ...ct, extraPhones: [...(ct.extraPhones ?? []), ''] };
+    setSites(s);
+  };
+  const updateExtraPhone = (sIdx: number, cIdx: number, pIdx: number, value: string) => {
+    const s = [...sites];
+    const arr = [...(s[sIdx].contacts[cIdx].extraPhones ?? [])];
+    arr[pIdx] = value;
+    s[sIdx].contacts[cIdx] = { ...s[sIdx].contacts[cIdx], extraPhones: arr };
+    setSites(s);
+  };
+  const removeExtraPhone = (sIdx: number, cIdx: number, pIdx: number) => {
+    const s = [...sites];
+    const arr = (s[sIdx].contacts[cIdx].extraPhones ?? []).filter((_, i) => i !== pIdx);
+    s[sIdx].contacts[cIdx] = { ...s[sIdx].contacts[cIdx], extraPhones: arr };
+    setSites(s);
+  };
+  // Mirrors splitPastedEmails. Returns true if it split the value (caller
+  // should skip its own single-number normalize/anomaly check in that case).
+  const splitPastedPhones = (sIdx: number, cIdx: number, value: string): boolean => {
+    const parts = value.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+    if (parts.length <= 1) return false;
+    const s = [...sites];
+    const ct = s[sIdx].contacts[cIdx];
+    s[sIdx].contacts[cIdx] = { ...ct, phone: parts[0], extraPhones: [...(ct.extraPhones ?? []), ...parts.slice(1)] };
+    setSites(s);
+    return true;
+  };
+
   const validate = () => {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = 'Company name is required';
@@ -289,6 +351,8 @@ export function NewCustomer() {
       contacts: site.contacts.map(ct => ({
         ...ct,
         phone: ct.phone ? normalizeIndianPhone(ct.phone).value : ct.phone,
+        extraPhones: (ct.extraPhones ?? []).filter(p => p.trim()).map(p => normalizeIndianPhone(p).value),
+        extraEmails: (ct.extraEmails ?? []).filter(e => e.trim()),
       })),
     }));
     const cust: Customer = {
@@ -663,20 +727,45 @@ export function NewCustomer() {
                               <input
                                 type="email" value={ct.email}
                                 onChange={e => updateContact(sIdx, cIdx, 'email', e.target.value)}
+                                onBlur={e => splitPastedEmails(sIdx, cIdx, e.target.value)}
                                 placeholder="email@company.com"
                                 className="w-full bg-white border border-g300 rounded pl-7 pr-2 py-1 text-xs outline-none focus:border-red-mrt"
                               />
+                              {(ct.extraEmails ?? []).map((extra, eIdx) => (
+                                <div key={eIdx} className="flex items-center gap-1 mt-1">
+                                  <input
+                                    type="email" value={extra}
+                                    onChange={e => updateExtraEmail(sIdx, cIdx, eIdx, e.target.value)}
+                                    placeholder="another email"
+                                    className="flex-1 bg-white border border-g300 rounded pl-2 pr-2 py-1 text-xs outline-none focus:border-red-mrt"
+                                  />
+                                  <button type="button" onClick={() => removeExtraEmail(sIdx, cIdx, eIdx)} className="text-g300 hover:text-red-mrt" title="Remove"><Trash2 size={12} /></button>
+                                </div>
+                              ))}
+                              <button type="button" onClick={() => addExtraEmail(sIdx, cIdx)} className="text-[10px] font-bold text-red-mrt hover:underline mt-1">+ Add Email</button>
                             </div>
                             <div className="relative flex-1">
                               <Phone size={11} className="absolute left-2.5 top-[7px] text-g400" />
                               <input
                                 type="tel" value={ct.phone || ''}
                                 onChange={e => { updateContact(sIdx, cIdx, 'phone', e.target.value); const key = `${sIdx}-${cIdx}`; setPhoneAnomalies(prev => { const n = new Set(prev); n.delete(key); return n; }); }}
-                                onBlur={() => { const v = ct.phone || ''; if (v) { const { value, anomaly } = normalizeIndianPhone(v); updateContact(sIdx, cIdx, 'phone', value); const key = `${sIdx}-${cIdx}`; setPhoneAnomalies(prev => { const n = new Set(prev); anomaly ? n.add(key) : n.delete(key); return n; }); } }}
+                                onBlur={() => { const v = ct.phone || ''; if (!v) return; if (splitPastedPhones(sIdx, cIdx, v)) return; const { value, anomaly } = normalizeIndianPhone(v); updateContact(sIdx, cIdx, 'phone', value); const key = `${sIdx}-${cIdx}`; setPhoneAnomalies(prev => { const n = new Set(prev); anomaly ? n.add(key) : n.delete(key); return n; }); }}
                                 placeholder="Phone / Mobile"
                                 className="w-full bg-white border border-g300 rounded pl-7 pr-2 py-1 text-xs outline-none focus:border-red-mrt"
                               />
                               {phoneAnomalies.has(`${sIdx}-${cIdx}`) && <p className="text-amber-600 text-[10px] mt-0.5 pl-0.5">Doesn't look like a standard Indian mobile number — saved as entered</p>}
+                              {(ct.extraPhones ?? []).map((extra, pIdx) => (
+                                <div key={pIdx} className="flex items-center gap-1 mt-1">
+                                  <input
+                                    type="tel" value={extra}
+                                    onChange={e => updateExtraPhone(sIdx, cIdx, pIdx, e.target.value)}
+                                    placeholder="another number"
+                                    className="flex-1 bg-white border border-g300 rounded pl-2 pr-2 py-1 text-xs outline-none focus:border-red-mrt"
+                                  />
+                                  <button type="button" onClick={() => removeExtraPhone(sIdx, cIdx, pIdx)} className="text-g300 hover:text-red-mrt" title="Remove"><Trash2 size={12} /></button>
+                                </div>
+                              ))}
+                              <button type="button" onClick={() => addExtraPhone(sIdx, cIdx)} className="text-[10px] font-bold text-red-mrt hover:underline mt-1">+ Add Contact Number</button>
                             </div>
                           </div>
                         </div>

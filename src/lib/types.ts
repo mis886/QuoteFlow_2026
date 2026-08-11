@@ -57,7 +57,9 @@ export interface Contact {
   name: string;
   role: string;
   email: string;
+  extraEmails?: string[];
   phone?: string;
+  extraPhones?: string[];
   isPrimary?: boolean;
 }
 
