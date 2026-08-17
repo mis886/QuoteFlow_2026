@@ -79,7 +79,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
     if (!isOpen || entityType !== 'quote') return;
     setCoaSearchLoading(true);
     const term = coaSearch.trim();
-    let query = supabase.from('coa_gc_documents').select('*').order('created_at', { ascending: false }).limit(50);
+    let query = supabase.from('coa_document').select('*').order('created_at', { ascending: false }).limit(50);
     if (term) query = query.or(`product_name.ilike.%${term}%,lot_no.ilike.%${term}%`);
     query.then(({ data: rows, error }) => {
       if (error) { console.error(error); setCoaResults([]); setCoaSearchLoading(false); return; }
@@ -220,7 +220,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
 
   const uploaderEmail = activeDoer?.email ?? user?.email ?? null;
 
-  // Merges a set of coa_gc_documents rows into the current quote's
+  // Merges a set of coa_document rows into the current quote's
   // attachments, deduping by storagePath so re-attaching an already-attached
   // cert doesn't create a duplicate chip.
   const attachCoaDocs = async (docs: any[]) => {
@@ -265,7 +265,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
       const { data: url, error: uploadError } = await uploadPublicFile('coa-gc-documents', path, newCoaFile);
       if (uploadError || !url) throw uploadError || new Error('Upload failed');
 
-      const { data: row, error: insertError } = await supabase.from('coa_gc_documents').insert({
+      const { data: row, error: insertError } = await supabase.from('coa_document').insert({
         product_name: newCoaProduct.trim(),
         lot_no: newCoaLot.trim() || null,
         doc_type: 'COA',
