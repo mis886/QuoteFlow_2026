@@ -21,9 +21,9 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [poSubmissions, setPoSubmissions] = useState<any[]>([]);
 
-  // COA/GC library — quote-only panel, see below. Quotes show this panel
+  // COA library — quote-only panel, see below. Quotes show this panel
   // exclusively (no Upload File option); Enquiries/Orders keep the plain
-  // upload panel below since they don't have a COA/GC concept.
+  // upload panel below since they don't have a COA concept.
   const { names: catalogProductNames } = useProductCatalog();
   const [coaSearch, setCoaSearch] = useState('');
   const [coaResults, setCoaResults] = useState<any[]>([]);
@@ -32,7 +32,6 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
   const [attachingCoa, setAttachingCoa] = useState(false);
   const [newCoaProduct, setNewCoaProduct] = useState('');
   const [newCoaLot, setNewCoaLot] = useState('');
-  const [newCoaType, setNewCoaType] = useState<'COA' | 'GC'>('COA');
   const [newCoaFile, setNewCoaFile] = useState<File | null>(null);
   const [coaUploading, setCoaUploading] = useState(false);
   const [coaUploadError, setCoaUploadError] = useState('');
@@ -73,7 +72,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
       .then(({ data: rows }) => setPoSubmissions(rows ?? []));
   }, [isOpen, quoteIdsForPoLookup.join(',')]);
 
-  // COA/GC search — quote-only panel. Placed above the early return (hooks
+  // COA search — quote-only panel. Placed above the early return (hooks
   // rule) and reads `data` directly (rather than the later-declared
   // currentEntityAttachments) to pre-check results already on this quote.
   useEffect(() => {
@@ -262,14 +261,14 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
     try {
       const ext = newCoaFile.name.split('.').pop() || 'bin';
       const safeProductName = newCoaProduct.trim().replace(/[^a-zA-Z0-9]/g, '_');
-      const path = `${newCoaType}/${safeProductName}_${newCoaLot.trim() || 'nolot'}_${Date.now()}.${ext}`;
+      const path = `COA/${safeProductName}_${newCoaLot.trim() || 'nolot'}_${Date.now()}.${ext}`;
       const { data: url, error: uploadError } = await uploadPublicFile('coa-gc-documents', path, newCoaFile);
       if (uploadError || !url) throw uploadError || new Error('Upload failed');
 
       const { data: row, error: insertError } = await supabase.from('coa_gc_documents').insert({
         product_name: newCoaProduct.trim(),
         lot_no: newCoaLot.trim() || null,
-        doc_type: newCoaType,
+        doc_type: 'COA',
         file_name: newCoaFile.name,
         storage_path: url,
         file_size: newCoaFile.size,
@@ -350,7 +349,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
                 {coaSearchLoading ? (
                   <div className="flex items-center justify-center gap-2 text-g400 text-xs py-6"><Loader2 size={14} className="animate-spin" /> Searching…</div>
                 ) : coaResults.length === 0 ? (
-                  <div className="text-center py-6 text-g400 text-xs italic">No matching COA/GC documents found.</div>
+                  <div className="text-center py-6 text-g400 text-xs italic">No matching COA documents found.</div>
                 ) : (
                   coaResults.map(doc => (
                     <label key={doc.id} className="flex items-center gap-3 p-2.5 hover:bg-g50 cursor-pointer">
@@ -363,7 +362,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
                         })}
                         className="w-3.5 h-3.5 accent-red-mrt"
                       />
-                      <span className={`text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded ${doc.doc_type === 'COA' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>{doc.doc_type}</span>
+                      <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{doc.doc_type}</span>
                       <div className="min-w-0 flex-1">
                         <div className="text-[12px] font-semibold text-blk truncate">{doc.product_name}{doc.lot_no ? ` — Lot ${doc.lot_no}` : ''}</div>
                         <div className="text-[10px] text-g500 truncate">{doc.file_name} · {fmtIST(new Date(doc.created_at), 'dd-MMM-yyyy')}</div>
@@ -379,9 +378,9 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
                 </button>
               </div>
 
-              {/* Upload new COA/GC */}
+              {/* Upload new COA */}
               <div className="pt-4 border-t border-g200">
-                <div className="text-[11px] font-medium text-g500 mb-3 uppercase tracking-wider font-mono">Upload New COA/GC</div>
+                <div className="text-[11px] font-medium text-g500 mb-3 uppercase tracking-wider font-mono">Upload New COA</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Product Name</label>
@@ -404,19 +403,11 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 mt-3">
-                  <div className="flex items-center gap-3">
-                    {(['COA', 'GC'] as const).map(t => (
-                      <label key={t} className="flex items-center gap-1.5 text-[11px] font-medium text-g600 cursor-pointer">
-                        <input type="radio" name="newCoaType" checked={newCoaType === t} onChange={() => setNewCoaType(t)} className="w-3.5 h-3.5 accent-red-mrt" />
-                        {t}
-                      </label>
-                    ))}
-                  </div>
+                <div className="mt-3">
                   <input
                     type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
                     onChange={(e) => setNewCoaFile(e.target.files?.[0] ?? null)}
-                    className="flex-1 font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-g100 file:text-g700 hover:file:bg-g200"
+                    className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-g100 file:text-g700 hover:file:bg-g200"
                   />
                 </div>
 

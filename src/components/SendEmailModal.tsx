@@ -89,7 +89,7 @@ export function SendEmailModal(props: Props) {
 
   // Orders don't have a DB `attachments` column yet, so this is quote-only —
   // (props.doc as any).attachments is simply undefined for orders.
-  const coaGcDocs = isQuote ? ((props.doc as any).attachments ?? []).filter((a: any) => a.docType === 'COA' || a.docType === 'GC') : [];
+  const coaGcDocs = isQuote ? ((props.doc as any).attachments ?? []).filter((a: any) => a.docType === 'COA') : [];
 
   const defaultSubject = isQuote
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
@@ -125,7 +125,7 @@ export function SendEmailModal(props: Props) {
   const [body, setBody]       = useState(defaultBody);
   const [toError, setToError] = useState('');
 
-  // COA/GC docs already on this quote — pre-checked by default (opt-out),
+  // COA docs already on this quote — pre-checked by default (opt-out),
   // matching how CC defaults already work in this file.
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(() => new Set(coaGcDocs.map((d: any) => d.id)));
 
@@ -327,10 +327,10 @@ export function SendEmailModal(props: Props) {
               </div>
             </div>
 
-            {/* COA/GC attachments already on this quote — togglable, pre-checked */}
+            {/* COA attachments already on this quote — togglable, pre-checked */}
             {coaGcDocs.length > 0 && (
               <div>
-                <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1.5">COA / GC Attachments</label>
+                <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1.5">COA Attachments</label>
                 <div className="flex flex-col gap-1.5">
                   {coaGcDocs.map((d: any) => (
                     <label key={d.id} className="flex items-center gap-2.5 bg-g50 border border-g200 rounded-[3px] p-[8px_12px] cursor-pointer hover:border-g400 transition-colors">

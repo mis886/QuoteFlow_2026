@@ -608,7 +608,7 @@ export function NewQuote() {
       // Same bug class as negotiations above: this form never edits
       // attachments directly (that's AttachmentModal's save path). Without
       // this, qData — and therefore props.doc passed to SendEmailModal —
-      // silently carried no attachments, so the COA/GC Attachments section
+      // silently carried no attachments, so the COA Attachments section
       // never rendered even when the quote genuinely had docs attached.
       attachments: existing?.attachments ?? [],
     };
