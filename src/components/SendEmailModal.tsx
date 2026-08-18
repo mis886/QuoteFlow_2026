@@ -4,6 +4,7 @@ import { Quote, Order, Customer, AppSettings, AuthorizedSignatory } from '../lib
 import { Button } from './ui';
 import { generateQuotePDF, generateOrderPDF } from '../lib/pdfGenerator';
 import { sendViaGmailAsUser } from '../lib/gmail';
+import { resolveCoaStorageUrl } from '../lib/supabase';
 import { useAppStore } from '../store';
 
 const SHISHIR = 'shishir@himalayaterpene.com';
@@ -47,6 +48,18 @@ async function urlToBase64(url: string): Promise<{ base64: string; mimeType: str
   const mimeType = blob.type || 'application/octet-stream';
   const buf = await blob.arrayBuffer();
   const bytes = new Uint8Array(buf);
+  // Guard against a misrouted fetch silently succeeding with the wrong
+  // content — e.g. a bare/misresolved storage path resolving against this
+  // app's own origin and landing on the SPA's catch-all route, which
+  // returns index.html with a 200 status instead of a 404. That response
+  // looks like a normal successful fetch otherwise, so without this check
+  // a corrupted HTML "attachment" would get emailed out silently. HTML
+  // always starts with '<' (a real PDF/JPG/PNG attachment never does),
+  // which covers every attachment type this modal sends without hardcoding
+  // one specific expected MIME type.
+  if (mimeType.includes('html') || bytes[0] === 0x3c /* '<' */) {
+    throw new Error('Attachment fetch returned an HTML page instead of the real file (likely a misresolved storage URL) — refusing to send it.');
+  }
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return { base64: btoa(binary), mimeType };
@@ -189,7 +202,12 @@ export function SendEmailModal(props: Props) {
       const attachments = [{ base64: pdfBase64, fileName: pdfName, mimeType: 'application/pdf' }];
 
       for (const d of coaGcDocs.filter((d: any) => selectedDocs.has(d.id))) {
-        const { base64, mimeType } = await urlToBase64(d.storagePath);
+        // Re-resolve at send time (not just at attach time) so a quote
+        // whose COA was attached before this fix — storing a bare
+        // bucket-relative path rather than a full URL — still gets a
+        // correct, fetchable URL here instead of one that resolves against
+        // this app's own origin. See resolveCoaStorageUrl.
+        const { base64, mimeType } = await urlToBase64(resolveCoaStorageUrl(d.storagePath));
         attachments.push({ base64, fileName: d.fileName, mimeType });
       }
 

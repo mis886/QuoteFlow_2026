@@ -58,11 +58,30 @@ export async function uploadPublicFile(bucket: string, path: string, file: File 
   const { data, error } = await supabase.storage
     .from(bucket)
     .upload(path, file, { upsert: true });
-  
+
   if (error) return { data: null, error };
-  
+
   const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
   return { data: urlData.publicUrl, error: null };
+}
+
+// Resolves a coa_document.storage_path value into a fetchable, absolute
+// public URL. This column has held two different formats historically: the
+// in-app "Upload New COA" flow (via uploadPublicFile above) stores the full
+// public URL, but the 2022-23 bulk-import script stored a bare
+// bucket-relative path instead (e.g. "bulk-import-2022-23/W0554.pdf"). A
+// bare relative path passed straight to fetch()/window.open() resolves
+// against this app's own origin rather than Supabase — and since this is an
+// SPA with a catch-all route, that silently serves the index.html shell
+// with a 200 status instead of a 404, corrupting the "download"/attachment.
+// Re-deriving the URL from the bucket every time a COA doc is used (rather
+// than trusting whatever format the stored value happens to be in) makes
+// this correct for both already-inserted rows and future ones, with no
+// need to backfill existing quotes' stored attachment data.
+export function resolveCoaStorageUrl(storagePath: string): string {
+  if (!storagePath) return storagePath;
+  if (storagePath.startsWith('http')) return storagePath;
+  return supabase.storage.from('coa-gc-documents').getPublicUrl(storagePath).data.publicUrl;
 }
 
 export async function signInWithGoogle() {

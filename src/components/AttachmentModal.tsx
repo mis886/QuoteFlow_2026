@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { uploadToS3, getS3SignedUrl } from '../lib/s3';
-import { supabase, uploadPublicFile } from '../lib/supabase';
+import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { fmtIST } from '../lib/utils';
 import { Paperclip, Download, X, Loader2, Search } from 'lucide-react';
@@ -214,10 +214,19 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
   };
 
   const handleDownload = async (att: any) => {
-    const { storagePath: path, id, fileName: name, isPublicUrl } = att;
+    const { id, fileName: name, isPublicUrl, docType } = att;
+    let path = att.storagePath;
     if (path.startsWith('mock') || downloadingId === id) return;
     setDownloadingId(id);
-    // Supabase public URLs (po_submissions) can be opened directly
+    // COA docs live in the coa-gc-documents bucket, not the generic bucket
+    // getS3SignedUrl below targets, and older COA rows may still hold a
+    // bare bucket-relative path rather than a full URL (see
+    // resolveCoaStorageUrl) — always re-derive the real public URL for COA
+    // docs rather than trusting storagePath's format.
+    if (docType === 'COA' && !path.startsWith('http')) {
+      path = resolveCoaStorageUrl(path);
+    }
+    // Supabase public URLs (po_submissions, COA) can be opened directly
     if (isPublicUrl || path.startsWith('http')) {
       setDownloadingId(null);
       window.open(path, '_blank', 'noopener');
@@ -240,17 +249,24 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
   const uploaderEmail = activeDoer?.email ?? user?.email ?? null;
 
   // Merges a set of coa_document rows into the current quote's
-  // attachments, deduping by storagePath so re-attaching an already-attached
-  // cert doesn't create a duplicate chip.
+  // attachments, deduping by the coa_document id (not storagePath — the
+  // stored attachment's storagePath is now a resolved absolute URL, which
+  // wouldn't reliably match doc.storage_path's raw, possibly-bare-path
+  // value) so re-attaching an already-attached cert doesn't create a
+  // duplicate chip.
   const attachCoaDocs = async (docs: any[]) => {
-    const existingPaths = new Set(currentEntityAttachments.map((a: any) => a.storagePath));
+    const existingIds = new Set(currentEntityAttachments.map((a: any) => a.id));
     const toAdd = docs
-      .filter(doc => !existingPaths.has(doc.storage_path))
+      .filter(doc => !existingIds.has(doc.id))
       .map(doc => ({
         id: doc.id,
         fileName: doc.file_name,
         docType: doc.doc_type,
-        storagePath: doc.storage_path,
+        // Normalize to an absolute URL at attach time too (not just at
+        // download/email time) so newly-attached quotes always store a
+        // clean value going forward, regardless of which format this row's
+        // own storage_path happens to be in — see resolveCoaStorageUrl.
+        storagePath: resolveCoaStorageUrl(doc.storage_path),
         uploadedAt: doc.created_at,
       }));
     if (toAdd.length === 0) return;
