@@ -26,6 +26,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
   // upload panel below since they don't have a COA concept.
   const { names: catalogProductNames } = useProductCatalog();
   const [coaSearch, setCoaSearch] = useState('');
+  const [coaSearchDebounced, setCoaSearchDebounced] = useState('');
   const [coaResults, setCoaResults] = useState<any[]>([]);
   const [coaSearchLoading, setCoaSearchLoading] = useState(false);
   const [selectedCoaIds, setSelectedCoaIds] = useState<Set<string>>(new Set());
@@ -72,16 +73,33 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
       .then(({ data: rows }) => setPoSubmissions(rows ?? []));
   }, [isOpen, quoteIdsForPoLookup.join(',')]);
 
+  // Debounce raw keystrokes (350ms) before they drive the Supabase query
+  // below — without this, typing "Dipentene" fired 9 separate requests, one
+  // per keystroke. Also collapses a net-no-op edit (e.g. a key typed then
+  // undone within the debounce window) into an unchanged value, so the
+  // query effect below — which only re-runs when this value actually
+  // changes — doesn't re-fire for it.
+  useEffect(() => {
+    const t = setTimeout(() => setCoaSearchDebounced(coaSearch.trim()), 350);
+    return () => clearTimeout(t);
+  }, [coaSearch]);
+
   // COA search — quote-only panel. Placed above the early return (hooks
   // rule) and reads `data` directly (rather than the later-declared
   // currentEntityAttachments) to pre-check results already on this quote.
+  // Driven by the debounced term above. The AbortController cancels this
+  // request if a newer search starts (effect re-runs) before it resolves —
+  // postgrest-js resolves an aborted request as {data: null, error} rather
+  // than throwing, so the aborted-signal check below is enough to ignore it
+  // instead of letting a slow stale response overwrite fresher results.
   useEffect(() => {
     if (!isOpen || entityType !== 'quote') return;
+    const controller = new AbortController();
     setCoaSearchLoading(true);
-    const term = coaSearch.trim();
-    let query = supabase.from('coa_document').select('*').order('created_at', { ascending: false }).limit(50);
-    if (term) query = query.or(`product_name.ilike.%${term}%,lot_no.ilike.%${term}%`);
+    let query = supabase.from('coa_document').select('*').order('created_at', { ascending: false }).limit(50).abortSignal(controller.signal);
+    if (coaSearchDebounced) query = query.ilike('lot_no', `%${coaSearchDebounced}%`);
     query.then(({ data: rows, error }) => {
+      if (controller.signal.aborted) return;
       if (error) { console.error(error); setCoaResults([]); setCoaSearchLoading(false); return; }
       const q = data.quotes.find((qq: any) => qq.id === entityId) as any;
       const attachedPaths = new Set((q?.attachments ?? []).map((a: any) => a.storagePath));
@@ -93,7 +111,8 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
       });
       setCoaSearchLoading(false);
     });
-  }, [isOpen, entityType, coaSearch, entityId]);
+    return () => controller.abort();
+  }, [isOpen, entityType, coaSearchDebounced, entityId]);
 
   if (!isOpen) return null;
 
@@ -334,22 +353,31 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
             <div className="space-y-4">
               {/* Search */}
               <div>
-                <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Search by Product Name or Lot No.</label>
+                <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Search by Lot No.</label>
                 <div className="relative">
                   <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-g400 pointer-events-none" />
                   <input
                     type="text" value={coaSearch} onChange={(e) => setCoaSearch(e.target.value)}
-                    placeholder="e.g. Terpineol, or lot HT-2026-041"
-                    className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] pl-8 pr-3 py-2 outline-none focus:border-red-mrt"
+                    placeholder="e.g. HT-2026-041"
+                    className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] pl-8 pr-8 py-2 outline-none focus:border-red-mrt"
                   />
+                  {coaSearchLoading && (
+                    <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-g400 animate-spin" />
+                  )}
                 </div>
               </div>
 
+              {/* Results list stays mounted across searches — the loading
+                  spinner above lives in the search box, not here, so an
+                  in-flight search doesn't unmount/replace what's already
+                  showing and flicker/reflow on every keystroke. Only the
+                  very first load (nothing fetched yet) shows a "Searching…"
+                  placeholder here instead of a premature "no results". */}
               <div className="max-h-[220px] overflow-y-auto border border-g200 rounded-[3px] divide-y divide-g100">
-                {coaSearchLoading ? (
-                  <div className="flex items-center justify-center gap-2 text-g400 text-xs py-6"><Loader2 size={14} className="animate-spin" /> Searching…</div>
-                ) : coaResults.length === 0 ? (
-                  <div className="text-center py-6 text-g400 text-xs italic">No matching COA documents found.</div>
+                {coaResults.length === 0 ? (
+                  <div className="text-center py-6 text-g400 text-xs italic">
+                    {coaSearchLoading ? 'Searching…' : 'No matching COA documents found.'}
+                  </div>
                 ) : (
                   coaResults.map(doc => (
                     <label key={doc.id} className="flex items-center gap-3 p-2.5 hover:bg-g50 cursor-pointer">
