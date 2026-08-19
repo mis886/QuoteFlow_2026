@@ -6,21 +6,11 @@ import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
 import { calculateAgeHours, generateId } from '../lib/utils';
 import { User } from '@supabase/supabase-js';
 
-// Static email → identity mapping; eliminates the manual "Who's working?" popup.
-const EMAIL_TO_DOER: Record<string, { display_name: string; role: DoerRole }> = {
-  'accounts@himalayaterpene.com': { display_name: 'Account Coordinator', role: 'Rate Entry' },
-  'mum@himalayaterpene.com':      { display_name: 'Mumbai Office',         role: 'Rate Entry' },
-  'sales@himalayaterpene.com':    { display_name: 'Sales Coordinator',     role: 'Rate Entry' },
-  'anil@himalayaterpene.com':     { display_name: 'Anil Agrawal',          role: 'Negotiation' },
-  'shishir@himalayaterpene.com':  { display_name: 'Shishir Agrawal',       role: 'Negotiation' },
-  'mis@himalayaterpene.com':      { display_name: 'MIS Coordinator',       role: 'Technical' },
-  'pc@himalayaterpene.com':       { display_name: 'PC',                    role: 'Admin' },
-};
-
 // Separate, purpose-specific mapping for the Authorized Signatory panel
 // (NewEnquiry/NewQuote/NewOrder) — deliberately NOT reused from/merged into
-// EMAIL_TO_DOER above, which drives generic KPI "doer" labels (e.g. "MIS
-// Coordinator") unrelated to who a document's signatory should be.
+// the activeDoer resolution below, which is live-looked-up against
+// data.roster for generic KPI "doer" attribution, unrelated to who a
+// document's signatory should be.
 // Names here match authorized_signatories rows as they actually exist in
 // Supabase today (confirmed live, not guessed) — e.g. "Chaudhari" not
 // "Chaudhary", "Agrawal" not "Agarwal". sales@ is intentionally absent: it
@@ -286,12 +276,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Auto-resolve the active doer from the authenticated email so no manual
-  // "Who's working?" selection is needed after login.
+  // "Who's working?" selection is needed after login. Looked up live against
+  // data.roster (not a hardcoded map) so an edit in Settings → Team Roster
+  // takes effect on next login without a code change. Re-runs whenever the
+  // roster reloads/changes, not just on user change, since data.roster isn't
+  // populated yet on the very first run (refreshData() is still in flight).
   useEffect(() => {
     const email = user?.email?.toLowerCase() ?? null;
     if (email) {
-      const mapped = EMAIL_TO_DOER[email];
-      const doer = mapped ? { email, display_name: mapped.display_name, role: mapped.role } : null;
+      const matches = data.roster.filter(m => m.active && m.email.toLowerCase() === email);
+      // Exactly one active roster row for this login resolves directly. Zero
+      // matches (unmapped login) or several matches (a shared login covering
+      // more than one person, e.g. sales@) both leave activeDoer null — the
+      // latter is handled by the SalesIdentityGate / salesIdentity picker,
+      // unchanged by this.
+      const doer = matches.length === 1
+        ? { email, display_name: matches[0].display_name, role: matches[0].role }
+        : null;
       setActiveDoerState(doer);
       try {
         if (doer) sessionStorage.setItem('active_doer', JSON.stringify(doer));
@@ -311,7 +312,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSalesIdentityState(null);
       try { sessionStorage.removeItem('sales_signatory_identity'); } catch {}
     }
-  }, [user]);
+  }, [user, data.roster]);
 
   // Authorized Signatory resolution for NewEnquiry/NewQuote/NewOrder's
   // locked signatory panel — derived on every render (cheap: a handful of
@@ -568,6 +569,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('customerTier' in o) obj.customer_tier = o.customerTier || null;
     if ('terms' in o) obj.terms = o.terms || null;
     if ('pay' in o) obj.pay = o.pay || null;
+    if ('doer' in o) obj.doer = o.doer;
 
     return obj;
   };
