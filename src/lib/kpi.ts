@@ -167,10 +167,12 @@ function identitiesFor(member: { email: string; display_name: string; aliases?: 
 
 export interface RosterMemberLike { email: string; display_name: string; role: DoerRole; active: boolean; aliases?: string[]; }
 
-// The Map returned by computeDoerMetrics is keyed by (email, role). Build the
-// same key to look a row up from a DoerMetrics value.
-export function doerRowKey(email: string, role: DoerRole): string {
-  return `${email.trim().toLowerCase()}|${role}`;
+// The Map returned by computeDoerMetrics is keyed by (email, role, display_name)
+// — matching team_roster's primary key, since a shared login (e.g. sales@) can
+// now have two people covering the same role. Build the same key to look a row
+// up from a DoerMetrics value.
+export function doerRowKey(email: string, role: DoerRole, displayName: string): string {
+  return `${email.trim().toLowerCase()}|${role}|${displayName.trim()}`;
 }
 
 // Compute per-doer metrics for the active roster over a date range.
@@ -205,7 +207,7 @@ export function computeDoerMetrics(
 
   for (const m of roster) {
     if (!m.active) continue;
-    out.set(rowKey(m.email, m.role), {
+    out.set(rowKey(m.email, m.role, m.display_name), {
       email: m.email, displayName: m.display_name, role: m.role,
       onTimePct: null, volume: 0, avgCycleH: null, winRate: null,
       enqLapH: null, quoteLapH: null, avgLateH: null, lateCount: 0,
@@ -219,12 +221,25 @@ export function computeDoerMetrics(
 
   // Index members by (identity, role) for fast attribution. Each identity may map
   // to several roles, so we resolve the row by the role the action belongs to.
+  // Two roster rows can now share BOTH an identity string (e.g. sales@'s shared
+  // login email) AND a role (e.g. Nimisha and Ruby both 'Rate Entry') — when a
+  // raw doer/owner/who value is exactly that shared identity, there is no way to
+  // tell which of the two it means. Such a key is deliberately left unattributed
+  // (dropped below) rather than silently crediting whichever row happened to be
+  // indexed last, which would erase one person's stats without any signal.
   const memberByIdentityRole = new Map<string, Raw>();
+  const ambiguousKeys = new Set<string>();
   for (const m of roster) {
     if (!m.active) continue;
-    const raw = out.get(rowKey(m.email, m.role))!;
-    for (const id of identitiesFor(m)) memberByIdentityRole.set(`${id}|${m.role}`, raw);
+    const raw = out.get(rowKey(m.email, m.role, m.display_name))!;
+    for (const id of identitiesFor(m)) {
+      const key = `${id}|${m.role}`;
+      const existing = memberByIdentityRole.get(key);
+      if (existing && existing !== raw) ambiguousKeys.add(key);
+      else memberByIdentityRole.set(key, raw);
+    }
   }
+  for (const key of ambiguousKeys) memberByIdentityRole.delete(key);
   // Resolve the roster row credited for a `who` value acting in a given role.
   const matchDoer = (who: string | null | undefined, role: DoerRole): Raw | undefined =>
     who ? memberByIdentityRole.get(`${lc(who)}|${role}`) : undefined;

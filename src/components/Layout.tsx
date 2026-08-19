@@ -5,6 +5,7 @@ import { DetailPanel } from './DetailPanel';
 import { AttachmentModal } from './AttachmentModal';
 import { AppTour } from './AppTour';
 import { MilestoneConfetti } from './MilestoneConfetti';
+import { SalesIdentityGate } from './SalesIdentityGate';
 import { useAppStore } from '../store';
 import { Loader2 } from 'lucide-react';
 
@@ -39,6 +40,7 @@ export function Layout() {
       />
       <AppTour />
       <MilestoneConfetti />
+      <SalesIdentityGate />
     </div>
   );
 }

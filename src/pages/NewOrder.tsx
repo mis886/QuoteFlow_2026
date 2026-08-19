@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
-import { OrderItem, Order, AuthorizedSignatory, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
+import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
@@ -56,7 +56,7 @@ export function NewOrder() {
   const editOrderId = searchParams.get('orderId');
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
-  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, addSignatory, closeFollowUp, stampName } = useAppStore();
+  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory } = useAppStore();
   const canComplete = canCompleteOrder(user?.email);
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
@@ -97,14 +97,15 @@ export function NewOrder() {
   const [custName, setCustName] = useState(custParam ?? '');
   const [siteId, setSiteId] = useState('');
   const [contactId, setContactId] = useState('');
+  // Auto-derived from resolvedSignatory for a new order, or hydrated
+  // read-only from the saved order / linked quote when editing/converting —
+  // see the effects below. No longer user-editable.
   const [authName, setAuthName] = useState('');
   const [authDesignation, setAuthDesignation] = useState('');
   const [authPhone, setAuthPhone] = useState('');
-  const [selectedSigId, setSelectedSigId] = useState('');
   const [customTerms, setCustomTerms] = useState('');
   const [orderStatus, setOrderStatus] = useState<OrderStatus>('Processing');
   const [customerTier, setCustomerTier] = useState<CustomerTier | ''>('');
-  const [sigMsg, setSigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [adjustments, setAdjustments] = useState<OrderAdjustment[]>([]);
   const [insurance, setInsurance] = useState(0);
@@ -126,23 +127,26 @@ export function NewOrder() {
   const [defaultHsn, setDefaultHsn] = useState<string>('');
   const [showExim, setShowExim] = useState(false);
 
-  // Auto-load default signatory. app_settings always wins when loaded; is_default is
-  // fallback only while settings hasn't arrived yet. Same timing-race fix as NewQuote.tsx.
-  // quoteRef stays in the guard: when creating an order from a quote, the quote's signatory
-  // is loaded by the hydration effect below and should not be overwritten.
+  // New order only (fresh, or converting from a linked quote): keep the
+  // (locked, read-only) Authorized Signatory fields in sync with the
+  // logged-in user's resolved signatory — replaces the old app_settings
+  // global-default / is_default-row / carry-forward-from-the-linked-quote's-
+  // own-signatory fallback chain entirely. A new order always shows who is
+  // CURRENTLY logged in, never a historical value inherited from another
+  // record. Separate from the edit-mode hydrate effect below since
+  // resolvedSignatory can settle after mount.
   useEffect(() => {
-    if (editOrderId || quoteRef) return;
-    if (data.settings?.signatory_name) {
-      setAuthName(data.settings.signatory_name);
-      setAuthDesignation(data.settings.signatory_title || '');
-      setAuthPhone(data.settings.signatory_phone || '');
-      const matched = data.signatories.find((s: any) => s.name === data.settings!.signatory_name);
-      if (matched) setSelectedSigId(matched.id);
-    } else if (!authName) {
-      const def = data.signatories.find((s: any) => s.is_default);
-      if (def) { setAuthName(def.name); setAuthDesignation(def.designation); setAuthPhone(def.phone || ''); setSelectedSigId(def.id); }
+    if (editOrderId) return;
+    if (resolvedSignatory.status === 'resolved') {
+      setAuthName(resolvedSignatory.name);
+      setAuthDesignation(resolvedSignatory.designation);
+      setAuthPhone(resolvedSignatory.phone);
+    } else {
+      setAuthName('');
+      setAuthDesignation('');
+      setAuthPhone('');
     }
-  }, [data.signatories, data.settings, editOrderId, quoteRef]);
+  }, [editOrderId, resolvedSignatory]);
 
   // Auto-load default unit (when not editing an existing order that already has one)
   useEffect(() => {
@@ -204,8 +208,6 @@ export function NewOrder() {
         if (o.phone) setPhone(o.phone);
         if (o.custEnquiryDocNo) setCustEnquiryDocNo(o.custEnquiryDocNo);
         setContactManual(!o.contactId && !!(o.contact || o.email));
-        const matched = data.signatories.find((s: AuthorizedSignatory) => s.name === o.authorizedPerson?.name);
-        if (matched) setSelectedSigId(matched.id);
       }
     } else if (quoteRef) {
       // Duplicate guard: warn if this quote was already converted to an order
@@ -232,23 +234,10 @@ export function NewOrder() {
         if (q.custEnquiryDocNo) setCustEnquiryDocNo(q.custEnquiryDocNo);
         // Preserve manual contact if quote had no contactId
         setContactManual(!q.contactId && !!(q.contact || q.email));
-        if (q.authorizedPerson?.name) {
-          setAuthName(q.authorizedPerson.name);
-          setAuthDesignation(q.authorizedPerson.designation || '');
-          setAuthPhone(q.authorizedPerson.phone || '');
-          const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === q.authorizedPerson!.name);
-          if (matchedSig) setSelectedSigId(matchedSig.id);
-        } else {
-          const defName = data.settings?.signatory_name;
-          if (defName) {
-            setAuthName(defName); setAuthDesignation(data.settings!.signatory_title || ''); setAuthPhone(data.settings!.signatory_phone || '');
-            const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === defName);
-            if (matchedSig) setSelectedSigId(matchedSig.id);
-          } else {
-            const defSig = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
-            if (defSig) { setAuthName(defSig.name); setAuthDesignation(defSig.designation); setAuthPhone(defSig.phone || ''); setSelectedSigId(defSig.id); }
-          }
-        }
+        // Authorized Signatory is intentionally NOT carried forward from the
+        // quote here — a new order always shows the current logged-in
+        // user's resolved signatory (see the resolvedSignatory effect
+        // above), regardless of who was on the linked quote.
         if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
         setCurr(q.curr || 'INR');
         if (q.pay) setPay(q.pay);
@@ -587,23 +576,10 @@ export function NewOrder() {
                 if (q.phone) setPhone(q.phone);
                 if (q.custEnquiryDocNo) setCustEnquiryDocNo(q.custEnquiryDocNo);
                 setContactManual(!q.contactId && !!(q.contact || q.email));
-                if (q.authorizedPerson?.name) {
-                  setAuthName(q.authorizedPerson.name);
-                  setAuthDesignation(q.authorizedPerson.designation || '');
-                  setAuthPhone(q.authorizedPerson.phone || '');
-                  const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === q.authorizedPerson!.name);
-                  if (matchedSig) setSelectedSigId(matchedSig.id);
-                } else {
-                  const defName = data.settings?.signatory_name;
-                  if (defName) {
-                    setAuthName(defName); setAuthDesignation(data.settings!.signatory_title || ''); setAuthPhone(data.settings!.signatory_phone || '');
-                    const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === defName);
-                    if (matchedSig) setSelectedSigId(matchedSig.id);
-                  } else {
-                    const defSig = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
-                    if (defSig) { setAuthName(defSig.name); setAuthDesignation(defSig.designation); setAuthPhone(defSig.phone || ''); setSelectedSigId(defSig.id); }
-                  }
-                }
+                // Authorized Signatory: not carried forward here either —
+                // same reasoning as the main init effect above, the
+                // resolvedSignatory effect keeps it in sync since
+                // editOrderId is still unset at this point.
                 if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
                 setCurr(q.curr || 'INR');
                 if (q.pay) setPay(q.pay);
@@ -1297,32 +1273,28 @@ export function NewOrder() {
               <div className="col-span-4 bg-white border border-g200">
                 <div className="p-[11px_16px] border-b border-g200"><span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600">Authorized Signatory</span></div>
                 <div className="p-[12px_16px] flex flex-col gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[4px]">Select from List</label>
-                    <select title="Select signatory" value={selectedSigId}
-                      onChange={e => { const sid = e.target.value; setSelectedSigId(sid); const sig = data.signatories.find(s => s.id === sid); if (sig) { setAuthName(sig.name); setAuthDesignation(sig.designation); setAuthPhone(sig.phone); } }}
-                      className={selectCls}>
-                      <option value="">-- Select or Type Below --</option>
-                      {data.signatories.map(s => <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>)}
-                    </select>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px]">Details</label>
-                    <button type="button" onClick={async () => {
-                      if (!authName.trim()) { setSigMsg({ type: 'error', text: 'Enter a name first' }); setTimeout(() => setSigMsg(null), 3000); return; }
-                      try { const ns: AuthorizedSignatory = { id: 'sig-' + Date.now(), name: authName.trim(), designation: authDesignation.trim(), phone: authPhone.trim(), is_default: false }; await addSignatory(ns); setSelectedSigId(ns.id); setSigMsg({ type: 'success', text: 'Saved' }); setTimeout(() => setSigMsg(null), 3000); }
-                      catch { setSigMsg({ type: 'error', text: 'Could not save' }); }
-                    }} className="text-[9px] font-bold text-red-mrt uppercase hover:underline">Save to List</button>
-                  </div>
-                  {sigMsg && <div className={`text-[10px] font-semibold ${sigMsg.type === 'success' ? 'text-green-600' : 'text-red-mrt'}`}>{sigMsg.text}</div>}
-                  <div className="flex flex-col gap-2">
-                    <input type="text" value={authName} onChange={e => { setAuthName(e.target.value); setSelectedSigId(''); }} placeholder="Name"
-                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-                    <input type="text" value={authDesignation} onChange={e => { setAuthDesignation(e.target.value); setSelectedSigId(''); }} placeholder="Designation"
-                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-                    <input type="text" value={authPhone} onChange={e => { setAuthPhone(e.target.value); setSelectedSigId(''); }} placeholder="Phone"
-                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-                  </div>
+                  {/* Auto-derived from the logged-in user (resolvedSignatory) for a
+                      new order, or the saved order's own value when editing —
+                      never manually editable, see store/index.tsx. */}
+                  {!editOrderId && resolvedSignatory.status === 'unmapped' ? (
+                    <div className="text-[12px] text-red-mrt bg-red-lt border border-red-mrt/20 rounded-[3px] px-3 py-2.5">
+                      No signatory mapped for this account — contact MIS.
+                    </div>
+                  ) : !editOrderId && resolvedSignatory.status === 'needs-picker' ? (
+                    <div className="text-[12px] text-g500 bg-g50 border border-g200 rounded-[3px] px-3 py-2.5">
+                      Waiting for identity selection…
+                    </div>
+                  ) : authName ? (
+                    <div className="text-[13px] bg-g50 border border-g200 rounded-[3px] px-3 py-2.5 space-y-0.5">
+                      <div className="font-bold text-blk">{authName}</div>
+                      {authDesignation && <div className="text-g500">{authDesignation}</div>}
+                      {authPhone && <div className="text-g400">{authPhone}</div>}
+                    </div>
+                  ) : (
+                    <div className="text-[12px] text-g400 italic bg-g50 border border-dashed border-g200 rounded-[3px] px-3 py-2.5">
+                      No signatory on record
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

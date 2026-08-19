@@ -17,6 +17,68 @@ const EMAIL_TO_DOER: Record<string, { display_name: string; role: DoerRole }> = 
   'pc@himalayaterpene.com':       { display_name: 'PC',                    role: 'Admin' },
 };
 
+// Separate, purpose-specific mapping for the Authorized Signatory panel
+// (NewEnquiry/NewQuote/NewOrder) — deliberately NOT reused from/merged into
+// EMAIL_TO_DOER above, which drives generic KPI "doer" labels (e.g. "MIS
+// Coordinator") unrelated to who a document's signatory should be.
+// Names here match authorized_signatories rows as they actually exist in
+// Supabase today (confirmed live, not guessed) — e.g. "Chaudhari" not
+// "Chaudhary", "Agrawal" not "Agarwal". sales@ is intentionally absent: it
+// resolves via the PIN-gated name picker (see resolveSalesIdentity /
+// SalesIdentityGate) instead of a static mapping, since one login covers
+// two different people.
+const EMAIL_TO_SIGNATORY: Record<string, { name: string; preferSignatoryId?: string }> = {
+  'accounts@himalayaterpene.com': { name: 'Saidas Chaudhari' },
+  'anil@himalayaterpene.com':     { name: 'Anil Agarwal' },
+  'mis@himalayaterpene.com':      { name: 'Mansi' },
+  // Two authorized_signatories rows are both named "Samata Yadav" (Billing
+  // Executive/+919987682255 and CRM/+918657000610) — preferSignatoryId pins
+  // mum@ to the confirmed-correct one (Billing Executive) by id, since a
+  // plain name match can't disambiguate between them.
+  'mum@himalayaterpene.com':      { name: 'Samata Yadav', preferSignatoryId: 'sig-1782203400891' },
+  'pc@himalayaterpene.com':       { name: 'Omkar' },
+  'shishir@himalayaterpene.com':  { name: 'Shishir Agrawal' },
+};
+
+export interface ResolvedSignatoryInfo {
+  name: string;
+  designation: string;
+  phone: string;
+}
+
+// 'resolved'   — a name is known (either from EMAIL_TO_SIGNATORY, or from the
+//                sales@ PIN picker) and matched/attempted against
+//                authorized_signatories.
+// 'unmapped'   — the logged-in email has no signatory mapping at all (not one
+//                of EMAIL_TO_SIGNATORY's entries, and not sales@).
+// 'needs-picker' — logged in as sales@himalayaterpene.com but this session
+//                hasn't picked+verified Nimisha Pawar / Ruby yet.
+export type SignatoryResolution =
+  | ({ status: 'resolved' } & ResolvedSignatoryInfo)
+  | { status: 'unmapped' }
+  | { status: 'needs-picker' };
+
+const SALES_EMAIL = 'sales@himalayaterpene.com';
+export const SALES_SIGNATORY_NAMES = ['Nimisha Pawar', 'Ruby'] as const;
+export type SalesSignatoryName = typeof SALES_SIGNATORY_NAMES[number];
+
+// Case-insensitive name match against the live authorized_signatories list,
+// preferring a specific row by id when the name alone is ambiguous (see
+// EMAIL_TO_SIGNATORY's mum@ entry). Returns name-only (blank
+// designation/phone) rather than null when the mapped name has no matching
+// row yet — the signatory should still resolve, just without invented data,
+// per the "don't fabricate designation/phone" requirement.
+function resolveSignatoryByName(
+  name: string,
+  signatories: AuthorizedSignatory[],
+  preferId?: string,
+): ResolvedSignatoryInfo {
+  const key = name.trim().toLowerCase();
+  const matches = signatories.filter(s => s.name.trim().toLowerCase() === key);
+  const match = (preferId && matches.find(s => s.id === preferId)) || matches[0];
+  return { name, designation: match?.designation ?? '', phone: match?.phone ?? '' };
+}
+
 export interface GlobalDateRange {
   startDate: string;
   endDate: string;
@@ -63,8 +125,8 @@ interface AppContextType {
   updateBankAccount: (id: string, updates: Partial<BankAccount>) => Promise<void>;
   deleteBankAccount: (id: string) => Promise<void>;
   addTeamMember: (m: TeamMember) => Promise<void>;
-  updateTeamMember: (email: string, role: DoerRole, updates: Partial<TeamMember>) => Promise<void>;
-  deleteTeamMember: (email: string, role: DoerRole) => Promise<void>;
+  updateTeamMember: (email: string, role: DoerRole, displayName: string, updates: Partial<TeamMember>) => Promise<void>;
+  deleteTeamMember: (email: string, role: DoerRole, displayName: string) => Promise<void>;
   roleForDoer: (nameOrEmail?: string | null) => DoerRole[];
   // Active doer (post-login identity on a possibly-shared Google login).
   activeDoer: ActiveDoer | null;
@@ -72,6 +134,13 @@ interface AppContextType {
   clearActiveDoer: () => void;
   // The name to stamp on records this session: active doer's name, else email.
   stampName: () => string;
+  // Locked Authorized Signatory for NewEnquiry/NewQuote/NewOrder, resolved
+  // from the logged-in email (see EMAIL_TO_SIGNATORY / SignatoryResolution).
+  resolvedSignatory: SignatoryResolution;
+  // sales@'s PIN-picked identity this session (Nimisha Pawar / Ruby, or null
+  // before picked) — set by SalesIdentityGate once the PIN is verified.
+  salesIdentity: SalesSignatoryName | null;
+  setSalesIdentity: (name: SalesSignatoryName | null) => void;
   globalSearchQuery: string;
   setGlobalSearchQuery: (query: string) => void;
   globalDateRange: GlobalDateRange | null;
@@ -141,6 +210,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [activeDoer, setActiveDoerState] = useState<ActiveDoer | null>(() => {
     try { const s = sessionStorage.getItem('active_doer'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  // sales@'s PIN-picked identity for this session only (Nimisha Pawar /
+  // Ruby) — mirrors active_doer's sessionStorage pattern: survives SPA
+  // navigation, cleared on sign-out, re-prompted on a fresh login.
+  const [salesIdentity, setSalesIdentityState] = useState<SalesSignatoryName | null>(() => {
+    try { return (sessionStorage.getItem('sales_signatory_identity') as SalesSignatoryName | null) ?? null; } catch { return null; }
   });
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [detailPanel, setDetailPanel] = useState<{ type: 'enquiry' | 'quote' | 'order' | null, id: string | null }>({ type: null, id: null });
@@ -226,7 +301,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setActiveDoerState(null);
       try { sessionStorage.removeItem('active_doer'); } catch {}
     }
+    // sales@'s PIN-picked identity must re-prompt on a fresh login and clear
+    // on any sign-out path (explicit logout, session expiry, domain-check
+    // failure) — cleared here alongside active_doer rather than only in the
+    // logout() button handler, so every path that lands here covers it. Also
+    // clears if a different, non-sales@ user is now logged in, in case a
+    // stale value ever lingered in sessionStorage from an earlier session.
+    if (email !== SALES_EMAIL) {
+      setSalesIdentityState(null);
+      try { sessionStorage.removeItem('sales_signatory_identity'); } catch {}
+    }
   }, [user]);
+
+  // Authorized Signatory resolution for NewEnquiry/NewQuote/NewOrder's
+  // locked signatory panel — derived on every render (cheap: a handful of
+  // array scans over data.signatories) rather than its own
+  // useState+useEffect, so it can never lag one render behind user/data.
+  const email = user?.email?.toLowerCase() ?? null;
+  const resolvedSignatory: SignatoryResolution = (() => {
+    if (!email) return { status: 'unmapped' };
+    if (email === SALES_EMAIL) {
+      if (!salesIdentity) return { status: 'needs-picker' };
+      return { status: 'resolved', ...resolveSignatoryByName(salesIdentity, data.signatories) };
+    }
+    const mapped = EMAIL_TO_SIGNATORY[email];
+    if (!mapped) return { status: 'unmapped' };
+    return { status: 'resolved', ...resolveSignatoryByName(mapped.name, data.signatories, mapped.preferSignatoryId) };
+  })();
+
+  const setSalesIdentity = (name: SalesSignatoryName | null) => {
+    setSalesIdentityState(name);
+    try {
+      if (name) sessionStorage.setItem('sales_signatory_identity', name);
+      else sessionStorage.removeItem('sales_signatory_identity');
+    } catch { /* sessionStorage unavailable — keep in-memory only */ }
+  };
 
   // Persist global date range to localStorage — survives SPA navigation, resets on hard page reload
   useEffect(() => {
@@ -1142,8 +1251,10 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   // ── Team roster (people → process role) ──────────────────────────
-  // The roster key is the (email, role) pair: one login can hold several roles,
-  // and one role can be covered by several people.
+  // The roster key is the (email, role, display_name) triple: one login can hold
+  // several roles, one role can be covered by several people, and — since a
+  // shared login (e.g. sales@) can now have two people covering the SAME role —
+  // display_name disambiguates rows that would otherwise collide on (email, role).
   const addTeamMember = async (m: TeamMember) => {
     const row = {
       ...m,
@@ -1159,17 +1270,18 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  const updateTeamMember = async (email: string, role: DoerRole, updates: Partial<TeamMember>) => {
+  const updateTeamMember = async (email: string, role: DoerRole, displayName: string, updates: Partial<TeamMember>) => {
     const key = email.trim().toLowerCase();
+    const nameKey = displayName.trim();
     const normalized: Partial<TeamMember> = 'aliases' in updates
       ? { ...updates, aliases: (updates.aliases ?? []).map(a => a.trim().toLowerCase()).filter(Boolean) }
       : updates;
     const patch = { ...normalized, updated_at: new Date().toISOString() };
-    const { error } = await supabase.from('team_roster').update(patch).eq('email', key).eq('role', role);
+    const { error } = await supabase.from('team_roster').update(patch).eq('email', key).eq('role', role).eq('display_name', nameKey);
     if (!error) {
       setData(prev => ({
         ...prev,
-        roster: prev.roster.map(m => (m.email === key && m.role === role) ? { ...m, ...normalized } : m)
+        roster: prev.roster.map(m => (m.email === key && m.role === role && m.display_name === nameKey) ? { ...m, ...normalized } : m)
       }));
     } else {
       console.error('Error updating team member:', error);
@@ -1177,11 +1289,12 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  const deleteTeamMember = async (email: string, role: DoerRole) => {
+  const deleteTeamMember = async (email: string, role: DoerRole, displayName: string) => {
     const key = email.trim().toLowerCase();
-    const { error } = await supabase.from('team_roster').delete().eq('email', key).eq('role', role);
+    const nameKey = displayName.trim();
+    const { error } = await supabase.from('team_roster').delete().eq('email', key).eq('role', role).eq('display_name', nameKey);
     if (!error) {
-      setData(prev => ({ ...prev, roster: prev.roster.filter(m => !(m.email === key && m.role === role)) }));
+      setData(prev => ({ ...prev, roster: prev.roster.filter(m => !(m.email === key && m.role === role && m.display_name === nameKey)) }));
     } else {
       console.error('Error deleting team member:', error);
       throw error;
@@ -1211,9 +1324,11 @@ const mapEnquiryToDB = (e: any) => {
   };
   const clearActiveDoer = () => setActiveDoer(null);
 
-  // Name stamped on records this session: the identified doer, else the login.
+  // Name stamped on records this session: sales@'s picked identity (Nimisha
+  // Pawar / Ruby) takes priority since it's the real person behind that
+  // shared login; else the identified doer; else the login.
   const stampName = (): string =>
-    activeDoer?.display_name || user?.email || user?.user_metadata?.full_name || 'Unknown';
+    salesIdentity || activeDoer?.display_name || user?.email || user?.user_metadata?.full_name || 'Unknown';
 
   const addUnit = async (u: CompanyUnit) => {
     // Strip undefined keys so Supabase doesn't reject them; coerce empties to null
@@ -1409,6 +1524,9 @@ const mapEnquiryToDB = (e: any) => {
         setActiveDoer,
         clearActiveDoer,
         stampName,
+        resolvedSignatory,
+        salesIdentity,
+        setSalesIdentity,
         addUnit,
         updateUnit,
         deleteUnit,

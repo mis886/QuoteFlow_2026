@@ -90,12 +90,16 @@ export async function getAccessTokenForUser(userEmail: string): Promise<string> 
   const cached = _userTokenCache.get(emailKey);
   if (cached && Date.now() < cached.expiry) return cached.token;
 
-  // 2. Check team_roster for a stored refresh token
-  const { data: row } = await supabase
+  // 2. Check team_roster for a stored refresh token. A shared mailbox (e.g.
+  // sales@) can now have multiple roster rows (one per person covering it);
+  // the token is a property of the mailbox, not the person, and the writes
+  // below already update every matching row in lockstep — so any row with a
+  // non-null token is as good as any other.
+  const { data: rows } = await supabase
     .from('team_roster')
     .select('gmail_refresh_token')
-    .eq('email', emailKey)
-    .maybeSingle();
+    .eq('email', emailKey);
+  const row = rows?.find(r => r.gmail_refresh_token) ?? null;
 
   if (row?.gmail_refresh_token) {
     try {

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals, getCurrentQuoteItems } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
-import { QuoteItem, Quote, AuthorizedSignatory, QuoteStatus, CustomerTier } from '../lib/types';
+import { QuoteItem, Quote, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { ProductSearch } from '../components/ProductSearch';
@@ -133,7 +133,7 @@ export function NewQuote() {
   const editId = searchParams.get('id');
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
-  const { data, user, addQuote, updateQuote, updateEnquiry, addCustomer, addSignatory, stampName, openAttachmentModal } = useAppStore();
+  const { data, user, addQuote, updateQuote, updateEnquiry, addCustomer, stampName, openAttachmentModal, resolvedSignatory } = useAppStore();
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
@@ -191,10 +191,12 @@ export function NewQuote() {
   const [pay, setPay] = useState('30 Days Net');
   const [unitId, setUnitId] = useState('');
   const [custEnquiryDocNo, setCustEnquiryDocNo] = useState('');
+  // Auto-derived from resolvedSignatory for a new quote, or hydrated
+  // read-only from the saved quote / linked enquiry when editing/converting
+  // — see the effects below. No longer user-editable.
   const [authName, setAuthName] = useState('');
   const [authDesignation, setAuthDesignation] = useState('');
   const [authPhone, setAuthPhone] = useState('');
-  const [selectedSigId, setSelectedSigId] = useState('');
   const [quoteStatus, setQuoteStatus] = useState<QuoteStatus>('Draft');
   const [tnc, setTnc] = useState<TncState>(defaultTnc);
   const setTncField = (k: keyof TncState, v: string) => setTnc((p: TncState) => ({ ...p, [k]: v }));
@@ -228,7 +230,6 @@ export function NewQuote() {
   , [data.quotes]);
 
   const [customerTier, setCustomerTier] = useState<CustomerTier | ''>('');
-  const [sigMsg, setSigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [notes, setNotes] = useState<string[]>([]);
   const [quoteId, setQuoteId] = useState('');
@@ -250,23 +251,27 @@ export function NewQuote() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [pdfPreview, setPdfPreview] = useState<QuoteItem[] | null>(null);
 
-  // Auto-load default signatory. app_settings always wins when loaded; is_default is
-  // fallback only while settings hasn't arrived yet. authName is NOT in the top guard —
-  // that fixes the timing race where signatories load first, set the fallback, then
-  // settings loads but finds authName already set and returns early (wrong result).
+  // New quote only (fresh, or converting from a linked enquiry): keep the
+  // (locked, read-only) Authorized Signatory fields in sync with the
+  // logged-in user's resolved signatory — replaces the old app_settings
+  // global-default / is_default-row / carry-forward-from-the-linked-
+  // enquiry's-own-signatory fallback chain entirely. A new quote always
+  // shows who is CURRENTLY logged in, never a historical value inherited
+  // from another record. Separate from the edit-mode hydrate effect below
+  // since resolvedSignatory can settle after mount (data.signatories
+  // loading, or — for sales@ — the name+PIN gate completing).
   useEffect(() => {
-    if (editId || enqRef) return;
-    if (data.settings?.signatory_name) {
-      setAuthName(data.settings.signatory_name);
-      setAuthDesignation(data.settings.signatory_title || '');
-      setAuthPhone(data.settings.signatory_phone || '');
-      const matched = data.signatories.find((s: AuthorizedSignatory) => s.name === data.settings!.signatory_name);
-      if (matched) setSelectedSigId(matched.id);
-    } else if (!authName) {
-      const def = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
-      if (def) { setAuthName(def.name); setAuthDesignation(def.designation); setAuthPhone(def.phone || ''); setSelectedSigId(def.id); }
+    if (editId) return;
+    if (resolvedSignatory.status === 'resolved') {
+      setAuthName(resolvedSignatory.name);
+      setAuthDesignation(resolvedSignatory.designation);
+      setAuthPhone(resolvedSignatory.phone);
+    } else {
+      setAuthName('');
+      setAuthDesignation('');
+      setAuthPhone('');
     }
-  }, [data.signatories, data.settings, editId, enqRef]);
+  }, [editId, resolvedSignatory]);
 
   // Load / init — runs once per target (editId/enqRef) to avoid wiping unsaved
   // changes on store updates, but re-runs when the target changes (e.g. the
@@ -295,8 +300,6 @@ export function NewQuote() {
         setItems(q.items);
         setInsurance(q.insurance ?? 0);
         setNotes(q.notes ?? []);
-        const matched = data.signatories.find((s: AuthorizedSignatory) => s.name === q.authorizedPerson?.name);
-        if (matched) setSelectedSigId(matched.id);
         const c = data.customers.find(x => x.name === q.cust);
         if (c) {
           if (!q.customerTier) setCustomerTier(c.tier || '');
@@ -327,23 +330,10 @@ export function NewQuote() {
         if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
         setCustomerTier(enq.customerTier || cr?.tier || '');
         setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
-        if (enq.authorizedPerson?.name) {
-          setAuthName(enq.authorizedPerson.name);
-          setAuthDesignation(enq.authorizedPerson.designation || '');
-          setAuthPhone(enq.authorizedPerson.phone || '');
-          const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === enq.authorizedPerson!.name);
-          if (matchedSig) setSelectedSigId(matchedSig.id);
-        } else {
-          const defName = data.settings?.signatory_name;
-          if (defName) {
-            setAuthName(defName); setAuthDesignation(data.settings!.signatory_title || ''); setAuthPhone(data.settings!.signatory_phone || '');
-            const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === defName);
-            if (matchedSig) setSelectedSigId(matchedSig.id);
-          } else {
-            const defSig = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
-            if (defSig) { setAuthName(defSig.name); setAuthDesignation(defSig.designation); setAuthPhone(defSig.phone || ''); setSelectedSigId(defSig.id); }
-          }
-        }
+        // Authorized Signatory is intentionally NOT carried forward from the
+        // enquiry here — a new quote always shows the current logged-in
+        // user's resolved signatory (see the resolvedSignatory effect
+        // above), regardless of who was on the linked enquiry.
       }
     } else {
       setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
@@ -763,23 +753,10 @@ export function NewQuote() {
                 if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || '30 Days Net'); }
                 setCustomerTier(enq.customerTier || cr?.tier || '');
                 setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
-                if (enq.authorizedPerson?.name) {
-                  setAuthName(enq.authorizedPerson.name);
-                  setAuthDesignation(enq.authorizedPerson.designation || '');
-                  setAuthPhone(enq.authorizedPerson.phone || '');
-                  const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === enq.authorizedPerson!.name);
-                  if (matchedSig) setSelectedSigId(matchedSig.id);
-                } else {
-                  const defName = data.settings?.signatory_name;
-                  if (defName) {
-                    setAuthName(defName); setAuthDesignation(data.settings!.signatory_title || ''); setAuthPhone(data.settings!.signatory_phone || '');
-                    const matchedSig = data.signatories.find((s: AuthorizedSignatory) => s.name === defName);
-                    if (matchedSig) setSelectedSigId(matchedSig.id);
-                  } else {
-                    const defSig = data.signatories.find((s: AuthorizedSignatory) => s.is_default);
-                    if (defSig) { setAuthName(defSig.name); setAuthDesignation(defSig.designation); setAuthPhone(defSig.phone || ''); setSelectedSigId(defSig.id); }
-                  }
-                }
+                // Authorized Signatory: not carried forward here either —
+                // same reasoning as the main init effect above, the
+                // resolvedSignatory effect keeps it in sync since editId is
+                // still unset at this point.
               }
             }} className="flex-1">
               Create New Anyway
@@ -1430,32 +1407,28 @@ export function NewQuote() {
               <div className="col-span-4 bg-white border border-g200">
                 <div className="p-[11px_16px] border-b border-g200"><span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600">Authorized Signatory</span></div>
                 <div className="p-[12px_16px] flex flex-col gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[4px]">Select from List</label>
-                    <select value={selectedSigId}
-                      onChange={e => { const sid = e.target.value; setSelectedSigId(sid); const sig = data.signatories.find(s => s.id === sid); if (sig) { setAuthName(sig.name); setAuthDesignation(sig.designation); setAuthPhone(sig.phone); } }}
-                      className={selectCls}>
-                      <option value="">-- Select or Type Below --</option>
-                      {data.signatories.map(s => <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>)}
-                    </select>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px]">Details</label>
-                    <button type="button" onClick={async () => {
-                      if (!authName.trim()) { setSigMsg({ type: 'error', text: 'Enter a name first' }); setTimeout(() => setSigMsg(null), 3000); return; }
-                      try { const ns: AuthorizedSignatory = { id: 'sig-' + Date.now(), name: authName.trim(), designation: authDesignation.trim(), phone: authPhone.trim(), is_default: false }; await addSignatory(ns); setSelectedSigId(ns.id); setSigMsg({ type: 'success', text: 'Saved' }); setTimeout(() => setSigMsg(null), 3000); }
-                      catch { setSigMsg({ type: 'error', text: 'Could not save' }); }
-                    }} className="text-[9px] font-bold text-red-mrt uppercase hover:underline">Save to List</button>
-                  </div>
-                  {sigMsg && <div className={`text-[10px] font-semibold ${sigMsg.type === 'success' ? 'text-green-600' : 'text-red-mrt'}`}>{sigMsg.text}</div>}
-                  <div className="flex flex-col gap-2">
-                    <input type="text" value={authName} onChange={e => { setAuthName(e.target.value); setSelectedSigId(''); }} placeholder="Name"
-                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-                    <input type="text" value={authDesignation} onChange={e => { setAuthDesignation(e.target.value); setSelectedSigId(''); }} placeholder="Designation"
-                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-                    <input type="text" value={authPhone} onChange={e => { setAuthPhone(e.target.value); setSelectedSigId(''); }} placeholder="Phone"
-                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-                  </div>
+                  {/* Auto-derived from the logged-in user (resolvedSignatory) for a
+                      new quote, or the saved quote's own value when editing —
+                      never manually editable, see store/index.tsx. */}
+                  {!editId && resolvedSignatory.status === 'unmapped' ? (
+                    <div className="text-[12px] text-red-mrt bg-red-lt border border-red-mrt/20 rounded-[3px] px-3 py-2.5">
+                      No signatory mapped for this account — contact MIS.
+                    </div>
+                  ) : !editId && resolvedSignatory.status === 'needs-picker' ? (
+                    <div className="text-[12px] text-g500 bg-g50 border border-g200 rounded-[3px] px-3 py-2.5">
+                      Waiting for identity selection…
+                    </div>
+                  ) : authName ? (
+                    <div className="text-[13px] bg-g50 border border-g200 rounded-[3px] px-3 py-2.5 space-y-0.5">
+                      <div className="font-bold text-blk">{authName}</div>
+                      {authDesignation && <div className="text-g500">{authDesignation}</div>}
+                      {authPhone && <div className="text-g400">{authPhone}</div>}
+                    </div>
+                  ) : (
+                    <div className="text-[12px] text-g400 italic bg-g50 border border-dashed border-g200 rounded-[3px] px-3 py-2.5">
+                      No signatory on record
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

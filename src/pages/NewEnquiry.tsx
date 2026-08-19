@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { generateId, localDateStr, localDateTimeStr } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
-import { Enquiry, LineItem, Urgency, AuthorizedSignatory, CustomerTier } from '../lib/types';
+import { Enquiry, LineItem, Urgency, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
@@ -22,7 +22,7 @@ export function NewEnquiry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
-  const { data, user, addEnquiry, updateEnquiry, addCustomer, addSignatory, stampName, refreshData } = useAppStore();
+  const { data, user, addEnquiry, updateEnquiry, addCustomer, stampName, refreshData, resolvedSignatory } = useAppStore();
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
   const [isSaving, setIsSaving] = useState(false);
@@ -68,11 +68,14 @@ export function NewEnquiry() {
   
   const [assigned, setAssigned] = useState('Sales Team');
   const [customerTier, setCustomerTier] = useState<CustomerTier | ''>('');
+  // Auto-derived from resolvedSignatory for a new enquiry, or hydrated
+  // read-only from the saved record when editing — see the effects below.
+  // No longer user-editable; kept as plain state (not resolvedSignatory
+  // read directly in JSX) so submit/PDF/DOCX/email code downstream is
+  // unaffected.
   const [authName, setAuthName] = useState('');
   const [authDesignation, setAuthDesignation] = useState('');
   const [authPhone, setAuthPhone] = useState('');
-  const [selectedSigId, setSelectedSigId] = useState('');
-  const [sigMsg, setSigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [reqDate, setReqDate] = useState(localDateStr(new Date(Date.now() + 86400000)));
   const [notes, setNotes] = useState('');
   
@@ -150,13 +153,13 @@ export function NewEnquiry() {
         setUrgency(e.urg);
         setAssigned(e.assigned || 'Sales Team');
         setCustomerTier(e.customerTier || '');
+        // Read-only display of whatever was actually saved on this record —
+        // does not re-resolve to the current viewer's signatory, so opening
+        // an old enquiry from a different logged-in account doesn't silently
+        // rewrite its history.
         setAuthName(e.authorizedPerson?.name || '');
         setAuthDesignation(e.authorizedPerson?.designation || '');
         setAuthPhone(e.authorizedPerson?.phone || '');
-        if (e.authorizedPerson?.name) {
-          const matched = data.signatories.find(s => s.name === e.authorizedPerson!.name);
-          if (matched) setSelectedSigId(matched.id);
-        }
         setNotes(e.notes || '');
         setItems(e.items);
         
@@ -178,6 +181,25 @@ export function NewEnquiry() {
       setEnqId(generateId('ENQ', data.enquiries.map(e => e.id)));
     }
   }, [editId, data.enquiries, data.customers]);
+
+  // New enquiry only: keep the (locked, read-only) Authorized Signatory
+  // fields in sync with the logged-in user's resolved signatory. Separate
+  // from the hydrate effect above since resolvedSignatory can settle after
+  // mount (data.signatories loading, or — for sales@ — the name+PIN gate
+  // completing), and this must pick that up rather than freeze at whatever
+  // resolvedSignatory was on the first render.
+  useEffect(() => {
+    if (editId) return;
+    if (resolvedSignatory.status === 'resolved') {
+      setAuthName(resolvedSignatory.name);
+      setAuthDesignation(resolvedSignatory.designation);
+      setAuthPhone(resolvedSignatory.phone);
+    } else {
+      setAuthName('');
+      setAuthDesignation('');
+      setAuthPhone('');
+    }
+  }, [editId, resolvedSignatory]);
 
   // Handle file uploads
   // Auto-fill effect
@@ -643,32 +665,29 @@ export function NewEnquiry() {
               <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200">Authorized Signatory & Notes</div>
               <div className="grid grid-cols-2 gap-[12px]">
                 <div className="flex flex-col gap-2">
-                  <div>
-                    <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[4px]">Select from List</label>
-                    <select value={selectedSigId}
-                      onChange={e => { const sid = e.target.value; setSelectedSigId(sid); const sig = data.signatories.find(s => s.id === sid); if (sig) { setAuthName(sig.name); setAuthDesignation(sig.designation); setAuthPhone(sig.phone || ''); } }}
-                      className={selectCls}>
-                      <option value="">-- Select or Type Below --</option>
-                      {data.signatories.map(s => <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>)}
-                    </select>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px]">Details</label>
-                    <button type="button" onClick={async () => {
-                      if (!authName.trim()) { setSigMsg({ type: 'error', text: 'Enter a name first' }); setTimeout(() => setSigMsg(null), 3000); return; }
-                      try { const ns: AuthorizedSignatory = { id: 'sig-' + Date.now(), name: authName.trim(), designation: authDesignation.trim(), phone: authPhone.trim(), is_default: false }; await addSignatory(ns); setSelectedSigId(ns.id); setSigMsg({ type: 'success', text: 'Saved' }); setTimeout(() => setSigMsg(null), 3000); }
-                      catch { setSigMsg({ type: 'error', text: 'Could not save' }); }
-                    }} className="text-[9px] font-bold text-red-mrt uppercase hover:underline">Save to List</button>
-                  </div>
-                  {sigMsg && <div className={`text-[10px] font-semibold ${sigMsg.type === 'success' ? 'text-green-600' : 'text-red-mrt'}`}>{sigMsg.text}</div>}
-                  <div className="flex flex-col gap-2">
-                    <input type="text" value={authName} onChange={e => { setAuthName(e.target.value); setSelectedSigId(''); }} placeholder="Name"
-                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-                    <input type="text" value={authDesignation} onChange={e => { setAuthDesignation(e.target.value); setSelectedSigId(''); }} placeholder="Designation"
-                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-                    <input type="text" value={authPhone} onChange={e => { setAuthPhone(e.target.value); setSelectedSigId(''); }} placeholder="Phone"
-                      className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-                  </div>
+                  <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[4px]">Authorized Signatory</label>
+                  {/* Auto-derived from the logged-in user (resolvedSignatory) for a
+                      new enquiry, or the saved record's own value when editing —
+                      never manually editable, see store/index.tsx. */}
+                  {!editId && resolvedSignatory.status === 'unmapped' ? (
+                    <div className="text-[12px] text-red-mrt bg-red-lt border border-red-mrt/20 rounded-[3px] px-3 py-2.5">
+                      No signatory mapped for this account — contact MIS.
+                    </div>
+                  ) : !editId && resolvedSignatory.status === 'needs-picker' ? (
+                    <div className="text-[12px] text-g500 bg-g50 border border-g200 rounded-[3px] px-3 py-2.5">
+                      Waiting for identity selection…
+                    </div>
+                  ) : authName ? (
+                    <div className="text-[13px] bg-g50 border border-g200 rounded-[3px] px-3 py-2.5 space-y-0.5">
+                      <div className="font-bold text-blk">{authName}</div>
+                      {authDesignation && <div className="text-g500">{authDesignation}</div>}
+                      {authPhone && <div className="text-g400">{authPhone}</div>}
+                    </div>
+                  ) : (
+                    <div className="text-[12px] text-g400 italic bg-g50 border border-dashed border-g200 rounded-[3px] px-3 py-2.5">
+                      No signatory on record
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Quote Required By</label>

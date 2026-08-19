@@ -143,7 +143,7 @@ export function DoerKPI() {
     });
   }, [rows, sortKey]);
 
-  const firstKey = rows[0] ? doerRowKey(rows[0].email, rows[0].role) : undefined;
+  const firstKey = rows[0] ? doerRowKey(rows[0].email, rows[0].role, rows[0].displayName) : undefined;
   const [trendKey, setTrendKey] = useState<string | undefined>(undefined);
   const activeTrendKey = trendKey ?? firstKey;
   const trendData = useMemo(() => buildTrend(data, roster, activeTrendKey),
@@ -226,7 +226,7 @@ export function DoerKPI() {
         <div className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-g500">Individual Performance</div>
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
           {sortedRows.map(m => {
-            const key = doerRowKey(m.email, m.role);
+            const key = doerRowKey(m.email, m.role, m.displayName);
             const prev = previous.get(key);
             const cfg = roleConfig(m.role);
             const deferred = ROLE_WEIGHTS[m.role] == null;
@@ -469,7 +469,7 @@ export function DoerKPI() {
             </thead>
             <tbody>
               {sortedRows.map(m => {
-                const key = doerRowKey(m.email, m.role);
+                const key = doerRowKey(m.email, m.role, m.displayName);
                 const deferred = ROLE_WEIGHTS[m.role] == null;
                 const prev = previous.get(key);
                 const delta = (m.composite != null && prev?.composite != null) ? m.composite - prev.composite : null;
@@ -556,7 +556,7 @@ export function DoerKPI() {
               className="ml-auto text-[11px] bg-white border border-g200 rounded-[4px] px-2 py-1 outline-none focus:border-g400 text-g600 cursor-pointer"
             >
               {rows.map(r => {
-                const k = doerRowKey(r.email, r.role);
+                const k = doerRowKey(r.email, r.role, r.displayName);
                 return <option key={k} value={k}>{r.displayName} · {r.role}</option>;
               })}
             </select>
@@ -612,7 +612,7 @@ export function DoerKPI() {
             )}
             {rows.filter(m => m.dueNextWeek.length > 0).map(m => (
               <DueGroup
-                key={doerRowKey(m.email, m.role)}
+                key={doerRowKey(m.email, m.role, m.displayName)}
                 member={m}
                 onBulkLog={(items) => setBulkLog({
                   context: items[0] ? `${items[0].cust} · ${items[0].site}` : `Due Next Week · ${m.displayName}`,

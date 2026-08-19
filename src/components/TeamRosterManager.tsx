@@ -21,7 +21,7 @@ export function TeamRosterManager() {
   const { data, addTeamMember, updateTeamMember, deleteTeamMember } = useAppStore();
   const roster = [...data.roster].sort((a, b) =>
     a.display_name.localeCompare(b.display_name) || a.role.localeCompare(b.role));
-  const keyOf = (m: { email: string; role: DoerRole }) => `${m.email.toLowerCase()}|${m.role}`;
+  const keyOf = (m: { email: string; role: DoerRole; display_name: string }) => `${m.email.toLowerCase()}|${m.role}|${m.display_name.trim()}`;
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -44,8 +44,8 @@ export function TeamRosterManager() {
     setErr('');
     const e = email.trim().toLowerCase();
     if (!name.trim() || !e) { setErr('Name and email are required.'); return; }
-    if (data.roster.some(m => m.email.toLowerCase() === e && m.role === role)) {
-      setErr(`${e} is already assigned the ${role} role.`); return;
+    if (data.roster.some(m => m.email.toLowerCase() === e && m.role === role && m.display_name.trim().toLowerCase() === name.trim().toLowerCase())) {
+      setErr(`${name.trim()} is already assigned the ${role} role under ${e}.`); return;
     }
     try {
       await addTeamMember({ email: e, display_name: name.trim(), role, active: true, aliases: parseAliases(aliases) });
@@ -57,7 +57,7 @@ export function TeamRosterManager() {
     setEditKey(keyOf(m)); setEName(m.display_name); setEActive(m.active); setEAliases((m.aliases ?? []).join(', '));
   };
   const saveEdit = async (m: typeof roster[number]) => {
-    await updateTeamMember(m.email, m.role, { display_name: eName.trim(), active: eActive, aliases: parseAliases(eAliases) });
+    await updateTeamMember(m.email, m.role, m.display_name, { display_name: eName.trim(), active: eActive, aliases: parseAliases(eAliases) });
     setEditKey(null);
   };
 
@@ -70,7 +70,7 @@ export function TeamRosterManager() {
     );
     if (pw === null) return; // cancelled
     const password_hash = pw.trim() ? await sha256(pw.trim()) : '';
-    await updateTeamMember(m.email, m.role, { password_hash });
+    await updateTeamMember(m.email, m.role, m.display_name, { password_hash });
   };
 
   return (
@@ -161,7 +161,7 @@ export function TeamRosterManager() {
                   className={`p-1.5 rounded transition-colors ${m.password_hash ? 'text-emerald-600 hover:text-emerald-700' : 'text-g400 hover:text-blk'}`}
                 ><KeyRound size={14} /></button>
                 <button type="button" title="Edit" onClick={() => startEdit(m)} className="p-1.5 text-g400 hover:text-blk rounded transition-colors"><Pencil size={14} /></button>
-                <button type="button" title="Remove" onClick={() => { if (confirm(`Remove ${m.display_name} (${m.role}) from the roster?`)) deleteTeamMember(m.email, m.role); }} className="p-1.5 text-g400 hover:text-red-mrt rounded transition-colors"><Trash2 size={14} /></button>
+                <button type="button" title="Remove" onClick={() => { if (confirm(`Remove ${m.display_name} (${m.role}) from the roster?`)) deleteTeamMember(m.email, m.role, m.display_name); }} className="p-1.5 text-g400 hover:text-red-mrt rounded transition-colors"><Trash2 size={14} /></button>
               </td>
             </tr>
           ))}

@@ -59,10 +59,11 @@ export function DoerDetail() {
     [data, range.startDate, range.endDate]);
 
   const m: DoerMetrics | undefined = metrics.get(decodedKey);
-  // The roster member behind this key (key = email|role).
+  // The roster member behind this key (key = email|role|display_name).
   const member: RosterMemberLike | undefined = useMemo(() => {
-    const [email, role] = decodedKey.split('|');
-    return roster.find(r => r.email.toLowerCase() === email && r.role === (role as DoerRole));
+    const [email, role, ...nameParts] = decodedKey.split('|');
+    const displayName = nameParts.join('|');
+    return roster.find(r => r.email.toLowerCase() === email && r.role === (role as DoerRole) && r.display_name === displayName);
   }, [roster, decodedKey]);
 
   const timeline = useMemo(() => member ? buildDoerTimeline(data, member, range) : [],
