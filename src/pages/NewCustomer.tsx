@@ -460,7 +460,6 @@ export function NewCustomer() {
               <input
                 type="text" value={crm} onChange={e => setCrm(e.target.value)}
                 className={inputCls}
-                placeholder="e.g. Ruby"
               />
             </div>
 

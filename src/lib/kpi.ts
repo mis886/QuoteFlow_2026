@@ -18,6 +18,7 @@ export const KPI_EXCLUDED_EMAILS = [
   'mum@himalayaterpene.com',
   'accounts@himalayaterpene.com',
   'pc@himalayaterpene.com',
+  'mis@himalayaterpene.com',
 ];
 
 // ── TAT resolution (mirrors PipelineBoard / FollowUps) ──────────────
