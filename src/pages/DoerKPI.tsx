@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { cn } from '../lib/utils';
 import { DOER_ROLES, type DoerRole, type GlobalDateRangeLike } from '../lib/types';
-import { computeDoerMetrics, doerRowKey, ROLE_WEIGHTS, type DoerMetrics, type DueItem } from '../lib/kpi';
+import { computeDoerMetrics, doerRowKey, ROLE_WEIGHTS, KPI_EXCLUDED_EMAILS, type DoerMetrics, type DueItem } from '../lib/kpi';
 import {
   Clock, TrendingUp, Users, ChevronDown, ChevronRight,
   CheckCircle2, AlertTriangle, Target, Zap, Trophy,
@@ -116,7 +116,7 @@ const roleConfig = (role: DoerRole) => ROLE_CONFIG[role] ?? ROLE_CONFIG['Other']
 export function DoerKPI() {
   const { data, globalDateRange } = useAppStore();
   const navigate = useNavigate();
-  const roster = data.roster.filter(m => m.active);
+  const roster = data.roster.filter(m => m.active && !KPI_EXCLUDED_EMAILS.includes(m.email.toLowerCase()));
 
   const range: GlobalDateRangeLike = globalDateRange
     ? { startDate: globalDateRange.startDate, endDate: globalDateRange.endDate }

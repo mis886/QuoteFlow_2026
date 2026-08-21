@@ -388,6 +388,7 @@ function CustomerPanel({ customer, onClose }: { customer: Customer; onClose: () 
             <div><span className="text-g400">Payment: </span><span className="font-bold text-blk">{customer.pay || '—'}</span></div>
             <div><span className="text-g400">Incoterms: </span><span className="font-bold text-blk">{customer.inco || '—'}</span></div>
             <div><span className="text-g400">Currency: </span><span className="font-bold text-blk">{customer.curr || 'INR'}</span></div>
+            <div><span className="text-g400">CRM: </span><span className="font-bold text-blk">{customer.crm || '—'}</span></div>
           </div>
 
           {/* Primary contact */}
@@ -638,6 +639,7 @@ const COLUMNS: ColDef[] = [
   { label: 'Contact Number',  sortKey: 'phone' },
   { label: 'Industry',        sortKey: 'seg' },
   { label: 'Customer Type',   sortKey: 'tier' },
+  { label: 'CRM',             sortKey: null },
   { label: 'Turnover',        sortKey: 'turnover' },
   { label: 'Next Order',      sortKey: 'nextOrder' },
   { label: 'Actions',         sortKey: null },
@@ -991,7 +993,7 @@ export function Customers() {
             </thead>
             <tbody>
               {filteredCustomers.length === 0 ? (
-                <tr><td colSpan={8} className="text-center p-8 text-g400 text-[13px]">No customers match</td></tr>
+                <tr><td colSpan={9} className="text-center p-8 text-g400 text-[13px]">No customers match</td></tr>
               ) : filteredCustomers.map((c, idx) => {
                 const contact = getPrimaryContact(c);
                 const rating  = computeRating(c);
@@ -1041,6 +1043,11 @@ export function Customers() {
                       {c.customerType || '—'}
                     </td>
 
+                    {/* CRM */}
+                    <td className="px-[13px] py-[11px] align-middle text-g600">
+                      {c.crm || '—'}
+                    </td>
+
                     {/* Turnover */}
                     <td className="px-[13px] py-[11px] align-middle">
                       <span className="inline-flex items-center px-2 py-0.5 bg-g100 border border-g200 rounded-[3px] font-mono text-[11px] font-bold text-g600">
@@ -1082,7 +1089,7 @@ export function Customers() {
 
                   {isExpanded && (
                     <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">
-                      <td colSpan={8} className="p-0">
+                      <td colSpan={9} className="p-0">
                         <div className="p-[10px_16px]">
                           <div className="text-[9px] font-mono font-bold uppercase tracking-[1.5px] text-red-mrt mb-2 flex items-center gap-1.5">
                             <MapPin size={10} /> Sites ({c.sites.length})

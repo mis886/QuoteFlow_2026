@@ -304,6 +304,7 @@ export interface Customer {
   modifiedDate?: string; // modified_date
   nextOrders?: string[]; // derived display list (product names from nextOrder1/2)
   customerType?: string; // customer_type
+  crm?: string; // crm (DB column) — name of the person/CRM owner handling this customer
 }
 
 export interface FollowUpLog {

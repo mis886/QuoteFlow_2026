@@ -5,7 +5,7 @@ import { cn } from '../lib/utils';
 import { fmtIST } from '../lib/utils';
 import { type GlobalDateRangeLike, type DoerRole } from '../lib/types';
 import {
-  computeDoerMetrics, doerRowKey, buildDoerTimeline, doerStageWorkload, ROLE_WEIGHTS,
+  computeDoerMetrics, doerRowKey, buildDoerTimeline, doerStageWorkload, ROLE_WEIGHTS, KPI_EXCLUDED_EMAILS,
   type DoerMetrics, type TimelineRow, type StageWorkload, type RosterMemberLike,
 } from '../lib/kpi';
 import { ArrowLeft, Clock, Layers, CheckCircle2, XCircle, CircleDashed, AlertTriangle, CheckSquare } from 'lucide-react';
@@ -50,7 +50,7 @@ export function DoerDetail() {
     ? { startDate: globalDateRange.startDate, endDate: globalDateRange.endDate }
     : defaultRange();
 
-  const roster = useMemo(() => data.roster.filter(m => m.active), [data.roster]);
+  const roster = useMemo(() => data.roster.filter(m => m.active && !KPI_EXCLUDED_EMAILS.includes(m.email.toLowerCase())), [data.roster]);
   const metrics = useMemo(() => computeDoerMetrics(data, roster, range),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, range.startDate, range.endDate]);

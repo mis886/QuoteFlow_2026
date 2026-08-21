@@ -194,6 +194,7 @@ export function NewCustomer() {
   const [name, setName] = useState('');
   const [seg, setSeg] = useState('');
   const [customerType, setCustomerType] = useState('');
+  const [crm, setCrm] = useState('');
   const [inco, setInco] = useState('EXW');
   const [curr, setCurr] = useState('INR');
   const [pay, setPay] = useState('30 Days Net');
@@ -227,6 +228,7 @@ export function NewCustomer() {
         setName(cust.name);
         setSeg(normalizeSeg(cust.seg) || cust.seg || '');
         setCustomerType(cust.customerType || '');
+        setCrm(cust.crm || '');
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
         setPay(normalizePayTerms(cust.pay) || cust.pay || '30 Days Net');
@@ -358,6 +360,7 @@ export function NewCustomer() {
     const cust: Customer = {
       id, code: code.trim().toUpperCase(), name: name.trim(),
       seg, customerType, inco, curr, pay, gstin: gstin.trim().toUpperCase(), pan: pan.trim().toUpperCase() || undefined, sites: normalizedSites,
+      crm: crm.trim() || undefined,
       creditLimit: creditLimit !== '' ? Number(creditLimit) : undefined,
       nextOrder1: nextOrder1.product ? nextOrder1 : undefined,
       nextOrder2: nextOrder2.product ? nextOrder2 : undefined,
@@ -450,6 +453,15 @@ export function NewCustomer() {
                   <option value="End User">End User</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className={labelCls}>CRM</label>
+              <input
+                type="text" value={crm} onChange={e => setCrm(e.target.value)}
+                className={inputCls}
+                placeholder="e.g. Ruby"
+              />
             </div>
 
             <div>

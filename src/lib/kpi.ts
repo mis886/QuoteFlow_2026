@@ -11,6 +11,15 @@ import type {
 import { DEFAULT_STAGE_TAT_H, DEFAULT_STAGE_ROLE } from './types';
 import { siteLabel } from './utils';
 
+// Shared/admin logins that keep a team_roster row (for the sales@ PIN gate,
+// signatory resolution, etc.) but are deliberately excluded from Doer KPI
+// tracking/scoring — their "activity" isn't one person's individual output.
+export const KPI_EXCLUDED_EMAILS = [
+  'mum@himalayaterpene.com',
+  'accounts@himalayaterpene.com',
+  'pc@himalayaterpene.com',
+];
+
 // ── TAT resolution (mirrors PipelineBoard / FollowUps) ──────────────
 // hours → settings.pipeline_tat_h, then legacy pipeline_tat (×24), then default.
 export function stageTatHours(settings: AppSettings | null, stage: string): number {

@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { hasActiveToken } from '../lib/gmail';
-import { RefreshCw, Save, Plus, Trash2, Check, Landmark, Mail, Star, Lock, Puzzle, RotateCcw, Pencil, X, GitBranch, Users, Package } from 'lucide-react';
+import { RefreshCw, Save, Plus, Trash2, Check, Landmark, Mail, Star, Lock, Puzzle, RotateCcw, Pencil, X, GitBranch, Users, Package, IndianRupee } from 'lucide-react';
 import { UnitsManager } from '../components/UnitsManager';
 import { TeamRosterManager } from '../components/TeamRosterManager';
 import { ProductCatalogManager } from '../components/ProductCatalogManager';
 import { PinGate } from '../components/PinGate';
 import { BOARD_LANES, DEFAULT_STAGE_TAT_H, DEFAULT_STAGE_ROLE, DOER_ROLES, type BoardLane, type DoerRole } from '../lib/types';
 
-type Tab = 'signatories' | 'units' | 'gmail' | 'intel' | 'integrations' | 'pipeline' | 'roster' | 'catalog';
+type Tab = 'signatories' | 'units' | 'gmail' | 'intel' | 'integrations' | 'pipeline' | 'roster' | 'catalog' | 'pricing';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -180,6 +180,7 @@ export function Settings() {
     { id: 'gmail',       label: 'Gmail Integration', icon: <Mail size={13} /> },
     { id: 'intel',       label: 'Intelligence',    icon: <Lock size={13} /> },
     { id: 'integrations', label: 'Integrations',   icon: <Puzzle size={13} /> },
+    { id: 'pricing',      label: 'Pricing Mechanism', icon: <IndianRupee size={13} /> },
   ];
 
   return (
@@ -668,6 +669,21 @@ export function Settings() {
                     <span className="text-[11.5px] text-green-800">Sheets export active — 'Export to Sheets' button will appear on Orders.</span>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Pricing Mechanism (placeholder) ── */}
+        {tab === 'pricing' && (
+          <div className="max-w-lg space-y-5">
+            <div className="bg-white border border-g200 rounded-[4px] overflow-hidden">
+              <div className="px-5 py-3 border-b border-g200 bg-g50 flex items-center gap-2">
+                <IndianRupee size={12} className="text-g400" />
+                <span className="text-[11px] font-bold tracking-[1.5px] uppercase text-g600">Pricing Mechanism</span>
+              </div>
+              <div className="p-5">
+                <p className="text-[12px] text-g500 leading-relaxed">This section will host pricing rules and mechanisms. Coming soon.</p>
               </div>
             </div>
           </div>
