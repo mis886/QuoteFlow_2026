@@ -197,6 +197,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [activeDoer, setActiveDoerState] = useState<ActiveDoer | null>(() => {
     try { const s = sessionStorage.getItem('active_doer'); return s ? JSON.parse(s) : null; } catch { return null; }
@@ -243,6 +244,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
       const validatedUser = checkUserDomain(session?.user ?? null);
       setUser(validatedUser);
+      setAuthChecked(true);
       if (validatedUser) {
         refreshData().finally(() => {
           if (mounted) setLoading(false);
@@ -313,11 +315,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // localStorage from an earlier session. It deliberately does NOT clear
     // just because this is a fresh page load while still logged in as
     // sales@ — that's what makes the PIN "stick" across browser restarts.
-    if (email !== SALES_EMAIL) {
+    if (authChecked && email !== SALES_EMAIL) {
       setSalesIdentityState(null);
       try { localStorage.removeItem('sales_signatory_identity'); } catch {}
     }
-  }, [user, data.roster]);
+  }, [user, data.roster, authChecked]);
 
   // Authorized Signatory resolution for NewEnquiry/NewQuote/NewOrder's
   // locked signatory panel — derived on every render (cheap: a handful of
