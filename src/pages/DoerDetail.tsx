@@ -354,7 +354,9 @@ function WorkHistoryTable({ timeline, doerName }: { timeline: TimelineRow[]; doe
       )}
 
       {filtered.length === 0 ? (
-        <div className="text-[12px] text-g400 py-10 text-center">No activity in this period.</div>
+        <div className="text-[12px] text-g400 py-10 text-center">
+          {isLapTimeline ? 'No activity in this period.' : 'No activity yet.'}
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-[12px] border-collapse">

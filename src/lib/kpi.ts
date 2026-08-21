@@ -645,11 +645,14 @@ export function buildDoerTimeline(
     const chain = buildFullChain(settings, quote, fu);
 
     // Done rows: real logs authored by this member (skip synthetic quote-sent).
+    // Not date-range filtered: SC_1/Negotiation/Other volume and win-rate on the
+    // summary card are lifetime snapshots (see computeDoerMetrics above), not
+    // period-bound — so "View full history" must show the same lifetime set,
+    // not just activity inside the currently selected global date range.
     for (let i = 0; i < chain.length; i++) {
       const log = chain[i];
       if (isQuoteSentLog(log.note)) continue;
       if (!isMine(log.who)) continue;
-      if (!inRange(log.ts, range)) continue;
       const onTime = i >= 1 ? new Date(log.ts) <= stepDeadline(settings, chain, i) : null;
       rows.push({
         date: log.ts.slice(0, 10),
