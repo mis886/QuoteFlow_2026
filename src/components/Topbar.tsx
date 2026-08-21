@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Search, RefreshCw, UserCircle2, X } from 'lucide-react';
+import { Search, RefreshCw, UserCircle2, X, LogOut } from 'lucide-react';
 import { SlaNotificationBell } from './SlaNotificationBell';
 import { useLocation } from 'react-router-dom';
-import { useAppStore } from '../store';
+import { useAppStore, SALES_EMAIL } from '../store';
 import { hasActiveToken } from '../lib/gmail';
 import { GlobalDateRangePicker } from './GlobalDateRangePicker';
 import { WorkspaceSwitcher } from '../production/components/WorkspaceSwitcher';
@@ -20,7 +20,7 @@ const PATH_TITLES: Record<string, string> = {
 
 export function Topbar() {
   const location = useLocation();
-  const { globalSearchQuery, setGlobalSearchQuery, syncGmailEnquiries, data, activeDoer } = useAppStore();
+  const { globalSearchQuery, setGlobalSearchQuery, syncGmailEnquiries, data, activeDoer, user, salesIdentity, setSalesIdentity } = useAppStore();
   const [isSyncing, setIsSyncing] = useState(false);
 
   const basePath = '/' + location.pathname.split('/')[1];
@@ -91,6 +91,34 @@ export function Topbar() {
         >
           <UserCircle2 size={13} className="text-red-mrt shrink-0" />
           <span className="hidden md:inline max-w-[120px] truncate">{activeDoer.display_name}</span>
+        </div>
+      )}
+
+      {/* sales@ shared login — identity picked via PIN gate, since activeDoer
+          can't resolve (two people share this one login). This persists
+          across browser restarts (see store's salesIdentity/localStorage),
+          so this button is the only way to deliberately re-prompt the PIN
+          for a different person on this machine without signing out of
+          Google entirely. */}
+      {!activeDoer && salesIdentity && user?.email?.toLowerCase() === SALES_EMAIL && (
+        <div
+          title={`Signed in as ${salesIdentity}`}
+          className="h-[30px] flex items-center gap-1 pl-2.5 pr-1.5 rounded-[5px] border border-g200 bg-g100 text-[11px] font-medium text-g600"
+        >
+          <UserCircle2 size={13} className="text-red-mrt shrink-0" />
+          <span className="hidden md:inline max-w-[120px] truncate">{salesIdentity}</span>
+          <button
+            type="button"
+            title="Sign out — you'll need your PIN again to continue as this person"
+            onClick={() => {
+              if (confirm(`Sign out ${salesIdentity}? You'll need to enter your PIN again to continue.`)) {
+                setSalesIdentity(null);
+              }
+            }}
+            className="ml-0.5 p-1 rounded text-g400 hover:text-red-mrt hover:bg-white transition-colors"
+          >
+            <LogOut size={12} />
+          </button>
         </div>
       )}
 

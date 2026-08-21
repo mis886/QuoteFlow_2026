@@ -48,7 +48,7 @@ export type SignatoryResolution =
   | { status: 'unmapped' }
   | { status: 'needs-picker' };
 
-const SALES_EMAIL = 'sales@himalayaterpene.com';
+export const SALES_EMAIL = 'sales@himalayaterpene.com';
 export const SALES_SIGNATORY_NAMES = ['Nimisha Pawar', 'Ruby'] as const;
 export type SalesSignatoryName = typeof SALES_SIGNATORY_NAMES[number];
 
@@ -201,11 +201,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [activeDoer, setActiveDoerState] = useState<ActiveDoer | null>(() => {
     try { const s = sessionStorage.getItem('active_doer'); return s ? JSON.parse(s) : null; } catch { return null; }
   });
-  // sales@'s PIN-picked identity for this session only (Nimisha Pawar /
-  // Ruby) — mirrors active_doer's sessionStorage pattern: survives SPA
-  // navigation, cleared on sign-out, re-prompted on a fresh login.
+  // sales@'s PIN-picked identity — persisted in localStorage (not
+  // sessionStorage) so it survives closing the browser/tab, not just SPA
+  // navigation within one tab session. Without this, Ruby/Nimisha had to
+  // re-enter their PIN every single time they reopened the site, since
+  // sessionStorage is wiped on tab/browser close. Still cleared on explicit
+  // sign-out (via the Topbar "sign out" control) or a real logout.
   const [salesIdentity, setSalesIdentityState] = useState<SalesSignatoryName | null>(() => {
-    try { return (sessionStorage.getItem('sales_signatory_identity') as SalesSignatoryName | null) ?? null; } catch { return null; }
+    try { return (localStorage.getItem('sales_signatory_identity') as SalesSignatoryName | null) ?? null; } catch { return null; }
   });
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [detailPanel, setDetailPanel] = useState<{ type: 'enquiry' | 'quote' | 'order' | null, id: string | null }>({ type: null, id: null });
@@ -302,15 +305,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setActiveDoerState(null);
       try { sessionStorage.removeItem('active_doer'); } catch {}
     }
-    // sales@'s PIN-picked identity must re-prompt on a fresh login and clear
-    // on any sign-out path (explicit logout, session expiry, domain-check
-    // failure) — cleared here alongside active_doer rather than only in the
-    // logout() button handler, so every path that lands here covers it. Also
-    // clears if a different, non-sales@ user is now logged in, in case a
-    // stale value ever lingered in sessionStorage from an earlier session.
+    // sales@'s PIN-picked identity must clear on any sign-out path (explicit
+    // logout, session expiry, domain-check failure) — cleared here alongside
+    // active_doer rather than only in the logout() button handler, so every
+    // path that lands here covers it. Also clears if a different, non-sales@
+    // user is now logged in, in case a stale value ever lingered in
+    // localStorage from an earlier session. It deliberately does NOT clear
+    // just because this is a fresh page load while still logged in as
+    // sales@ — that's what makes the PIN "stick" across browser restarts.
     if (email !== SALES_EMAIL) {
       setSalesIdentityState(null);
-      try { sessionStorage.removeItem('sales_signatory_identity'); } catch {}
+      try { localStorage.removeItem('sales_signatory_identity'); } catch {}
     }
   }, [user, data.roster]);
 
@@ -333,9 +338,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setSalesIdentity = (name: SalesSignatoryName | null) => {
     setSalesIdentityState(name);
     try {
-      if (name) sessionStorage.setItem('sales_signatory_identity', name);
-      else sessionStorage.removeItem('sales_signatory_identity');
-    } catch { /* sessionStorage unavailable — keep in-memory only */ }
+      if (name) localStorage.setItem('sales_signatory_identity', name);
+      else localStorage.removeItem('sales_signatory_identity');
+    } catch { /* localStorage unavailable — keep in-memory only */ }
   };
 
   // Persist global date range to localStorage — survives SPA navigation, resets on hard page reload

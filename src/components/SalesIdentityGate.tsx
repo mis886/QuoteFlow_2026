@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Lock, ChevronLeft } from 'lucide-react';
-import { useAppStore, SALES_SIGNATORY_NAMES, SalesSignatoryName } from '../store';
-import { sha256, hasPassword, verifyDoerPassword } from '../lib/doerAuth';
+import { useAppStore, SALES_SIGNATORY_NAMES, SalesSignatoryName, SALES_EMAIL } from '../store';
+import { sha256, hasPassword } from '../lib/doerAuth';
 
 // Soft, internal-trust identity gate for sales@himalayaterpene.com — that one
 // shared Google login covers two different people, so after Google auth we
@@ -11,7 +11,7 @@ import { sha256, hasPassword, verifyDoerPassword } from '../lib/doerAuth';
 // determined user with devtools. Move to a Supabase Edge Function if real
 // security is ever required.
 export function SalesIdentityGate() {
-  const { data, updateTeamMember, resolvedSignatory, setSalesIdentity } = useAppStore();
+  const { data, updateTeamMember, resolvedSignatory, setSalesIdentity, loading } = useAppStore();
   const isOpen = resolvedSignatory.status === 'needs-picker';
 
   const [picked, setPicked] = useState<SalesSignatoryName | null>(null);
@@ -28,11 +28,30 @@ export function SalesIdentityGate() {
 
   if (!isOpen) return null;
 
-  const roster = data.roster.filter(
-    m => m.email.toLowerCase() === 'sales@himalayaterpene.com'
+  // A person can hold several process roles (DEO / Rate Entry / SC_1 / ...),
+  // each its own team_roster row keyed by (email, role, display_name) — so
+  // one picked name can match several rows here, not just one. This used to
+  // only ever look at matches[0], and different rows for the same person can
+  // carry *different* password_hash values (whichever row happened to
+  // enroll first) or none at all — so a person's PIN would work sometimes
+  // and fail other times purely depending on array order from Postgres, with
+  // no visible reason why. Everything below is written against the full
+  // match set instead of a single row so that can't happen again.
+  const matches = data.roster.filter(
+    m => m.email.toLowerCase() === SALES_EMAIL
       && picked && m.display_name.trim().toLowerCase() === picked.toLowerCase(),
   );
-  const rosterRow = roster[0];
+  const withPassword = matches.filter(hasPassword);
+  const needsEnrollment = matches.length > 0 && withPassword.length === 0;
+
+  // data.roster is fetched async after login; this gate can render (as soon
+  // as the sales@ email is known) before that fetch has finished, especially
+  // on a slower connection. Without this guard, matches was empty during
+  // that window and every attempt hit "No roster entry found" even though
+  // the roster row genuinely exists — it just hadn't loaded into the app
+  // yet. Block submission (and don't show the scary error) until roster data
+  // has actually arrived at least once.
+  const rosterReady = !loading;
 
   const fail = (msg: string) => {
     setError(msg);
@@ -43,23 +62,44 @@ export function SalesIdentityGate() {
 
   const submit = async () => {
     if (!picked || !pin.trim() || submitting) return;
-    if (!rosterRow) {
+    if (!rosterReady) {
+      fail('Still loading your account — please wait a moment and try again.');
+      return;
+    }
+    if (matches.length === 0) {
       fail(`No roster entry found for ${picked} under sales@ — contact MIS to set this up.`);
       return;
     }
     setSubmitting(true);
     setError('');
     try {
-      if (!hasPassword(rosterRow)) {
+      const enteredHash = await sha256(pin.trim());
+      if (needsEnrollment) {
         // First-time enrollment: whatever PIN is entered now becomes this
         // person's PIN going forward, stored hashed — never plaintext.
-        const password_hash = await sha256(pin.trim());
-        await updateTeamMember(rosterRow.email, rosterRow.role, rosterRow.display_name, { password_hash });
-        setSalesIdentity(picked);
-      } else if (await verifyDoerPassword(rosterRow, pin.trim())) {
+        // Written to every role row they hold, not just one, so the PIN
+        // stays consistent no matter which role a future login resolves
+        // against first.
+        await Promise.all(matches.map(m =>
+          updateTeamMember(m.email, m.role, m.display_name, { password_hash: enteredHash }),
+        ));
         setSalesIdentity(picked);
       } else {
-        fail('Incorrect PIN — try again.');
+        const verifiedAgainst = withPassword.find(m => m.password_hash === enteredHash);
+        if (verifiedAgainst) {
+          // Self-heal: bring any sibling role rows that still carry a
+          // different or missing PIN hash back in sync with the one that
+          // was just verified, so this can't drift out of sync again.
+          const stale = matches.filter(m => m.password_hash !== enteredHash);
+          if (stale.length) {
+            await Promise.all(stale.map(m =>
+              updateTeamMember(m.email, m.role, m.display_name, { password_hash: enteredHash }),
+            ));
+          }
+          setSalesIdentity(picked);
+        } else {
+          fail('Incorrect PIN — try again.');
+        }
       }
     } catch {
       fail('Could not verify PIN — try again.');
@@ -98,7 +138,7 @@ export function SalesIdentityGate() {
             <div className="text-center">
               <div className="font-serif text-[17px] text-blk tracking-tight">{picked}</div>
               <div className="text-[11.5px] text-g400 mt-1">
-                {rosterRow && !hasPassword(rosterRow) ? 'Set a PIN for your account' : 'Enter your PIN to continue'}
+                {!rosterReady ? 'Loading your account…' : needsEnrollment ? 'Set a PIN for your account' : 'Enter your PIN to continue'}
               </div>
             </div>
             <input
@@ -107,19 +147,20 @@ export function SalesIdentityGate() {
               inputMode="numeric"
               value={pin}
               maxLength={6}
+              disabled={!rosterReady}
               onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
               onKeyDown={e => e.key === 'Enter' && submit()}
               placeholder="PIN"
-              className="w-full text-center font-mono text-[18px] tracking-[6px] border border-g300 rounded-[3px] px-4 py-3 outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt"
+              className="w-full text-center font-mono text-[18px] tracking-[6px] border border-g300 rounded-[3px] px-4 py-3 outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-50 disabled:bg-g100"
             />
             {error && <p className="text-[11.5px] text-red-mrt font-medium -mt-2 text-center">{error}</p>}
             <button
               type="button"
               onClick={submit}
-              disabled={submitting || pin.trim().length < 4}
+              disabled={submitting || !rosterReady || pin.trim().length < 4}
               className="w-full h-10 bg-blk text-white text-[13px] font-semibold rounded-[3px] hover:bg-g700 transition-colors disabled:opacity-50"
             >
-              {submitting ? 'Verifying…' : 'Continue'}
+              {!rosterReady ? 'Loading…' : submitting ? 'Verifying…' : 'Continue'}
             </button>
             <button
               type="button"
