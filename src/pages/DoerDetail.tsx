@@ -125,10 +125,20 @@ export function DoerDetail() {
         <MetricCard label="On-time gap" value={deferred ? '—' : fmtPctShort(m.onTimePct)} hint="below 100% on-time" />
         {m.role === 'DEO' ? (
           <MetricCardDeo enqCount={m.enqCount} orderCount={m.orderCount} />
+        ) : m.role === 'PI Sender' ? (
+          // Mirrors DoerKPI.tsx's card relabel: this number is the same
+          // orders.doer count as DEO's, not a distinct tracked action — see
+          // the comment on ROLE_CONFIG['PI Sender'] there and on the
+          // computeDoerMetrics PI Sender loop in kpi.ts.
+          <MetricCard label="Orders touched" value={volumeKnown ? String(m.volume) : '—'} hint="= DEO order count" plain />
         ) : (
           <MetricCard label="Volume" value={volumeKnown ? String(m.volume) : '—'} hint="items handled" plain />
         )}
-        <MetricCard label="Speed" value={deferred ? '—' : fmtHours(m.avgCycleH)} hint="avg cycle time" plain />
+        {m.role === 'PI Sender' ? (
+          <MetricCard label="Dispatch time" value={fmtHours(m.avgCycleH)} hint="not tracked" plain />
+        ) : (
+          <MetricCard label="Speed" value={deferred ? '—' : fmtHours(m.avgCycleH)} hint="avg cycle time" plain />
+        )}
         {m.role === 'DEO' ? (
           <MetricCard label="Enquiry Lap" value={fmtHours(m.enqLapH)} hint="received → punched" plain />
         ) : m.role === 'Rate Entry' ? (
@@ -140,6 +150,12 @@ export function DoerDetail() {
           // meaningful and already computed (kpi.ts avgLateH/lateCount), just
           // not previously surfaced on this page.
           <MetricCard label="Avg overdue" value={m.lateCount === 0 ? '0' : fmtHours(m.avgLateH)} hint={`${m.lateCount} late step${m.lateCount === 1 ? '' : 's'}`} plain />
+        ) : m.role === 'PI Sender' || m.role === 'Technical' || m.role === 'Admin' ? (
+          // No win-rate (or any other) concept exists for these roles either
+          // (ROLE_WEIGHTS is null — deliberately unscored; see kpi.ts) — a
+          // blank "n/a" tile instead of a "Win gap" label that would falsely
+          // imply a win/loss concept applies here.
+          <MetricCard label="N/A" value="—" hint="no additional metric for this role" plain />
         ) : (
           <MetricCard label="Win gap" value={deferred ? '—' : fmtPctShort(m.winRate)} hint="below 100% win" />
         )}
