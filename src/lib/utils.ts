@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, QuoteItem, Quote, Order, CustomerTier } from './types';
+import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, QuoteItem, Quote } from './types';
 
 export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'];
 
@@ -583,31 +583,6 @@ export function nameTier(name: string, query: string, exactMatches: (string | un
   if (n.startsWith(nq)) return 1;
   if (n.includes(nq)) return 2;
   return 3;
-}
-
-/**
- * Total value of every order ever placed by a customer — all order
- * statuses count (Order Confirmed / Processing / Delivered are all real
- * committed business; there's no cancelled/void order status here).
- */
-export function customerOrderTotal(customerName: string, orders: Order[]): number {
-  return orders
-    .filter(o => o.cust === customerName)
-    .reduce((sum, o) => sum + (o.value || 0), 0);
-}
-
-/**
- * Rule-based customer tier, derived from total order value — replaces
- * the old manually-picked tier. New = no orders yet; Bronze = under
- * ₹10 lac; Silver = ₹10 lac up to (not including) ₹1 crore; Gold = ₹1
- * crore and above.
- */
-export function computeCustomerTier(customerName: string, orders: Order[]): CustomerTier {
-  const total = customerOrderTotal(customerName, orders);
-  if (total <= 0) return 'New';
-  if (total >= 10000000) return 'Gold';   // ₹1,00,00,000 = 1 crore
-  if (total >= 1000000) return 'Silver';  // ₹10,00,000 = 10 lac
-  return 'Bronze';
 }
 
 export const generateId = (prefix: string, existingIds: (string | undefined | null)[]) => {

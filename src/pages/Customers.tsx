@@ -5,7 +5,7 @@ import { DuplicateReviewPanel } from '../components/DuplicateReviewPanel';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Customer, Contact, CustomerTier, FollowUpLog } from '../lib/types';
-import { formatINR, fmtIST, generateId, canDeleteRecords, nameTier, normalizeSearchText, customerOrderTotal } from '../lib/utils';
+import { formatINR, fmtIST, generateId, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
 import { parseISO } from 'date-fns';
 import Papa from 'papaparse';
 
@@ -285,6 +285,7 @@ function CustomerPanel({ customer, onClose }: { customer: Customer; onClose: () 
   const [rp, setRp] = useState(customer.ratingPayment ?? 0);
   const [ro, setRo] = useState(customer.ratingOrders ?? 0);
   const [rt, setRt] = useState(customer.ratingTrend ?? 0);
+  const [tier, setTier] = useState<CustomerTier>(customer.tier ?? 'New');
   const [turnover, setTurnover] = useState(String(customer.turnover ?? ''));
   const [nextOrders, setNextOrders] = useState((customer.nextOrders ?? []).join(', '));
   const [saving, setSaving] = useState(false);
@@ -292,6 +293,7 @@ function CustomerPanel({ customer, onClose }: { customer: Customer; onClose: () 
   const handleSaveProfile = async () => {
     setSaving(true);
     await updateCustomer(customer.id, {
+      tier,
       turnover: turnover ? Number(turnover) : 0,
       ratingPayment: rp,
       ratingOrders: ro,
@@ -487,10 +489,10 @@ function CustomerPanel({ customer, onClose }: { customer: Customer; onClose: () 
               <div className="space-y-3">
                 <div>
                   <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-1">Tier</label>
-                  <div className="flex items-center gap-2 h-7">
-                    <TierBadge tier={customer.tier} />
-                    <span className="text-[10.5px] text-g400">Auto-calculated from total order value (₹{customerOrderTotal(customer.name, data.orders).toLocaleString('en-IN')})</span>
-                  </div>
+                  <select title="Customer tier" value={tier} onChange={e => setTier(e.target.value as CustomerTier)}
+                    className="h-7 px-2 text-[12px] border border-g300 rounded-[3px] bg-white outline-none focus:border-red-mrt">
+                    {(['New','Bronze','Silver','Gold'] as CustomerTier[]).map(t => <option key={t}>{t}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-1">FY Turnover (₹)</label>
