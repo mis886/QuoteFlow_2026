@@ -87,6 +87,10 @@ export function DoerDetail() {
   }
 
   const deferred = ROLE_WEIGHTS[m.role] == null;
+  // Volume is real (computed in computeDoerMetrics) for PI Sender even though
+  // its composite/on-time/win-rate stay deferred — see the matching note in
+  // DoerKPI.tsx. Don't hide it behind the same blanket flag those use.
+  const volumeKnown = !deferred || m.role === 'PI Sender';
   const prevM = prev.get(decodedKey);
   const delta = (m.composite != null && prevM?.composite != null) ? m.composite - prevM.composite : null;
 
@@ -122,13 +126,20 @@ export function DoerDetail() {
         {m.role === 'DEO' ? (
           <MetricCardDeo enqCount={m.enqCount} orderCount={m.orderCount} />
         ) : (
-          <MetricCard label="Volume" value={deferred ? '—' : String(m.volume)} hint="items handled" plain />
+          <MetricCard label="Volume" value={volumeKnown ? String(m.volume) : '—'} hint="items handled" plain />
         )}
         <MetricCard label="Speed" value={deferred ? '—' : fmtHours(m.avgCycleH)} hint="avg cycle time" plain />
         {m.role === 'DEO' ? (
           <MetricCard label="Enquiry Lap" value={fmtHours(m.enqLapH)} hint="received → punched" plain />
         ) : m.role === 'Rate Entry' ? (
           <MetricCard label="Quote Lap" value={fmtHours(m.quoteLapH)} hint="punched → quote sent" plain />
+        ) : m.role === 'SC_1' || m.role === 'Other' ? (
+          // These roles score on on-time%, not win-rate (winRate is never
+          // computed for them — see ROLE_WEIGHTS in kpi.ts), so "Win gap"
+          // would always read "—". Avg overdue is the metric that's actually
+          // meaningful and already computed (kpi.ts avgLateH/lateCount), just
+          // not previously surfaced on this page.
+          <MetricCard label="Avg overdue" value={m.lateCount === 0 ? '0' : fmtHours(m.avgLateH)} hint={`${m.lateCount} late step${m.lateCount === 1 ? '' : 's'}`} plain />
         ) : (
           <MetricCard label="Win gap" value={deferred ? '—' : fmtPctShort(m.winRate)} hint="below 100% win" />
         )}

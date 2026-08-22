@@ -237,18 +237,27 @@ export function DoerKPI() {
               : m.role === 'Rate Entry' ? String(m.volume)
               : m.role === 'Negotiation' ? String(m.volume)
               : m.role === 'SC_1' ? String(m.volume)
+              : m.role === 'Other' ? String(m.volume)
+              : m.role === 'PI Sender' ? String(m.volume)
               : '—';
 
             const secondaryVal = m.role === 'SC_1' ? fmtPct(m.onTimePct)
               : m.role === 'Negotiation' ? fmtPct(m.winRate)
               : m.role === 'DEO' ? fmtHours(m.enqLapH)
               : m.role === 'Rate Entry' ? fmtHours(m.quoteLapH)
+              : m.role === 'Other' ? fmtPct(m.onTimePct)
+              // PI Sender: no dispatch-time data exists yet (no PI-sent
+              // timestamp anywhere in the schema — see buildDoerTimeline).
+              // fmtHours(null) already renders '—', spelled out here so the
+              // gap reads as deliberate, not a missed case.
+              : m.role === 'PI Sender' ? fmtHours(m.avgCycleH)
               : '—';
 
             const secondaryColor = m.role === 'SC_1' ? healthColor(m.onTimePct)
               : m.role === 'Negotiation' ? healthColor(m.winRate, { good: 60, warn: 35 })
               : m.role === 'DEO' ? (m.enqLapH != null && m.enqLapH <= 4 ? 'text-emerald-600' : m.enqLapH != null && m.enqLapH <= 24 ? 'text-amber-600' : 'text-red-600')
               : m.role === 'Rate Entry' ? (m.quoteLapH != null && m.quoteLapH <= 24 ? 'text-emerald-600' : m.quoteLapH != null && m.quoteLapH <= 72 ? 'text-amber-600' : 'text-red-600')
+              : m.role === 'Other' ? healthColor(m.onTimePct)
               : 'text-g500';
 
             // Flags: what needs attention
@@ -471,6 +480,11 @@ export function DoerKPI() {
               {sortedRows.map(m => {
                 const key = doerRowKey(m.email, m.role, m.displayName);
                 const deferred = ROLE_WEIGHTS[m.role] == null;
+                // Volume is real (computed in computeDoerMetrics) for PI Sender
+                // even though its composite/on-time/win-rate stay deferred (no
+                // dispatch-time data exists to score it on) — don't hide it
+                // behind the same blanket flag those other columns use.
+                const volumeKnown = !deferred || m.role === 'PI Sender';
                 const prev = previous.get(key);
                 const delta = (m.composite != null && prev?.composite != null) ? m.composite - prev.composite : null;
                 const cfg = roleConfig(m.role);
@@ -508,7 +522,7 @@ export function DoerKPI() {
                         {deferred ? '—' : fmtPct(m.onTimePct)}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 tabular-nums text-g700 font-semibold">{deferred ? '—' : m.volume}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-g700 font-semibold">{volumeKnown ? m.volume : '—'}</td>
                     <td className="px-4 py-2.5 tabular-nums text-g600">
                       {deferred ? '—' : (
                         m.role === 'DEO' ? (

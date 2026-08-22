@@ -306,10 +306,16 @@ export function computeDoerMetrics(
     const realLogs = (fu.logs ?? []).filter(l => !isQuoteSentLog(l.note));
 
     // Volume: each real log credits its SC_1 author (activity in period).
+    // 'Other' is scored the same way (ROLE_WEIGHTS['Other'] mirrors SC_1's
+    // onTime+volume shape) — it's a generic follow-up-running role for a
+    // pipeline lane not owned by SC_1/Negotiation (see DEFAULT_STAGE_ROLE /
+    // settings.pipeline_roles), so it's credited from the same log activity.
     for (const log of realLogs) {
       if (!inRange(log.ts, range)) continue;
       const sc1 = matchDoer(log.who, 'SC_1');
       if (sc1) sc1.volume++;
+      const other = matchDoer(log.who, 'Other');
+      if (other) other.volume++;
     }
 
     // Negotiation volume: open pipeline currently owned by the doer. This is a
@@ -332,7 +338,7 @@ export function computeDoerMetrics(
       const deadline = stepDeadline(settings, chain, i);
       const onTime = new Date(log.ts) <= deadline;
       const lateH = onTime ? 0 : Math.round((new Date(log.ts).getTime() - deadline.getTime()) / 3_600_000);
-      for (const role of ['SC_1', 'Negotiation'] as const) {
+      for (const role of ['SC_1', 'Negotiation', 'Other'] as const) {
         const raw = matchDoer(log.who, role) ?? matchDoer(fu.owner, role);
         if (!raw) continue;
         const acc = onTimeAcc.get(raw) ?? { on: 0, tot: 0 };
@@ -361,7 +367,7 @@ export function computeDoerMetrics(
     if (fu.status !== 'closed' && fu.next_date) {
       const due = new Date(fu.next_date).getTime();
       if (due >= now - MS_DAY && due <= nextWeekEnd) {
-        for (const role of ['SC_1', 'Negotiation'] as const) {
+        for (const role of ['SC_1', 'Negotiation', 'Other'] as const) {
           const raw = matchDoer(fu.owner, role);
           if (raw) raw.dueNextWeek.push({
             kind: 'followup', refId: fu.quote_id, cust: quote.cust,
@@ -378,6 +384,26 @@ export function computeDoerMetrics(
     if (!inRange((o as any).created_at ?? o.poDate, range)) continue;
     const raw = matchDoer(o.doer, 'DEO');
     if (raw) { raw.volume++; raw.orderCount++; }
+  }
+
+  // ── PI Sender: orders touched (Proforma Invoice issuance) ──────────────
+  // There is no persisted "PI sent" event anywhere in the schema — Generate
+  // PI (src/pages/NewOrder.tsx handleGeneratePI/handleGeneratePIDOCX) only
+  // renders a PDF/DOCX client-side, it never writes to Supabase, and no
+  // orders column records when a PI went out. Per the design laid out in
+  // migrations/2026-06-08_team_roster.sql ("PI sent = PI Sender" is one of
+  // several jobs a shared login's work is split across, alongside
+  // "enquiry entered = DEO" / "rates entered = Rate Entry"), the only real
+  // attribution data available for this role is orders.doer — the same
+  // field DEO's conversion volume above is credited from. Volume can
+  // therefore be counted honestly; avgCycleH (order → PI sent dispatch
+  // time) cannot — that needs an actual pi_sent_at timestamp, which does
+  // not exist yet, so it stays null (renders as "—") rather than being
+  // fabricated.
+  for (const o of data.orders) {
+    if (!inRange((o as any).created_at ?? o.poDate, range)) continue;
+    const raw = matchDoer(o.doer, 'PI Sender');
+    if (raw) raw.volume++;
   }
 
   // ── Draft quotes pending = Rate Entry due-next-week ──
@@ -634,6 +660,36 @@ export function buildDoerTimeline(
         lapH,
         kindLabel: 'Order',
         note: `PO ${o.poNo || ''} converted${lapH != null ? ` ${fmtLapShort(lapH)} after quote sent` : ''}`.trim(),
+      });
+    }
+    return rows.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+  }
+
+  // ── PI Sender work history: orders touched (Proforma Invoice issuance).
+  // See the matching comment in computeDoerMetrics above — there is no
+  // pi_sent_at (or equivalent) event persisted anywhere, so rows are
+  // sourced from orders.doer with no lap/on-time scoring, same as the
+  // volume-only metric on the summary card.
+  if (member.role === 'PI Sender') {
+    for (const o of data.orders) {
+      if (!isMine(o.doer)) continue;
+      const stamp = (o as any).created_at ?? o.poDate;
+      if (!stamp) continue;
+      if (!inRange(stamp, range)) continue;
+      rows.push({
+        date: stamp.slice(0, 10),
+        ts: stamp,
+        kind: 'done',
+        activity: `Order ${o.id} · PO ${o.poNo || '—'}`,
+        channel: 'Order',
+        refId: o.id,
+        cust: o.cust,
+        siteId: o.siteId ?? null,
+        site: siteOf(o.cust, o.siteId),
+        onTime: null,
+        lapH: null,
+        kindLabel: 'Order',
+        note: `PO ${o.poNo || ''} confirmed${o.value ? ` · ₹${o.value.toLocaleString('en-IN')}` : ''}`.trim(),
       });
     }
     return rows.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
