@@ -269,50 +269,64 @@ export function Blueprint() {
           <div className="p-[11px_18px] border-b border-g200 flex justify-between items-center">
             <span className="font-mono text-[9px] font-bold tracking-[2.5px] uppercase text-g500">📅 Month-by-Week Build History</span>
           </div>
-          <div className="p-4 space-y-5">
-            {monthlyBreakdown.map(m => (
-              <div key={m.month}>
-                <div className="font-mono text-[10px] font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">{m.month}</div>
-                {m.weeks.length === 0 ? (
-                  <div className="text-[12px] text-g600 pl-3 border-l-2 border-g200">{m.launchNote}</div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {m.weeks.map(w => {
-                      const key = `${m.month}::${w.label}`;
-                      const isOpen = expandedWeeks.has(key);
-                      const hasItems = w.items.length > 0;
-                      return (
-                        <div key={key} className={`border border-g100 rounded-[4px] ${hasItems ? '' : 'opacity-50'}`}>
-                          <button
-                            type="button"
-                            onClick={() => { if (hasItems) toggleWeek(key); }}
-                            disabled={!hasItems}
-                            className="w-full flex items-center justify-between px-3 py-2 text-left disabled:cursor-not-allowed hover:bg-g50/60 transition-colors"
-                          >
-                            <span className="text-[12px] font-semibold text-blk">{w.label}</span>
-                            {hasItems ? (
-                              <ArrowRight size={12} className={`text-g400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
-                            ) : (
-                              <span className="text-[10px] text-g400 italic">No activity</span>
-                            )}
-                          </button>
-                          {isOpen && hasItems && (
-                            <ul className="px-3 pb-2.5 space-y-1">
-                              {w.items.map((item, i) => (
-                                <li key={i} className="text-[11px] text-g600 leading-snug flex items-start gap-1.5">
-                                  <span className="text-g300 mt-0.5 shrink-0">•</span>
-                                  <span>{item}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      );
-                    })}
+          <div className="p-4">
+            <div className="relative pl-6 border-l-2 border-g200">
+              {monthlyBreakdown.map(m => {
+                const updateCount = m.weeks.reduce((s, w) => s + w.items.length, 0);
+                return (
+                  <div key={m.month} className="relative pb-5 last:pb-0">
+                    <div className="absolute -left-[31px] top-1 w-3 h-3 rounded-full border-[3px] border-cream shadow-[0_0_0_2px] bg-sW shadow-sW/50"></div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-mono text-[8.5px] font-bold tracking-[2px] uppercase text-sW">{m.month}</span>
+                      {m.weeks.length > 0 && (
+                        <span className="text-[9px] px-1.5 py-px rounded font-medium bg-sW/10 text-sW">{updateCount} updates</span>
+                      )}
+                    </div>
+                    {m.weeks.length === 0 ? (
+                      <div className="text-[12px] text-g600">{m.launchNote}</div>
+                    ) : (
+                      <div className="space-y-1.5 mt-2">
+                        {m.weeks.map(w => {
+                          const key = `${m.month}::${w.label}`;
+                          const isOpen = expandedWeeks.has(key);
+                          const hasItems = w.items.length > 0;
+                          return (
+                            <div key={key} className="border border-g100 rounded-[4px] overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => { if (hasItems) toggleWeek(key); }}
+                                disabled={!hasItems}
+                                className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-g50/60 disabled:hover:bg-transparent transition-colors disabled:cursor-not-allowed"
+                              >
+                                <span className={`font-mono text-[9px] font-bold tracking-[1px] uppercase ${hasItems ? 'text-sW' : 'text-g400'}`}>{w.label}</span>
+                                {hasItems ? (
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="text-[9px] px-1.5 py-px rounded font-medium bg-sW/10 text-sW">{w.items.length}</span>
+                                    <ArrowRight size={11} className={`text-g400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] px-1.5 py-px rounded font-medium bg-g100 text-g500">No activity</span>
+                                )}
+                              </button>
+                              {isOpen && hasItems && (
+                                <div className="px-3 pb-2.5 pt-1.5 border-t border-g100 space-y-1">
+                                  {w.items.map((item, i) => (
+                                    <div key={i} className="flex items-start gap-1.5">
+                                      <div className="w-1 h-1 rounded-full mt-1.5 bg-sW shrink-0" />
+                                      <span className="text-[11.5px] text-g600 leading-snug">{item}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </div>
         </div>
 
