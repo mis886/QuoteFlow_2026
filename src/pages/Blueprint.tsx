@@ -318,34 +318,6 @@ export function Blueprint() {
           </div>
         </div>
 
-        {/* SYSTEM REQUIREMENTS CHECKLIST */}
-        <div className="bg-white border border-g200">
-          <div className="p-[11px_18px] border-b border-g200 flex justify-between items-center">
-            <span className="font-mono text-[9px] font-bold tracking-[2.5px] uppercase text-g500">📋 Detailed V3 Functional Requirements</span>
-            <span className="font-mono text-[10px] text-sW font-bold">Comprehensive Parity Check</span>
-          </div>
-          <div className="p-4">
-            <div className="grid grid-cols-4 gap-4">
-              {requirementsByModule.map((mod, idx) => (
-                <div key={idx} className="border border-g200 p-3 rounded-[3px]">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[12.5px] font-bold text-blk">{mod.module}</span>
-                    <span className="text-[12px]">{mod.status}</span>
-                  </div>
-                    <div className="space-y-1">
-                      {mod.features.map((feat, fIdx) => (
-                        <div key={fIdx} className="flex items-start gap-1.5">
-                          <div className={`w-1 h-1 rounded-full mt-1.5 ${mod.status.includes('✅') ? 'bg-sW' : mod.status.includes('⚠') ? 'bg-sR' : 'bg-red-mrt'}`} />
-                          <span className="text-[10px] text-g600 leading-tight">{feat}</span>
-                        </div>
-                      ))}
-                    </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
         {/* DATA SCHEMA */}
         <div className="bg-white border border-g200">
           <div className="p-[11px_18px] border-b border-g200 flex justify-between items-center">
@@ -489,6 +461,34 @@ export function Blueprint() {
                   );
                 })}
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SYSTEM REQUIREMENTS CHECKLIST */}
+        <div className="bg-white border border-g200">
+          <div className="p-[11px_18px] border-b border-g200 flex justify-between items-center">
+            <span className="font-mono text-[9px] font-bold tracking-[2.5px] uppercase text-g500">📋 Detailed V3 Functional Requirements</span>
+            <span className="font-mono text-[10px] text-sW font-bold">Comprehensive Parity Check</span>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-4 gap-4">
+              {requirementsByModule.map((mod, idx) => (
+                <div key={idx} className="border border-g200 p-3 rounded-[3px]">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[12.5px] font-bold text-blk">{mod.module}</span>
+                    <span className="text-[12px]">{mod.status}</span>
+                  </div>
+                    <div className="space-y-1">
+                      {mod.features.map((feat, fIdx) => (
+                        <div key={fIdx} className="flex items-start gap-1.5">
+                          <div className={`w-1 h-1 rounded-full mt-1.5 ${mod.status.includes('✅') ? 'bg-sW' : mod.status.includes('⚠') ? 'bg-sR' : 'bg-red-mrt'}`} />
+                          <span className="text-[10px] text-g600 leading-tight">{feat}</span>
+                        </div>
+                      ))}
+                    </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
