@@ -27,25 +27,39 @@ export function Blueprint() {
 
   const modules = [
     { id: 'M01', name: 'Enquiry Register', icon: '📥', status: 'Live', progress: 100, desc: 'Multi-line-item enquiry logging with auto-numbering, SLA timer, urgency levels, source tracking, creator email tracking, and inline item expansion. Line items: Product Name, No of Barrels, Packing, Total QTY, Packing Type.', entities: 'ENQUIRIES, LINE_ITEMS', records: totalEnq + ' enquiries · ' + totalLI + ' line items', color: 'text-red-mrt border-red-mrt', bg: 'bg-red-mrt' },
-    { id: 'M02', name: 'Quotation Engine', icon: '📄', status: 'Live', progress: 100, desc: 'One-click ENQ→Quote conversion. Items auto-populate. Billing Name product search with HSN auto-fill. Insurance (0.15%), GST, Grand Total rounding. PDF/DOCX with hardcoded company header. Gmail integration with dynamic CC and signatory.', entities: 'QUOTES, QUOTE_ITEMS', records: totalQt + ' quotes · ' + formatINR(Math.round(pipeline)) + ' pipeline', color: 'text-sQ border-sQ', bg: 'bg-sQ' },
-    { id: 'M03', name: 'Order Management', icon: '📦', status: 'Live', progress: 100, desc: 'Convert Won quotes to orders. Insurance and GST calculations match quotation. Order Value rounded. PO number tracking. Pro-forma invoice. Delivery scheduling. Taxes & Charges section in progress.', entities: 'ORDERS, ORDER_ITEMS', records: totalOrd + ' orders', color: 'text-sW border-sW', bg: 'bg-sW' },
+    { id: 'M02', name: 'Quotation Engine', icon: '📄', status: 'Live', progress: 100, desc: 'One-click ENQ→Quote conversion. Items auto-populate. Billing Name product search with HSN auto-fill. Insurance (0.15%), GST, Grand Total rounding. PDF/DOCX with hardcoded company header. Gmail integration with dynamic CC and signatory. Negotiation Rounds — per-line-item revised price/discount with full line-item detail (HSN/packing/GST), dedicated Negotiation follow-up stage, included in PDF/DOCX exports. Customer Tier badge + snapshot.', entities: 'QUOTES, QUOTE_ITEMS', records: totalQt + ' quotes · ' + formatINR(Math.round(pipeline)) + ' pipeline', color: 'text-sQ border-sQ', bg: 'bg-sQ' },
+    { id: 'M03', name: 'Order Management', icon: '📦', status: 'Live', progress: 100, desc: 'Convert Won quotes to orders. Insurance and GST calculations match quotation. Order Value rounded. PO number tracking. Pro-forma invoice. Delivery scheduling. Payment Terms field prefilled from source quotation; Advance/100% Advance terms require Accounts to confirm payment before Order Confirmed and gate PI generation. Taxes & Charges (Freight/P&F/TDS/TCS) fully built, not pending.', entities: 'ORDERS, ORDER_ITEMS', records: totalOrd + ' orders', color: 'text-sW border-sW', bg: 'bg-sW' },
     { id: 'M04', name: 'Customer Master', icon: '👤', status: 'Live', progress: 100, desc: 'Single source of truth — GSTIN, Incoterms, currency, payment terms, segment. Auto-populates all downstream forms.', entities: 'CUSTOMERS', records: totalCust + ' customers', color: 'text-sN border-sN', bg: 'bg-sN' },
     { id: 'M05', name: 'Analytics Engine', icon: '📊', status: 'Live', progress: 100, desc: 'E2Q time distribution, SLA compliance heatmap, conversion funnel, source analysis, pipeline by customer. All computed live.', entities: 'Computed from all modules', records: '6 KPI widgets · 4 chart panels', color: 'text-sR border-sR', bg: 'bg-sR' },
     { id: 'M06', name: 'PDF Generator', icon: '🖨️', status: 'Live', progress: 100, desc: 'Hardcoded company header (no letterhead image). Auto-populated from quote data. 9-column line items table with dynamic INR/USD rates column. DOCX download also supported.', entities: 'QUOTE_PDF_TEMPLATES', records: 'Hardcoded Header · PDF + DOCX', color: 'text-[#EA580C] border-[#EA580C]', bg: 'bg-[#EA580C]' },
     { id: 'M07', name: 'App Settings', icon: '⚙️', status: 'Live', progress: 100, desc: 'Upload custom PDF header images and manage application configurations directly from settings.', entities: 'LOCAL_STORAGE', records: 'Custom PDF Branding', color: 'text-sW border-sW', bg: 'bg-sW' },
     { id: 'M08', name: 'Follow-Up CRM', icon: '📞', status: 'Live', progress: 100, desc: 'Split-panel Command Centre for quote follow-ups. Log activity, schedule next steps, and track overdue responses.', entities: 'FOLLOWUPS', records: 'Real-time logging active', color: 'text-sW border-sW', bg: 'bg-sW' },
+    // records is a descriptive string, not a live count, same as M06/M07/M08 above:
+    // Sampling.tsx/SamplingNew.tsx fetch `samples` with their own component-local
+    // useState/useEffect (mirrors useProductCatalog.ts's pattern) — this data is
+    // never exposed via useAppStore()'s central `data` object, so there is no
+    // `data.samples` for Blueprint to read a live count from without adding new
+    // fetch logic to this page (kept out of scope for this update).
+    { id: 'M09', name: 'Sampling Module', icon: '🧪', status: 'Live', progress: 100, desc: 'Sample dispatch tracking from Enquiry/Quotation with POD/COA/Lot No file uploads, single-status lifecycle (pending → dispatched → delivered → approved/rejected) driving tab membership, multi-product samples per record, tracking number + Sent By autocomplete, and a standardized Email Sample Dispatch template.', entities: 'SAMPLES, SAMPLE_PRODUCTS', records: 'POD/COA/Lot No uploads · full status lifecycle', color: 'text-[#0D9488] border-[#0D9488]', bg: 'bg-[#0D9488]' },
   ];
 
   const requirementsByModule = [
     { module: 'App Shell', status: '✅ Live', features: ['Dark Sidebar with Nav Groups', 'White logo area', 'Red left-border active state', 'Nav badges (Counts)', 'Topbar breadcrumb', 'Global Search Engine', 'User avatar & Logout', 'Slide-in Detail Panels'] },
     { module: 'Dashboard', status: '✅ Live', features: ['5 Live KPI Cards', 'Needs Attention (Age ≥4h)', 'Recent Enquiries Panel', 'Quote Pipeline & Active Orders', 'KPI Click-to-Navigate'] },
-    { module: 'Enquiries', status: '✅ Live', features: ['Status Tab Filter Bar', 'Urgency/Assigned Dropdowns', 'Age Pulse Animation', 'Source Icons (✉📞💬)', 'Activity Timeline', 'ENQ→Quote Conversion', 'Creator Email Tracking (created_by saved and shown on list)', 'Role-based Delete (mis@ and shishir@ only, New status only)', 'Searchable Product + Packing Type fields'] },
-    { module: 'Quotations', status: '✅ Live', features: ['Line Items Total Box', 'Live GST/Grand Total math', 'PDF Generation (jsPDF)', 'Gmail mailto: integration', 'Draft/Sent/Won states', 'Billing Name product dropdown with HSN auto-fill', 'Insurance 0.15% row', 'Grand Total rounding', 'HTP- prefix quote refs', 'INR/USD currency only', 'Dynamic CC (shishir, anil, customer email)', 'Hardcoded company header in PDF/DOCX', 'Dynamic signatory in email'] },
-    { module: 'Orders', status: '✅ Live', features: ['Won Quote→Order Banner', 'Amendable MOC/Qty/Rates', 'PO Number/Date tracking', 'Pro-forma Invoice Gen', 'Insurance + GST matching quotation logic', 'Order Value rounded', '⚠️ Taxes & Charges — Pending'] },
-    { module: 'Customers', status: '✅ Live', features: ['Segment Dropdown Filters', 'Customer Code Auto-gen', 'Sites JSONB support', 'New ENQ shortcut button', 'PAN auto-extracted from GSTIN', '750 customers imported and live'] },
+    { module: 'Enquiries', status: '✅ Live', features: ['Status Tab Filter Bar', 'Urgency/Assigned Dropdowns', 'Age Pulse Animation', 'Source Icons (✉📞💬)', 'Activity Timeline', 'ENQ→Quote Conversion', 'Creator Email Tracking (created_by saved and shown on list)', 'Role-based Delete (mis@ and shishir@ only, New status only)', 'Searchable Product + Packing Type fields', 'Authorized Signatory panel (replaces Assigned To)', 'Customer Tier badge'] },
+    { module: 'Quotations', status: '✅ Live', features: ['Line Items Total Box', 'Live GST/Grand Total math', 'PDF Generation (jsPDF)', 'Gmail mailto: integration', 'Draft/Sent/Won states', 'Billing Name product dropdown with HSN auto-fill', 'Insurance 0.15% row', 'Grand Total rounding', 'HTP- prefix quote refs', 'INR/USD currency only', 'Dynamic CC (shishir, anil, customer email)', 'Hardcoded company header in PDF/DOCX', 'Dynamic signatory in email', 'Negotiation Rounds (per-line-item price/discount, own follow-up stage, in PDF/DOCX)', 'Customer Tier badge + snapshot', 'Camphor powder/isoborneol flakes + delivery term in letterhead/T&C'] },
+    { module: 'Orders', status: '✅ Live', features: ['Won Quote→Order Banner', 'Amendable MOC/Qty/Rates', 'PO Number/Date tracking', 'Pro-forma Invoice Gen', 'Insurance + GST matching quotation logic', 'Order Value rounded', 'Taxes & Charges (Freight/P&F/TDS/TCS) fully built', 'Payment Terms field (prefilled from quotation)', 'Order Confirmed status', 'PO upload now actually persists (Storage bucket fix)'] },
+    { module: 'Customers', status: '✅ Live', features: ['Segment Dropdown Filters', 'Customer Code Auto-gen', 'Sites JSONB support', 'New ENQ shortcut button', 'PAN auto-extracted from GSTIN', '750 customers imported and live', 'Case-insensitive search, ranks starts-with before contains, matches contact name/email', 'created_by/modified_by tracking', 'Restricted delete (mis@/shishir@ only)', 'Segment dropdown updated'] },
     { module: 'Analytics', status: '✅ Live', features: ['E2Q Horizontal Bar Chart', 'Conversion Funnel SVG', 'Sources Donut Chart', 'SLA Urgency Bar Chart'] },
-    { module: 'Search', status: '⚠ Partial', features: ['Topbar global search input', 'Result filtering in views', 'Deeper metadata search'] },
+    // Kept Partial rather than Live: verified globalSearchQuery now filters
+    // Sampling.tsx and Customers.tsx (new in July) and Customers.tsx gained
+    // real ranking (nameTier/normalizeSearchText in src/lib/utils.ts), but
+    // found no dropdown/results-preview component anywhere in src/ — the
+    // topbar search (src/components/Topbar.tsx) is still a plain input that
+    // filters within whichever page you're on, not a cross-module dropdown.
+    { module: 'Search', status: '⚠ Partial', features: ['Topbar global search input', 'Result filtering in views', 'Now wired to Sampling + Customers (July)', 'Customers: starts-with-ranked, case/punctuation-insensitive matching', 'Still no cross-module results dropdown — filters per-page only'] },
     { module: 'Follow-Ups', status: '✅ Live', features: ['Split-Panel CRM Layout', 'Activity Logging Timeline', 'Follow-up Scheduling logic', 'Supabase Real-time Table'] },
+    { module: 'Sampling', status: '✅ Live', features: ['POD/COA/Lot No file uploads (Supabase Storage)', 'Status lifecycle: pending → dispatched → delivered → approved/rejected', 'Multi-product samples per record (sample_products child table)', 'Standardized Email Sample Dispatch template', 'Sample tab on Enquiry/Quotation registers', 'Tracking number + Sent By autocomplete'] },
   ];
 
   const schema = [
@@ -57,16 +71,24 @@ export function Blueprint() {
     { table: 'ORDER_ITEMS', cols: ['orderId', 'seq', 'desc', 'mat', 'qty', 'uom', 'agreedRate', 'gst', 'total', 'remarks'], pk: 'orderId+seq', fk: 'orderId → ORDERS.id', rows: data.orders.reduce((a, o) => a + o.items.length, 0) },
     { table: 'CUSTOMERS', cols: ['code', 'name', 'seg', 'city', 'gstin', 'pan', 'contact', 'email', 'phone', 'inco', 'curr', 'pay'], pk: 'code', fk: '—', rows: totalCust },
     { table: 'FOLLOWUPS', cols: ['id', 'quote_id', 'owner', 'next_date', 'logs'], pk: 'id', fk: 'quote_id → QUOTES.id', rows: modules.find(m => m.id === 'M08')?.records ? 0 : 0 },
+    // rows: 0 for these three — same reason as M09's `records` above: none of
+    // them are fetched into useAppStore()'s central `data`, so there's no live
+    // count for Blueprint to read (samples/sample_products: Sampling.tsx fetches
+    // independently; product_catalog: useProductCatalog.ts fetches independently).
+    { table: 'SAMPLES', cols: ['id', 'cust', 'quote_ref', 'enq_ref', 'products', 'quantity', 'unit', 'status', 'sent_date', 'pod_file', 'coa_file', 'lot_no', 'tracking_number', 'sent_by', 'created_by'], pk: 'id', fk: 'quote_ref → QUOTES.id / enq_ref → ENQUIRIES.id', rows: 0 },
+    { table: 'SAMPLE_PRODUCTS', cols: ['id', 'sample_id', 'product_name', 'grade', 'lot_no', 'coa_url', 'quantity', 'unit', 'sort_order'], pk: 'id', fk: 'sample_id → SAMPLES.id', rows: 0 },
+    { table: 'PRODUCT_CATALOG', cols: ['id', 'product_name', 'hsn_code', 'created_by', 'updated_by'], pk: 'id', fk: '—', rows: 0 },
   ];
 
   const integrations = [
     { name: 'Local Storage', icon: '💾', role: 'Primary Database', status: 'Active', desc: 'All data stored in browser storage for instant testing.', health: 100 },
     { name: 'React Context', icon: '⚡', role: 'State Management', status: 'Active', desc: 'Centralized store for realtime UI updates across all modules.', health: 100 },
     { name: 'jsPDF', icon: '📄', role: 'Document Generation', status: 'Active', desc: 'Client-side PDF generation for quotes and proforma invoices.', health: 100 },
-    { name: 'Supabase PostgreSQL', icon: '🗄️', role: 'Cloud Database', status: 'Active', desc: 'Secure production database via Supabase. Authenticated access only.', health: 100 },
-    { name: 'Supabase Storage', icon: '📦', role: 'File Storage', status: 'Active', desc: 'S3-compatible bucket for enquiry attachments and drawing storage.', health: 100 },
+    { name: 'Supabase PostgreSQL', icon: '🗄️', role: 'Cloud Database', status: 'Active', desc: 'Secure production database via Supabase. Authenticated access only. Skips full data reloads on silent TOKEN_REFRESHED auth events to reduce Supabase egress.', health: 100 },
+    { name: 'Supabase Storage', icon: '📦', role: 'File Storage', status: 'Active', desc: 'S3-compatible bucket for enquiry attachments and drawing storage. Also backs Sampling\'s POD/COA file uploads (sample-attachments bucket) and Order PO uploads (order-documents bucket).', health: 100 },
     { name: 'Gmail API', icon: '✉️', role: 'Email Automation', status: 'Active (mailto)', desc: 'Opens email client with pre-filled details for attachments.', health: 50 },
     { name: 'WhatsApp Business', icon: '💬', role: 'Notifications', status: 'Planned', desc: 'Alerts for SLA breaches and quote confirmations.', health: 10 },
+    { name: 'GitHub Actions + Wrangler', icon: '⚙️', role: 'CI/CD Pipeline', status: 'Active', desc: 'Auto-rebuilds dist/ and deploys directly to Cloudflare via Wrangler CLI on every push to main — replaces the old dependency on Cloudflare\'s git webhook integration.', health: 100 },
   ];
 
   const phases = [
@@ -77,12 +99,21 @@ export function Blueprint() {
     { tag: 'Phase 4', week: 'Week 6', title: 'Order Module', progress: 100, status: 'Complete', tasks: ['Won quote → Order conversion', 'Amend MOC/rates per PO', 'PO number tracking', 'Delivery date scheduling'] },
     { tag: 'Phase 5', week: 'Week 7', title: 'Cloud & API Integration', progress: 100, status: 'Complete', tasks: ['Supabase Storage for attachments', 'Authenticated data syncing', 'Real-time database mirroring'] },
     { tag: 'Phase 6', week: 'Week 8', title: 'Follow-Up Command Centre', progress: 100, status: 'Complete', tasks: ['Split-panel CRM view', 'Activity logging timeline', 'Overdue scheduling logic'] },
+    { tag: 'Phase 7', week: 'July 2026', title: 'Sampling Module & Negotiation Rounds', progress: 100, status: 'Complete', tasks: ['Sampling module: status lifecycle, POD/COA/Lot No uploads, multi-product records', 'Quotation Negotiation Rounds (form → register → PDF/DOCX)', 'Customer Tier + Authorized Signatory rollout (Enquiry/Quotation/Order)', 'Packing Types finalized to fixed 26-item list', 'CI/CD moved to GitHub Actions + Wrangler'] },
   ];
 
   const timeline = [
     { date: '✅ May 20, 2026', event: 'V3 Launched', desc: 'All core modules live. Supabase-backed, authenticated, deployed to Cloudflare.' },
-    { date: 'June 2026 — In Progress', event: 'Phase 7', desc: 'Packing Type persistence (custom types saved to DB, appear in future dropdowns). Order Module: Taxes & Charges section completion. System Blueprint auto-sync.' },
+    { date: '✅ July 2026', event: 'Phase 7: Sampling Module & Negotiation Rounds', desc: 'Sampling module built out with full status lifecycle and file uploads. Quotation Negotiation Rounds shipped end-to-end (form → register → PDF/DOCX). Customer Tier system and Authorized Signatory workflow rolled out across Enquiry/Quotation/Order. Packing Types finalized to a fixed 26-item list. CI/CD moved to GitHub Actions + direct Wrangler deploy.' },
+    { date: '🔧 August 2026', event: 'In Progress', desc: 'System Blueprint auto-sync.' },
   ];
+
+  // Derived from `phases` instead of hardcoded, so this doesn't go stale the
+  // next time a phase is added/completed the way "Phase 6 in pipeline" did.
+  const nextPhase = phases.find(p => p.status !== 'Complete');
+  const buildProgressDelta = nextPhase
+    ? `${nextPhase.tag} in pipeline`
+    : `${phases.length}/${phases.length} phases complete`;
 
   const KpiCard = ({ title, value, delta, up }: { title: string, value: string | React.ReactNode, delta: string, up?: boolean }) => (
     <div className="bg-white border border-g200 p-[16px_18px] relative overflow-hidden transition-all duration-300 hover:border-red-mrt hover:shadow-[0_4px_18px_rgba(0,0,0,0.05)] group">
@@ -117,7 +148,7 @@ export function Blueprint() {
           <KpiCard title="Data Entities" value={schema.length.toString()} delta={`${totalEnq + totalQt + totalOrd + totalCust} total records`} />
           <KpiCard title="Line Items Tracked" value={totalLI + data.quotes.reduce((a,q) => a+q.items.length,0) + data.orders.reduce((a,o) => a+o.items.length,0)} delta="Across all modules" />
           <KpiCard title="SLA Compliance" value={<>{slaRate}<span className="text-[15px] text-red-mrt">%</span></>} delta={`${slaMet}/${slaTotal} within target`} up={slaRate >= 70} />
-          <KpiCard title="Build Progress" value={<>{Math.round((modules.filter(m => m.status === 'Live').length / modules.length) * 100)}<span className="text-[15px] text-red-mrt">%</span></>} delta="Phase 6 in pipeline" up={true} />
+          <KpiCard title="Build Progress" value={<>{Math.round((modules.filter(m => m.status === 'Live').length / modules.length) * 100)}<span className="text-[15px] text-red-mrt">%</span></>} delta={buildProgressDelta} up={true} />
         </div>
         
         {/* PROJECTED TIMELINE */}
@@ -372,6 +403,8 @@ export function Blueprint() {
               <div><strong className="text-blk">Supabase Storage</strong> — File S3</div>
               <div><strong className="text-blk">Local Engine</strong> — Browser Cache fallback</div>
               <div><strong className="text-blk">jsPDF</strong> — PDF &amp; DOCX Generation</div>
+              <div className="mt-2 border-t border-g100 pt-2"><strong className="text-blk">GitHub Actions + Wrangler</strong> — CI/CD, direct Cloudflare deploy</div>
+              <div><strong className="text-blk">product_catalog</strong> — moved from hardcoded JS list to a real Supabase table</div>
             </div>
           </div>
           <div className="bg-white border border-g200 p-[16px_18px]">
@@ -379,6 +412,7 @@ export function Blueprint() {
             <div className="text-[12px] text-g600 leading-[1.8]">
               <div><strong className="text-blk">React Router</strong> — Single Page App</div>
               <div><strong className="text-blk">Context API</strong> — Realtime State</div>
+              <div><strong className="text-blk">Migrations</strong> — supabase/migrations, timestamped &amp; CLI-managed</div>
               <div><strong className="text-blk">Event-Driven</strong> — SLA Engine</div>
               <div><strong className="text-blk">Responsive</strong> — Desktop First</div>
             </div>
