@@ -112,18 +112,10 @@ export function Blueprint() {
   interface MonthBreakdown { month: string; weeks: MonthWeek[]; launchNote?: string; }
   const monthlyBreakdown: MonthBreakdown[] = [
     {
-      month: 'May 2026',
-      // No weekly data available — this repo's earliest commit is June 16, 2026, a month
-      // after the May 20 launch, so the launch itself predates this repo's history.
-      weeks: [],
-      launchNote: 'V3 Launched — May 20, 2026. All core modules live, Supabase-backed, deployed to Cloudflare.',
-    },
-    {
       month: 'June 2026',
       weeks: [
-        { label: 'Week 1 (Jun 1–7)', items: [] },
-        { label: 'Week 2 (Jun 8–14)', items: [] },
         { label: 'Week 3 (Jun 15–21)', items: [
+          'V3 Launched — May 20, 2026. All core modules live, Supabase-backed, deployed to Cloudflare.',
           'Initial commit; migrated to new Supabase project',
           'Sidebar rebrand (MANGLA → Himalaya Terpenes)',
           'Product Catalog + HSN auto-fill introduced; Packing Type dropdown introduced',
