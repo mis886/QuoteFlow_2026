@@ -3,7 +3,7 @@ import type { Customer, Site, Contact, DataStore, Enquiry, Order, Quote, FollowU
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { calculateAgeHours, generateId } from '../lib/utils';
+import { calculateAgeHours, generateId, computeCustomerTier } from '../lib/utils';
 import { User } from '@supabase/supabase-js';
 
 // Separate, purpose-specific mapping for the Authorized Signatory panel
@@ -730,6 +730,19 @@ const mapEnquiryToDB = (e: any) => {
     }));
   };
 
+  // Keeps a customer's `tier` column in sync with their real order
+  // history whenever orders change — tier is no longer a manual pick,
+  // see computeCustomerTier in lib/utils.ts. `ordersSnapshot` must be the
+  // order list AFTER the mutation that triggered this call.
+  const syncCustomerTier = async (customerName: string, ordersSnapshot: Order[]) => {
+    const cust = data.customers.find(c => c.name === customerName);
+    if (!cust) return;
+    const nextTier = computeCustomerTier(customerName, ordersSnapshot);
+    if (cust.tier !== nextTier) {
+      await updateCustomer(cust.id, { tier: nextTier });
+    }
+  };
+
   const addOrder = async (order: Order) => {
     const { error, finalRecord } = await insertWithIdRetry<Order>(
       'orders',
@@ -743,6 +756,7 @@ const mapEnquiryToDB = (e: any) => {
     );
     if (!error) {
       setData(prev => ({ ...prev, orders: [finalRecord, ...prev.orders] }));
+      await syncCustomerTier(finalRecord.cust, [finalRecord, ...data.orders]);
     } else {
       console.error('Error adding order:', error);
       throw error;
@@ -753,10 +767,14 @@ const mapEnquiryToDB = (e: any) => {
     const dbUpdates = mapOrderToDB(updates);
     const { error } = await supabase.from('orders').update(dbUpdates).eq('id', id);
     if (!error) {
+      const original = data.orders.find(o => o.id === id);
+      const nextOrders = data.orders.map(o => o.id === id ? { ...o, ...updates } : o);
       setData(prev => ({
         ...prev,
         orders: prev.orders.map(o => o.id === id ? { ...o, ...updates } : o)
       }));
+      if (original?.cust) await syncCustomerTier(original.cust, nextOrders);
+      if (updates.cust && updates.cust !== original?.cust) await syncCustomerTier(updates.cust, nextOrders);
     } else {
       console.error('Error updating order:', error);
       throw error;
@@ -766,7 +784,10 @@ const mapEnquiryToDB = (e: any) => {
   const deleteOrder = async (id: string) => {
     const { error } = await supabase.from('orders').delete().eq('id', id);
     if (!error) {
+      const original = data.orders.find(o => o.id === id);
+      const nextOrders = data.orders.filter(o => o.id !== id);
       setData(prev => ({ ...prev, orders: prev.orders.filter(o => o.id !== id) }));
+      if (original?.cust) await syncCustomerTier(original.cust, nextOrders);
     } else {
       console.error('Error deleting order:', error);
       throw error;
