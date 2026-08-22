@@ -197,7 +197,7 @@ export function NewCustomer() {
   const [crm, setCrm] = useState('');
   const [inco, setInco] = useState('EXW');
   const [curr, setCurr] = useState('INR');
-  const [pay, setPay] = useState('30 Days Net');
+  const [pay, setPay] = useState('');
   const [gstin, setGstin] = useState('');
   const [pan, setPan] = useState('');
   const [sites, setSites] = useState<Site[]>([
@@ -231,7 +231,7 @@ export function NewCustomer() {
         setCrm(cust.crm || '');
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
-        setPay(normalizePayTerms(cust.pay) || cust.pay || '30 Days Net');
+        setPay(normalizePayTerms(cust.pay) || cust.pay);
         const loadedGstin = cust.gstin || '';
         setGstin(loadedGstin);
         setPan(cust.pan || (loadedGstin.length === 15 ? loadedGstin.substring(2, 12) : ''));
@@ -524,8 +524,9 @@ export function NewCustomer() {
             <div>
               <label className={labelCls}>Payment Terms</label>
               <select value={pay} onChange={e => setPay(e.target.value)} className={inputCls}>
-                {!(PAY_OPTIONS as readonly string[]).includes(pay) && pay && <option value={pay}>{pay}</option>}
+                <option value="">— Select —</option>
                 {PAY_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                {!(PAY_OPTIONS as readonly string[]).includes(pay) && pay && <option value={pay}>{pay}</option>}
               </select>
             </div>
 

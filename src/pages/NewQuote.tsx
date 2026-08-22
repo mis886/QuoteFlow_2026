@@ -188,7 +188,7 @@ export function NewQuote() {
   const [inco, setInco] = useState('EXW');
   const [customInco, setCustomInco] = useState('');
   const [curr, setCurr] = useState('INR');
-  const [pay, setPay] = useState('30 Days Net');
+  const [pay, setPay] = useState('');
   const [unitId, setUnitId] = useState('');
   const [custEnquiryDocNo, setCustEnquiryDocNo] = useState('');
   // Auto-derived from resolvedSignatory for a new quote, or hydrated
@@ -290,7 +290,7 @@ export function NewQuote() {
         const savedInco = q.inco || '';
         const _ni = normalizeInco(savedInco);
         setInco(_ni || 'OVERRIDE'); setCustomInco(_ni ? '' : savedInco);
-        setCurr(q.curr || 'INR'); setPay(normalizePayTerms(q.pay) || q.pay || '30 Days Net');
+        setCurr(q.curr || 'INR'); setPay(normalizePayTerms(q.pay) || q.pay);
         setAuthName(q.authorizedPerson?.name || ''); setAuthDesignation(q.authorizedPerson?.designation || ''); setAuthPhone(q.authorizedPerson?.phone || '');
         setCustomerTier(q.customerTier || '');
         setQuoteStatus(q.status);
@@ -327,7 +327,7 @@ export function NewQuote() {
         // If the enquiry had no contactId the details were typed manually — preserve them
         setContactManual(!enq.contactId && !!(enq.contact || enq.email));
         const cr = data.customers.find(c => c.name === enq.cust);
-        if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || cr.pay || '30 Days Net'); }
+        if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || cr.pay); }
         setCustomerTier(enq.customerTier || cr?.tier || '');
         setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
         // Authorized Signatory is intentionally NOT carried forward from the
@@ -345,7 +345,7 @@ export function NewQuote() {
           const ci = cr.inco || '';
           { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); }
           setCurr(cr.curr || 'INR');
-          setPay(normalizePayTerms(cr.pay) || cr.pay || '30 Days Net');
+          setPay(normalizePayTerms(cr.pay) || cr.pay);
           const ps = (cr.sites ?? []).find((s: any) => s.isPrimary) || (cr.sites ?? [])[0];
           if (ps) {
             setSiteId(ps.id);
@@ -370,7 +370,7 @@ export function NewQuote() {
     if (!custName) return;
     const customer = data.customers.find(c => c.name === custName);
     if (!customer) return;
-    if (!editId) { const ci = customer.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(customer.curr || 'INR'); setPay(normalizePayTerms(customer.pay) || customer.pay || '30 Days Net'); if (!enqRef) setCustomerTier(customer.tier || ''); }
+    if (!editId) { const ci = customer.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(customer.curr || 'INR'); setPay(normalizePayTerms(customer.pay) || customer.pay); if (!enqRef) setCustomerTier(customer.tier || ''); }
     const sites = customer.sites ?? [];
     if (siteId) {
       const site = sites.find(s => s.id === siteId);
@@ -750,7 +750,7 @@ export function NewQuote() {
                 setContact(enq.contact); setEmail(enq.email);
                 setContactManual(!enq.contactId && !!(enq.contact || enq.email));
                 const cr = data.customers.find(c => c.name === enq.cust);
-                if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || cr.pay || '30 Days Net'); }
+                if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || cr.pay); }
                 setCustomerTier(enq.customerTier || cr?.tier || '');
                 setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
                 // Authorized Signatory: not carried forward here either —
@@ -997,8 +997,9 @@ export function NewQuote() {
                   <div>
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Payment Terms</label>
                     <select value={pay} onChange={e => setPay(e.target.value)} className="w-full font-sans text-[13px] text-blk border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt bg-white appearance-none cursor-pointer">
-                      {!(PAY_OPTIONS as readonly string[]).includes(pay) && pay && <option value={pay}>{pay}</option>}
+                      <option value="">— Select —</option>
                       {PAY_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                      {!(PAY_OPTIONS as readonly string[]).includes(pay) && pay && <option value={pay}>{pay}</option>}
                     </select>
                   </div>
                   <div>
