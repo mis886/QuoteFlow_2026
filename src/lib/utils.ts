@@ -7,7 +7,7 @@ export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himala
 // ── Payment Terms — shared across Orders, Quotations, and Customers ──────────
 
 export const PAY_OPTIONS = [
-  '3 Days', '7 Days', '14 Days', '30 Days Net', '45 Days', '60 Days',
+  '3 Days', '7 Days', '10 Days', '14 Days', '30 Days Net', '45 Days', '60 Days',
   '90 Days', '120 Days', '50% Advance, 50% on Delivery', '100% Advance',
   'LC at Sight', 'Advance',
 ] as const;
@@ -40,6 +40,7 @@ export function normalizePayTerms(raw: string | undefined): string {
   if (/45/.test(lower)) return '45 Days';
   if (/30/.test(lower)) return '30 Days Net';
   if (/14/.test(lower)) return '14 Days';
+  if (/10/.test(lower)) return '10 Days';
   if (/7/.test(lower)) return '7 Days';
   if (/3/.test(lower)) return '3 Days';
   if (/adv/.test(lower)) return 'Advance';
