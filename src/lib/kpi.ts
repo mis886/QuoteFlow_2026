@@ -565,10 +565,14 @@ export function buildDoerTimeline(
 
     for (const q of data.quotes) {
       if (!isMine(q.doer)) continue;
-      // Use sent_at as the primary timestamp; fall back to quote.date for Drafts.
+      // Range-check on q.date, not sent_at — computeDoerMetrics' Rate Entry
+      // Volume filters by q.date (see the loop above), so filtering history
+      // by a different field (sent_at) let a quote dated in one period but
+      // sent in another either vanish from its counted period's history or
+      // show up in a period it was never counted toward. Use sent_at as the
+      // primary DISPLAY timestamp; fall back to quote.date for Drafts.
+      if (!inRange(q.date, range)) continue;
       const stamp = q.sent_at ?? q.date;
-      if (!stamp) continue;
-      if (!inRange(stamp, range)) continue;
 
       const enq = q.enqRef ? enquiryById.get(q.enqRef) : undefined;
       // Lap: enquiry punched (enq.created_at) → quote sent (q.sent_at).
@@ -613,8 +617,14 @@ export function buildDoerTimeline(
     // Enquiry-entry rows.
     for (const e of data.enquiries) {
       if (!isMine(e.doer)) continue;
+      // Range-check on e.recv, not created_at — computeDoerMetrics' DEO
+      // Volume filters by e.recv (see the loop near the top of this file);
+      // filtering history by created_at instead let an enquiry received in
+      // one period but punched in late (or vice versa) mismatch which
+      // period's history it showed up in. Same bug class as the Rate Entry
+      // fix just above. Display timestamp still prefers created_at.
+      if (!inRange(e.recv, range)) continue;
       const stamp = e.created_at ?? e.recv;          // when punched in
-      if (!inRange(stamp, range)) continue;
       const lapH = (e.recv && e.created_at)
         ? Math.round((new Date(e.created_at).getTime() - new Date(e.recv).getTime()) / 3600000)
         : null;
@@ -701,14 +711,20 @@ export function buildDoerTimeline(
     const chain = buildFullChain(settings, quote, fu);
 
     // Done rows: real logs authored by this member (skip synthetic quote-sent).
-    // Not date-range filtered: SC_1/Negotiation/Other volume and win-rate on the
-    // summary card are lifetime snapshots (see computeDoerMetrics above), not
-    // period-bound — so "View full history" must show the same lifetime set,
-    // not just activity inside the currently selected global date range.
+    // Date-range scoping must match how computeDoerMetrics computes THIS
+    // role's Volume, or "View full history" won't reconcile with the summary
+    // card: Negotiation's Volume is a lifetime "currently owned" snapshot
+    // (ROLE_CONFIG's primaryDesc is "at negotiation stage"), so its history
+    // is lifetime too — every other role's Volume is period-scoped
+    // ("in period" per ROLE_CONFIG: SC_1/Other's log-count, PI Sender's
+    // order-count), so their history stays scoped to the selected range.
+    let hadDoneRow = false;
     for (let i = 0; i < chain.length; i++) {
       const log = chain[i];
       if (isQuoteSentLog(log.note)) continue;
       if (!isMine(log.who)) continue;
+      if (member.role !== 'Negotiation' && !inRange(log.ts, range)) continue;
+      hadDoneRow = true;
       const onTime = i >= 1 ? new Date(log.ts) <= stepDeadline(settings, chain, i) : null;
       rows.push({
         date: log.ts.slice(0, 10),
@@ -732,7 +748,9 @@ export function buildDoerTimeline(
     // Not date-range filtered: pending is live to-do state, not history.
     const realLogs = (fu.logs ?? []).filter(l => !isQuoteSentLog(l.note));
     const lastWho = realLogs.length ? realLogs[realLogs.length - 1].who : undefined;
+    let hadPendingRow = false;
     if (fu.status !== 'closed' && fu.next_date && (isMine(fu.owner) || isMine(lastWho))) {
+      hadPendingRow = true;
       const due = new Date(fu.next_date);
       due.setHours(23, 59, 59, 999);
       const overdue = due < now;
@@ -747,6 +765,61 @@ export function buildDoerTimeline(
         site: siteOf(quote.cust, quote.siteId),
         onTime: overdue ? false : null, // false = overdue, null = upcoming
         nextSummary: nextSummaryOf({ date: fu.next_date, time: fu.next_time }),
+      });
+    }
+
+    // Fallback: a card counted toward Negotiation's Volume (computeDoerMetrics'
+    // "open pipeline currently owned" snapshot — status open, stage Sent
+    // Quotation/Offer Acknowledged, fu.owner matches) but with zero real logs
+    // and no next_date produces NEITHER a done row NOR the pending row above,
+    // so it would silently vanish from history despite being counted in
+    // Volume. Surface it explicitly instead of leaving a gap that only shows
+    // up as "Volume says 5, table shows 2".
+    if (
+      member.role === 'Negotiation' && !hadDoneRow && !hadPendingRow &&
+      fu.status !== 'closed' && (fu.stage === 'Sent Quotation' || fu.stage === 'Offer Acknowledged') &&
+      isMine(fu.owner)
+    ) {
+      const stamp = fu.stage_entered_at || quote.date || fu.created_at || new Date().toISOString();
+      rows.push({
+        date: stamp.slice(0, 10),
+        ts: stamp,
+        kind: 'pending',
+        activity: `Owned · ${quote.id}`,
+        refId: quote.id,
+        cust: quote.cust,
+        siteId: quote.siteId ?? null,
+        site: siteOf(quote.cust, quote.siteId),
+        onTime: null,
+        note: 'Owned — no activity logged yet',
+      });
+    }
+
+    // Second fallback: computeDoerMetrics' Negotiation win-rate credits a
+    // closed-with-outcome card to fu.owner whenever there's no logged author
+    // to credit instead (`realLogs.length === 0` → falls back from
+    // matchDoer(lastAuthor, ...) to matchDoer(fu.owner, ...)) — a deal that
+    // was won/lost without a single follow-up ever being logged. That's a
+    // different card shape than the open-pipeline fallback above (closed,
+    // not open), so it needs its own check or it'd count toward Win Rate
+    // while staying invisible here too.
+    if (
+      member.role === 'Negotiation' && !hadDoneRow &&
+      fu.status === 'closed' && fu.outcome && realLogs.length === 0 &&
+      isMine(fu.owner)
+    ) {
+      const stamp = fu.updated_at || fu.stage_entered_at || quote.date || fu.created_at || new Date().toISOString();
+      rows.push({
+        date: stamp.slice(0, 10),
+        ts: stamp,
+        kind: 'done',
+        activity: `Closed ${fu.outcome} · ${quote.id}`,
+        refId: quote.id,
+        cust: quote.cust,
+        siteId: quote.siteId ?? null,
+        site: siteOf(quote.cust, quote.siteId),
+        onTime: null,
+        note: `Closed ${fu.outcome} — no activity logged`,
       });
     }
   }

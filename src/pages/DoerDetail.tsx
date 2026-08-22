@@ -179,7 +179,7 @@ export function DoerDetail() {
       )}
 
       {/* Work History — tabular */}
-      <WorkHistoryTable timeline={timeline} doerName={member.display_name} />
+      <WorkHistoryTable timeline={timeline} doerName={member.display_name} role={member.role} />
     </div>
   );
 }
@@ -233,7 +233,7 @@ function rowStatusKey(row: TimelineRow): keyof typeof STATUS_META {
 type SortCol = 'ts' | 'status' | 'channel' | 'refId' | 'cust' | 'lapH';
 type SortDir = 'asc' | 'desc';
 
-function WorkHistoryTable({ timeline, doerName }: { timeline: TimelineRow[]; doerName: string }) {
+function WorkHistoryTable({ timeline, doerName, role }: { timeline: TimelineRow[]; doerName: string; role: DoerRole }) {
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [sortCol, setSortCol] = useState<SortCol>('ts');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -246,6 +246,12 @@ function WorkHistoryTable({ timeline, doerName }: { timeline: TimelineRow[]; doe
   const isDeoTimeline = timeline.some(r => r.kindLabel === 'Enquiry entry' || r.kindLabel === 'Order');
   const isRateEntryTimeline = timeline.some(r => r.kindLabel === 'Quote sent' || r.kindLabel === 'Draft');
   const isLapTimeline = isDeoTimeline || isRateEntryTimeline;
+  // Negotiation's summary Volume is a lifetime "currently owned" snapshot
+  // (ROLE_CONFIG's primaryDesc is "at negotiation stage", not "in period" —
+  // every other role's is "in period"), so it's the only role whose done-row
+  // history is lifetime rather than scoped to the selected date range (see
+  // buildDoerTimeline in kpi.ts). Drives the empty-state copy below.
+  const isLifetimeTimeline = role === 'Negotiation';
 
   // Summary counts for the banner
   const counts = useMemo(() => {
@@ -366,7 +372,7 @@ function WorkHistoryTable({ timeline, doerName }: { timeline: TimelineRow[]; doe
 
       {filtered.length === 0 ? (
         <div className="text-[12px] text-g400 py-10 text-center">
-          {isLapTimeline ? 'No activity in this period.' : 'No activity yet.'}
+          {isLifetimeTimeline ? 'No activity yet.' : 'No activity in this period.'}
         </div>
       ) : (
         <div className="overflow-x-auto">
