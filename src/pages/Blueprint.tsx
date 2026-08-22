@@ -190,6 +190,10 @@ export function Blueprint() {
     ? `${nextPhase.tag} in pipeline`
     : `${phases.length}/${phases.length} phases complete`;
 
+  // Fixes the trailing-row gap in the Functional Requirements 4-col grid when
+  // requirementsByModule.length isn't a multiple of 4 (see render below).
+  const remainder = requirementsByModule.length % 4;
+
   const KpiCard = ({ title, value, delta, up }: { title: string, value: string | React.ReactNode, delta: string, up?: boolean }) => (
     <div className="bg-white border border-g200 p-[16px_18px] relative overflow-hidden transition-all duration-300 hover:border-red-mrt hover:shadow-[0_4px_18px_rgba(0,0,0,0.05)] group">
       <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-red-mrt transform scale-x-0 origin-left transition-transform duration-400 group-hover:scale-x-100" />
@@ -473,8 +477,13 @@ export function Blueprint() {
           </div>
           <div className="p-4">
             <div className="grid grid-cols-4 gap-4">
-              {requirementsByModule.map((mod, idx) => (
-                <div key={idx} className="border border-g200 p-3 rounded-[3px]">
+              {requirementsByModule.map((mod, idx) => {
+                const isTrailing = idx >= requirementsByModule.length - remainder;
+                const colSpan = remainder === 2 && isTrailing ? 'col-span-2'
+                  : remainder === 1 && isTrailing ? 'col-span-4'
+                  : '';
+                return (
+                <div key={idx} className={`border border-g200 p-3 rounded-[3px] ${colSpan}`}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[12.5px] font-bold text-blk">{mod.module}</span>
                     <span className="text-[12px]">{mod.status}</span>
@@ -488,7 +497,8 @@ export function Blueprint() {
                       ))}
                     </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
