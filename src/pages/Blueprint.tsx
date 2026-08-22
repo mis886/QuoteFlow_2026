@@ -91,7 +91,12 @@ export function Blueprint() {
     { name: 'GitHub Actions + Wrangler', icon: '⚙️', role: 'CI/CD Pipeline', status: 'Active', desc: 'Auto-rebuilds dist/ and deploys directly to Cloudflare via Wrangler CLI on every push to main — replaces the old dependency on Cloudflare\'s git webhook integration.', health: 100 },
   ];
 
-  const phases = [
+  interface PhaseWeek { label: string; items: string[]; }
+  interface Phase {
+    tag: string; week: string; title: string; progress: number; status: string;
+    tasks: string[]; weeklyDetail?: PhaseWeek[];
+  }
+  const phases: Phase[] = [
     { tag: 'Phase 0', week: 'Week 1', title: 'Enquiry Capture + React Setup', progress: 100, status: 'Complete', tasks: ['Multi-line-item entry form', 'Auto ENQ-YYYY-NNN numbering', 'React Context State logic'] },
     { tag: 'Phase 1', week: 'Week 2', title: 'Customer Master & Shell', progress: 100, status: 'Complete', tasks: ['CRUD customer master', 'Sidebar navigation', 'Global search', 'Responsive layout'] },
     { tag: 'Phase 2', week: 'Week 3–4', title: 'Quote Generator + PDF', progress: 100, status: 'Complete', tasks: ['ENQ→Quote conversion', 'Items auto-populate (zero re-entry)', 'Pricing + HSN entry', 'PDF generation'] },
@@ -99,21 +104,8 @@ export function Blueprint() {
     { tag: 'Phase 4', week: 'Week 6', title: 'Order Module', progress: 100, status: 'Complete', tasks: ['Won quote → Order conversion', 'Amend MOC/rates per PO', 'PO number tracking', 'Delivery date scheduling'] },
     { tag: 'Phase 5', week: 'Week 7', title: 'Cloud & API Integration', progress: 100, status: 'Complete', tasks: ['Supabase Storage for attachments', 'Authenticated data syncing', 'Real-time database mirroring'] },
     { tag: 'Phase 6', week: 'Week 8', title: 'Follow-Up Command Centre', progress: 100, status: 'Complete', tasks: ['Split-panel CRM view', 'Activity logging timeline', 'Overdue scheduling logic'] },
-    { tag: 'Phase 7', week: 'July 2026', title: 'Sampling Module & Negotiation Rounds', progress: 100, status: 'Complete', tasks: ['Sampling module: status lifecycle, POD/COA/Lot No uploads, multi-product records', 'Quotation Negotiation Rounds (form → register → PDF/DOCX)', 'Customer Tier + Authorized Signatory rollout (Enquiry/Quotation/Order)', 'Packing Types finalized to fixed 26-item list', 'CI/CD moved to GitHub Actions + Wrangler'] },
-  ];
-
-  const timeline = [
-    { date: '✅ May 20, 2026', event: 'V3 Launched', desc: 'All core modules live. Supabase-backed, authenticated, deployed to Cloudflare.' },
-    { date: '✅ June 2026', event: 'V3 Stabilization Sprint — All Core Modules', desc: 'Enquiry: schema alignment with Supabase, created_by tracking. Quotation: Billing Name/HSN auto-fill, Insurance row, Payment Terms/Incoterms auto-fill, PDF/DOCX letterhead overhaul with default signatory, per-user Gmail OAuth. Order: GST/Insurance calc matched to quotation, Taxes & Charges section built, full auto-populate from customer/quote. Customers: PAN auto-extract from GSTIN, dynamic segment dropdown, auto-save contact details. Sampling: module built from scratch (tracker + log form + feedback recording). Packing Types: DB-backed persistence shipped across all 3 modules. Role-restricted deletes (mis@/shishir@) added across Enquiry/Quotation/Order.' },
-    { date: '✅ July 2026', event: 'Phase 7 — Sampling, Negotiation & Cross-Module Rollout', desc: 'Sampling: full status lifecycle, POD/COA/Lot No uploads, multi-product records, tracking number, email dispatch template. Quotation: Negotiation Rounds shipped end-to-end (form → register → PDF/DOCX), Authorized Signatory panel, Customer Tier badge. Enquiry: Authorized Signatory panel, Customer Tier badge. Order: Payment Terms field, Order Confirmed status, PO upload fix, Customer Tier badge. Customer Master: created_by/modified_by tracking, restricted delete, improved search. Follow-Up CRM: new Negotiation stage with quick-action chips and 7-day TAT. Packing Types finalized to a fixed 26-item list. Enquiry→Quotation→Order cascade-delete FKs added then reverted to independent per-module deletes (SET NULL) after the cascade UI got stuck. CI/CD moved to GitHub Actions + direct Wrangler deploy.' },
-  ];
-
-  interface MonthWeek { label: string; items: string[]; }
-  interface MonthBreakdown { month: string; weeks: MonthWeek[]; launchNote?: string; }
-  const monthlyBreakdown: MonthBreakdown[] = [
-    {
-      month: 'June 2026',
-      weeks: [
+    { tag: 'Phase 7', week: 'June–July 2026', title: 'Sampling Module & Negotiation Rounds', progress: 100, status: 'Complete', tasks: ['Sampling module: status lifecycle, POD/COA/Lot No uploads, multi-product records', 'Quotation Negotiation Rounds (form → register → PDF/DOCX)', 'Customer Tier + Authorized Signatory rollout (Enquiry/Quotation/Order)', 'Packing Types finalized to fixed 26-item list', 'CI/CD moved to GitHub Actions + Wrangler'],
+      weeklyDetail: [
         { label: 'Week 3 (Jun 15–21)', items: [
           'V3 Launched — May 20, 2026. All core modules live, Supabase-backed, deployed to Cloudflare.',
           'Initial commit; migrated to new Supabase project',
@@ -139,11 +131,6 @@ export function Blueprint() {
           'Request Sample buttons on Enquiry/Quotation; Convert to Order from approved samples',
           'Full auto-populate on customer select; packing types persisted with dedup + normalization; unified PDF bank details/greeting logic',
         ] },
-      ],
-    },
-    {
-      month: 'July 2026',
-      weeks: [
         { label: 'Week 1 (Jul 1–7)', items: [
           'Order schema persistence fix — contact/company unit/bank/signatory/terms fields were silently dropped, now actually saved',
           'Packing types finalized to a fixed 26-item list (free-text add removed)',
@@ -179,6 +166,12 @@ export function Blueprint() {
         ] },
       ],
     },
+  ];
+
+  const timeline = [
+    { date: '✅ May 20, 2026', event: 'V3 Launched', desc: 'All core modules live. Supabase-backed, authenticated, deployed to Cloudflare.' },
+    { date: '✅ June 2026', event: 'V3 Stabilization Sprint — All Core Modules', desc: 'Enquiry: schema alignment with Supabase, created_by tracking. Quotation: Billing Name/HSN auto-fill, Insurance row, Payment Terms/Incoterms auto-fill, PDF/DOCX letterhead overhaul with default signatory, per-user Gmail OAuth. Order: GST/Insurance calc matched to quotation, Taxes & Charges section built, full auto-populate from customer/quote. Customers: PAN auto-extract from GSTIN, dynamic segment dropdown, auto-save contact details. Sampling: module built from scratch (tracker + log form + feedback recording). Packing Types: DB-backed persistence shipped across all 3 modules. Role-restricted deletes (mis@/shishir@) added across Enquiry/Quotation/Order.' },
+    { date: '✅ July 2026', event: 'Phase 7 — Sampling, Negotiation & Cross-Module Rollout', desc: 'Sampling: full status lifecycle, POD/COA/Lot No uploads, multi-product records, tracking number, email dispatch template. Quotation: Negotiation Rounds shipped end-to-end (form → register → PDF/DOCX), Authorized Signatory panel, Customer Tier badge. Enquiry: Authorized Signatory panel, Customer Tier badge. Order: Payment Terms field, Order Confirmed status, PO upload fix, Customer Tier badge. Customer Master: created_by/modified_by tracking, restricted delete, improved search. Follow-Up CRM: new Negotiation stage with quick-action chips and 7-day TAT. Packing Types finalized to a fixed 26-item list. Enquiry→Quotation→Order cascade-delete FKs added then reverted to independent per-module deletes (SET NULL) after the cascade UI got stuck. CI/CD moved to GitHub Actions + direct Wrangler deploy.' },
   ];
 
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
@@ -252,72 +245,6 @@ export function Blueprint() {
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-        </div>
-
-        {/* MONTH-BY-WEEK BUILD HISTORY */}
-        <div className="bg-white border border-g200">
-          <div className="p-[11px_18px] border-b border-g200 flex justify-between items-center">
-            <span className="font-mono text-[9px] font-bold tracking-[2.5px] uppercase text-g500">📅 Month-by-Week Build History</span>
-          </div>
-          <div className="p-4">
-            <div className="relative pl-6 border-l-2 border-g200">
-              {monthlyBreakdown.map(m => {
-                const updateCount = m.weeks.reduce((s, w) => s + w.items.length, 0);
-                return (
-                  <div key={m.month} className="relative pb-5 last:pb-0">
-                    <div className="absolute -left-[31px] top-1 w-3 h-3 rounded-full border-[3px] border-cream shadow-[0_0_0_2px] bg-sW shadow-sW/50"></div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-[8.5px] font-bold tracking-[2px] uppercase text-sW">{m.month}</span>
-                      {m.weeks.length > 0 && (
-                        <span className="text-[9px] px-1.5 py-px rounded font-medium bg-sW/10 text-sW">{updateCount} updates</span>
-                      )}
-                    </div>
-                    {m.weeks.length === 0 ? (
-                      <div className="text-[12px] text-g600">{m.launchNote}</div>
-                    ) : (
-                      <div className="space-y-1.5 mt-2">
-                        {m.weeks.map(w => {
-                          const key = `${m.month}::${w.label}`;
-                          const isOpen = expandedWeeks.has(key);
-                          const hasItems = w.items.length > 0;
-                          return (
-                            <div key={key} className="border border-g100 rounded-[4px] overflow-hidden">
-                              <button
-                                type="button"
-                                onClick={() => { if (hasItems) toggleWeek(key); }}
-                                disabled={!hasItems}
-                                className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-g50/60 disabled:hover:bg-transparent transition-colors disabled:cursor-not-allowed"
-                              >
-                                <span className={`font-mono text-[9px] font-bold tracking-[1px] uppercase ${hasItems ? 'text-sW' : 'text-g400'}`}>{w.label}</span>
-                                {hasItems ? (
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="text-[9px] px-1.5 py-px rounded font-medium bg-sW/10 text-sW">{w.items.length}</span>
-                                    <ArrowRight size={11} className={`text-g400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
-                                  </span>
-                                ) : (
-                                  <span className="text-[9px] px-1.5 py-px rounded font-medium bg-g100 text-g500">No activity</span>
-                                )}
-                              </button>
-                              {isOpen && hasItems && (
-                                <div className="px-3 pb-2.5 pt-1.5 border-t border-g100 space-y-1">
-                                  {w.items.map((item, i) => (
-                                    <div key={i} className="flex items-start gap-1.5">
-                                      <div className="w-1 h-1 rounded-full mt-1.5 bg-sW shrink-0" />
-                                      <span className="text-[11.5px] text-g600 leading-snug">{item}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
             </div>
           </div>
         </div>
@@ -496,11 +423,14 @@ export function Blueprint() {
                 {phases.map((p, i) => {
                   const isDone = p.status === 'Complete';
                   const clr = isDone ? 'bg-sW border-sW/30 text-sW' : 'bg-g400 border-g400/30 text-g500';
-                  
+                  const hasWeekly = !!p.weeklyDetail && p.weeklyDetail.length > 0;
+                  const weeklyKey = `phase-weekly::${p.tag}`;
+                  const weeklyOpen = expandedWeeks.has(weeklyKey);
+
                   return (
                     <div key={i} className="relative pb-5 last:pb-0">
                       <div className={`absolute -left-[31px] top-1 w-3 h-3 rounded-full border-[3px] border-cream shadow-[0_0_0_2px] ${isDone ? 'bg-sW shadow-sW/50' : 'bg-g400 shadow-g400/50'}`}></div>
-                      
+
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
@@ -515,8 +445,39 @@ export function Blueprint() {
                               </span>
                             ))}
                           </div>
+
+                          {hasWeekly && (
+                            <div className="mt-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleWeek(weeklyKey)}
+                                className={`inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded-[2px] font-medium transition-colors ${weeklyOpen ? 'bg-sW text-white' : 'bg-sW/10 text-sW hover:bg-sW/20'}`}
+                              >
+                                {weeklyOpen ? 'Hide' : 'Show'} week-by-week breakdown
+                                <ArrowRight size={10} className={`transition-transform duration-200 ${weeklyOpen ? 'rotate-90' : ''}`} />
+                              </button>
+
+                              {weeklyOpen && (
+                                <div className="mt-2.5 pt-2.5 border-t border-g100 space-y-2.5">
+                                  {p.weeklyDetail!.map(w => (
+                                    <div key={w.label}>
+                                      <div className="font-mono text-[9px] font-bold tracking-[1px] uppercase text-g500 mb-1">{w.label}</div>
+                                      <div className="space-y-1">
+                                        {w.items.map((item, ii) => (
+                                          <div key={ii} className="flex items-start gap-1.5">
+                                            <div className="w-1 h-1 rounded-full mt-1.5 bg-sW shrink-0" />
+                                            <span className="text-[11.5px] text-g600 leading-snug">{item}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        
+
                         <div className="flex flex-col items-end gap-1 min-w-[70px]">
                           <div className="w-full h-[5px] bg-g100 rounded-[3px] overflow-hidden">
                             <div className={`h-full ${isDone ? 'bg-sW' : 'bg-g400'} rounded-[3px]`} style={{ width: `${p.progress}%` }}></div>
