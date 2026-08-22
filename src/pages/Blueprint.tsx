@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../store';
 import { formatINR } from '../lib/utils';
 import { Button, Badge } from '../components/ui';
@@ -108,6 +108,96 @@ export function Blueprint() {
     { date: '✅ July 2026', event: 'Phase 7 — Sampling, Negotiation & Cross-Module Rollout', desc: 'Sampling: full status lifecycle, POD/COA/Lot No uploads, multi-product records, tracking number, email dispatch template. Quotation: Negotiation Rounds shipped end-to-end (form → register → PDF/DOCX), Authorized Signatory panel, Customer Tier badge. Enquiry: Authorized Signatory panel, Customer Tier badge. Order: Payment Terms field, Order Confirmed status, PO upload fix, Customer Tier badge. Customer Master: created_by/modified_by tracking, restricted delete, improved search. Follow-Up CRM: new Negotiation stage with quick-action chips and 7-day TAT. Packing Types finalized to a fixed 26-item list. Enquiry→Quotation→Order cascade-delete FKs added then reverted to independent per-module deletes (SET NULL) after the cascade UI got stuck. CI/CD moved to GitHub Actions + direct Wrangler deploy.' },
   ];
 
+  interface MonthWeek { label: string; items: string[]; }
+  interface MonthBreakdown { month: string; weeks: MonthWeek[]; launchNote?: string; }
+  const monthlyBreakdown: MonthBreakdown[] = [
+    {
+      month: 'May 2026',
+      // No weekly data available — this repo's earliest commit is June 16, 2026, a month
+      // after the May 20 launch, so the launch itself predates this repo's history.
+      weeks: [],
+      launchNote: 'V3 Launched — May 20, 2026. All core modules live, Supabase-backed, deployed to Cloudflare.',
+    },
+    {
+      month: 'June 2026',
+      weeks: [
+        { label: 'Week 1 (Jun 1–7)', items: [] },
+        { label: 'Week 2 (Jun 8–14)', items: [] },
+        { label: 'Week 3 (Jun 15–21)', items: [
+          'Initial commit; migrated to new Supabase project',
+          'Sidebar rebrand (MANGLA → Himalaya Terpenes)',
+          'Product Catalog + HSN auto-fill introduced; Packing Type dropdown introduced',
+          'Customer/Enquiry schema alignment fixes',
+          'Quotation UX overhaul: Billing Name/HSN auto-fill, TOTAL QTY auto-calc, Insurance row, Payment Terms/Incoterms dropdowns with customer auto-fill, searchable product fields',
+          'Price Basis dropdown; currency-aware UI (hide GST/Insurance for USD)',
+          'Google OAuth email; PAN auto-extract from GSTIN; role-restricted delete buttons introduced',
+        ] },
+        { label: 'Week 4 (Jun 22–28)', items: [
+          'GST/Insurance calc order fixed & matched across Quote↔Order',
+          'PDF/DOCX letterhead overhaul with default signatory',
+          'Order form auto-populate from customer/quote-to-order; line items matched to Quotation format; Incoterms/Currency fields added',
+          'Role-restricted delete extended to Quotations/Orders; cascade-delete FK fixes',
+          'DOCX overhaul; email CC improvements; per-user Gmail OAuth',
+          'Auto-resolve identity from Supabase auth; grand total roundoff fixes; created_by tracking begins',
+          'Packing Type persistence shipped (DB-backed, across Enquiry/Quotation/Order)',
+        ] },
+        { label: 'Week 5 (Jun 29–30)', items: [
+          'Sampling module built from scratch (tracker, log form, feedback recording, full /sampling/new route)',
+          'Taxes & Charges section built in Orders (Freight/Other)',
+          'Request Sample buttons on Enquiry/Quotation; Convert to Order from approved samples',
+          'Full auto-populate on customer select; packing types persisted with dedup + normalization; unified PDF bank details/greeting logic',
+        ] },
+      ],
+    },
+    {
+      month: 'July 2026',
+      weeks: [
+        { label: 'Week 1 (Jul 1–7)', items: [
+          'Order schema persistence fix — contact/company unit/bank/signatory/terms fields were silently dropped, now actually saved',
+          'Packing types finalized to a fixed 26-item list (free-text add removed)',
+          'Sampling: POD/COA uploads + Lot No field, default follow-up 3 days, Email to Client button, Edit/Delete actions, email_sent_at tracking + Sent filter tab',
+          'Product Catalog moved to a real DB-backed table (was hardcoded)',
+          'PO upload actually persists (storage bucket fix); Sample tab added to Enquiry/Quotation registers',
+          'Customer Master: created_by/modified_by tracking, restricted delete, Segment dropdown updated',
+        ] },
+        { label: 'Week 2 (Jul 8–14)', items: [
+          'View/download links for PO/COA/POD files',
+          'CI/CD: GitHub Actions workflow added to auto-rebuild dist/ and deploy via Wrangler',
+          'PDF/DOCX signatory fix',
+          'Standardized Email Sample Dispatch template; Tracking Number field + Sent By autocomplete on Sampling',
+        ] },
+        { label: 'Week 3 (Jul 15–21)', items: [
+          'Customer search improvements (case-insensitive, ranked); global search wired to Sampling/Customers',
+          'Payment Terms field on Orders; Order Confirmed status (OC/PI gated by payment terms)',
+          'Authorized Signatory panel rolled out (replaces Assigned To) on Enquiry, prefilled across Quotation/Order',
+          'Customer Tier badge added to Enquiry/Quotation/Order',
+          'Phone numbers normalized to +91 format across all modules',
+          'Cascading delete added (Enquiry/Quotation/Order, with confirmation)',
+        ] },
+        { label: 'Week 4 (Jul 22–28)', items: [
+          'Tanker packing type option added',
+          'Doer KPI negotiation-stage deals count fix',
+          'Negotiation Rounds shipped: per-line-item price/discount, full line-item detail, own follow-up stage, PDF/DOCX export wiring',
+          'Camphor powder/isoborneol flakes + delivery term added to letterhead/T&C',
+          'Cascading delete reverted back to independent per-module deletes (UI got stuck)',
+        ] },
+        { label: 'Week 5 (Jul 29–31)', items: [
+          'Add Negotiation Round button fix',
+          'Supabase egress optimization — skip full data reload on silent token refresh',
+        ] },
+      ],
+    },
+  ];
+
+  const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
+  const toggleWeek = (key: string) => {
+    setExpandedWeeks(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   // Derived from `phases` instead of hardcoded, so this doesn't go stale the
   // next time a phase is added/completed the way "Phase 6 in pipeline" did.
   const nextPhase = phases.find(p => p.status !== 'Complete');
@@ -171,6 +261,58 @@ export function Blueprint() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+
+        {/* MONTH-BY-WEEK BUILD HISTORY */}
+        <div className="bg-white border border-g200">
+          <div className="p-[11px_18px] border-b border-g200 flex justify-between items-center">
+            <span className="font-mono text-[9px] font-bold tracking-[2.5px] uppercase text-g500">📅 Month-by-Week Build History</span>
+          </div>
+          <div className="p-4 space-y-5">
+            {monthlyBreakdown.map(m => (
+              <div key={m.month}>
+                <div className="font-mono text-[10px] font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">{m.month}</div>
+                {m.weeks.length === 0 ? (
+                  <div className="text-[12px] text-g600 pl-3 border-l-2 border-g200">{m.launchNote}</div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {m.weeks.map(w => {
+                      const key = `${m.month}::${w.label}`;
+                      const isOpen = expandedWeeks.has(key);
+                      const hasItems = w.items.length > 0;
+                      return (
+                        <div key={key} className={`border border-g100 rounded-[4px] ${hasItems ? '' : 'opacity-50'}`}>
+                          <button
+                            type="button"
+                            onClick={() => { if (hasItems) toggleWeek(key); }}
+                            disabled={!hasItems}
+                            className="w-full flex items-center justify-between px-3 py-2 text-left disabled:cursor-not-allowed hover:bg-g50/60 transition-colors"
+                          >
+                            <span className="text-[12px] font-semibold text-blk">{w.label}</span>
+                            {hasItems ? (
+                              <ArrowRight size={12} className={`text-g400 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+                            ) : (
+                              <span className="text-[10px] text-g400 italic">No activity</span>
+                            )}
+                          </button>
+                          {isOpen && hasItems && (
+                            <ul className="px-3 pb-2.5 space-y-1">
+                              {w.items.map((item, i) => (
+                                <li key={i} className="text-[11px] text-g600 leading-snug flex items-start gap-1.5">
+                                  <span className="text-g300 mt-0.5 shrink-0">•</span>
+                                  <span>{item}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
