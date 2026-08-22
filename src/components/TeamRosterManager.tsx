@@ -11,7 +11,7 @@ const ROLE_HELP: Record<DoerRole, string> = {
   'Rate Entry': 'Enters rates, turns enquiry into quote, marks sent',
   'SC_1': 'Runs follow-ups per the TAT pipeline after quote sent',
   'Negotiation': 'Handles cards in the Negotiation lane',
-  'PI Sender': 'Accounts; issues the Proforma Invoice (scoring coming soon)',
+  'PI Sender': 'Accounts; issues the Proforma Invoice (volume mirrors DEO order count — no separate PI-sent event is tracked)',
   'Technical': 'MIS / system administration',
   'Admin': 'Full-access administrator',
   'Other': 'Any other contributor',

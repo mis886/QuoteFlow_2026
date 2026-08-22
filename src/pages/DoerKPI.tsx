@@ -85,10 +85,18 @@ const ROLE_CONFIG: Record<DoerRole, {
     primaryMetric: 'Deals handled', primaryDesc: 'at negotiation stage',
     secondaryMetric: 'Win rate', secondaryDesc: 'of closed deals',
   },
+  // "Generate PI" (NewOrder.tsx) is a client-side PDF/DOCX export that fires
+  // as part of the same order-save action — there is no separate "PI sent"
+  // event anywhere in the schema, and TeamRosterManager's own help text
+  // documents the intended model as one shared login covering DEO + Rate
+  // Entry + PI Sender at once (not a handoff to a different person). So this
+  // number is honestly the same orders.doer count as DEO's order volume,
+  // not a distinct action — labelled accordingly instead of implying a
+  // separate dispatch step that isn't tracked. See kpi.ts for the computation.
   'PI Sender': {
     label: 'PI Sender', color: 'border-l-red-500', accent: 'text-red-600', accentBg: 'bg-red-50',
-    primaryMetric: 'PIs sent', primaryDesc: 'in period',
-    secondaryMetric: 'Avg dispatch time', secondaryDesc: 'order → PI sent',
+    primaryMetric: 'Orders touched', primaryDesc: '= DEO order count',
+    secondaryMetric: 'Dispatch time', secondaryDesc: 'not tracked',
   },
   'Technical': {
     label: 'Technical', color: 'border-l-cyan-500', accent: 'text-cyan-600', accentBg: 'bg-cyan-50',
@@ -246,10 +254,10 @@ export function DoerKPI() {
               : m.role === 'DEO' ? fmtHours(m.enqLapH)
               : m.role === 'Rate Entry' ? fmtHours(m.quoteLapH)
               : m.role === 'Other' ? fmtPct(m.onTimePct)
-              // PI Sender: no dispatch-time data exists yet (no PI-sent
-              // timestamp anywhere in the schema — see buildDoerTimeline).
-              // fmtHours(null) already renders '—', spelled out here so the
-              // gap reads as deliberate, not a missed case.
+              // PI Sender: "Dispatch time" is deliberately untracked (no
+              // PI-sent timestamp exists anywhere — see kpi.ts). fmtHours(null)
+              // already renders '—', spelled out here so the gap reads as
+              // deliberate, not a missed case.
               : m.role === 'PI Sender' ? fmtHours(m.avgCycleH)
               : '—';
 

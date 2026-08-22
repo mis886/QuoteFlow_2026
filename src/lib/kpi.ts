@@ -386,20 +386,27 @@ export function computeDoerMetrics(
     if (raw) { raw.volume++; raw.orderCount++; }
   }
 
-  // ── PI Sender: orders touched (Proforma Invoice issuance) ──────────────
-  // There is no persisted "PI sent" event anywhere in the schema — Generate
-  // PI (src/pages/NewOrder.tsx handleGeneratePI/handleGeneratePIDOCX) only
-  // renders a PDF/DOCX client-side, it never writes to Supabase, and no
-  // orders column records when a PI went out. Per the design laid out in
-  // migrations/2026-06-08_team_roster.sql ("PI sent = PI Sender" is one of
-  // several jobs a shared login's work is split across, alongside
-  // "enquiry entered = DEO" / "rates entered = Rate Entry"), the only real
-  // attribution data available for this role is orders.doer — the same
-  // field DEO's conversion volume above is credited from. Volume can
-  // therefore be counted honestly; avgCycleH (order → PI sent dispatch
-  // time) cannot — that needs an actual pi_sent_at timestamp, which does
-  // not exist yet, so it stays null (renders as "—") rather than being
-  // fabricated.
+  // ── PI Sender: orders touched — deliberately the SAME event as DEO's ───
+  // order-conversion volume above, not a distinct action. There is no
+  // persisted "PI sent" event anywhere in the schema — Generate PI
+  // (src/pages/NewOrder.tsx handleGeneratePI/handleGeneratePIDOCX) calls
+  // persistOrder() and then renders a PDF/DOCX client-side in the same
+  // step; it never writes a separate timestamp to Supabase. Investigated
+  // 2026-08-22 whether this should become a real distinct step (a
+  // pi_sent_at column + a "Mark PI Sent" action) versus being honestly
+  // merged: TeamRosterManager's own help text documents the intended model
+  // as one shared login covering DEO + Rate Entry + PI Sender AT ONCE (see
+  // ROLE_HELP in src/components/TeamRosterManager.tsx), not a handoff to a
+  // different person, and its PI Sender description already says "scoring
+  // coming soon" — i.e. this was always a placeholder, never a built
+  // feature. Given that, plus no separate dispatch event existing anywhere
+  // in the UI, orders.doer (the only actor ever recorded on an order) is
+  // the honest answer: this role's volume IS the order-touch count, so it
+  // reuses the same source as DEO. DoerKPI.tsx's ROLE_CONFIG labels it
+  // "Orders touched = DEO order count" rather than "PIs sent" so it no
+  // longer implies a separate action is being measured. If a real,
+  // separately-timed PI dispatch step is ever introduced, this is where a
+  // pi_sent_at-based volume would replace this loop.
   for (const o of data.orders) {
     if (!inRange((o as any).created_at ?? o.poDate, range)) continue;
     const raw = matchDoer(o.doer, 'PI Sender');
@@ -675,11 +682,12 @@ export function buildDoerTimeline(
     return rows.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
   }
 
-  // ── PI Sender work history: orders touched (Proforma Invoice issuance).
-  // See the matching comment in computeDoerMetrics above — there is no
-  // pi_sent_at (or equivalent) event persisted anywhere, so rows are
-  // sourced from orders.doer with no lap/on-time scoring, same as the
-  // volume-only metric on the summary card.
+  // ── PI Sender work history: orders touched, deliberately the same rows
+  // DEO's order-conversion history would show for this identity. See the
+  // matching comment in computeDoerMetrics above (2026-08-22) — no
+  // pi_sent_at (or equivalent) event exists to source anything more
+  // specific, so rows are sourced from orders.doer with no lap/on-time
+  // scoring, same as the "Orders touched" volume on the summary card.
   if (member.role === 'PI Sender') {
     for (const o of data.orders) {
       if (!isMine(o.doer)) continue;
