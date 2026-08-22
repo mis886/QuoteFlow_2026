@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, RefreshCw, UserCircle2, X, LogOut } from 'lucide-react';
 import { SlaNotificationBell } from './SlaNotificationBell';
+import { GlobalSearchResults } from './GlobalSearchResults';
 import { useLocation } from 'react-router-dom';
 import { useAppStore, SALES_EMAIL } from '../store';
 import { hasActiveToken } from '../lib/gmail';
@@ -22,6 +23,7 @@ export function Topbar() {
   const location = useLocation();
   const { globalSearchQuery, setGlobalSearchQuery, syncGmailEnquiries, data, activeDoer, user, salesIdentity, setSalesIdentity } = useAppStore();
   const [isSyncing, setIsSyncing] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const basePath = '/' + location.pathname.split('/')[1];
   const title = PATH_TITLES[basePath] || 'Dashboard';
@@ -45,13 +47,15 @@ export function Topbar() {
         Himalaya TerpenesEQ <span className="text-g300 mx-1">/</span> <strong className="text-blk font-semibold">{title}</strong>
       </div>
 
-      <div className="ml-auto flex items-center gap-2 bg-g100 border border-g200 rounded-[5px] px-2.5 h-[30px] w-[200px] transition-all focus-within:bg-white focus-within:border-g400 focus-within:ring-[3px] focus-within:ring-red-lt">
+      <div className="relative ml-auto flex items-center gap-2 bg-g100 border border-g200 rounded-[5px] px-2.5 h-[30px] w-[200px] transition-all focus-within:bg-white focus-within:border-g400 focus-within:ring-[3px] focus-within:ring-red-lt">
         <Search size={12} className="text-g400 shrink-0" />
         <input
           type="text"
           placeholder="Search everywhere..."
           value={globalSearchQuery}
           onChange={(e) => setGlobalSearchQuery(e.target.value)}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
           className="bg-transparent border-none outline-none font-sans text-[12.5px] text-blk w-full placeholder:text-g400"
         />
         {globalSearchQuery && (
@@ -63,6 +67,9 @@ export function Topbar() {
           >
             <X size={11} />
           </button>
+        )}
+        {searchFocused && globalSearchQuery.trim() && (
+          <GlobalSearchResults query={globalSearchQuery} onNavigate={() => { setGlobalSearchQuery(''); setSearchFocused(false); }} />
         )}
       </div>
 

@@ -51,13 +51,7 @@ export function Blueprint() {
     { module: 'Orders', status: '✅ Live', features: ['Won Quote→Order Banner', 'Amendable MOC/Qty/Rates', 'PO Number/Date tracking', 'Pro-forma Invoice Gen', 'Insurance + GST matching quotation logic', 'Order Value rounded', 'Taxes & Charges (Freight/P&F/TDS/TCS) fully built', 'Payment Terms field (prefilled from quotation)', 'Order Confirmed status', 'PO upload now actually persists (Storage bucket fix)'] },
     { module: 'Customers', status: '✅ Live', features: ['Segment Dropdown Filters', 'Customer Code Auto-gen', 'Sites JSONB support', 'New ENQ shortcut button', 'PAN auto-extracted from GSTIN', '750 customers imported and live', 'Case-insensitive search, ranks starts-with before contains, matches contact name/email', 'created_by/modified_by tracking', 'Restricted delete (mis@/shishir@ only)', 'Segment dropdown updated'] },
     { module: 'Analytics', status: '✅ Live', features: ['E2Q Horizontal Bar Chart', 'Conversion Funnel SVG', 'Sources Donut Chart', 'SLA Urgency Bar Chart'] },
-    // Kept Partial rather than Live: verified globalSearchQuery now filters
-    // Sampling.tsx and Customers.tsx (new in July) and Customers.tsx gained
-    // real ranking (nameTier/normalizeSearchText in src/lib/utils.ts), but
-    // found no dropdown/results-preview component anywhere in src/ — the
-    // topbar search (src/components/Topbar.tsx) is still a plain input that
-    // filters within whichever page you're on, not a cross-module dropdown.
-    { module: 'Search', status: '⚠ Partial', features: ['Topbar global search input', 'Result filtering in views', 'Now wired to Sampling + Customers (July)', 'Customers: starts-with-ranked, case/punctuation-insensitive matching', 'Still no cross-module results dropdown — filters per-page only'] },
+    { module: 'Search', status: '✅ Live', features: ['Topbar global search input', 'Cross-module results dropdown — Customers, Enquiries, Quotations, Orders, Sampling', 'Starts-with-ranked, case/punctuation-insensitive matching (shared nameTier/normalizeSearchText helper)', 'Click a result to jump straight to that record', 'Per-page filtering still applies within whichever module you have open'] },
     { module: 'Follow-Ups', status: '✅ Live', features: ['Split-Panel CRM Layout', 'Activity Logging Timeline', 'Follow-up Scheduling logic', 'Supabase Real-time Table', 'Negotiation stage — explicit dropdown (not auto-advanced), own quick-action chips + 7-day TAT'] },
     { module: 'Sampling', status: '✅ Live', features: ['POD/COA/Lot No file uploads (Supabase Storage)', 'Status lifecycle: pending → dispatched → delivered → approved/rejected', 'Multi-product samples per record (sample_products child table)', 'Standardized Email Sample Dispatch template', 'Sample tab on Enquiry/Quotation registers', 'Tracking number + Sent By autocomplete'] },
   ];
