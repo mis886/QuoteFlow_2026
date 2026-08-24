@@ -37,6 +37,14 @@ const MODULE_LABELS: Record<string, string> = {
 };
 const moduleLabel = (m: string) => MODULE_LABELS[m] ?? m;
 
+// Hard allowlist, not just a display label: this page is CRM-only by design
+// (Enquiries/Quotations/Orders/Customers/Follow-Ups/Sampling/Settings). The
+// separate /production workspace (prod_* tables) is a different concern with
+// its own workflows and must never surface here, even if a future change adds
+// logActivity() calls somewhere under src/production. Every query below is
+// scoped to this list so that guarantee holds regardless of what gets logged.
+const CRM_MODULES = Object.keys(MODULE_LABELS);
+
 function ActionPill({ action }: { action: ActivityAction }) {
   const styles: Record<ActivityAction, string> = {
     insert: 'bg-sW/10 text-sW border-sW/30',
@@ -115,7 +123,7 @@ export function HistoryLog() {
   // once up front from a lightweight column-only query (not the paginated
   // main query, which is filtered/limited).
   useEffect(() => {
-    supabase.from('activity_log').select('actor_name').not('actor_name', 'is', null).limit(2000)
+    supabase.from('activity_log').select('actor_name').not('actor_name', 'is', null).in('module', CRM_MODULES).limit(2000)
       .then(({ data }) => {
         const names = Array.from(new Set((data ?? []).map((r: any) => r.actor_name).filter(Boolean))).sort();
         setStaffOptions(names as string[]);
@@ -130,7 +138,7 @@ export function HistoryLog() {
     let cancelled = false;
     setLoading(true);
     (async () => {
-      let query = supabase.from('activity_log').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+      let query = supabase.from('activity_log').select('*', { count: 'exact' }).order('created_at', { ascending: false }).in('module', CRM_MODULES);
       if (moduleFilter) query = query.eq('module', moduleFilter);
       if (staffFilter) query = query.eq('actor_name', staffFilter);
       if (fromDate) query = query.gte('created_at', `${fromDate}T00:00:00`);
