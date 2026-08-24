@@ -4,6 +4,7 @@ import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
 import { calculateAgeHours, generateId } from '../lib/utils';
+import { logActivity } from '../lib/activityLog';
 import { User } from '@supabase/supabase-js';
 
 // Separate, purpose-specific mapping for the Authorized Signatory panel
@@ -645,6 +646,7 @@ const mapEnquiryToDB = (e: any) => {
     );
     if (!error) {
       setData(prev => ({ ...prev, enquiries: [finalRecord, ...prev.enquiries] }));
+      logActivity({ module: 'enquiries', recordId: finalRecord.id, recordLabel: finalRecord.id, action: 'insert', after: finalRecord });
     } else {
       console.error('Error adding enquiry:', error);
       throw new Error(error.message || 'Error adding enquiry');
@@ -652,6 +654,7 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const updateEnquiry = async (id: string, updates: Partial<Enquiry>) => {
+    const before = data.enquiries.find(e => e.id === id);
     const dbUpdates = mapEnquiryToDB(updates);
     const { error } = await supabase.from('enquiries').update(dbUpdates).eq('id', id);
     if (!error) {
@@ -659,6 +662,7 @@ const mapEnquiryToDB = (e: any) => {
         ...prev,
         enquiries: prev.enquiries.map(e => e.id === id ? { ...e, ...updates } : e)
       }));
+      logActivity({ module: 'enquiries', recordId: id, recordLabel: id, action: 'update', before, after: before ? { ...before, ...updates } : updates });
     } else {
       console.error('Error updating enquiry:', error);
       throw error;
@@ -670,6 +674,7 @@ const mapEnquiryToDB = (e: any) => {
     // FK is ON DELETE SET NULL, not CASCADE: any quote/order that referenced
     // it survives in the DB with enqRef nulled, so mirror that in local state
     // (map, don't filter) rather than making them vanish from the UI.
+    const before = data.enquiries.find(e => e.id === id);
     const { error } = await supabase.from('enquiries').delete().eq('id', id);
     if (error) throw error;
 
@@ -679,6 +684,7 @@ const mapEnquiryToDB = (e: any) => {
       quotes: prev.quotes.map(q => q.enqRef === id ? { ...q, enqRef: null } : q),
       orders: prev.orders.map(o => o.enqRef === id ? { ...o, enqRef: null } : o),
     }));
+    logActivity({ module: 'enquiries', recordId: id, recordLabel: id, action: 'delete', before });
   };
 
   const addQuote = async (quote: Quote) => {
@@ -694,6 +700,7 @@ const mapEnquiryToDB = (e: any) => {
     );
     if (!error) {
       setData(prev => ({ ...prev, quotes: [finalRecord, ...prev.quotes] }));
+      logActivity({ module: 'quotes', recordId: finalRecord.id, recordLabel: finalRecord.id, action: 'insert', after: finalRecord });
     } else {
       console.error('Error adding quote:', error);
       throw error;
@@ -701,6 +708,7 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const updateQuote = async (id: string, updates: Partial<Quote>) => {
+    const before = data.quotes.find(q => q.id === id);
     const dbUpdates = mapQuoteToDB(updates);
     const { error } = await supabase.from('quotes').update(dbUpdates).eq('id', id);
     if (!error) {
@@ -708,6 +716,7 @@ const mapEnquiryToDB = (e: any) => {
         ...prev,
         quotes: prev.quotes.map(q => q.id === id ? { ...q, ...updates } : q)
       }));
+      logActivity({ module: 'quotes', recordId: id, recordLabel: id, action: 'update', before, after: before ? { ...before, ...updates } : updates });
     } else {
       console.error('Error updating quote:', error);
       throw error;
@@ -719,6 +728,7 @@ const mapEnquiryToDB = (e: any) => {
     // FK is ON DELETE SET NULL, not CASCADE: any order/followup that
     // referenced it survives in the DB with its ref nulled, so mirror that
     // in local state (map, don't filter) rather than making them vanish.
+    const before = data.quotes.find(q => q.id === id);
     const { error } = await supabase.from('quotes').delete().eq('id', id);
     if (error) { console.error('deleteQuote failed', error); throw error; }
 
@@ -728,6 +738,7 @@ const mapEnquiryToDB = (e: any) => {
       orders: prev.orders.map(o => o.quoteRef === id ? { ...o, quoteRef: null } : o),
       followups: prev.followups.map((f: any) => f.quote_id === id ? { ...f, quote_id: null } : f),
     }));
+    logActivity({ module: 'quotes', recordId: id, recordLabel: id, action: 'delete', before });
   };
 
   const addOrder = async (order: Order) => {
@@ -743,6 +754,7 @@ const mapEnquiryToDB = (e: any) => {
     );
     if (!error) {
       setData(prev => ({ ...prev, orders: [finalRecord, ...prev.orders] }));
+      logActivity({ module: 'orders', recordId: finalRecord.id, recordLabel: finalRecord.poNo || finalRecord.id, action: 'insert', after: finalRecord });
     } else {
       console.error('Error adding order:', error);
       throw error;
@@ -750,6 +762,7 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const updateOrder = async (id: string, updates: Partial<Order>) => {
+    const before = data.orders.find(o => o.id === id);
     const dbUpdates = mapOrderToDB(updates);
     const { error } = await supabase.from('orders').update(dbUpdates).eq('id', id);
     if (!error) {
@@ -757,6 +770,8 @@ const mapEnquiryToDB = (e: any) => {
         ...prev,
         orders: prev.orders.map(o => o.id === id ? { ...o, ...updates } : o)
       }));
+      const after = before ? { ...before, ...updates } : updates;
+      logActivity({ module: 'orders', recordId: id, recordLabel: (after as Order).poNo || id, action: 'update', before, after });
     } else {
       console.error('Error updating order:', error);
       throw error;
@@ -764,9 +779,11 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteOrder = async (id: string) => {
+    const before = data.orders.find(o => o.id === id);
     const { error } = await supabase.from('orders').delete().eq('id', id);
     if (!error) {
       setData(prev => ({ ...prev, orders: prev.orders.filter(o => o.id !== id) }));
+      logActivity({ module: 'orders', recordId: id, recordLabel: before?.poNo || id, action: 'delete', before });
     } else {
       console.error('Error deleting order:', error);
       throw error;
@@ -957,6 +974,7 @@ const mapEnquiryToDB = (e: any) => {
     );
     if (!error) {
       setData(prev => ({ ...prev, customers: [...prev.customers, finalRecord] }));
+      logActivity({ module: 'customers', recordId: finalRecord.id, recordLabel: finalRecord.name, action: 'insert', after: finalRecord });
     } else {
       console.error('Error adding customer:', error);
       throw error;
@@ -964,12 +982,15 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const updateCustomer = async (id: string, updates: Partial<Customer>) => {
+    const before = data.customers.find(c => c.id === id);
     const { error } = await supabase.from('customers').update(mapCustomerToDB(updates)).eq('customer_id', id);
     if (!error) {
       setData(prev => ({
         ...prev,
         customers: prev.customers.map(c => c.id === id ? { ...c, ...updates } : c)
       }));
+      const after = before ? { ...before, ...updates } : updates;
+      logActivity({ module: 'customers', recordId: id, recordLabel: (after as Customer).name || id, action: 'update', before, after });
     } else {
       console.error('Error updating customer:', error);
       throw error;
@@ -977,12 +998,14 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteCustomer = async (id: string) => {
+    const before = data.customers.find(c => c.id === id);
     const { error } = await supabase.from('customers').delete().eq('customer_id', id);
     if (!error) {
       setData(prev => ({
         ...prev,
         customers: prev.customers.filter(c => c.id !== id)
       }));
+      logActivity({ module: 'customers', recordId: id, recordLabel: before?.name || id, action: 'delete', before });
     } else {
       console.error('Error deleting customer:', error);
     }
@@ -1000,6 +1023,10 @@ const mapEnquiryToDB = (e: any) => {
   const addFollowUpLog = async (quoteId: string, log: any, nextDate: string | null = null, nextTime: string | null = null, owner: string = '', stageOverride: string | null = null) => {
     const existing = data.followups.find(f => f.quote_id === quoteId);
     const nowIso = new Date().toISOString();
+    // A followup row has no customer name of its own — look it up via the
+    // quote it belongs to so the History Log shows something recognizable
+    // instead of just the quote id repeated in both columns.
+    const followUpLabel = data.quotes.find(q => q.id === quoteId)?.cust || quoteId;
 
     if (existing) {
       const updatedLogs = [log, ...existing.logs];
@@ -1031,19 +1058,21 @@ const mapEnquiryToDB = (e: any) => {
         .eq('quote_id', quoteId);
 
       if (!error) {
+        const after = {
+          ...existing,
+          logs: updatedLogs,
+          next_date: nextDate,
+          next_time: nextTime,
+          status: 'open' as const,
+          owner: owner || existing.owner,
+          stage: newStage,
+          ...(stageChanged ? { stage_entered_at: nowIso } : {}),
+        };
         setData(prev => ({
           ...prev,
-          followups: prev.followups.map(f => f.quote_id === quoteId ? {
-            ...f,
-            logs: updatedLogs,
-            next_date: nextDate,
-            next_time: nextTime,
-            status: 'open' as const,
-            owner: owner || f.owner,
-            stage: newStage,
-            ...(stageChanged ? { stage_entered_at: nowIso } : {}),
-          } : f)
+          followups: prev.followups.map(f => f.quote_id === quoteId ? { ...f, ...after } : f)
         }));
+        logActivity({ module: 'followups', recordId: quoteId, recordLabel: followUpLabel, action: 'update', before: existing, after });
       } else {
         console.error('Error updating follow-up:', error);
         throw error;
@@ -1071,6 +1100,7 @@ const mapEnquiryToDB = (e: any) => {
           ...prev,
           followups: [...prev.followups, newFollowUp]
         }));
+        logActivity({ module: 'followups', recordId: quoteId, recordLabel: followUpLabel, action: 'insert', after: newFollowUp });
       } else {
         console.error('Error creating follow-up:', error);
         throw error;
@@ -1229,6 +1259,7 @@ const mapEnquiryToDB = (e: any) => {
     const { error } = await supabase.from('authorized_signatories').insert([sig]);
     if (!error) {
       setData(prev => ({ ...prev, signatories: [...prev.signatories, sig] }));
+      logActivity({ module: 'authorized_signatories', recordId: sig.id, recordLabel: sig.name, action: 'insert', after: sig });
     } else {
       console.error('Error adding signatory:', error);
       throw error;
@@ -1236,12 +1267,15 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const updateSignatory = async (id: string, updates: Partial<AuthorizedSignatory>) => {
+    const before = data.signatories.find(s => s.id === id);
     const { error } = await supabase.from('authorized_signatories').update(updates).eq('id', id);
     if (!error) {
       setData(prev => ({
         ...prev,
         signatories: prev.signatories.map(s => s.id === id ? { ...s, ...updates } : s)
       }));
+      const after = before ? { ...before, ...updates } : updates;
+      logActivity({ module: 'authorized_signatories', recordId: id, recordLabel: (after as AuthorizedSignatory).name || id, action: 'update', before, after });
     } else {
       console.error('Error updating signatory:', error);
       throw error;
@@ -1249,12 +1283,14 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteSignatory = async (id: string) => {
+    const before = data.signatories.find(s => s.id === id);
     const { error } = await supabase.from('authorized_signatories').delete().eq('id', id);
     if (!error) {
       setData(prev => ({
         ...prev,
         signatories: prev.signatories.filter(s => s.id !== id)
       }));
+      logActivity({ module: 'authorized_signatories', recordId: id, recordLabel: before?.name || id, action: 'delete', before });
     } else {
       console.error('Error deleting signatory:', error);
       throw error;
@@ -1275,6 +1311,7 @@ const mapEnquiryToDB = (e: any) => {
     const { error } = await supabase.from('team_roster').insert([row]);
     if (!error) {
       setData(prev => ({ ...prev, roster: [...prev.roster, row] }));
+      logActivity({ module: 'team_roster', recordId: `${row.email}::${row.role}::${row.display_name}`, recordLabel: row.display_name, action: 'insert', after: row });
     } else {
       console.error('Error adding team member:', error);
       throw error;
@@ -1284,6 +1321,7 @@ const mapEnquiryToDB = (e: any) => {
   const updateTeamMember = async (email: string, role: DoerRole, displayName: string, updates: Partial<TeamMember>) => {
     const key = email.trim().toLowerCase();
     const nameKey = displayName.trim();
+    const before = data.roster.find(m => m.email === key && m.role === role && m.display_name === nameKey);
     const normalized: Partial<TeamMember> = 'aliases' in updates
       ? { ...updates, aliases: (updates.aliases ?? []).map(a => a.trim().toLowerCase()).filter(Boolean) }
       : updates;
@@ -1294,6 +1332,7 @@ const mapEnquiryToDB = (e: any) => {
         ...prev,
         roster: prev.roster.map(m => (m.email === key && m.role === role && m.display_name === nameKey) ? { ...m, ...normalized } : m)
       }));
+      logActivity({ module: 'team_roster', recordId: `${key}::${role}::${nameKey}`, recordLabel: nameKey, action: 'update', before, after: before ? { ...before, ...normalized } : normalized });
     } else {
       console.error('Error updating team member:', error);
       throw error;
@@ -1303,9 +1342,11 @@ const mapEnquiryToDB = (e: any) => {
   const deleteTeamMember = async (email: string, role: DoerRole, displayName: string) => {
     const key = email.trim().toLowerCase();
     const nameKey = displayName.trim();
+    const before = data.roster.find(m => m.email === key && m.role === role && m.display_name === nameKey);
     const { error } = await supabase.from('team_roster').delete().eq('email', key).eq('role', role).eq('display_name', nameKey);
     if (!error) {
       setData(prev => ({ ...prev, roster: prev.roster.filter(m => !(m.email === key && m.role === role && m.display_name === nameKey)) }));
+      logActivity({ module: 'team_roster', recordId: `${key}::${role}::${nameKey}`, recordLabel: nameKey, action: 'delete', before });
     } else {
       console.error('Error deleting team member:', error);
       throw error;
@@ -1350,46 +1391,70 @@ const mapEnquiryToDB = (e: any) => {
     if (u.header_url) row.header_url = u.header_url;
     if (u.sig_url) row.sig_url = u.sig_url;
     const { error } = await supabase.from('company_units').insert([row]);
-    if (!error) setData(prev => ({ ...prev, units: [...prev.units, u] }));
+    if (!error) {
+      setData(prev => ({ ...prev, units: [...prev.units, u] }));
+      logActivity({ module: 'company_units', recordId: u.id, recordLabel: u.name, action: 'insert', after: u });
+    }
     else { console.error('Error adding unit:', error); throw new Error(error.message || 'Failed to add unit'); }
   };
 
   const updateUnit = async (id: string, updates: Partial<CompanyUnit>) => {
+    const before = data.units.find(u => u.id === id);
     const row: Record<string, any> = { updated_at: new Date().toISOString() };
     for (const [k, v] of Object.entries(updates)) {
       if (v === undefined) continue;
       row[k] = v === '' ? null : v;
     }
     const { error } = await supabase.from('company_units').update(row).eq('id', id);
-    if (!error) setData(prev => ({ ...prev, units: prev.units.map(u => u.id === id ? { ...u, ...updates } : u) }));
+    if (!error) {
+      setData(prev => ({ ...prev, units: prev.units.map(u => u.id === id ? { ...u, ...updates } : u) }));
+      const after = before ? { ...before, ...updates } : updates;
+      logActivity({ module: 'company_units', recordId: id, recordLabel: (after as CompanyUnit).name || id, action: 'update', before, after });
+    }
     else { console.error('Error updating unit:', error); throw new Error(error.message || 'Failed to update unit'); }
   };
 
   const deleteUnit = async (id: string) => {
+    const before = data.units.find(u => u.id === id);
     const { error } = await supabase.from('company_units').delete().eq('id', id);
-    if (!error) setData(prev => ({
-      ...prev,
-      units: prev.units.filter(u => u.id !== id),
-      bankAccounts: prev.bankAccounts.filter(b => b.unit_id !== id),
-    }));
+    if (!error) {
+      setData(prev => ({
+        ...prev,
+        units: prev.units.filter(u => u.id !== id),
+        bankAccounts: prev.bankAccounts.filter(b => b.unit_id !== id),
+      }));
+      logActivity({ module: 'company_units', recordId: id, recordLabel: before?.name || id, action: 'delete', before });
+    }
     else { console.error('Error deleting unit:', error); throw error; }
   };
 
   const addBankAccount = async (b: BankAccount) => {
     const { error } = await supabase.from('bank_accounts').insert([b]);
-    if (!error) setData(prev => ({ ...prev, bankAccounts: [...prev.bankAccounts, b] }));
+    if (!error) {
+      setData(prev => ({ ...prev, bankAccounts: [...prev.bankAccounts, b] }));
+      logActivity({ module: 'bank_accounts', recordId: b.id, recordLabel: b.bank_name, action: 'insert', after: b });
+    }
     else { console.error('Error adding bank account:', error); throw error; }
   };
 
   const updateBankAccount = async (id: string, updates: Partial<BankAccount>) => {
+    const before = data.bankAccounts.find(b => b.id === id);
     const { error } = await supabase.from('bank_accounts').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', id);
-    if (!error) setData(prev => ({ ...prev, bankAccounts: prev.bankAccounts.map(b => b.id === id ? { ...b, ...updates } : b) }));
+    if (!error) {
+      setData(prev => ({ ...prev, bankAccounts: prev.bankAccounts.map(b => b.id === id ? { ...b, ...updates } : b) }));
+      const after = before ? { ...before, ...updates } : updates;
+      logActivity({ module: 'bank_accounts', recordId: id, recordLabel: (after as BankAccount).bank_name || id, action: 'update', before, after });
+    }
     else { console.error('Error updating bank account:', error); throw error; }
   };
 
   const deleteBankAccount = async (id: string) => {
+    const before = data.bankAccounts.find(b => b.id === id);
     const { error } = await supabase.from('bank_accounts').delete().eq('id', id);
-    if (!error) setData(prev => ({ ...prev, bankAccounts: prev.bankAccounts.filter(b => b.id !== id) }));
+    if (!error) {
+      setData(prev => ({ ...prev, bankAccounts: prev.bankAccounts.filter(b => b.id !== id) }));
+      logActivity({ module: 'bank_accounts', recordId: id, recordLabel: before?.bank_name || id, action: 'delete', before });
+    }
     else { console.error('Error deleting bank account:', error); throw error; }
   };
 

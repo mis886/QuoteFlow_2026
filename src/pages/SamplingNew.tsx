@@ -11,6 +11,7 @@ import { ProductSearch } from '../components/ProductSearch';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { SampleEmailModal } from '../components/SampleEmailModal';
 import { OptionSearch } from '../components/OptionSearch';
+import { logActivity } from '../lib/activityLog';
 
 const UNITS = ['g', 'ml', 'kg', 'L'];
 const SENT_BY_OPTIONS = ['Nimisha Pawar', 'Ruby B'];
@@ -81,6 +82,12 @@ export function SamplingNew() {
     coaUrl: string | null; coaFileName: string;
   } | null>(null);
 
+  // Raw samples row as last loaded from the DB, kept only so doSave() has a
+  // real "before" snapshot to diff an update against for the History Log —
+  // this component otherwise only tracks the individual form fields.
+  const [originalRow, setOriginalRow] = useState<any>(null);
+  const [originalProductRows, setOriginalProductRows] = useState<any[]>([]);
+
   // Load existing record (samples row + sample_products rows) in edit mode
   useEffect(() => {
     if (!editId) return;
@@ -90,6 +97,8 @@ export function SamplingNew() {
         supabase.from('sample_products').select('*').eq('sample_id', editId).order('sort_order'),
       ]);
       if (!row) return;
+      setOriginalRow(row);
+      setOriginalProductRows(productRows ?? []);
 
       setCust(row.cust ?? '');
       setLinkedRef(row.quote_ref ?? row.enq_ref ?? '');
@@ -216,14 +225,16 @@ export function SamplingNew() {
     };
 
     let error: any;
+    let newRow: Record<string, any> | null = null;
     if (editId) {
       const resolvedStatus = sampleStatus || (emailWasSent ? 'dispatched' : 'pending');
       const statusFields: Record<string, any> = { status: resolvedStatus };
       if (resolvedStatus === 'approved') { statusFields.outcome = 'approved'; statusFields.feedback_received = true; }
       if (resolvedStatus === 'rejected') { statusFields.outcome = 'rejected'; statusFields.feedback_received = true; }
-      ({ error } = await supabase.from('samples').update({ ...commonFields, ...statusFields }).eq('id', editId));
+      newRow = { ...commonFields, ...statusFields };
+      ({ error } = await supabase.from('samples').update(newRow).eq('id', editId));
     } else {
-      ({ error } = await supabase.from('samples').insert({
+      newRow = {
         id: sampleId,
         ...commonFields,
         source_module:     source ?? (isQt ? 'quotation' : ref ? 'enquiry' : null),
@@ -231,7 +242,8 @@ export function SamplingNew() {
         feedback_received: false,
         created_by:        user?.email ?? null,
         created_at:        new Date().toISOString(),
-      }));
+      };
+      ({ error } = await supabase.from('samples').insert(newRow));
     }
 
     if (error) { setSaving(false); setErrors({ global: error.message }); return null; }
@@ -240,6 +252,22 @@ export function SamplingNew() {
     await supabase.from('sample_products').delete().eq('sample_id', sampleId);
     const { error: prodError } = await supabase.from('sample_products').insert(savedProductRows);
     if (prodError) { setSaving(false); setErrors({ global: prodError.message }); return null; }
+
+    // The product rows are child records of this one sample — fold them into
+    // the single samples-table log entry rather than logging sample_products
+    // as its own module, so one edit/create action reads as one history row.
+    if (editId) {
+      logActivity({
+        module: 'samples', recordId: sampleId, recordLabel: cust.trim(), action: 'update',
+        before: { ...originalRow, sample_products: originalProductRows },
+        after: { ...originalRow, ...newRow, sample_products: savedProductRows },
+      });
+    } else {
+      logActivity({
+        module: 'samples', recordId: sampleId, recordLabel: cust.trim(), action: 'insert',
+        after: { ...newRow, sample_products: savedProductRows },
+      });
+    }
 
     setSaving(false);
 

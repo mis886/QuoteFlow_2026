@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { localDateStr, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
+import { logActivity } from '../lib/activityLog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,18 +149,20 @@ function FeedbackModal({ sample, onClose, onSaved }: {
     setSaving(true);
     setError('');
     const newStatus: SampleStatus = outcome === 'approved' ? 'approved' : 'rejected';
+    const patch = {
+      outcome,
+      status: newStatus,
+      feedback_received: true,
+      notes: notes.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
     const { error: err } = await supabase
       .from('samples')
-      .update({
-        outcome,
-        status: newStatus,
-        feedback_received: true,
-        notes: notes.trim() || null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(patch)
       .eq('id', sample.id);
     setSaving(false);
     if (err) { setError(err.message); return; }
+    logActivity({ module: 'samples', recordId: sample.id, recordLabel: sample.cust, action: 'update', before: sample, after: { ...sample, ...patch } });
     onSaved();
   };
 
@@ -274,9 +277,11 @@ export function Sampling() {
 
   const handleDelete = async (id: string) => {
     if (!confirm(`Delete sample ${id}? This cannot be undone.`)) return;
+    const before = samples.find(s => s.id === id);
     const { error } = await supabase.from('samples').delete().eq('id', id);
     if (error) { alert(`Could not delete: ${error.message}`); return; }
     setSamples(prev => prev.filter(s => s.id !== id));
+    logActivity({ module: 'samples', recordId: id, recordLabel: before?.cust || id, action: 'delete', before });
   };
 
   const fetchSamples = async () => {

@@ -14,6 +14,7 @@ import { NewCustomer } from './pages/NewCustomer';
 import { Analytics } from './pages/Analytics';
 import { Blueprint } from './pages/Blueprint';
 import { Settings } from './pages/Settings';
+import { HistoryLog } from './pages/HistoryLog';
 import FollowUps from './pages/FollowUps';
 import { Sampling } from './pages/Sampling';
 import { SamplingNew } from './pages/SamplingNew';
@@ -99,6 +100,7 @@ export default function App() {
                   <Route path="sampling" element={<Sampling />} />
                   <Route path="sampling/new" element={<SamplingNew />} />
                   <Route path="settings" element={<Settings />} />
+                  <Route path="history" element={<HistoryLog />} />
                   <Route path="intelligence" element={<IntelligenceBoard />} />
                   <Route path="*" element={<div className="p-8 text-[13px] font-mono">Module not found...</div>} />
                 </Route>

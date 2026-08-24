@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileText, FileSignature, ShoppingCart, Users, LineChart, Settings, Boxes, LogOut, Phone, Brain, ChevronRight, ChevronLeft, Gauge, FlaskConical } from 'lucide-react';
+import { LayoutDashboard, FileText, FileSignature, ShoppingCart, Users, LineChart, Settings, Boxes, LogOut, Phone, Brain, ChevronRight, ChevronLeft, Gauge, FlaskConical, History } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -110,6 +110,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           <NavItem to="/intelligence" icon={<Brain size={15} />} label="Customer Intel" active={isActive('/intelligence')} collapsed={collapsed} />
           <NavItem to="/blueprint" icon={<Boxes size={15} />} label="System Plan" active={isActive('/blueprint')} collapsed={collapsed} />
           <NavItem to="/settings" icon={<Settings size={15} />} label="Settings" active={isActive('/settings')} collapsed={collapsed} />
+          <NavItem to="/history" icon={<History size={15} />} label="History" active={isActive('/history')} collapsed={collapsed} />
         </div>
       </div>
 
