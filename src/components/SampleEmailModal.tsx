@@ -3,6 +3,7 @@ import { X, Send, Paperclip, Mail, Loader2 } from 'lucide-react';
 import { Button } from './ui';
 import { sendViaGmailAsUser, Attachment } from '../lib/gmail';
 import { supabase } from '../lib/supabase';
+import { logActivity } from '../lib/activityLog';
 import { useAppStore } from '../store';
 
 const SHISHIR = 'shishir@himalayaterpene.com';
@@ -146,9 +147,25 @@ export function SampleEmailModal(props: SampleEmailModalProps) {
       await sendViaGmailAsUser({ to: to.trim(), cc: ccString, subject, body, attachments }, senderEmail);
       // Record successful send — fire and forget, don't block the success UX
       const sentAt = new Date().toISOString();
-      supabase.from('samples').update({ email_sent_at: sentAt, email_sent: true, client_email: to.trim() }).eq('id', props.sampleId).then(() => {});
+      supabase.from('samples').update({ email_sent_at: sentAt, email_sent: true, client_email: to.trim() }).eq('id', props.sampleId).then(({ error }) => {
+        if (!error) {
+          logActivity({
+            module: 'samples', recordId: props.sampleId, recordLabel: props.customerName, action: 'update',
+            before: { email_sent: false, email_sent_at: null, client_email: null },
+            after: { email_sent: true, email_sent_at: sentAt, client_email: to.trim() },
+          });
+        }
+      });
       // Advance to dispatched only if still pending — never downgrade a later-stage sample
-      supabase.from('samples').update({ status: 'dispatched' }).eq('id', props.sampleId).eq('status', 'pending').then(() => {});
+      supabase.from('samples').update({ status: 'dispatched' }).eq('id', props.sampleId).eq('status', 'pending').select('id').then(({ data, error }) => {
+        if (!error && data && data.length > 0) {
+          logActivity({
+            module: 'samples', recordId: props.sampleId, recordLabel: props.customerName, action: 'update',
+            before: { status: 'pending' },
+            after: { status: 'dispatched' },
+          });
+        }
+      });
       setStatus('sent');
       setTimeout(() => { props.onSent(); props.onClose(); }, 1500);
     } catch (err: any) {
