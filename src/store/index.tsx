@@ -1128,33 +1128,45 @@ const mapEnquiryToDB = (e: any) => {
       ...prev,
       enquiries: prev.enquiries.map(e => e.id === enqId ? { ...e, status: enqStatus } : e),
     }));
+    logActivity({ module: 'enquiries', recordId: enqId, recordLabel: enqId, action: 'update', before: enq, after: { ...enq, status: enqStatus } });
   };
 
   const closeFollowUp = async (quoteId: string, outcome: PipelineOutcome = 'Other') => {
+    const existingFollowUp = data.followups.find(f => f.quote_id === quoteId);
+    const followUpLabel = data.quotes.find(q => q.id === quoteId)?.cust || quoteId;
+    const nowIso = new Date().toISOString();
+
     const { error } = await supabase
       .from('followups')
       .update({
         status: 'closed',
         stage: 'Closed',
         outcome,
-        stage_entered_at: new Date().toISOString(),
+        stage_entered_at: nowIso,
         next_date: null,
         next_time: null,
-        updated_at: new Date().toISOString(),
+        updated_at: nowIso,
       })
       .eq('quote_id', quoteId);
     if (error) {
       console.error('Error closing follow-up:', error);
       throw error;
     }
+    logActivity({
+      module: 'followups', recordId: quoteId, recordLabel: followUpLabel, action: 'update',
+      before: existingFollowUp,
+      after: existingFollowUp ? { ...existingFollowUp, status: 'closed', stage: 'Closed', outcome, next_date: null, next_time: null } : undefined,
+    });
 
     // Sync quote.status so Dashboard, pipeline counts, and filters all reflect the real state
     if (outcome === 'Won' || outcome === 'Lost') {
+      const quoteBefore = data.quotes.find(q => q.id === quoteId);
       const { error: qErr } = await supabase
         .from('quotes')
         .update({ status: outcome })
         .eq('id', quoteId);
       if (qErr) console.error('Error updating quote status:', qErr);
+      else logActivity({ module: 'quotes', recordId: quoteId, recordLabel: quoteId, action: 'update', before: quoteBefore, after: quoteBefore ? { ...quoteBefore, status: outcome } : undefined });
       // Propagate to the parent enquiry so enquiry-based views stay in sync.
       await syncEnquiryStatusForQuote(quoteId, outcome);
     }
@@ -1176,6 +1188,7 @@ const mapEnquiryToDB = (e: any) => {
     const nowIso = new Date().toISOString();
     const isClosed = stage === 'Closed';
     const existing = data.followups.find(f => f.quote_id === quoteId);
+    const followUpLabel = data.quotes.find(q => q.id === quoteId)?.cust || quoteId;
 
     const update: Record<string, any> = {
       stage,
@@ -1189,6 +1202,7 @@ const mapEnquiryToDB = (e: any) => {
     if (existing) {
       const { error } = await supabase.from('followups').update(update).eq('quote_id', quoteId);
       if (error) { console.error('Error setting stage:', error); throw error; }
+      logActivity({ module: 'followups', recordId: quoteId, recordLabel: followUpLabel, action: 'update', before: existing, after: { ...existing, ...update } });
     } else {
       // No follow-up row yet — create one.
       const row = {
@@ -1203,13 +1217,16 @@ const mapEnquiryToDB = (e: any) => {
       };
       const { error } = await supabase.from('followups').insert([row]);
       if (error) { console.error('Error creating follow-up on stage move:', error); throw error; }
+      logActivity({ module: 'followups', recordId: quoteId, recordLabel: followUpLabel, action: 'insert', after: row });
     }
 
     // Sync quote.status when closing as Won or Lost
     const resolvedOutcome = isClosed ? (outcome ?? 'Other') : null;
     if (isClosed && (resolvedOutcome === 'Won' || resolvedOutcome === 'Lost')) {
+      const quoteBefore = data.quotes.find(q => q.id === quoteId);
       const { error: qErr } = await supabase.from('quotes').update({ status: resolvedOutcome }).eq('id', quoteId);
       if (qErr) console.error('Error updating quote status on stage close:', qErr);
+      else logActivity({ module: 'quotes', recordId: quoteId, recordLabel: quoteId, action: 'update', before: quoteBefore, after: quoteBefore ? { ...quoteBefore, status: resolvedOutcome } : undefined });
       await syncEnquiryStatusForQuote(quoteId, resolvedOutcome);
     }
 
@@ -1230,6 +1247,8 @@ const mapEnquiryToDB = (e: any) => {
     // Reopening pulls the card out of Closed back into Negotiation and
     // restarts that stage's TAT clock.
     const nowIso = new Date().toISOString();
+    const existingFollowUp = data.followups.find(f => f.quote_id === quoteId);
+    const followUpLabel = data.quotes.find(q => q.id === quoteId)?.cust || quoteId;
     const { error } = await supabase
       .from('followups')
       .update({ status: 'open', stage: 'Negotiation', outcome: null, stage_entered_at: nowIso, updated_at: nowIso })
@@ -1238,9 +1257,16 @@ const mapEnquiryToDB = (e: any) => {
       console.error('Error reopening follow-up:', error);
       throw error;
     }
+    logActivity({
+      module: 'followups', recordId: quoteId, recordLabel: followUpLabel, action: 'update',
+      before: existingFollowUp,
+      after: existingFollowUp ? { ...existingFollowUp, status: 'open', stage: 'Negotiation', outcome: null, stage_entered_at: nowIso } : undefined,
+    });
     // Reset quote status back to Sent so it re-enters the pipeline
+    const quoteBefore = data.quotes.find(q => q.id === quoteId);
     const { error: qErr } = await supabase.from('quotes').update({ status: 'Sent' }).eq('id', quoteId);
     if (qErr) console.error('Error resetting quote status on reopen:', qErr);
+    else logActivity({ module: 'quotes', recordId: quoteId, recordLabel: quoteId, action: 'update', before: quoteBefore, after: quoteBefore ? { ...quoteBefore, status: 'Sent' } : undefined });
     // The enquiry had a quote, so it returns to 'Quoted' (not Won/Lost).
     await syncEnquiryStatusForQuote(quoteId, 'Quoted');
 
