@@ -51,6 +51,8 @@ const normalizeSeg = (raw: string | undefined | null): string => {
   return SEG_OPTIONS.find(o => o.toLowerCase() === lower) || '';
 };
 
+const CRM_OPTIONS = ['Nimisha', 'Ruby', 'Shishir', 'Anil'];
+
 function hasMixedContent(text: string) {
   return /(?:transport(?:er)?|lead\s*time|plant\s*:|unit\s*:|c\/o\b|for\s+dispatch|parcel\s+address|gst(?:in)?\s*:|mob(?:ile)?\s*(?:no)?\.?\s*[:\-–]|ph(?:one)?\s*(?:no)?\.?\s*[:\-–]|tel(?:ephone)?\s*(?:no)?\.?\s*[:\-–]|\b\d{10,}\b|\b\d{5,}[\s\-]\d{5,}\b|[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z])/i.test(text);
 }
@@ -195,6 +197,7 @@ export function NewCustomer() {
   const [seg, setSeg] = useState('');
   const [customerType, setCustomerType] = useState('');
   const [crm, setCrm] = useState('');
+  const [tier, setTier] = useState('');
   const [inco, setInco] = useState('EXW');
   const [curr, setCurr] = useState('INR');
   const [pay, setPay] = useState('');
@@ -229,6 +232,7 @@ export function NewCustomer() {
         setSeg(normalizeSeg(cust.seg) || cust.seg || '');
         setCustomerType(cust.customerType || '');
         setCrm(cust.crm || '');
+        setTier(cust.tier || '');
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
         setPay(normalizePayTerms(cust.pay) || cust.pay);
@@ -361,6 +365,7 @@ export function NewCustomer() {
       id, code: code.trim().toUpperCase(), name: name.trim(),
       seg, customerType, inco, curr, pay, gstin: gstin.trim().toUpperCase(), pan: pan.trim().toUpperCase() || undefined, sites: normalizedSites,
       crm: crm.trim() || undefined,
+      tier: (tier || undefined) as Customer['tier'],
       creditLimit: creditLimit !== '' ? Number(creditLimit) : undefined,
       nextOrder1: nextOrder1.product ? nextOrder1 : undefined,
       nextOrder2: nextOrder2.product ? nextOrder2 : undefined,
@@ -436,7 +441,7 @@ export function NewCustomer() {
               {errors.name && <p className="text-red-mrt text-[10px] mt-1">{errors.name}</p>}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className={labelCls}>Segment</label>
                 <select title="Segment" value={seg} onChange={e => setSeg(e.target.value)} className={inputCls}>
@@ -453,14 +458,24 @@ export function NewCustomer() {
                   <option value="End User">End User</option>
                 </select>
               </div>
+              <div>
+                <label className={labelCls}>Tier</label>
+                <select title="Tier" value={tier} onChange={e => setTier(e.target.value)} className={inputCls}>
+                  <option value=""></option>
+                  <option value="Bronze">Bronze</option>
+                  <option value="Silver">Silver</option>
+                  <option value="Gold">Gold</option>
+                </select>
+              </div>
             </div>
 
             <div>
               <label className={labelCls}>CRM</label>
-              <input
-                type="text" value={crm} onChange={e => setCrm(e.target.value)}
-                className={inputCls}
-              />
+              <select title="CRM" value={crm} onChange={e => setCrm(e.target.value)} className={inputCls}>
+                <option value=""></option>
+                {crm && !CRM_OPTIONS.includes(crm) && <option value={crm}>{crm}</option>}
+                {CRM_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
 
             <div>
