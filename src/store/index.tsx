@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { Customer, Site, Contact, DataStore, Enquiry, Order, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus } from '../lib/types';
+import type { Customer, Site, Contact, DataStore, Enquiry, Order, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, DispatchStage } from '../lib/types';
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
 import { calculateAgeHours, generateId } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
+import { buildStagesFor } from '../lib/dispatchStages';
 import { User } from '@supabase/supabase-js';
 
 // Separate, purpose-specific mapping for the Authorized Signatory panel
@@ -98,6 +99,12 @@ interface AppContextType {
   addOrder: (order: Order) => Promise<void>;
   updateOrder: (id: string, updates: Partial<Order>) => Promise<void>;
   deleteOrder: (id: string) => Promise<void>;
+  // Dispatch (Order → Dispatch phase) — see src/lib/dispatchStages.ts and
+  // src/pages/Dispatch.tsx. `type` picks which of the two verified stage
+  // checklists (Self Pickup / Delivery) is seeded onto the new entry.
+  addDispatchEntry: (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => Promise<void>;
+  updateDispatchEntry: (id: string, updates: Partial<DispatchEntry>) => Promise<void>;
+  advanceDispatchStage: (id: string) => Promise<void>;
   addCustomer: (customer: Customer) => Promise<void>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
@@ -194,6 +201,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     units: [],
     bankAccounts: [],
     roster: [],
+    dispatchEntries: [],
   });
 
   const [loading, setLoading] = useState(true);
@@ -270,7 +278,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (mounted) setLoading(false);
         });
       } else {
-        setData({ enquiries: [], quotes: [], orders: [], customers: [], followups: [], settings: null, signatories: [], units: [], bankAccounts: [], roster: [] });
+        setData({ enquiries: [], quotes: [], orders: [], customers: [], followups: [], settings: null, signatories: [], units: [], bankAccounts: [], roster: [], dispatchEntries: [] });
         setLoading(false);
       }
     });
@@ -582,6 +590,49 @@ const mapEnquiryToDB = (e: any) => {
     return obj;
   };
 
+  const mapDispatchEntryFromDB = (d: any): DispatchEntry => ({
+    id: d.id,
+    orderId: d.order_id,
+    fulfillmentType: d.fulfillment_type,
+    stages: (d.stages || []) as DispatchStage[],
+    currentStageIndex: d.current_stage_index ?? 0,
+    docLinkStatus: d.doc_link_status || 'not_uploaded',
+    docLinkUrl: d.doc_link_url || undefined,
+    vehicleNumber: d.vehicle_number || undefined,
+    transporter: d.transporter || undefined,
+    remark: d.remark || undefined,
+    numUnits: d.num_units || undefined,
+    unit: d.unit || undefined,
+    promisedDeliveryDate: d.promised_delivery_date || undefined,
+    estimatedDeliveryDate: d.estimated_delivery_date || undefined,
+    formFilledBy: d.form_filled_by || undefined,
+    createdBy: d.created_by || undefined,
+    created_at: d.created_at,
+    updated_at: d.updated_at,
+  });
+
+  const mapDispatchEntryToDB = (d: any) => {
+    const obj: any = {};
+    if ('id' in d) obj.id = d.id;
+    if ('orderId' in d) obj.order_id = d.orderId;
+    if ('fulfillmentType' in d) obj.fulfillment_type = d.fulfillmentType;
+    if ('stages' in d) obj.stages = d.stages;
+    if ('currentStageIndex' in d) obj.current_stage_index = d.currentStageIndex;
+    if ('docLinkStatus' in d) obj.doc_link_status = d.docLinkStatus;
+    if ('docLinkUrl' in d) obj.doc_link_url = d.docLinkUrl || null;
+    if ('vehicleNumber' in d) obj.vehicle_number = d.vehicleNumber || null;
+    if ('transporter' in d) obj.transporter = d.transporter || null;
+    if ('remark' in d) obj.remark = d.remark || null;
+    if ('numUnits' in d) obj.num_units = d.numUnits || null;
+    if ('unit' in d) obj.unit = d.unit || null;
+    if ('promisedDeliveryDate' in d) obj.promised_delivery_date = d.promisedDeliveryDate || null;
+    if ('estimatedDeliveryDate' in d) obj.estimated_delivery_date = d.estimatedDeliveryDate || null;
+    if ('formFilledBy' in d) obj.form_filled_by = d.formFilledBy || null;
+    if ('createdBy' in d) obj.created_by = d.createdBy || null;
+    obj.updated_at = new Date().toISOString();
+    return obj;
+  };
+
   const refreshData = async () => {
     try {
       const [
@@ -595,6 +646,7 @@ const mapEnquiryToDB = (e: any) => {
         { data: units },
         { data: bankAccountsData },
         { data: rosterData },
+        { data: dispatchEntriesData },
       ] = await Promise.all([
         supabase.from('enquiries').select('*').order('recv', { ascending: false }),
         supabase.from('quotes').select('*').order('date', { ascending: false }),
@@ -606,6 +658,7 @@ const mapEnquiryToDB = (e: any) => {
         supabase.from('company_units').select('*').order('name'),
         supabase.from('bank_accounts').select('*'),
         supabase.from('team_roster').select('*').order('display_name'),
+        supabase.from('dispatch_entries').select('*').order('created_at', { ascending: false }),
       ]);
 
       setData({
@@ -624,6 +677,7 @@ const mapEnquiryToDB = (e: any) => {
         units: units || [],
         bankAccounts: bankAccountsData || [],
         roster: (rosterData as TeamMember[]) || [],
+        dispatchEntries: (dispatchEntriesData || []).map(mapDispatchEntryFromDB),
       });
       await linkPendingPOSubmissions();
     } catch (error) {
@@ -788,6 +842,76 @@ const mapEnquiryToDB = (e: any) => {
       console.error('Error deleting order:', error);
       throw error;
     }
+  };
+
+  // Dispatch (Order → Dispatch phase). One dispatch_entries row per order,
+  // created manually via the "+ New Dispatch Entry" flow — mirrors the
+  // real-world manual Google Form fill for the HTPL Self Pickup FMS / HTPL
+  // Delivery FMS. `type` selects which verified stage checklist
+  // (src/lib/dispatchStages.ts) is seeded onto the new entry.
+  const addDispatchEntry = async (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => {
+    const newEntry: DispatchEntry = {
+      id: generateId('DSP', data.dispatchEntries.map(d => d.id)),
+      orderId,
+      fulfillmentType: type,
+      stages: buildStagesFor(type),
+      currentStageIndex: 0,
+      docLinkStatus: 'not_uploaded',
+      ...extra,
+    };
+    const { error, finalRecord } = await insertWithIdRetry<DispatchEntry>(
+      'dispatch_entries',
+      newEntry,
+      mapDispatchEntryToDB,
+      'DSP',
+      async () => {
+        const { data: rows } = await supabase.from('dispatch_entries').select('id');
+        return (rows ?? []).map(r => r.id);
+      },
+    );
+    if (!error) {
+      setData(prev => ({ ...prev, dispatchEntries: [finalRecord, ...prev.dispatchEntries] }));
+      const order = data.orders.find(o => o.id === orderId);
+      logActivity({ module: 'dispatch_entries', recordId: finalRecord.id, recordLabel: order?.poNo || finalRecord.id, action: 'insert', after: finalRecord });
+    } else {
+      console.error('Error adding dispatch entry:', error);
+      throw error;
+    }
+  };
+
+  const updateDispatchEntry = async (id: string, updates: Partial<DispatchEntry>) => {
+    const before = data.dispatchEntries.find(d => d.id === id);
+    const dbUpdates = mapDispatchEntryToDB(updates);
+    const { error } = await supabase.from('dispatch_entries').update(dbUpdates).eq('id', id);
+    if (!error) {
+      setData(prev => ({
+        ...prev,
+        dispatchEntries: prev.dispatchEntries.map(d => d.id === id ? { ...d, ...updates } : d)
+      }));
+      const after = before ? { ...before, ...updates } : updates;
+      const order = data.orders.find(o => o.id === (after as DispatchEntry).orderId);
+      logActivity({ module: 'dispatch_entries', recordId: id, recordLabel: order?.poNo || id, action: 'update', before, after });
+    } else {
+      console.error('Error updating dispatch entry:', error);
+      throw error;
+    }
+  };
+
+  // Marks the entry's current stage done (stamping `actual` and the
+  // planned-vs-actual `delayHours`) and advances `currentStageIndex`. A
+  // no-op once every stage is already done.
+  const advanceDispatchStage = async (id: string) => {
+    const entry = data.dispatchEntries.find(d => d.id === id);
+    if (!entry || entry.currentStageIndex >= entry.stages.length) return;
+    const idx = entry.currentStageIndex;
+    const now = new Date();
+    const stage = entry.stages[idx];
+    const plannedDate = stage.planned ? new Date(stage.planned) : now;
+    const delayHours = Math.round((now.getTime() - plannedDate.getTime()) / (60 * 60 * 1000));
+    const updatedStages: DispatchStage[] = entry.stages.map((s, i) =>
+      i === idx ? { ...s, actual: now.toISOString(), status: 'done', delayHours } : s
+    );
+    await updateDispatchEntry(id, { stages: updatedStages, currentStageIndex: idx + 1 });
   };
 
   const fixPhone = (v: any): string => {
@@ -1607,6 +1731,9 @@ const mapEnquiryToDB = (e: any) => {
         addOrder,
         updateOrder,
         deleteOrder,
+        addDispatchEntry,
+        updateDispatchEntry,
+        advanceDispatchStage,
         addCustomer,
         updateCustomer,
         deleteCustomer,

@@ -9,6 +9,7 @@ import { Quotes } from './pages/Quotes';
 import { NewQuote } from './pages/NewQuote';
 import { Orders } from './pages/Orders';
 import { NewOrder } from './pages/NewOrder';
+import { Dispatch } from './pages/Dispatch';
 import { Customers } from './pages/Customers';
 import { NewCustomer } from './pages/NewCustomer';
 import { Analytics } from './pages/Analytics';
@@ -90,6 +91,7 @@ export default function App() {
                   <Route path="quotes/new" element={<NewQuote />} />
                   <Route path="orders" element={<Orders />} />
                   <Route path="orders/new" element={<NewOrder />} />
+                  <Route path="dispatch" element={<Dispatch />} />
                   <Route path="customers" element={<Customers />} />
                   <Route path="customers/new" element={<NewCustomer />} />
                   <Route path="analytics" element={<Analytics />} />
