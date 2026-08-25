@@ -496,7 +496,6 @@ export function NewCustomer() {
                   placeholder="27AABCF5171D1ZW"
                   maxLength={15}
                 />
-                <p className="text-[10px] text-g400 mt-1">Company-level GSTIN — for Ex-Works customers or single GSTIN covering all sites</p>
               </div>
 
               <div>
