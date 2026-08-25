@@ -10,6 +10,7 @@ import { NewQuote } from './pages/NewQuote';
 import { Orders } from './pages/Orders';
 import { NewOrder } from './pages/NewOrder';
 import { Dispatch } from './pages/Dispatch';
+import { NewDispatchEntry } from './pages/NewDispatchEntry';
 import { Customers } from './pages/Customers';
 import { NewCustomer } from './pages/NewCustomer';
 import { Analytics } from './pages/Analytics';
@@ -92,6 +93,7 @@ export default function App() {
                   <Route path="orders" element={<Orders />} />
                   <Route path="orders/new" element={<NewOrder />} />
                   <Route path="dispatch" element={<Dispatch />} />
+                  <Route path="dispatch/new" element={<NewDispatchEntry />} />
                   <Route path="customers" element={<Customers />} />
                   <Route path="customers/new" element={<NewCustomer />} />
                   <Route path="analytics" element={<Analytics />} />
