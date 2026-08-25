@@ -44,7 +44,7 @@ export function SubmitPO() {
         {/* Header */}
         <div className="bg-[#1a1a1a] px-7 py-5">
           <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-400 mb-1">
-            Himalaya TerpenesRubber Technologies
+            Himalaya Terpenes Pvt Ltd
           </div>
           <h1 className="text-white font-serif text-[20px] tracking-tight leading-tight">
             Submit Purchase Order
@@ -134,7 +134,7 @@ export function SubmitPO() {
             </button>
 
             <p className="text-[10.5px] text-[#aaa] text-center leading-relaxed">
-              Your file is securely uploaded directly to Himalaya TerpenesRubber Technologies.
+              Your file is securely uploaded directly to Himalaya Terpenes Pvt Ltd.
               We do not share your documents with third parties.
             </p>
           </form>

@@ -22,7 +22,7 @@ interface MilestoneStats {
 const MILESTONES: Milestone[] = [
   { key: 'enq_10',    emoji: '📬', tier: 'bronze',  label: '10 Enquiries Received',    sub: 'Your pipeline is alive — keep it flowing!',           check: s => s.totalEnquiries >= 10 },
   { key: 'enq_50',    emoji: '📬', tier: 'silver',  label: '50 Enquiries Received',    sub: 'Half a century of inbound interest. Great work!',      check: s => s.totalEnquiries >= 50 },
-  { key: 'enq_100',   emoji: '🎯', tier: 'gold',    label: '100 Enquiries Received',   sub: 'A triple-digit pipeline. Himalaya Terpenesis buzzing!',          check: s => s.totalEnquiries >= 100 },
+  { key: 'enq_100',   emoji: '🎯', tier: 'gold',    label: '100 Enquiries Received',   sub: 'A triple-digit pipeline. Himalaya Terpenes is buzzing!',          check: s => s.totalEnquiries >= 100 },
   { key: 'enq_500',   emoji: '🏆', tier: 'diamond', label: '500 Enquiries — Legend',   sub: "Five hundred strong. You're a market force!",          check: s => s.totalEnquiries >= 500 },
   { key: 'quote_10',  emoji: '📄', tier: 'bronze',  label: '10 Quotations Sent',       sub: 'Proposals flying — clients are paying attention.',     check: s => s.sentQuotes >= 10 },
   { key: 'quote_50',  emoji: '📄', tier: 'silver',  label: '50 Quotations Sent',       sub: 'Fifty offers on the table. Business is booming!',      check: s => s.sentQuotes >= 50 },
@@ -30,14 +30,14 @@ const MILESTONES: Milestone[] = [
   { key: 'quote_250', emoji: '🔥', tier: 'diamond', label: '250 Quotations Sent',      sub: 'Quarter-thousand proposals. Elite execution!',         check: s => s.sentQuotes >= 250 },
   { key: 'won_1',     emoji: '🎉', tier: 'bronze',  label: 'First Order Won!',         sub: 'The first win is always sweetest. Many more to come!', check: s => s.wonQuotes >= 1 },
   { key: 'won_10',    emoji: '🏅', tier: 'silver',  label: '10 Orders Won',            sub: 'Ten confirmed orders. Trust is being built!',          check: s => s.wonQuotes >= 10 },
-  { key: 'won_50',    emoji: '🥇', tier: 'gold',    label: '50 Orders Won',            sub: 'Fifty victories. Himalaya TerpenesRubber is on a roll!',         check: s => s.wonQuotes >= 50 },
+  { key: 'won_50',    emoji: '🥇', tier: 'gold',    label: '50 Orders Won',            sub: 'Fifty victories. Himalaya Terpenes is on a roll!',         check: s => s.wonQuotes >= 50 },
   { key: 'qval_10L',  emoji: '💰', tier: 'bronze',  label: '₹10 Lakh in Quotes',      sub: 'Seven digits of proposals. The pipeline has value!',   check: s => s.totalQuoteValue >= 1_000_000 },
   { key: 'qval_50L',  emoji: '💰', tier: 'silver',  label: '₹50 Lakh in Quotes',      sub: 'Fifty lakh worth of opportunity. Keep closing!',       check: s => s.totalQuoteValue >= 5_000_000 },
   { key: 'qval_1cr',  emoji: '💎', tier: 'gold',    label: '₹1 Crore in Quotes',      sub: 'One crore milestone unlocked. Outstanding!',           check: s => s.totalQuoteValue >= 10_000_000 },
-  { key: 'qval_5cr',  emoji: '👑', tier: 'diamond', label: '₹5 Crore in Quotes',      sub: "Five crore in proposals. You're a rubber giant!",      check: s => s.totalQuoteValue >= 50_000_000 },
+  { key: 'qval_5cr',  emoji: '👑', tier: 'diamond', label: '₹5 Crore in Quotes',      sub: "Five crore in proposals. You're an absolute force!",      check: s => s.totalQuoteValue >= 50_000_000 },
   { key: 'oval_10L',  emoji: '💸', tier: 'bronze',  label: '₹10 Lakh Revenue Won',    sub: 'Lakh in the bank. The grind is paying off!',           check: s => s.wonValue >= 1_000_000 },
   { key: 'oval_50L',  emoji: '💸', tier: 'silver',  label: '₹50 Lakh Revenue Won',    sub: 'Half a crore of closed business. Phenomenal!',         check: s => s.wonValue >= 5_000_000 },
-  { key: 'oval_1cr',  emoji: '🤑', tier: 'diamond', label: '₹1 Crore Revenue Won',    sub: 'Crore club! Himalaya TerpenesRubber is delivering big.',         check: s => s.wonValue >= 10_000_000 },
+  { key: 'oval_1cr',  emoji: '🤑', tier: 'diamond', label: '₹1 Crore Revenue Won',    sub: 'Crore club! Himalaya Terpenes is delivering big.',         check: s => s.wonValue >= 10_000_000 },
 ];
 
 // Brand palette — MRT red, gold, dark, white, trust blue

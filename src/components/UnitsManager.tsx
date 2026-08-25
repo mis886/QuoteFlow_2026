@@ -265,7 +265,7 @@ export function UnitsManager() {
                       <div className="text-[10px] font-bold tracking-[1.5px] uppercase text-red-mrt">New Bank Account</div>
                       <div className="grid grid-cols-2 gap-3">
                         <Field label="Beneficiary / Account Holder">
-                          <input value={newBank.beneficiary} onChange={e => setNewBank({ ...newBank, beneficiary: e.target.value })} placeholder="Himalaya TerpenesRubber Technologies" className={inputCls} />
+                          <input value={newBank.beneficiary} onChange={e => setNewBank({ ...newBank, beneficiary: e.target.value })} placeholder="Himalaya Terpenes Pvt Ltd" className={inputCls} />
                         </Field>
                         <Field label="Bank Name">
                           <input value={newBank.bank_name} onChange={e => setNewBank({ ...newBank, bank_name: e.target.value })} placeholder="ICICI Bank Ltd." className={inputCls} />

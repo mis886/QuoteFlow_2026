@@ -530,13 +530,7 @@ function NewDispatchEntryModal({
             )}
             <div>
               <label className={labelCls}>Form Filled By</label>
-              <div className="flex gap-3 h-8 items-center">
-                {['Kartik', 'Samata'].map(n => (
-                  <label key={n} className="flex items-center gap-1.5 text-[12px] text-blk cursor-pointer">
-                    <input type="radio" name="filledBy" checked={formFilledBy === n} onChange={() => setFormFilledBy(n)} /> {n}
-                  </label>
-                ))}
-              </div>
+              <input className={inputCls} value={formFilledBy} onChange={e => setFormFilledBy(e.target.value)} placeholder="Staff name" />
             </div>
             <div>
               <label className={labelCls}>Promised Delivery Date</label>
