@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { Search, X, Truck, PackageCheck, Clock, CheckCircle2, ChevronRight, FileCheck2, FileWarning } from 'lucide-react';
-import { fmtIST } from '../lib/utils';
+import { fmtIST, formatINR } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType, DispatchStage } from '../lib/types';
 
 // ── small local helpers (kept in this file — not reused elsewhere yet) ──
@@ -54,11 +54,6 @@ function fmtDT(iso: string | null | undefined): string {
   if (!iso) return '--';
   try { return fmtIST(new Date(iso), 'dd-MMM-yyyy HH:mm'); } catch { return '--'; }
 }
-
-const UNIT_OPTIONS_BY_TYPE: Record<DispatchFulfillmentType, string[]> = {
-  self_pickup: ['kgs', 'lts'],
-  delivery: ['kgs', 'lts', 'ml', 'gm'],
-};
 
 export function Dispatch() {
   const { data, addDispatchEntry, advanceDispatchStage } = useAppStore();
@@ -394,11 +389,8 @@ function NewDispatchEntryModal({
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [transporter, setTransporter] = useState('');
   const [remark, setRemark] = useState('');
-  const [numUnits, setNumUnits] = useState('');
-  const [unit, setUnit] = useState('');
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState('');
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState('');
-  const [formFilledBy, setFormFilledBy] = useState('');
   const [saving, setSaving] = useState(false);
 
   const eligibleOrders = useMemo(() => {
@@ -419,13 +411,10 @@ function NewDispatchEntryModal({
     setSaving(true);
     try {
       await onCreate(selectedOrderId, type, {
-        transporter: type === 'delivery' && transporter ? transporter : undefined,
+        transporter: transporter || undefined,
         remark: remark || undefined,
-        numUnits: numUnits || undefined,
-        unit: unit || undefined,
         promisedDeliveryDate: promisedDeliveryDate || undefined,
         estimatedDeliveryDate: estimatedDeliveryDate || undefined,
-        formFilledBy: formFilledBy || undefined,
       });
     } finally {
       setSaving(false);
@@ -437,7 +426,7 @@ function NewDispatchEntryModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-blk/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-[4px] shadow-2xl w-full max-w-[620px] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-[4px] shadow-2xl w-full max-w-[880px] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-g200 shrink-0">
           <div>
             <div className="font-mono text-[8.5px] font-bold tracking-[2px] uppercase text-red-mrt">New Dispatch Entry</div>
@@ -507,30 +496,76 @@ function NewDispatchEntryModal({
             </div>
           )}
 
+          {selectedOrder && (
+            <div className="mb-4">
+              <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-g400 mb-2">Order Details (auto-fetched)</div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-2 mb-3 border border-g200 rounded-[3px] bg-g100/40 px-3 py-2.5">
+                <div>
+                  <div className="font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g400">PO Number</div>
+                  <div className="text-[12px] text-blk font-medium mt-0.5">{selectedOrder.poNo || '—'}</div>
+                </div>
+                <div>
+                  <div className="font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g400">PO Date</div>
+                  <div className="text-[12px] text-blk font-medium mt-0.5">{selectedOrder.poDate ? fmtIST(new Date(selectedOrder.poDate), 'dd-MMM-yyyy') : '—'}</div>
+                </div>
+                <div>
+                  <div className="font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g400">Incoterms</div>
+                  <div className="text-[12px] text-blk font-medium mt-0.5">{selectedOrder.inco || '—'}</div>
+                </div>
+                <div>
+                  <div className="font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g400">Payment Terms</div>
+                  <div className="text-[12px] text-blk font-medium mt-0.5">{selectedOrder.pay || '—'}</div>
+                </div>
+              </div>
+
+              <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sW mb-[7px]">Order Line Items -- {selectedOrder.id}</div>
+              <div className="border border-g200 rounded-[3px] overflow-x-auto">
+                <table className="w-full border-collapse text-[11.5px] m-0">
+                  <thead className="bg-g100">
+                    <tr>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">#</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Product Name</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">HSN Code</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">No of Barrels</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Packing</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Total Qty</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Packing Type</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Unit Rate (₹)</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">GST%</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Amount (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedOrder.items.map(i => {
+                      const packNum = parseFloat(i.packing || '');
+                      const totalQty = i.qty > 0 && packNum > 0 ? i.qty * packNum : null;
+                      return (
+                        <tr key={i.seq}>
+                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px] text-g400 w-6">{i.seq}</td>
+                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
+                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px]">{i.hsn || '—'}</td>
+                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
+                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11px] text-right">{i.packing || '—'}</td>
+                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{totalQty ?? '—'}</td>
+                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk text-[11px] text-g600">{i.packingType || '—'}</td>
+                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-right">{formatINR(i.agreedRate)}</td>
+                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-right">{i.gst}%</td>
+                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono font-bold text-right">{formatINR(i.total)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-g400 mb-2">Dispatch Details</div>
           <div className="grid grid-cols-2 gap-3 mb-1">
             <div>
-              <label className={labelCls}>Number of Drum/Bag</label>
-              <input className={inputCls} value={numUnits} onChange={e => setNumUnits(e.target.value)} placeholder="e.g. 4" />
-            </div>
-            <div>
-              <label className={labelCls}>Unit</label>
-              <div className="flex gap-3 h-8 items-center">
-                {UNIT_OPTIONS_BY_TYPE[type].map(u => (
-                  <label key={u} className="flex items-center gap-1.5 text-[12px] text-blk cursor-pointer">
-                    <input type="radio" name="unit" checked={unit === u} onChange={() => setUnit(u)} /> {u}
-                  </label>
-                ))}
-              </div>
-            </div>
-            {type === 'delivery' && (
-              <div>
-                <label className={labelCls}>Transporter</label>
-                <input className={inputCls} value={transporter} onChange={e => setTransporter(e.target.value)} placeholder="Transporter name" />
-              </div>
-            )}
-            <div>
-              <label className={labelCls}>Form Filled By</label>
-              <input className={inputCls} value={formFilledBy} onChange={e => setFormFilledBy(e.target.value)} placeholder="Staff name" />
+              <label className={labelCls}>Transporter</label>
+              <input className={inputCls} value={transporter} onChange={e => setTransporter(e.target.value)} placeholder="Transporter name" />
             </div>
             <div>
               <label className={labelCls}>Promised Delivery Date</label>
@@ -540,7 +575,7 @@ function NewDispatchEntryModal({
               <label className={labelCls}>Estimated Delivery Date</label>
               <input type="date" className={inputCls} value={estimatedDeliveryDate} onChange={e => setEstimatedDeliveryDate(e.target.value)} />
             </div>
-            <div className="col-span-2">
+            <div>
               <label className={labelCls}>Remark</label>
               <input className={inputCls} value={remark} onChange={e => setRemark(e.target.value)} placeholder="Optional remark" />
             </div>
