@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { Search, X, Truck, PackageCheck, Clock, CheckCircle2, ChevronRight, FileCheck2, FileWarning } from 'lucide-react';
-import { fmtIST, formatINR } from '../lib/utils';
+import { fmtIST, formatINR, canDeleteRecords } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType, DispatchStage } from '../lib/types';
 
 // ── small local helpers (kept in this file — not reused elsewhere yet) ──
@@ -56,8 +56,9 @@ function fmtDT(iso: string | null | undefined): string {
 }
 
 export function Dispatch() {
-  const { data, addDispatchEntry, advanceDispatchStage } = useAppStore();
+  const { data, user, addDispatchEntry, advanceDispatchStage, deleteDispatchEntry } = useAppStore();
   const now = Date.now();
+  const canDelete = canDeleteRecords(user?.email);
 
   const [tab, setTab] = useState<'toDispatch' | 'toSend'>('toDispatch');
   const [subType, setSubType] = useState<DispatchFulfillmentType>('delivery');
@@ -227,6 +228,18 @@ export function Dispatch() {
                             {!isComplete && (
                               <Button size="sm" variant="dark" onClick={(e) => { e.stopPropagation(); advanceDispatchStage(entry.id).catch(console.error); }}>Mark Done</Button>
                             )}
+                            {canDelete && (
+                              <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!confirm(`Are you sure you want to delete the dispatch entry for ${entry.orderId}? This action cannot be undone.`)) return;
+                                try {
+                                  await deleteDispatchEntry(entry.id);
+                                  if (selectedEntryId === entry.id) setSelectedEntryId(null);
+                                } catch (err: any) {
+                                  alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
+                                }
+                              }}>Delete</Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -243,8 +256,18 @@ export function Dispatch() {
         <DispatchDrawer
           entry={selectedEntry}
           order={orderFor(selectedEntry)}
+          canDelete={canDelete}
           onClose={() => setSelectedEntryId(null)}
           onAdvance={() => advanceDispatchStage(selectedEntry.id).catch(console.error)}
+          onDelete={async () => {
+            if (!confirm(`Are you sure you want to delete the dispatch entry for ${selectedEntry.orderId}? This action cannot be undone.`)) return;
+            try {
+              await deleteDispatchEntry(selectedEntry.id);
+              setSelectedEntryId(null);
+            } catch (err: any) {
+              alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
+            }
+          }}
         />
       )}
 
@@ -267,12 +290,14 @@ export function Dispatch() {
 // ── Right-side stage-detail drawer ───────────────────────────────────────
 
 function DispatchDrawer({
-  entry, order, onClose, onAdvance,
+  entry, order, canDelete, onClose, onAdvance, onDelete,
 }: {
   entry: DispatchEntry;
   order: Order | undefined;
+  canDelete: boolean;
   onClose: () => void;
   onAdvance: () => void;
+  onDelete: () => void;
 }) {
   const now = Date.now();
   const isComplete = entry.currentStageIndex >= entry.stages.length;
@@ -290,9 +315,14 @@ function DispatchDrawer({
             <div className="font-serif text-lg text-blk mt-1 truncate">{order?.cust || '—'}</div>
             <div className="text-[11px] text-g500 font-mono mt-0.5">{order?.poNo}</div>
           </div>
-          <button onClick={onClose} className="shrink-0 w-7 h-7 flex items-center justify-center rounded-[3px] text-g400 hover:text-blk hover:bg-g100 transition-colors">
-            <X size={15} />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {canDelete && (
+              <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={onDelete}>Delete</Button>
+            )}
+            <button onClick={onClose} className="shrink-0 w-7 h-7 flex items-center justify-center rounded-[3px] text-g400 hover:text-blk hover:bg-g100 transition-colors">
+              <X size={15} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">

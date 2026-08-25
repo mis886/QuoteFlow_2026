@@ -105,6 +105,7 @@ interface AppContextType {
   addDispatchEntry: (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => Promise<void>;
   updateDispatchEntry: (id: string, updates: Partial<DispatchEntry>) => Promise<void>;
   advanceDispatchStage: (id: string) => Promise<void>;
+  deleteDispatchEntry: (id: string) => Promise<void>;
   addCustomer: (customer: Customer) => Promise<void>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
@@ -912,6 +913,19 @@ const mapEnquiryToDB = (e: any) => {
       i === idx ? { ...s, actual: now.toISOString(), status: 'done', delayHours } : s
     );
     await updateDispatchEntry(id, { stages: updatedStages, currentStageIndex: idx + 1 });
+  };
+
+  const deleteDispatchEntry = async (id: string) => {
+    const before = data.dispatchEntries.find(d => d.id === id);
+    const { error } = await supabase.from('dispatch_entries').delete().eq('id', id);
+    if (!error) {
+      setData(prev => ({ ...prev, dispatchEntries: prev.dispatchEntries.filter(d => d.id !== id) }));
+      const order = data.orders.find(o => o.id === before?.orderId);
+      logActivity({ module: 'dispatch_entries', recordId: id, recordLabel: order?.poNo || id, action: 'delete', before });
+    } else {
+      console.error('Error deleting dispatch entry:', error);
+      throw error;
+    }
   };
 
   const fixPhone = (v: any): string => {
@@ -1734,6 +1748,7 @@ const mapEnquiryToDB = (e: any) => {
         addDispatchEntry,
         updateDispatchEntry,
         advanceDispatchStage,
+        deleteDispatchEntry,
         addCustomer,
         updateCustomer,
         deleteCustomer,
