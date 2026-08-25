@@ -469,43 +469,45 @@ export function NewCustomer() {
               </div>
             </div>
 
-            <div>
-              <label className={labelCls}>CRM</label>
-              <select title="CRM" value={crm} onChange={e => setCrm(e.target.value)} className={inputCls}>
-                <option value=""></option>
-                {crm && !CRM_OPTIONS.includes(crm) && <option value={crm}>{crm}</option>}
-                {CRM_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className={labelCls}>CRM</label>
+                <select title="CRM" value={crm} onChange={e => setCrm(e.target.value)} className={inputCls}>
+                  <option value=""></option>
+                  {crm && !CRM_OPTIONS.includes(crm) && <option value={crm}>{crm}</option>}
+                  {CRM_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
 
-            <div>
-              <label className={labelCls}>Company GSTIN</label>
-              <input
-                type="text" value={gstin}
-                onChange={e => {
-                  const val = e.target.value.toUpperCase();
-                  setGstin(val);
-                  if (val.length === 15) {
-                    setPan(val.slice(2, 12));
-                  } else {
-                    setPan('');
-                  }
-                }}
-                className={inputCls + ' font-mono uppercase'}
-                placeholder="27AABCF5171D1ZW"
-                maxLength={15}
-              />
-              <p className="text-[10px] text-g400 mt-1">Company-level GSTIN — for Ex-Works customers or single GSTIN covering all sites</p>
-            </div>
+              <div>
+                <label className={labelCls}>Company GSTIN</label>
+                <input
+                  type="text" value={gstin}
+                  onChange={e => {
+                    const val = e.target.value.toUpperCase();
+                    setGstin(val);
+                    if (val.length === 15) {
+                      setPan(val.slice(2, 12));
+                    } else {
+                      setPan('');
+                    }
+                  }}
+                  className={inputCls + ' font-mono uppercase'}
+                  placeholder="27AABCF5171D1ZW"
+                  maxLength={15}
+                />
+                <p className="text-[10px] text-g400 mt-1">Company-level GSTIN — for Ex-Works customers or single GSTIN covering all sites</p>
+              </div>
 
-            <div>
-              <label className={labelCls}>PAN No.</label>
-              <input
-                type="text" value={pan} onChange={e => setPan(e.target.value.toUpperCase())}
-                className={inputCls + ' font-mono'}
-                placeholder="AABCM1234A"
-                maxLength={10}
-              />
+              <div>
+                <label className={labelCls}>PAN No.</label>
+                <input
+                  type="text" value={pan} onChange={e => setPan(e.target.value.toUpperCase())}
+                  className={inputCls + ' font-mono'}
+                  placeholder="AABCM1234A"
+                  maxLength={10}
+                />
+              </div>
             </div>
           </div>
 
