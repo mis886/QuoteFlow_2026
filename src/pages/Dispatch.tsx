@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { Truck, PackageCheck, Clock, CheckCircle2 } from 'lucide-react';
+import { Clock, CheckCircle2 } from 'lucide-react';
 import { canDeleteRecords } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType, DispatchStage } from '../lib/types';
 
@@ -49,9 +49,6 @@ export function Dispatch() {
   const [subType, setSubType] = useState<DispatchFulfillmentType>('delivery');
 
   const entries = data.dispatchEntries;
-  const overdueCount = entries.filter(e => isEntryOverdue(e, now)).length;
-  const inProgressCount = entries.filter(e => e.currentStageIndex < e.stages.length).length;
-  const completedCount = entries.filter(e => e.currentStageIndex >= e.stages.length).length;
   const selfPickupCount = entries.filter(e => e.fulfillmentType === 'self_pickup').length;
   const deliveryCount = entries.filter(e => e.fulfillmentType === 'delivery').length;
 
@@ -61,18 +58,6 @@ export function Dispatch() {
   );
 
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
-
-  const KpiCard = ({ label, value, icon, tone }: { label: string; value: number; icon: React.ReactNode; tone: 'default' | 'warn' | 'ok' }) => (
-    <div className="bg-white border border-g200 rounded-[4px] p-3.5 flex items-center gap-3">
-      <div className={`w-9 h-9 rounded-[4px] flex items-center justify-center shrink-0 ${tone === 'warn' ? 'bg-red-mrt/10 text-red-mrt' : tone === 'ok' ? 'bg-sW/10 text-sW' : 'bg-g100 text-g500'}`}>
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <div className="font-mono text-lg font-bold text-blk leading-none">{value}</div>
-        <div className="text-[10.5px] text-g500 mt-1 truncate">{label}</div>
-      </div>
-    </div>
-  );
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -96,14 +81,7 @@ export function Dispatch() {
         </div>
       </div>
 
-      <div className="px-6 pt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard label="In Order → Dispatch" value={inProgressCount} icon={<Truck size={16} />} tone="default" />
-        <KpiCard label="Stages Overdue" value={overdueCount} icon={<Clock size={16} />} tone="warn" />
-        <KpiCard label="Ready for Dispatch → Sent" value={completedCount} icon={<PackageCheck size={16} />} tone="ok" />
-        <KpiCard label="Total Entries" value={entries.length} icon={<CheckCircle2 size={16} />} tone="default" />
-      </div>
-
-      <div className="flex items-center gap-2 px-6 py-2.5 mt-3 bg-white border-b border-g200 flex-wrap">
+      <div className="flex items-center gap-2 px-6 py-2.5 mt-4 bg-white border-b border-g200 flex-wrap">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <div
             onClick={() => setTab('toDispatch')}
@@ -155,7 +133,6 @@ export function Dispatch() {
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Order No.</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Customer</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Doer</th>
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Current Stage</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Progress</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Next Action Due</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
@@ -163,7 +140,7 @@ export function Dispatch() {
               </thead>
               <tbody>
                 {visibleEntries.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center p-8 text-g400 text-[13px]">No {subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries yet</td></tr>
+                  <tr><td colSpan={6} className="text-center p-8 text-g400 text-[13px]">No {subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries yet</td></tr>
                 ) : (
                   visibleEntries.map(entry => {
                     const order = orderFor(entry);
@@ -182,16 +159,6 @@ export function Dispatch() {
                           <div className="text-[10.5px] text-g500 font-mono">{order?.poNo}</div>
                         </td>
                         <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600">{stage?.owner || '—'}</td>
-                        <td className="px-[13px] py-[10px] align-top">
-                          {isComplete ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[3px] text-[10.5px] font-semibold bg-sW/10 text-sW whitespace-nowrap"><PackageCheck size={10} /> All stages done</span>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-[9.5px] text-g400">{stage?.code}</span>
-                              <span className="text-[11.5px] text-blk">{stage?.label}</span>
-                            </div>
-                          )}
-                        </td>
                         <td className="px-[13px] py-[10px] align-top">
                           <div className="flex items-center gap-2">
                             <div className="w-16 h-1.5 rounded-full bg-g100 overflow-hidden">

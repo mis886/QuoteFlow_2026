@@ -60,6 +60,7 @@ export function NewDispatchEntry() {
   // Customer & Contact / Trading Terms above: corrections here are saved
   // back onto the order itself via updateOrder on Save.
   const [items, setItems] = useState<OrderItem[]>([]);
+  const [insurance, setInsurance] = useState(0);
 
   // Dispatch-specific fields
   const [transporter, setTransporter] = useState('');
@@ -81,6 +82,7 @@ export function NewDispatchEntry() {
     setShipAddr(order.shipToAddress || '');
     setCustEnquiryDocNo(order.custEnquiryDocNo || '');
     setItems(order.items.map(i => ({ ...i })));
+    setInsurance(order.insurance ?? 0);
   };
 
   // Mirrors NewOrder.tsx's updateItem — recomputes an item's Amount whenever
@@ -141,9 +143,9 @@ export function NewDispatchEntry() {
   // so corrections here are reflected immediately, before Save.
   const orderTotals = useMemo(() => {
     if (!selectedOrder) return null;
-    const isINR = (selectedOrder.curr || 'INR') === 'INR';
+    const isINR = (curr || 'INR') === 'INR';
     const subTotal = items.reduce((s, i) => s + i.total, 0);
-    const ins = isINR ? (selectedOrder.insurance || 0) : 0;
+    const ins = isINR ? insurance : 0;
     const itemGst = items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
     const scaledItemGst = isINR && subTotal > 0 ? itemGst * (subTotal + ins) / subTotal : 0;
     const maxGstRate = isINR ? maxItemGstRate(items) : 0;
@@ -151,7 +153,7 @@ export function NewDispatchEntry() {
     const gstTotal = isINR ? adj.gstTotal : 0;
     const grandTotal = Math.round(subTotal + ins + adj.preNet + gstTotal + adj.postNet);
     return { isINR, subTotal, ins, adj, gstTotal, grandTotal };
-  }, [selectedOrder, items]);
+  }, [selectedOrder, items, curr, insurance]);
 
   const handleSubmit = async () => {
     if (!selectedOrderId || saving) return;
@@ -170,6 +172,7 @@ export function NewDispatchEntry() {
         shipToAddress: shipAddr || undefined,
         custEnquiryDocNo: custEnquiryDocNo || undefined,
         items,
+        insurance: curr === 'INR' ? insurance : 0,
       });
 
       const extra = {
@@ -325,20 +328,10 @@ export function NewDispatchEntry() {
                   <div className="pt-[12px] grid grid-cols-2 sm:grid-cols-3 gap-[12px]">
                     <div>
                       <label className={labelCls}>Fulfillment Type</label>
-                      <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px] w-fit">
-                        <div
-                          onClick={() => setType('delivery')}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${type === 'delivery' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
-                        >
-                          <span className="w-[7px] h-[7px] rounded-full bg-sN shrink-0" /> Delivery
-                        </div>
-                        <div
-                          onClick={() => setType('self_pickup')}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${type === 'self_pickup' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
-                        >
-                          <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup
-                        </div>
-                      </div>
+                      <select value={type} onChange={e => setType(e.target.value as DispatchFulfillmentType)} className={selectCls}>
+                        <option value="delivery">Delivery</option>
+                        <option value="self_pickup">Self Pickup</option>
+                      </select>
                     </div>
                     <div>
                       <label className={labelCls}>Transporter</label>
@@ -512,10 +505,27 @@ export function NewDispatchEntry() {
                       <td colSpan={orderTotals.isINR ? 10 : 9} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
                       <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(orderTotals.subTotal)}</td>
                     </tr>
-                    {orderTotals.isINR && orderTotals.ins > 0 && (
+                    {orderTotals.isINR && (
                       <tr className="border-b border-g200 bg-g50/50">
-                        <td colSpan={10} className="px-3 py-2 text-right text-[11px] text-g500">Insurance</td>
-                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(orderTotals.ins)}</td>
+                        <td colSpan={10} className="px-3 py-2 text-right">
+                          <span className="text-[11px] text-g500">Insurance</span>
+                          <button
+                            type="button"
+                            onClick={() => setInsurance(Math.round(orderTotals.subTotal * 0.0015 * 100) / 100)}
+                            className="block ml-auto text-[10px] text-blue-600 hover:text-blue-800 underline underline-offset-2 leading-tight"
+                          >Apply 0.15%</button>
+                        </td>
+                        <td className="px-3 py-1 text-right">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={insurance === 0 ? '' : insurance}
+                            onChange={e => setInsurance(e.target.value === '' ? 0 : Math.round(parseFloat(e.target.value) * 100) / 100)}
+                            placeholder="0.00"
+                            className="w-full text-right font-mono text-[12px] font-bold text-blk bg-transparent border-b border-g300 focus:border-blue-500 outline-none py-0.5 pr-0"
+                          />
+                        </td>
                       </tr>
                     )}
                     {orderTotals.adj.lines.filter(l => l.taxable).map(l => (
