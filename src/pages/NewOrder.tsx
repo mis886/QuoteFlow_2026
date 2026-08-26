@@ -874,7 +874,7 @@ export function NewOrder() {
 
                 {/* Dispatch details — captured here so they're already on the order by the time a dispatch entry is created for it */}
                 <div className="p-[0_16px_12px]">
-                  <div className="pt-[12px] grid grid-cols-2 sm:grid-cols-3 gap-[10px]">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-[10px]">
                     <div>
                       <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Fulfillment Type</label>
                       <select value={fulfillmentType} onChange={e => setFulfillmentType(e.target.value as 'delivery' | 'self_pickup')} className={selectCls}>
