@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { Search, X } from 'lucide-react';
 import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate } from '../lib/utils';
-import { DispatchFulfillmentType, Order, CustomerTier } from '../lib/types';
+import { DispatchFulfillmentType, Order, OrderItem, CustomerTier } from '../lib/types';
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow disabled:bg-g50 disabled:cursor-not-allowed disabled:text-g500";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-60 disabled:cursor-not-allowed";
@@ -50,6 +50,10 @@ export function NewDispatchEntry() {
   const [pay, setPay] = useState('');
   const [shipAddr, setShipAddr] = useState('');
   const [custEnquiryDocNo, setCustEnquiryDocNo] = useState('');
+  // Order Line Items — editable copy of the order's saved items, same as
+  // Customer & Contact / Trading Terms above: corrections here are saved
+  // back onto the order itself via updateOrder on Save.
+  const [items, setItems] = useState<OrderItem[]>([]);
 
   // Dispatch-specific fields
   const [transporter, setTransporter] = useState('');
@@ -70,6 +74,22 @@ export function NewDispatchEntry() {
     setPay(order.pay || '');
     setShipAddr(order.shipToAddress || '');
     setCustEnquiryDocNo(order.custEnquiryDocNo || '');
+    setItems(order.items.map(i => ({ ...i })));
+  };
+
+  // Mirrors NewOrder.tsx's updateItem — recomputes an item's Amount whenever
+  // qty, rate, or packing (which feeds Total Qty) changes.
+  const updateItem = (idx: number, field: keyof OrderItem, value: any) => {
+    const ni = [...items];
+    const updated = { ...ni[idx], [field]: value };
+    if (field === 'qty' || field === 'agreedRate' || field === 'priceBasisConv' || field === 'packing') {
+      const packingNum = parseFloat(updated.packing || '') || 0;
+      const totalQty = Number(updated.qty) * (packingNum || 1);
+      const conv = Number(updated.priceBasisConv) || 1;
+      updated.total = totalQty * conv * Number(updated.agreedRate);
+    }
+    ni[idx] = updated;
+    setItems(ni);
   };
 
   // Preload from ?orderRef= — used both when the order/customer picker
@@ -109,22 +129,23 @@ export function NewDispatchEntry() {
   const isEditMode = !!existingEntryId;
   const selectedCustomer = selectedOrder ? data.customers.find(c => c.name === selectedOrder.cust) : undefined;
 
-  // Read-only order totals — mirrors the exact Subtotal/Insurance/Taxable
-  // Value/GST Total/Order Value math used on the Order form itself, just
-  // computed from the already-saved order rather than live-edited items.
+  // Order totals — mirrors the exact Subtotal/Insurance/Taxable Value/GST
+  // Total/Order Value math used on the Order form itself, now recomputed
+  // live off the editable `items` state above (not the frozen order.items)
+  // so corrections here are reflected immediately, before Save.
   const orderTotals = useMemo(() => {
     if (!selectedOrder) return null;
     const isINR = (selectedOrder.curr || 'INR') === 'INR';
-    const subTotal = selectedOrder.items.reduce((s, i) => s + i.total, 0);
+    const subTotal = items.reduce((s, i) => s + i.total, 0);
     const ins = isINR ? (selectedOrder.insurance || 0) : 0;
-    const itemGst = selectedOrder.items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
+    const itemGst = items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
     const scaledItemGst = isINR && subTotal > 0 ? itemGst * (subTotal + ins) / subTotal : 0;
-    const maxGstRate = isINR ? maxItemGstRate(selectedOrder.items) : 0;
+    const maxGstRate = isINR ? maxItemGstRate(items) : 0;
     const adj = resolveAdjustments(selectedOrder.adjustments, subTotal, scaledItemGst, maxGstRate);
     const gstTotal = isINR ? adj.gstTotal : 0;
     const grandTotal = Math.round(subTotal + ins + adj.preNet + gstTotal + adj.postNet);
     return { isINR, subTotal, ins, adj, gstTotal, grandTotal };
-  }, [selectedOrder]);
+  }, [selectedOrder, items]);
 
   const handleSubmit = async () => {
     if (!selectedOrderId || saving) return;
@@ -142,6 +163,7 @@ export function NewDispatchEntry() {
         pay: pay || undefined,
         shipToAddress: shipAddr || undefined,
         custEnquiryDocNo: custEnquiryDocNo || undefined,
+        items,
       });
 
       const extra = {
@@ -394,21 +416,43 @@ export function NewDispatchEntry() {
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedOrder.items.map(i => {
+                    {items.map((i, idx) => {
                       const packNum = parseFloat(i.packing || '');
                       const totalQty = i.qty > 0 && packNum > 0 ? i.qty * packNum : null;
                       return (
-                        <tr key={i.seq}>
+                        <tr key={i.seq} className="hover:bg-g50/50">
                           <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{i.seq}</td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle text-blk font-medium">{i.desc}</td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle font-mono text-[11px] text-blk">{i.hsn || '—'}</td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle font-mono text-[12px] text-center text-blk">{i.qty}</td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle text-[12px] text-center text-blk">{i.packing || '—'}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <input type="text" value={i.desc} onChange={e => updateItem(idx, 'desc', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-medium text-blk" />
+                          </td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <input type="text" value={i.hsn || ''} onChange={e => updateItem(idx, 'hsn', e.target.value)} className="w-full bg-transparent outline-none font-mono text-[11px] text-blk" />
+                          </td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <input type="number" min="1" value={i.qty || ''} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} className="w-full bg-transparent outline-none font-mono text-[12px] text-center text-blk" />
+                          </td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <input type="text" value={i.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-center text-blk" />
+                          </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle bg-g100 text-center font-mono text-[11px] text-g500">{totalQty ?? '—'}</td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle text-[12px] text-center text-blk">{i.packingType || '—'}</td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle text-[12px] text-center text-blk">{i.priceBasis || 'Per kg'}</td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] text-blk">{formatINR(i.agreedRate)}</td>
-                          {orderTotals.isINR && <td className="px-3 py-[5px] border border-g400 align-middle text-[12px] text-center font-mono text-blk">{i.gst}%</td>}
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <input type="text" value={i.packingType || ''} onChange={e => updateItem(idx, 'packingType', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-center text-blk" />
+                          </td>
+                          <td className="px-1 py-[3px] border border-g400 align-middle">
+                            <select value={i.priceBasis || 'Per kg'} onChange={e => updateItem(idx, 'priceBasis', e.target.value)} className="w-full bg-transparent outline-none font-sans text-[11px] text-blk text-center cursor-pointer">
+                              {['Per kg', 'Per MT', 'Per Ltr', 'Per KL', 'Per Unit', 'Per Drum', 'Per Can'].map(o => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <input type="number" step="any" min="0" value={i.agreedRate || ''} onChange={e => updateItem(idx, 'agreedRate', Number(e.target.value))} className="w-full bg-transparent outline-none font-mono text-[12px] text-right text-blk" />
+                          </td>
+                          {orderTotals.isINR && (
+                            <td className="px-3 py-[5px] border border-g400 align-middle">
+                              <select value={i.gst} onChange={e => updateItem(idx, 'gst', Number(e.target.value))} className="w-full bg-transparent outline-none text-[12px] text-center font-mono text-blk appearance-none cursor-pointer">
+                                <option value={18}>18%</option><option value={12}>12%</option><option value={5}>5%</option><option value={0}>0%</option>
+                              </select>
+                            </td>
+                          )}
                           <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] font-bold text-blk">{formatINR(i.total)}</td>
                         </tr>
                       );
