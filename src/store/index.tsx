@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { Customer, Site, Contact, DataStore, Enquiry, Order, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, DispatchStage } from '../lib/types';
+import type { Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, DispatchStage } from '../lib/types';
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
@@ -626,6 +626,9 @@ const mapEnquiryToDB = (e: any) => {
     createdBy: d.created_by || undefined,
     created_at: d.created_at,
     updated_at: d.updated_at,
+    items: (d.items || []) as OrderItem[],
+    insurance: d.insurance ?? undefined,
+    value: d.value ?? undefined,
   });
 
   const mapDispatchEntryToDB = (d: any) => {
@@ -646,6 +649,9 @@ const mapEnquiryToDB = (e: any) => {
     if ('estimatedDeliveryDate' in d) obj.estimated_delivery_date = d.estimatedDeliveryDate || null;
     if ('formFilledBy' in d) obj.form_filled_by = d.formFilledBy || null;
     if ('createdBy' in d) obj.created_by = d.createdBy || null;
+    if ('items' in d) obj.items = d.items ?? [];
+    if ('insurance' in d) obj.insurance = d.insurance ?? null;
+    if ('value' in d) obj.value = d.value ?? null;
     obj.updated_at = new Date().toISOString();
     return obj;
   };

@@ -508,6 +508,14 @@ export interface DispatchEntry {
   createdBy?: string;
   created_at?: string;
   updated_at?: string;
+  // The line items actually being dispatched in this specific dispatch
+  // action — captured here, independent of the order's own (unchanged)
+  // items, so a partial dispatch doesn't overwrite the order's confirmed
+  // total. Any undispatched remainder gets split into a separate order
+  // instead. insurance/value are this dispatch's own totals, same idea.
+  items?: OrderItem[];
+  insurance?: number;
+  value?: number;
 }
 
 export interface AuthorizedSignatory {

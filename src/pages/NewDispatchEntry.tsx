@@ -128,6 +128,11 @@ export function NewDispatchEntry() {
       setRemark(existing.remark || order.remark || '');
       setPromisedDeliveryDate(existing.promisedDeliveryDate || order.promisedDeliveryDate || '');
       setEstimatedDeliveryDate(existing.estimatedDeliveryDate || order.estimatedDeliveryDate || '');
+      // Reopening a saved dispatch entry must show what was actually
+      // dispatched, not the order's own (unchanged) confirmed quantities —
+      // the entry carries its own items/insurance snapshot for exactly this.
+      if (existing.items && existing.items.length) setItems(existing.items.map(i => ({ ...i })));
+      if (typeof existing.insurance === 'number') setInsurance(existing.insurance);
     }
   }, [orderRef, data.orders, data.dispatchEntries]);
 
@@ -170,12 +175,22 @@ export function NewDispatchEntry() {
     setError('');
     try {
       // Detect a partial dispatch: if the user has edited any line's "No of
-      // Barrels" down from what's still on the order, the undispatched
-      // remainder must not be lost — split it off into a new order (status
-      // "Order Pending for Dispatch", linked back via splitFromOrderId) so
-      // it stays visible in the Orders module and can be dispatched later,
-      // potentially split further.
-      const origBySeq = new Map(selectedOrder.items.map(i => [i.seq, i]));
+      // Barrels" down from what's actually being dispatched here, the
+      // undispatched remainder must not be lost — split it off into a new
+      // order (status "Order Pending for Dispatch", linked back via
+      // splitFromOrderId) so it stays visible in the Orders module and can
+      // be dispatched later, potentially split further.
+      //
+      // The comparison baseline is what THIS dispatch action has already
+      // accounted for — the dispatch entry's own saved items when editing an
+      // existing one, or the order's full confirmed items on a fresh
+      // dispatch — never the order's own items directly. The order's items
+      // are never rewritten by a dispatch (see the updateOrder call below),
+      // so "Order Confirmed" always keeps showing what was actually
+      // confirmed, however many times it's since been split.
+      const existingEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : null;
+      const baselineItems = (existingEntry?.items && existingEntry.items.length) ? existingEntry.items : selectedOrder.items;
+      const origBySeq = new Map(baselineItems.map(i => [i.seq, i]));
       const leftoverItemsRaw: OrderItem[] = [];
       items.forEach(edited => {
         const orig = origBySeq.get(edited.seq);
@@ -259,9 +274,12 @@ export function NewDispatchEntry() {
         await addOrder(newOrder);
       }
 
-      // Persist any corrections made to the order's own trading/contact
-      // details, plus the (possibly reduced, if split above) line items and
-      // the recomputed Order Value that follows from them.
+      // Persist corrections made to the order's own trading/contact details
+      // only — NOT items/insurance/value. The order keeps showing exactly
+      // what was confirmed, for as long as it exists, regardless of how much
+      // of it has since been dispatched; what's actually being dispatched
+      // now lives on the dispatch entry itself (below), and any undispatched
+      // remainder lives on the leftover order split off above.
       await updateOrder(selectedOrderId, {
         contact: contact || undefined,
         phone: phone || undefined,
@@ -272,9 +290,6 @@ export function NewDispatchEntry() {
         pay: pay || undefined,
         shipToAddress: shipAddr || undefined,
         custEnquiryDocNo: custEnquiryDocNo || undefined,
-        items,
-        insurance: curr === 'INR' ? insurance : 0,
-        value: orderTotals ? orderTotals.grandTotal : selectedOrder.value,
       });
 
       const extra = {
@@ -282,6 +297,11 @@ export function NewDispatchEntry() {
         remark: remark || undefined,
         promisedDeliveryDate: promisedDeliveryDate || undefined,
         estimatedDeliveryDate: estimatedDeliveryDate || undefined,
+        // This dispatch's own line items/insurance/value — what's actually
+        // being dispatched right now, independent of the order's own totals.
+        items,
+        insurance: curr === 'INR' ? insurance : 0,
+        value: orderTotals ? orderTotals.grandTotal : selectedOrder.value,
       };
 
       if (existingEntryId) {
