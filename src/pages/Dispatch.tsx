@@ -2,8 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { X, Truck, PackageCheck, Clock, CheckCircle2, ChevronRight, FileCheck2, FileWarning } from 'lucide-react';
-import { fmtIST, canDeleteRecords } from '../lib/utils';
+import { Truck, PackageCheck, Clock, CheckCircle2 } from 'lucide-react';
+import { canDeleteRecords } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType, DispatchStage } from '../lib/types';
 
 // ── small local helpers (kept in this file — not reused elsewhere yet) ──
@@ -30,18 +30,6 @@ function StagePill({ status, overdue }: { status: DispatchStage['status']; overd
   );
 }
 
-function FulfillmentSwatch({ type }: { type: DispatchFulfillmentType }) {
-  const isSelfPickup = type === 'self_pickup';
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[3px] text-[10.5px] font-semibold whitespace-nowrap ${isSelfPickup ? 'bg-[#7C3AED]/10 text-[#7C3AED]' : 'bg-sN/10 text-sN'}`}
-    >
-      <span className={`w-[5px] h-[5px] rounded-full shrink-0 ${isSelfPickup ? 'bg-[#7C3AED]' : 'bg-sN'}`} />
-      {isSelfPickup ? 'Self Pickup' : 'Delivery'}
-    </span>
-  );
-}
-
 function currentStageOf(entry: DispatchEntry): DispatchStage | null {
   return entry.stages[entry.currentStageIndex] ?? null;
 }
@@ -49,11 +37,6 @@ function currentStageOf(entry: DispatchEntry): DispatchStage | null {
 function isEntryOverdue(entry: DispatchEntry, now: number): boolean {
   const stage = currentStageOf(entry);
   return !!stage && !!stage.planned && new Date(stage.planned).getTime() < now;
-}
-
-function fmtDT(iso: string | null | undefined): string {
-  if (!iso) return '--';
-  try { return fmtIST(new Date(iso), 'dd-MMM-yyyy HH:mm'); } catch { return '--'; }
 }
 
 export function Dispatch() {
@@ -64,7 +47,6 @@ export function Dispatch() {
 
   const [tab, setTab] = useState<'toDispatch' | 'toSend'>('toDispatch');
   const [subType, setSubType] = useState<DispatchFulfillmentType>('delivery');
-  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
 
   const entries = data.dispatchEntries;
   const overdueCount = entries.filter(e => isEntryOverdue(e, now)).length;
@@ -78,7 +60,6 @@ export function Dispatch() {
     [entries, subType],
   );
 
-  const selectedEntry = selectedEntryId ? entries.find(e => e.id === selectedEntryId) || null : null;
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
 
   const KpiCard = ({ label, value, icon, tone }: { label: string; value: number; icon: React.ReactNode; tone: 'default' | 'warn' | 'ok' }) => (
@@ -193,8 +174,7 @@ export function Dispatch() {
                     return (
                       <tr
                         key={entry.id}
-                        className="group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-sW/5"
-                        onClick={() => setSelectedEntryId(entry.id)}
+                        className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-sW/5"
                       >
                         <td className="px-[13px] py-[10px] align-top"><span className="font-mono text-[10.5px] font-bold text-sW">{entry.orderId}</span></td>
                         <td className="px-[13px] py-[10px] align-top">
@@ -223,19 +203,17 @@ export function Dispatch() {
                         <td className="px-[13px] py-[10px] align-top">
                           {isComplete ? <span className="text-g400 text-[11.5px]">--</span> : <StagePill status={stage?.status || 'pending'} overdue={overdue} />}
                         </td>
-                        <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
+                        <td className="px-[13px] py-[10px] align-top">
                           <div className="flex gap-1.5 flex-wrap">
-                            <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); setSelectedEntryId(entry.id); }}>View</Button>
+                            <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}`)}>Edit</Button>
                             {!isComplete && (
-                              <Button size="sm" variant="dark" onClick={(e) => { e.stopPropagation(); advanceDispatchStage(entry.id).catch(console.error); }}>Mark Done</Button>
+                              <Button size="sm" variant="dark" onClick={() => advanceDispatchStage(entry.id).catch(console.error)}>Mark Done</Button>
                             )}
                             {canDelete && (
-                              <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async (e) => {
-                                e.stopPropagation();
+                              <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async () => {
                                 if (!confirm(`Are you sure you want to delete the dispatch entry for ${entry.orderId}? This action cannot be undone.`)) return;
                                 try {
                                   await deleteDispatchEntry(entry.id);
-                                  if (selectedEntryId === entry.id) setSelectedEntryId(null);
                                 } catch (err: any) {
                                   alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
                                 }
@@ -253,141 +231,6 @@ export function Dispatch() {
         )}
       </div>
 
-      {selectedEntry && (
-        <DispatchDrawer
-          entry={selectedEntry}
-          order={orderFor(selectedEntry)}
-          canDelete={canDelete}
-          onClose={() => setSelectedEntryId(null)}
-          onAdvance={() => advanceDispatchStage(selectedEntry.id).catch(console.error)}
-          onDelete={async () => {
-            if (!confirm(`Are you sure you want to delete the dispatch entry for ${selectedEntry.orderId}? This action cannot be undone.`)) return;
-            try {
-              await deleteDispatchEntry(selectedEntry.id);
-              setSelectedEntryId(null);
-            } catch (err: any) {
-              alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
-            }
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-// ── Right-side stage-detail drawer ───────────────────────────────────────
-
-function DispatchDrawer({
-  entry, order, canDelete, onClose, onAdvance, onDelete,
-}: {
-  entry: DispatchEntry;
-  order: Order | undefined;
-  canDelete: boolean;
-  onClose: () => void;
-  onAdvance: () => void;
-  onDelete: () => void;
-}) {
-  const now = Date.now();
-  const isComplete = entry.currentStageIndex >= entry.stages.length;
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-[1px] animate-in fade-in duration-300" onClick={onClose} />
-      <div className="flex flex-col h-full bg-white relative animate-in slide-in-from-right duration-300 w-full sm:w-[500px]">
-        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-g200 shrink-0">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10.5px] font-bold text-sW">{entry.orderId}</span>
-              <FulfillmentSwatch type={entry.fulfillmentType} />
-            </div>
-            <div className="font-serif text-lg text-blk mt-1 truncate">{order?.cust || '—'}</div>
-            <div className="text-[11px] text-g500 font-mono mt-0.5">{order?.poNo}</div>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {canDelete && (
-              <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={onDelete}>Delete</Button>
-            )}
-            <button onClick={onClose} className="shrink-0 w-7 h-7 flex items-center justify-center rounded-[3px] text-g400 hover:text-blk hover:bg-g100 transition-colors">
-              <X size={15} />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-g400 mb-2.5">
-            {entry.fulfillmentType === 'self_pickup' ? 'Self Pickup — Order → Dispatch' : 'Delivery — Order → Dispatch'}
-          </div>
-
-          <div className="flex flex-col gap-0">
-            {entry.stages.map((stage, i) => {
-              const isCurrent = i === entry.currentStageIndex;
-              const isDone = stage.status === 'done';
-              const overdue = isCurrent && !!stage.planned && new Date(stage.planned).getTime() < now;
-              const isLastStage = i === entry.stages.length - 1;
-              return (
-                <div key={stage.code} className={`flex gap-3 pb-4 relative ${i < entry.stages.length - 1 ? 'border-l border-g200 ml-[9px] pl-[17px]' : 'ml-[9px] pl-[17px]'}`}>
-                  <div className={`absolute -left-[9px] top-0 w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0 ${isDone ? 'border-sW bg-sW text-white' : isCurrent ? (overdue ? 'border-red-mrt bg-white text-red-mrt' : 'border-sR bg-white text-sR') : 'border-g300 bg-white text-g400'}`}>
-                    {isDone ? <CheckCircle2 size={11} /> : <span className="font-mono text-[8px] font-bold">{i + 1}</span>}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-[9.5px] text-g400">{stage.code}</span>
-                      <span className="text-[12.5px] font-semibold text-blk">{stage.label}</span>
-                      {isDone && <StagePill status="done" overdue={false} />}
-                      {isCurrent && !isDone && <StagePill status="pending" overdue={overdue} />}
-                    </div>
-                    <div className="text-[10.5px] text-g500 mt-0.5">{stage.owner} · {stage.how} · SLA {stage.slaHours}h</div>
-                    <div className="flex items-center gap-3 text-[10.5px] text-g500 mt-1 flex-wrap">
-                      <span>Planned: {fmtDT(stage.planned)}</span>
-                      {isDone && <span>Actual: {fmtDT(stage.actual)}</span>}
-                      {isDone && stage.delayHours !== null && (
-                        <span className={stage.delayHours > 0 ? 'text-red-mrt font-semibold' : 'text-sW font-semibold'}>
-                          {stage.delayHours > 0 ? `${stage.delayHours}h late` : `${Math.abs(stage.delayHours)}h early`}
-                        </span>
-                      )}
-                    </div>
-
-                    {isLastStage && (
-                      <div className="mt-2 flex items-center gap-1.5">
-                        {entry.docLinkStatus === 'attached' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[3px] text-[10px] font-semibold bg-sW/10 text-sW whitespace-nowrap"><FileCheck2 size={10} /> DO Link attached</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[3px] text-[10px] font-semibold bg-amber-500/10 text-amber-600 whitespace-nowrap"><FileWarning size={10} /> DO Link not uploaded</span>
-                        )}
-                      </div>
-                    )}
-
-                    {isCurrent && !isDone && (
-                      <div className="mt-2.5">
-                        <Button size="sm" variant="dark" onClick={onAdvance}>Mark Done <ChevronRight size={11} /></Button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {isComplete && (
-            <div className="mt-2 p-3 rounded-[4px] bg-sW/5 border border-sW/20 text-[12px] text-sW font-medium flex items-center gap-2">
-              <PackageCheck size={14} /> All Order → Dispatch stages complete. Dispatch → Sent tracking is parked for a later phase.
-            </div>
-          )}
-
-          {(entry.remark || entry.transporter || entry.vehicleNumber || entry.numUnits) && (
-            <div className="mt-5 pt-4 border-t border-g200">
-              <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-g400 mb-2">Intake Details</div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11.5px]">
-                {entry.numUnits && <div><div className="text-g400 text-[10px]">Number of Drum/Bag</div><div className="text-blk">{entry.numUnits} {entry.unit}</div></div>}
-                {entry.transporter && <div><div className="text-g400 text-[10px]">Transporter</div><div className="text-blk">{entry.transporter}</div></div>}
-                {entry.vehicleNumber && <div><div className="text-g400 text-[10px]">Vehicle Number</div><div className="text-blk">{entry.vehicleNumber}</div></div>}
-                {entry.formFilledBy && <div><div className="text-g400 text-[10px]">Form Filled By</div><div className="text-blk">{entry.formFilledBy}</div></div>}
-                {entry.remark && <div className="col-span-2"><div className="text-g400 text-[10px]">Remark</div><div className="text-blk">{entry.remark}</div></div>}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
