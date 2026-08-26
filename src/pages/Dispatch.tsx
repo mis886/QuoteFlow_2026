@@ -41,7 +41,7 @@ function isEntryOverdue(entry: DispatchEntry, now: number): boolean {
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, advanceDispatchStage, deleteDispatchEntry } = useAppStore();
+  const { data, user, deleteDispatchEntry } = useAppStore();
   const now = Date.now();
   const canDelete = canDeleteRecords(user?.email);
 
@@ -206,9 +206,6 @@ export function Dispatch() {
                         <td className="px-[13px] py-[10px] align-top">
                           <div className="flex gap-1.5 flex-wrap">
                             <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}`)}>Edit</Button>
-                            {!isComplete && (
-                              <Button size="sm" variant="dark" onClick={() => advanceDispatchStage(entry.id).catch(console.error)}>Mark Done</Button>
-                            )}
                             {canDelete && (
                               <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async () => {
                                 if (!confirm(`Are you sure you want to delete the dispatch entry for ${entry.orderId}? This action cannot be undone.`)) return;

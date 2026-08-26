@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { Search, X } from 'lucide-react';
-import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords } from '../lib/utils';
+import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate } from '../lib/utils';
 import { DispatchFulfillmentType, Order, CustomerTier } from '../lib/types';
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow disabled:bg-g50 disabled:cursor-not-allowed disabled:text-g500";
@@ -108,6 +108,23 @@ export function NewDispatchEntry() {
   const selectedOrder = selectedOrderId ? data.orders.find(o => o.id === selectedOrderId) : null;
   const isEditMode = !!existingEntryId;
   const selectedCustomer = selectedOrder ? data.customers.find(c => c.name === selectedOrder.cust) : undefined;
+
+  // Read-only order totals — mirrors the exact Subtotal/Insurance/Taxable
+  // Value/GST Total/Order Value math used on the Order form itself, just
+  // computed from the already-saved order rather than live-edited items.
+  const orderTotals = useMemo(() => {
+    if (!selectedOrder) return null;
+    const isINR = (selectedOrder.curr || 'INR') === 'INR';
+    const subTotal = selectedOrder.items.reduce((s, i) => s + i.total, 0);
+    const ins = isINR ? (selectedOrder.insurance || 0) : 0;
+    const itemGst = selectedOrder.items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
+    const scaledItemGst = isINR && subTotal > 0 ? itemGst * (subTotal + ins) / subTotal : 0;
+    const maxGstRate = isINR ? maxItemGstRate(selectedOrder.items) : 0;
+    const adj = resolveAdjustments(selectedOrder.adjustments, subTotal, scaledItemGst, maxGstRate);
+    const gstTotal = isINR ? adj.gstTotal : 0;
+    const grandTotal = Math.round(subTotal + ins + adj.preNet + gstTotal + adj.postNet);
+    return { isINR, subTotal, ins, adj, gstTotal, grandTotal };
+  }, [selectedOrder]);
 
   const handleSubmit = async () => {
     if (!selectedOrderId || saving) return;
@@ -332,24 +349,27 @@ export function NewDispatchEntry() {
             </div>
           )}
 
-          {/* Order line items — read-only reference, not editable here */}
-          {selectedOrder && (
+          {/* Order line items — read-only reference styled exactly like the Order form's table, through Order Value */}
+          {selectedOrder && orderTotals && (
             <div className="bg-white border border-g200">
-              <div className={sectionHeaderCls}>Order Line Items — {selectedOrder.id}</div>
+              <div className="p-[11px_16px] border-b border-g200">
+                <span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g500">Order Line Items</span>
+              </div>
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-[11.5px] m-0">
+                <table className="w-full border-collapse border border-g400 text-[12px]">
                   <thead className="bg-g100">
                     <tr>
-                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">#</th>
-                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Product Name</th>
-                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">HSN Code</th>
-                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">No of Barrels</th>
-                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Packing</th>
-                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Total Qty</th>
-                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Packing Type</th>
-                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Unit Rate (₹)</th>
-                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">GST%</th>
-                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Amount (₹)</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400">Product Name</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-32 whitespace-nowrap">No of Barrels</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24 whitespace-nowrap">Total Qty</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Packing Type</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28">Price Basis</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Unit Rate ({orderTotals.isINR ? '₹' : '$'})</th>
+                      {orderTotals.isINR && <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-20">GST %</th>}
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Amount ({orderTotals.isINR ? '₹' : '$'})</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -358,20 +378,69 @@ export function NewDispatchEntry() {
                       const totalQty = i.qty > 0 && packNum > 0 ? i.qty * packNum : null;
                       return (
                         <tr key={i.seq}>
-                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px] text-g400 w-6">{i.seq}</td>
-                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
-                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px]">{i.hsn || '—'}</td>
-                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
-                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11px] text-right">{i.packing || '—'}</td>
-                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{totalQty ?? '—'}</td>
-                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk text-[11px] text-g600">{i.packingType || '—'}</td>
-                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-right">{formatINR(i.agreedRate)}</td>
-                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-right">{i.gst}%</td>
-                          <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono font-bold text-right">{formatINR(i.total)}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{i.seq}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle text-blk font-medium">{i.desc}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle font-mono text-[11px] text-blk">{i.hsn || '—'}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle font-mono text-[12px] text-center text-blk">{i.qty}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle text-[12px] text-center text-blk">{i.packing || '—'}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle bg-g100 text-center font-mono text-[11px] text-g500">{totalQty ?? '—'}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle text-[12px] text-center text-blk">{i.packingType || '—'}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle text-[12px] text-center text-blk">{i.priceBasis || 'Per kg'}</td>
+                          <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] text-blk">{formatINR(i.agreedRate)}</td>
+                          {orderTotals.isINR && <td className="px-3 py-[5px] border border-g400 align-middle text-[12px] text-center font-mono text-blk">{i.gst}%</td>}
+                          <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] font-bold text-blk">{formatINR(i.total)}</td>
                         </tr>
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t border-g200 bg-g50/50">
+                      <td colSpan={orderTotals.isINR ? 10 : 9} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
+                      <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(orderTotals.subTotal)}</td>
+                    </tr>
+                    {orderTotals.isINR && orderTotals.ins > 0 && (
+                      <tr className="border-b border-g200 bg-g50/50">
+                        <td colSpan={10} className="px-3 py-2 text-right text-[11px] text-g500">Insurance</td>
+                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(orderTotals.ins)}</td>
+                      </tr>
+                    )}
+                    {orderTotals.adj.lines.filter(l => l.taxable).map(l => (
+                      <tr key={l.id} className="bg-g50/50">
+                        <td colSpan={orderTotals.isINR ? 10 : 9} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
+                          {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
+                        </td>
+                        <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
+                          {l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}
+                        </td>
+                      </tr>
+                    ))}
+                    {orderTotals.isINR && (orderTotals.adj.preNet !== 0 || orderTotals.ins > 0) && (
+                      <tr className="bg-g50/50">
+                        <td colSpan={10} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
+                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk border-t border-g100">{formatINR(orderTotals.subTotal + orderTotals.ins + orderTotals.adj.preNet)}</td>
+                      </tr>
+                    )}
+                    {orderTotals.isINR && (
+                      <tr className="border-b border-g200 bg-g50/50">
+                        <td colSpan={10} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
+                        <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(orderTotals.gstTotal)}</td>
+                      </tr>
+                    )}
+                    {orderTotals.adj.lines.filter(l => !l.taxable).map(l => (
+                      <tr key={l.id} className="bg-g50/50">
+                        <td colSpan={orderTotals.isINR ? 10 : 9} className="px-3 py-2 text-right text-[11px] text-g500">
+                          {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
+                        </td>
+                        <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
+                          {l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-[#1e293b]">
+                      <td colSpan={orderTotals.isINR ? 10 : 9} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
+                      <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{formatINR(orderTotals.grandTotal)}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
