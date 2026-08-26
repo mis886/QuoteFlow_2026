@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { Search, X } from 'lucide-react';
@@ -17,6 +17,11 @@ const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppe
 export function NewDispatchEntry() {
   const navigate = useNavigate();
   const { data, addDispatchEntry } = useAppStore();
+  const [searchParams] = useSearchParams();
+  // Arriving via the "Dispatch" button on the Orders register (same pattern as
+  // the Quotes register's "Order" button → /orders/new?quoteRef=...): the order
+  // is passed in the URL and pre-selected below instead of requiring a search.
+  const orderRef = searchParams.get('orderRef');
 
   const [type, setType] = useState<DispatchFulfillmentType>('delivery');
   const [orderQuery, setOrderQuery] = useState('');
@@ -39,7 +44,43 @@ export function NewDispatchEntry() {
     return eligibleOrders.filter(o => o.cust.toLowerCase().includes(q) || o.poNo.toLowerCase().includes(q) || o.id.toLowerCase().includes(q)).slice(0, 30);
   }, [eligibleOrders, orderQuery]);
 
+  // Pre-select the order once, the moment it's found — a "hydrate once" guard
+  // (same idea NewOrder.tsx uses for quoteRef) so a background data refresh
+  // can't silently reset a selection the user already changed.
+  const hydratedOrderRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!orderRef || hydratedOrderRef.current === orderRef) return;
+    const o = data.orders.find(x => x.id === orderRef);
+    if (o) { hydratedOrderRef.current = orderRef; setSelectedOrderId(o.id); }
+  }, [orderRef, data.orders]);
+
   const selectedOrder = selectedOrderId ? data.orders.find(o => o.id === selectedOrderId) : null;
+
+  // If this order already has a dispatch entry, don't let a stale/re-clicked
+  // link create a second one — point the user at the existing entry instead.
+  const existingEntryForOrderRef = orderRef ? data.dispatchEntries.find(e => e.orderId === orderRef) : undefined;
+  if (orderRef && existingEntryForOrderRef) {
+    const dupOrder = data.orders.find(o => o.id === orderRef);
+    return (
+      <div className="flex flex-col h-full items-center justify-center bg-g50 animate-in fade-in duration-200">
+        <div className="bg-white border border-amber-200 rounded-[8px] shadow-lg p-7 max-w-[420px] w-full mx-4">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-9 h-9 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+              <svg viewBox="0 0 20 20" fill="none" className="w-5 h-5 text-amber-500"><path d="M10 2L2 17h16L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><path d="M10 8v4M10 14.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            </div>
+            <div>
+              <div className="font-bold text-[14px] text-blk mb-1">Order Already Dispatched</div>
+              <div className="text-[12.5px] text-g600 leading-relaxed">
+                <span className="font-mono font-bold text-sW">{orderRef}</span>{dupOrder ? ` (${dupOrder.cust})` : ''} already has a dispatch entry.
+              </div>
+            </div>
+          </div>
+          <Button variant="primary" onClick={() => navigate('/dispatch')} className="w-full">Go to Dispatch Register</Button>
+          <button type="button" onClick={() => navigate(-1)} className="mt-3 w-full text-center text-[11px] text-g400 hover:text-g600">← Go back</button>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async () => {
     if (!selectedOrderId || saving) return;
@@ -81,6 +122,13 @@ export function NewDispatchEntry() {
       {/* Content */}
       <div className="px-5 pb-8 pt-3 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-[12px]">
+
+          {orderRef && selectedOrder && (
+            <div className="bg-sW/5 border border-sW/20 rounded-[3px] p-[9px_14px] flex items-center gap-[10px] text-[12px]">
+              <span className="text-sW text-[14px]">✓</span>
+              <div><strong className="text-sW">Loaded from {orderRef} ({selectedOrder.cust})</strong> — customer & trading details auto-filled below. Just confirm Delivery or Self Pickup.</div>
+            </div>
+          )}
 
           {/* Fulfillment Type + Order selection */}
           <div className="bg-white border border-g200">

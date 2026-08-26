@@ -363,6 +363,30 @@ export function Orders() {
                               </Button>
                             )}
                             <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); navigate(`/orders/new?orderId=${o.id}`); }}>Edit</Button>
+                            {(() => {
+                              // Same pattern as the Quotes register's "Order" button
+                              // (navigate(`/orders/new?quoteRef=...`)) — click Dispatch,
+                              // land on the dispatch form with this order pre-loaded and
+                              // all customer/trading fields auto-filled, then just pick
+                              // Delivery or Self Pickup.
+                              const dispatched = data.dispatchEntries.some(e => e.orderId === o.id);
+                              if (dispatched) {
+                                return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed">Dispatched</Button>;
+                              }
+                              const eligible = o.status === 'Order Confirmed';
+                              return (
+                                <Button
+                                  size="sm"
+                                  variant="success"
+                                  disabled={!eligible}
+                                  className={!eligible ? 'bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : 'active:scale-95 transition-transform'}
+                                  title={!eligible ? 'Order must be Order Confirmed before it can be dispatched' : undefined}
+                                  onClick={(e) => { e.stopPropagation(); navigate(`/dispatch/new?orderRef=${o.id}`); }}
+                                >
+                                  Dispatch
+                                </Button>
+                              );
+                            })()}
                             {ADVANCE_PAY.has(o.pay ?? '') && o.status === 'Processing' ? (
                               <Button
                                 size="sm"
