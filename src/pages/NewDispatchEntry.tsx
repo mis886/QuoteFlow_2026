@@ -5,6 +5,10 @@ import { Button } from '../components/ui';
 import { Search, X } from 'lucide-react';
 import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate } from '../lib/utils';
 import { DispatchFulfillmentType, Order, OrderItem, CustomerTier } from '../lib/types';
+import { ProductSearch } from '../components/ProductSearch';
+import { OptionSearch } from '../components/OptionSearch';
+import { usePackingTypes } from '../hooks/usePackingTypes';
+import { useProductCatalog } from '../hooks/useProductCatalog';
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow disabled:bg-g50 disabled:cursor-not-allowed disabled:text-g500";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-60 disabled:cursor-not-allowed";
@@ -31,6 +35,8 @@ export function NewDispatchEntry() {
   const orderRef = searchParams.get('orderRef');
   const { data, user, addDispatchEntry, updateDispatchEntry, updateOrder } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
+  const packingTypeOptions = usePackingTypes();
+  const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
   const [type, setType] = useState<DispatchFulfillmentType>('delivery');
   const [orderQuery, setOrderQuery] = useState('');
@@ -423,28 +429,71 @@ export function NewDispatchEntry() {
                         <tr key={i.seq} className="hover:bg-g50/50">
                           <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{i.seq}</td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" value={i.desc} onChange={e => updateItem(idx, 'desc', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-medium text-blk" />
+                            <ProductSearch
+                              value={i.desc}
+                              names={productNames}
+                              hsnMap={productHsnMap}
+                              onChange={(desc, hsn) => {
+                                const ni = [...items];
+                                const resolvedHsn = !desc ? '' : (hsn !== undefined ? hsn : (desc in productHsnMap ? productHsnMap[desc] : undefined));
+                                ni[idx] = { ...ni[idx], desc, ...(resolvedHsn !== undefined ? { hsn: resolvedHsn } : {}) };
+                                setItems(ni);
+                              }}
+                            />
+                          </td>
+                          <td className={`px-3 py-[5px] border border-g400 align-middle${i.desc in productHsnMap ? ' bg-g100' : ''}`}>
+                            <input
+                              type="text"
+                              title="HSN Code"
+                              value={i.hsn || ''}
+                              readOnly={i.desc in productHsnMap}
+                              onChange={e => updateItem(idx, 'hsn', e.target.value)}
+                              className={`w-full bg-transparent outline-none font-mono text-[11px] ${i.desc in productHsnMap ? 'text-g500 cursor-default select-none' : 'text-blk'}`}
+                            />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" value={i.hsn || ''} onChange={e => updateItem(idx, 'hsn', e.target.value)} className="w-full bg-transparent outline-none font-mono text-[11px] text-blk" />
-                          </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="number" min="1" value={i.qty || ''} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} className="w-full bg-transparent outline-none font-mono text-[12px] text-center text-blk" />
+                            <input type="number" min="1" value={i.qty || ''} onChange={e => updateItem(idx, 'qty', Number(e.target.value))}
+                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center ${Number(i.qty) <= 0 ? 'text-red-mrt' : 'text-blk'}`} />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" value={i.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-center text-blk" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle bg-g100 text-center font-mono text-[11px] text-g500">{totalQty ?? '—'}</td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" value={i.packingType || ''} onChange={e => updateItem(idx, 'packingType', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-center text-blk" />
+                            <OptionSearch
+                              options={packingTypeOptions}
+                              value={i.packingType || ''}
+                              onChange={val => updateItem(idx, 'packingType', val)}
+                              placeholder="Packing type…"
+                            />
                           </td>
                           <td className="px-1 py-[3px] border border-g400 align-middle">
                             <select value={i.priceBasis || 'Per kg'} onChange={e => updateItem(idx, 'priceBasis', e.target.value)} className="w-full bg-transparent outline-none font-sans text-[11px] text-blk text-center cursor-pointer">
                               {['Per kg', 'Per MT', 'Per Ltr', 'Per KL', 'Per Unit', 'Per Drum', 'Per Can'].map(o => <option key={o} value={o}>{o}</option>)}
                             </select>
                           </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="number" step="any" min="0" value={i.agreedRate || ''} onChange={e => updateItem(idx, 'agreedRate', Number(e.target.value))} className="w-full bg-transparent outline-none font-mono text-[12px] text-right text-blk" />
+                          <td className="px-[6px] py-[5px] border border-g400 align-middle">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                checked={!!i.rateOverride}
+                                onChange={e => updateItem(idx, 'rateOverride', e.target.checked)}
+                                title="Override rate with text"
+                                className="accent-red-600 shrink-0 cursor-pointer"
+                              />
+                              {i.rateOverride ? (
+                                <input
+                                  type="text"
+                                  value={i.rateText || ''}
+                                  placeholder="Regret"
+                                  onChange={e => updateItem(idx, 'rateText', e.target.value)}
+                                  className="flex-1 bg-transparent outline-none font-mono text-[11px] text-red-mrt placeholder:text-g400 min-w-0"
+                                />
+                              ) : (
+                                <input type="number" step="any" min="0" value={i.agreedRate || ''} placeholder="0.00" onChange={e => updateItem(idx, 'agreedRate', Number(e.target.value))}
+                                  className="flex-1 bg-transparent outline-none font-mono text-[12px] text-right text-blk placeholder:text-g300 min-w-0" />
+                              )}
+                            </div>
                           </td>
                           {orderTotals.isINR && (
                             <td className="px-3 py-[5px] border border-g400 align-middle">
