@@ -153,32 +153,75 @@ export function NewDispatchEntry() {
             </div>
           </div>
 
-          {/* Order summary + line items — only once an order is picked */}
+          {/* Customer & Contact + Delivery / Trading Terms — only once an order is picked */}
           {selectedOrder && (
             <div className="grid grid-cols-12 gap-[12px]">
-              <div className="col-span-12 lg:col-span-4 bg-white border border-g200 self-start">
-                <div className={sectionHeaderCls}>Order Details (auto-fetched)</div>
-                <div className="p-[14px_16px] grid grid-cols-2 gap-[12px]">
+              <div className="col-span-12 lg:col-span-8 bg-white border border-g200">
+                <div className={sectionHeaderCls}>Customer & Contact</div>
+                <div className="p-[12px_16px] grid grid-cols-2 gap-[10px]">
                   <div>
-                    <div className="text-[10px] font-bold text-g500 uppercase tracking-[0.5px]">PO Number</div>
-                    <div className="text-[13px] text-blk font-medium mt-1">{selectedOrder.poNo || '—'}</div>
+                    <label className={labelCls}>Customer</label>
+                    <div className={inputCls + ' bg-g50 text-g600 cursor-not-allowed'}>{selectedOrder.cust || '—'}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] font-bold text-g500 uppercase tracking-[0.5px]">PO Date</div>
-                    <div className="text-[13px] text-blk font-medium mt-1">{selectedOrder.poDate ? fmtIST(new Date(selectedOrder.poDate), 'dd-MMM-yyyy') : '—'}</div>
+                    <label className={labelCls}>Unit</label>
+                    <div className={inputCls + ' bg-g50 text-g600 cursor-not-allowed'}>
+                      {data.customers.find(c => c.name === selectedOrder.cust)?.sites?.find(s => s.id === selectedOrder.siteId)?.name || '—'}
+                    </div>
+                  </div>
+                </div>
+                <div className="p-[0_16px_12px] grid grid-cols-3 gap-[10px]">
+                  <div>
+                    <label className={labelCls}>Contact Person</label>
+                    <div className={inputCls + ' bg-g50 text-g600 cursor-not-allowed'}>{selectedOrder.contact || '—'}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] font-bold text-g500 uppercase tracking-[0.5px]">Incoterms</div>
-                    <div className="text-[13px] text-blk font-medium mt-1">{selectedOrder.inco || '—'}</div>
+                    <label className={labelCls}>Phone</label>
+                    <div className={inputCls + ' bg-g50 text-g600 cursor-not-allowed'}>{selectedOrder.phone || '—'}</div>
                   </div>
                   <div>
-                    <div className="text-[10px] font-bold text-g500 uppercase tracking-[0.5px]">Payment Terms</div>
-                    <div className="text-[13px] text-blk font-medium mt-1">{selectedOrder.pay || '—'}</div>
+                    <label className={labelCls}>Email</label>
+                    <div className={inputCls + ' bg-g50 text-g600 cursor-not-allowed'}>{selectedOrder.email || '—'}</div>
                   </div>
+                </div>
+                <div className="p-[0_16px_12px]">
+                  <label className={labelCls}>Customer Tier</label>
+                  <div className={inputCls + ' w-40 bg-g50 text-g600 cursor-not-allowed'}>{selectedOrder.customerTier || '—'}</div>
                 </div>
               </div>
 
-              <div className="col-span-12 lg:col-span-8 bg-white border border-g200">
+              <div className="col-span-12 lg:col-span-4 bg-white border border-g200">
+                <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600 p-[11px_16px] border-b border-g200">Delivery / Trading Terms</div>
+                <div className="p-[12px_16px] flex flex-col gap-[10px]">
+                  <div>
+                    <label className={labelCls}>Incoterms</label>
+                    <div className={inputCls + ' bg-g50 text-g600 cursor-not-allowed'}>{selectedOrder.inco || '—'}</div>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Currency</label>
+                    <div className={inputCls + ' bg-g50 text-g600 cursor-not-allowed'}>{selectedOrder.curr || '—'}</div>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Payment Terms</label>
+                    <div className={inputCls + ' bg-g50 text-g600 cursor-not-allowed'}>{selectedOrder.pay || '—'}</div>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Shipping Address</label>
+                    <div className={inputCls + ' bg-g50 text-g600 cursor-not-allowed'}>{selectedOrder.shipToAddress || '—'}</div>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Cust. Enquiry Doc No.</label>
+                    <div className={inputCls + ' bg-g50 text-g600 cursor-not-allowed'}>{selectedOrder.custEnquiryDocNo || '—'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Order Line Items — only once an order is picked */}
+          {selectedOrder && (
+            <div className="grid grid-cols-12 gap-[12px]">
+              <div className="col-span-12 bg-white border border-g200">
                 <div className={sectionHeaderCls}>Order Line Items — {selectedOrder.id}</div>
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-[11.5px] m-0">
