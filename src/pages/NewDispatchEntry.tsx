@@ -193,29 +193,11 @@ export function NewDispatchEntry() {
             </div>
           )}
 
-          {/* Fulfillment Type + Order selection */}
+          {/* Order selection — Fulfillment Type now lives in the Customer & Contact card below, alongside the rest of the dispatch-specific fields */}
           <div className="bg-white border border-g200">
             <div className={sectionHeaderCls}>Order Selection</div>
-            <div className="p-[14px_16px] grid grid-cols-12 gap-[16px]">
-              <div className="col-span-12 sm:col-span-3">
-                <label className={labelCls}>Fulfillment Type</label>
-                <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px] w-fit">
-                  <div
-                    onClick={() => setType('delivery')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${type === 'delivery' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
-                  >
-                    <span className="w-[7px] h-[7px] rounded-full bg-sN shrink-0" /> Delivery
-                  </div>
-                  <div
-                    onClick={() => setType('self_pickup')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${type === 'self_pickup' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
-                  >
-                    <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup
-                  </div>
-                </div>
-              </div>
-
-              <div className="col-span-12 sm:col-span-9">
+            <div className="p-[14px_16px]">
+              <div>
                 <label className={labelCls}>
                   Order (must be Order Confirmed)
                   {eligibleOrders.length === 0 && !selectedOrder && <span className="text-g400 normal-case font-normal tracking-normal"> — none available</span>}
@@ -308,6 +290,45 @@ export function NewDispatchEntry() {
                     <option>Gold</option>
                     <option>Platinum</option>
                   </select>
+                </div>
+
+                {/* Dispatch Details — fulfillment type + the fields filled in by the customer-facing form, folded into Customer & Contact */}
+                <div className="p-[0_16px_14px] border-t border-g100 mt-[2px]">
+                  <div className="pt-[12px] grid grid-cols-2 sm:grid-cols-3 gap-[12px]">
+                    <div>
+                      <label className={labelCls}>Fulfillment Type</label>
+                      <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px] w-fit">
+                        <div
+                          onClick={() => setType('delivery')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${type === 'delivery' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
+                        >
+                          <span className="w-[7px] h-[7px] rounded-full bg-sN shrink-0" /> Delivery
+                        </div>
+                        <div
+                          onClick={() => setType('self_pickup')}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${type === 'self_pickup' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
+                        >
+                          <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className={labelCls}>Transporter</label>
+                      <input className={inputCls} value={transporter} onChange={e => setTransporter(e.target.value)} placeholder="Transporter name" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Promised Delivery Date</label>
+                      <input type="date" className={inputCls} value={promisedDeliveryDate} onChange={e => setPromisedDeliveryDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Estimated Delivery Date</label>
+                      <input type="date" className={inputCls} value={estimatedDeliveryDate} onChange={e => setEstimatedDeliveryDate(e.target.value)} />
+                    </div>
+                    <div className="col-span-2 sm:col-span-1">
+                      <label className={labelCls}>Remark</label>
+                      <input className={inputCls} value={remark} onChange={e => setRemark(e.target.value)} placeholder="Optional remark" />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -445,29 +466,6 @@ export function NewDispatchEntry() {
               </div>
             </div>
           )}
-
-          {/* Dispatch Details — the 4 fields filled in by the customer-facing form */}
-          <div className="bg-white border border-g200">
-            <div className={sectionHeaderCls}>Dispatch Details</div>
-            <div className="p-[14px_16px] grid grid-cols-1 sm:grid-cols-4 gap-[12px]">
-              <div>
-                <label className={labelCls}>Transporter</label>
-                <input className={inputCls} value={transporter} onChange={e => setTransporter(e.target.value)} placeholder="Transporter name" />
-              </div>
-              <div>
-                <label className={labelCls}>Promised Delivery Date</label>
-                <input type="date" className={inputCls} value={promisedDeliveryDate} onChange={e => setPromisedDeliveryDate(e.target.value)} />
-              </div>
-              <div>
-                <label className={labelCls}>Estimated Delivery Date</label>
-                <input type="date" className={inputCls} value={estimatedDeliveryDate} onChange={e => setEstimatedDeliveryDate(e.target.value)} />
-              </div>
-              <div>
-                <label className={labelCls}>Remark</label>
-                <input className={inputCls} value={remark} onChange={e => setRemark(e.target.value)} placeholder="Optional remark" />
-              </div>
-            </div>
-          </div>
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-[3px] p-[10px_14px] text-[12.5px] text-red-600 font-medium">{error}</div>
