@@ -467,34 +467,16 @@ export interface DataStore {
 }
 
 // ── Dispatch (Order → Dispatch) ────────────────────────────────────
-// Tracks the granular stage checklist that happens between an order's
-// `status` flipping to 'Order Confirmed' and 'Delivered' — invisible to
-// the flat OrderStatus enum. One dispatch_entries row per order, created
-// manually (mirrors the real-world manual Google Form fill for the HTPL
-// Self Pickup FMS / HTPL Delivery FMS). See src/lib/dispatchStages.ts for
-// the seeded stage lists and src/pages/Dispatch.tsx for the UI.
-// Dispatch → Sent (the stages after DO issuance) is intentionally out of
-// scope for now.
+// One dispatch_entries row per order, created manually (mirrors the
+// real-world manual Google Form fill for the HTPL Self Pickup FMS / HTPL
+// Delivery FMS). See src/pages/Dispatch.tsx and src/pages/NewDispatchEntry.tsx
+// for the UI.
 export type DispatchFulfillmentType = 'self_pickup' | 'delivery';
-
-export interface DispatchStage {
-  code: string;             // e.g. 'DO1', 'SP1'
-  label: string;
-  owner: string;             // e.g. 'Samata', 'CRM'
-  how: string;                // e.g. 'By trailing email', 'WhatsApp/Phone'
-  slaHours: number;
-  planned: string | null;    // ISO date this stage is due
-  actual: string | null;     // ISO date it was actually completed
-  status: 'pending' | 'done';
-  delayHours: number | null; // computed at completion: actual - planned, in hours
-}
 
 export interface DispatchEntry {
   id: string;
   orderId: string;
   fulfillmentType: DispatchFulfillmentType;
-  stages: DispatchStage[];
-  currentStageIndex: number;
   docLinkStatus: 'attached' | 'not_uploaded';
   docLinkUrl?: string;
   vehicleNumber?: string;    // self pickup (SP7)

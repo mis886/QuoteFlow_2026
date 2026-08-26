@@ -1,11 +1,10 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, DispatchStage } from '../lib/types';
+import type { Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
 import { calculateAgeHours, generateId } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
-import { buildStagesFor } from '../lib/dispatchStages';
 import { User } from '@supabase/supabase-js';
 
 // Separate, purpose-specific mapping for the Authorized Signatory panel
@@ -99,12 +98,10 @@ interface AppContextType {
   addOrder: (order: Order) => Promise<void>;
   updateOrder: (id: string, updates: Partial<Order>) => Promise<void>;
   deleteOrder: (id: string) => Promise<void>;
-  // Dispatch (Order → Dispatch phase) — see src/lib/dispatchStages.ts and
-  // src/pages/Dispatch.tsx. `type` picks which of the two verified stage
-  // checklists (Self Pickup / Delivery) is seeded onto the new entry.
+  // Dispatch (Order → Dispatch phase) — see src/pages/Dispatch.tsx. `type`
+  // picks Self Pickup or Delivery for the new entry.
   addDispatchEntry: (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => Promise<void>;
   updateDispatchEntry: (id: string, updates: Partial<DispatchEntry>) => Promise<void>;
-  advanceDispatchStage: (id: string) => Promise<void>;
   deleteDispatchEntry: (id: string) => Promise<void>;
   addCustomer: (customer: Customer) => Promise<void>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
@@ -611,8 +608,6 @@ const mapEnquiryToDB = (e: any) => {
     id: d.id,
     orderId: d.order_id,
     fulfillmentType: d.fulfillment_type,
-    stages: (d.stages || []) as DispatchStage[],
-    currentStageIndex: d.current_stage_index ?? 0,
     docLinkStatus: d.doc_link_status || 'not_uploaded',
     docLinkUrl: d.doc_link_url || undefined,
     vehicleNumber: d.vehicle_number || undefined,
@@ -636,8 +631,6 @@ const mapEnquiryToDB = (e: any) => {
     if ('id' in d) obj.id = d.id;
     if ('orderId' in d) obj.order_id = d.orderId;
     if ('fulfillmentType' in d) obj.fulfillment_type = d.fulfillmentType;
-    if ('stages' in d) obj.stages = d.stages;
-    if ('currentStageIndex' in d) obj.current_stage_index = d.currentStageIndex;
     if ('docLinkStatus' in d) obj.doc_link_status = d.docLinkStatus;
     if ('docLinkUrl' in d) obj.doc_link_url = d.docLinkUrl || null;
     if ('vehicleNumber' in d) obj.vehicle_number = d.vehicleNumber || null;
@@ -870,15 +863,12 @@ const mapEnquiryToDB = (e: any) => {
   // Dispatch (Order → Dispatch phase). One dispatch_entries row per order,
   // created manually via the "+ New Dispatch Entry" flow — mirrors the
   // real-world manual Google Form fill for the HTPL Self Pickup FMS / HTPL
-  // Delivery FMS. `type` selects which verified stage checklist
-  // (src/lib/dispatchStages.ts) is seeded onto the new entry.
+  // Delivery FMS.
   const addDispatchEntry = async (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => {
     const newEntry: DispatchEntry = {
       id: generateId('DSP', data.dispatchEntries.map(d => d.id)),
       orderId,
       fulfillmentType: type,
-      stages: buildStagesFor(type),
-      currentStageIndex: 0,
       docLinkStatus: 'not_uploaded',
       ...extra,
     };
@@ -918,23 +908,6 @@ const mapEnquiryToDB = (e: any) => {
       console.error('Error updating dispatch entry:', error);
       throw error;
     }
-  };
-
-  // Marks the entry's current stage done (stamping `actual` and the
-  // planned-vs-actual `delayHours`) and advances `currentStageIndex`. A
-  // no-op once every stage is already done.
-  const advanceDispatchStage = async (id: string) => {
-    const entry = data.dispatchEntries.find(d => d.id === id);
-    if (!entry || entry.currentStageIndex >= entry.stages.length) return;
-    const idx = entry.currentStageIndex;
-    const now = new Date();
-    const stage = entry.stages[idx];
-    const plannedDate = stage.planned ? new Date(stage.planned) : now;
-    const delayHours = Math.round((now.getTime() - plannedDate.getTime()) / (60 * 60 * 1000));
-    const updatedStages: DispatchStage[] = entry.stages.map((s, i) =>
-      i === idx ? { ...s, actual: now.toISOString(), status: 'done', delayHours } : s
-    );
-    await updateDispatchEntry(id, { stages: updatedStages, currentStageIndex: idx + 1 });
   };
 
   const deleteDispatchEntry = async (id: string) => {
@@ -1769,7 +1742,6 @@ const mapEnquiryToDB = (e: any) => {
         deleteOrder,
         addDispatchEntry,
         updateDispatchEntry,
-        advanceDispatchStage,
         deleteDispatchEntry,
         addCustomer,
         updateCustomer,

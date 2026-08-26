@@ -34,11 +34,6 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   const sentQuotesCount = data.quotes.filter(q => q.status === 'Sent').length;
   const activeOrdersCount = data.orders.filter(o => o.status === 'Processing').length;
 
-  const overdueDispatchCount = data.dispatchEntries.filter(e => {
-    const stage = e.stages[e.currentStageIndex];
-    return !!stage && !!stage.planned && new Date(stage.planned).getTime() < Date.now();
-  }).length;
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const overdueFollowUpsCount = data.followups.filter(f => {
@@ -98,8 +93,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             badge={sentQuotesCount > 0 ? { text: sentQuotesCount.toString(), className: 'bg-sR' } : undefined} dataTour="nav-quotations" />
           <NavItem to="/orders" icon={<ShoppingCart size={15} />} label="Orders" active={isActive('/orders')} collapsed={collapsed}
             badge={activeOrdersCount > 0 ? { text: activeOrdersCount.toString(), className: 'bg-sW' } : undefined} dataTour="nav-orders" />
-          <NavItem to="/dispatch" icon={<Truck size={15} />} label="Dispatch" active={isActive('/dispatch')} collapsed={collapsed}
-            badge={overdueDispatchCount > 0 ? { text: overdueDispatchCount.toString(), className: 'bg-red-mrt' } : undefined} dataTour="nav-dispatch" />
+          <NavItem to="/dispatch" icon={<Truck size={15} />} label="Dispatch" active={isActive('/dispatch')} collapsed={collapsed} dataTour="nav-dispatch" />
           <NavItem to="/followups" icon={<Phone size={15} />} label="Follow-Ups" active={isActive('/followups')} collapsed={collapsed}
             badge={overdueFollowUpsCount > 0 ? { text: overdueFollowUpsCount.toString(), className: 'bg-red-mrt' } : undefined} dataTour="nav-followups" />
           <NavItem to="/sampling" icon={<FlaskConical size={15} />} label="Sampling" active={isActive('/sampling')} collapsed={collapsed}
