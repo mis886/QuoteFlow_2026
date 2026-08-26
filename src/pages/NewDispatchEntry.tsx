@@ -334,7 +334,7 @@ export function NewDispatchEntry() {
 
                 {/* Dispatch Details — fulfillment type + the fields filled in by the customer-facing form, folded into Customer & Contact */}
                 <div className="p-[0_16px_14px] border-t border-g100 mt-[2px]">
-                  <div className="pt-[12px] grid grid-cols-2 sm:grid-cols-3 gap-[12px]">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-[12px]">
                     <div>
                       <label className={labelCls}>Fulfillment Type</label>
                       <select value={type} onChange={e => setType(e.target.value as DispatchFulfillmentType)} className={selectCls}>
