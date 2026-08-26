@@ -1,7 +1,7 @@
 export type EnqStatus = 'New' | 'In Review' | 'Quoted' | 'Won' | 'Lost' | 'Parked';
 export type Urgency = 'Hot' | 'Urgent' | 'Normal' | 'Low';
 export type QuoteStatus = 'Draft' | 'Sent' | 'Won' | 'Lost' | 'Parked';
-export type OrderStatus = 'Order Confirmed' | 'Processing' | 'Delivered';
+export type OrderStatus = 'Order Confirmed' | 'Processing' | 'Delivered' | 'Order Pending for Dispatch';
 
 export interface LineItem {
   seq: number;
@@ -248,6 +248,9 @@ export interface Order {
   promisedDeliveryDate?: string;
   estimatedDeliveryDate?: string;
   remark?: string;
+  // Set on the leftover order automatically created by a partial dispatch —
+  // points back to the order it was split off from, for traceability.
+  splitFromOrderId?: string;
 }
 
 export interface CompanyUnit {

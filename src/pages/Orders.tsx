@@ -373,14 +373,14 @@ export function Orders() {
                               if (dispatched) {
                                 return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed">Dispatched</Button>;
                               }
-                              const eligible = o.status === 'Order Confirmed';
+                              const eligible = o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch';
                               return (
                                 <Button
                                   size="sm"
                                   variant="success"
                                   disabled={!eligible}
                                   className={!eligible ? 'bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : 'active:scale-95 transition-transform'}
-                                  title={!eligible ? 'Order must be Order Confirmed before it can be dispatched' : undefined}
+                                  title={!eligible ? 'Order must be Order Confirmed or Order Pending for Dispatch before it can be dispatched' : undefined}
                                   onClick={(e) => { e.stopPropagation(); navigate(`/dispatch/new?orderRef=${o.id}`); }}
                                 >
                                   Dispatch

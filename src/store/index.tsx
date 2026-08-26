@@ -509,6 +509,7 @@ const mapEnquiryToDB = (e: any) => {
     if (o.promised_delivery_date) obj.promisedDeliveryDate = o.promised_delivery_date;
     if (o.estimated_delivery_date) obj.estimatedDeliveryDate = o.estimated_delivery_date;
     if (o.remark) obj.remark = o.remark;
+    if (o.split_from_order_id) obj.splitFromOrderId = o.split_from_order_id;
     if ('authorized_person' in o) {
       obj.authorizedPerson = o.authorized_person;
       delete obj.authorized_person;
@@ -542,6 +543,7 @@ const mapEnquiryToDB = (e: any) => {
     delete obj.fulfillment_type;
     delete obj.promised_delivery_date;
     delete obj.estimated_delivery_date;
+    delete obj.split_from_order_id;
 
     return obj;
   };
@@ -600,6 +602,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('promisedDeliveryDate' in o) obj.promised_delivery_date = o.promisedDeliveryDate || null;
     if ('estimatedDeliveryDate' in o) obj.estimated_delivery_date = o.estimatedDeliveryDate || null;
     if ('remark' in o) obj.remark = o.remark || null;
+    if ('splitFromOrderId' in o) obj.split_from_order_id = o.splitFromOrderId || null;
 
     return obj;
   };

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { Search, X } from 'lucide-react';
-import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate } from '../lib/utils';
+import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, generateId } from '../lib/utils';
 import { DispatchFulfillmentType, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
@@ -33,7 +33,7 @@ export function NewDispatchEntry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const orderRef = searchParams.get('orderRef');
-  const { data, user, addDispatchEntry, updateDispatchEntry, updateOrder } = useAppStore();
+  const { data, user, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
@@ -133,7 +133,7 @@ export function NewDispatchEntry() {
 
   const eligibleOrders = useMemo(() => {
     const takenIds = new Set(data.dispatchEntries.map(e => e.orderId));
-    return data.orders.filter(o => o.status === 'Order Confirmed' && !takenIds.has(o.id));
+    return data.orders.filter(o => (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && !takenIds.has(o.id));
   }, [data.orders, data.dispatchEntries]);
 
   const filteredOrders = useMemo(() => {
@@ -165,11 +165,103 @@ export function NewDispatchEntry() {
   }, [selectedOrder, items, curr, insurance]);
 
   const handleSubmit = async () => {
-    if (!selectedOrderId || saving) return;
+    if (!selectedOrderId || !selectedOrder || saving) return;
     setSaving(true);
     setError('');
     try {
-      // Persist any corrections made to the order's own trading/contact details.
+      // Detect a partial dispatch: if the user has edited any line's "No of
+      // Barrels" down from what's still on the order, the undispatched
+      // remainder must not be lost — split it off into a new order (status
+      // "Order Pending for Dispatch", linked back via splitFromOrderId) so
+      // it stays visible in the Orders module and can be dispatched later,
+      // potentially split further.
+      const origBySeq = new Map(selectedOrder.items.map(i => [i.seq, i]));
+      const leftoverItemsRaw: OrderItem[] = [];
+      items.forEach(edited => {
+        const orig = origBySeq.get(edited.seq);
+        if (!orig) return;
+        const remainderQty = Number(orig.qty) - Number(edited.qty);
+        if (remainderQty > 0) {
+          const packingNum = parseFloat(orig.packing || '') || 0;
+          const totalQty = remainderQty * (packingNum || 1);
+          const conv = Number(orig.priceBasisConv) || 1;
+          const total = totalQty * conv * Number(orig.agreedRate);
+          leftoverItemsRaw.push({ ...orig, qty: remainderQty, total });
+        }
+      });
+      const leftoverItems = leftoverItemsRaw.map((it, i) => ({ ...it, seq: i + 1 }));
+
+      if (leftoverItems.length > 0) {
+        const summary = leftoverItems.map(i => `${i.desc || '(item)'} — ${i.qty} left`).join(', ');
+        const proceed = window.confirm(
+          `This dispatch covers only part of the order (${summary}). The undispatched remainder will be split into a new order under "Order Pending for Dispatch" so it isn't lost. Continue?`
+        );
+        if (!proceed) { setSaving(false); return; }
+
+        // Leftover order recomputes its own Subtotal → GST → Order Value from
+        // its own (smaller) item quantities. Insurance and any fixed-amount
+        // ('value'-mode) taxes/charges stay on the original dispatched order
+        // only; percentage-mode adjustments are carried over and recomputed
+        // proportionally here off the leftover subtotal.
+        const isINR = (curr || 'INR') === 'INR';
+        const leftoverSubTotal = leftoverItems.reduce((s, i) => s + i.total, 0);
+        const leftoverItemGst = leftoverItems.reduce((s, i) => s + (i.total * i.gst / 100), 0);
+        const leftoverMaxGstRate = isINR ? maxItemGstRate(leftoverItems) : 0;
+        const leftoverPercentAdjustments = (selectedOrder.adjustments || []).filter(a => a.mode === 'percent');
+        const leftoverAdj = resolveAdjustments(leftoverPercentAdjustments, leftoverSubTotal, isINR ? leftoverItemGst : 0, leftoverMaxGstRate);
+        const leftoverGstTotal = isINR ? leftoverAdj.gstTotal : 0;
+        const leftoverValue = Math.round(leftoverSubTotal + leftoverAdj.preNet + leftoverGstTotal + leftoverAdj.postNet);
+
+        const newOrder: Order = {
+          id: generateId('ORD', data.orders.map(o => o.id)),
+          quoteRef: selectedOrder.quoteRef,
+          enqRef: selectedOrder.enqRef,
+          cust: selectedOrder.cust,
+          siteId: selectedOrder.siteId,
+          contactId: selectedOrder.contactId,
+          contact: contact || undefined,
+          email: email || undefined,
+          phone: phone || undefined,
+          custEnquiryDocNo: custEnquiryDocNo || undefined,
+          poNo: selectedOrder.poNo,
+          poDate: selectedOrder.poDate,
+          dlvDate: selectedOrder.dlvDate,
+          scheduleDate: selectedOrder.scheduleDate,
+          status: 'Order Pending for Dispatch',
+          value: leftoverValue,
+          insurance: 0,
+          inco: inco || undefined,
+          curr: curr || undefined,
+          pay: pay || undefined,
+          items: leftoverItems,
+          adjustments: leftoverPercentAdjustments,
+          authorizedPerson: selectedOrder.authorizedPerson,
+          customerTier: customerTier || undefined,
+          terms: selectedOrder.terms,
+          bankingDetails: selectedOrder.bankingDetails,
+          unitId: selectedOrder.unitId,
+          bankAccountId: selectedOrder.bankAccountId,
+          priceBasis: selectedOrder.priceBasis,
+          countryOfOrigin: selectedOrder.countryOfOrigin,
+          eximCode: selectedOrder.eximCode,
+          customPoint: selectedOrder.customPoint,
+          pan: selectedOrder.pan,
+          hsn: selectedOrder.hsn,
+          shipToAddress: shipAddr || undefined,
+          doer: selectedOrder.doer,
+          // Dispatch-specific fields (Transporter, Promised/Estimated Delivery
+          // Date, Fulfillment Type) are deliberately left blank on the
+          // leftover order — they describe *this* dispatch, not the
+          // still-undispatched remainder, which gets its own fresh values
+          // when it's eventually dispatched.
+          splitFromOrderId: selectedOrder.id,
+        };
+        await addOrder(newOrder);
+      }
+
+      // Persist any corrections made to the order's own trading/contact
+      // details, plus the (possibly reduced, if split above) line items and
+      // the recomputed Order Value that follows from them.
       await updateOrder(selectedOrderId, {
         contact: contact || undefined,
         phone: phone || undefined,
@@ -182,6 +274,7 @@ export function NewDispatchEntry() {
         custEnquiryDocNo: custEnquiryDocNo || undefined,
         items,
         insurance: curr === 'INR' ? insurance : 0,
+        value: orderTotals ? orderTotals.grandTotal : selectedOrder.value,
       });
 
       const extra = {
