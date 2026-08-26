@@ -188,6 +188,11 @@ export function Enquiries() {
           <option>WhatsApp</option>
           <option>Exhibition</option>
           <option>Website</option>
+          <option>Walk-in</option>
+          <option>Referral</option>
+          <option>IndiaMART</option>
+          <option>Meta Ads</option>
+          <option>LinkedIn</option>
         </select>
 
         <select

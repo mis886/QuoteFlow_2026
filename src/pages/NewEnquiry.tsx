@@ -452,7 +452,7 @@ export function NewEnquiry() {
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Source <span className="text-red-mrt">*</span></label>
                   <select value={src} onChange={e => { setSrc(e.target.value); setErrors(prev => ({...prev, src: ''})); }} onFocus={() => setContactOpen(false)} className={`w-full font-sans text-[13px] text-blk bg-white border ${errors.src ? 'border-red-mrt focus:ring-red-lt' : 'border-g300 focus:border-red-mrt focus:ring-red-lt'} rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:ring-[3px]`}>
                     <option value="">Select...</option>
-                    <option>Email</option><option>Phone</option><option>WhatsApp</option><option>Exhibition</option><option>Website</option><option>Walk-in</option><option>Referral</option>
+                    <option>Email</option><option>Phone</option><option>WhatsApp</option><option>Exhibition</option><option>Website</option><option>Walk-in</option><option>Referral</option><option>IndiaMART</option><option>Meta Ads</option><option>LinkedIn</option>
                   </select>
                   {errors.src && <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.src}</div>}
                 </div>
