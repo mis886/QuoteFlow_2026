@@ -83,6 +83,13 @@ export function NewDispatchEntry() {
     setCustEnquiryDocNo(order.custEnquiryDocNo || '');
     setItems(order.items.map(i => ({ ...i })));
     setInsurance(order.insurance ?? 0);
+    // Carried forward from the order (now fillable there at creation time) —
+    // overridden below by the dispatch entry's own saved values, if one exists.
+    if (order.fulfillmentType) setType(order.fulfillmentType);
+    setTransporter(order.transporter || '');
+    setRemark(order.remark || '');
+    setPromisedDeliveryDate(order.promisedDeliveryDate || '');
+    setEstimatedDeliveryDate(order.estimatedDeliveryDate || '');
   };
 
   // Mirrors NewOrder.tsx's updateItem — recomputes an item's Amount whenever
@@ -114,11 +121,13 @@ export function NewDispatchEntry() {
     const existing = data.dispatchEntries.find(e => e.orderId === order.id);
     if (existing) {
       setExistingEntryId(existing.id);
-      setType(existing.fulfillmentType);
-      setTransporter(existing.transporter || '');
-      setRemark(existing.remark || '');
-      setPromisedDeliveryDate(existing.promisedDeliveryDate || '');
-      setEstimatedDeliveryDate(existing.estimatedDeliveryDate || '');
+      // Entry's own saved value wins; fall back to what hydrateFromOrder just
+      // set from the order rather than blanking it when the entry has none.
+      setType(existing.fulfillmentType || order.fulfillmentType || 'delivery');
+      setTransporter(existing.transporter || order.transporter || '');
+      setRemark(existing.remark || order.remark || '');
+      setPromisedDeliveryDate(existing.promisedDeliveryDate || order.promisedDeliveryDate || '');
+      setEstimatedDeliveryDate(existing.estimatedDeliveryDate || order.estimatedDeliveryDate || '');
     }
   }, [orderRef, data.orders, data.dispatchEntries]);
 

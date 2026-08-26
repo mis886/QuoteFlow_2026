@@ -109,6 +109,14 @@ export function NewOrder() {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [adjustments, setAdjustments] = useState<OrderAdjustment[]>([]);
   const [insurance, setInsurance] = useState(0);
+  // Dispatch-related fields — capturable here so they're already on the order
+  // by the time a dispatch entry gets created for it (NewDispatchEntry.tsx
+  // carries these forward as defaults, overridden by the entry's own values).
+  const [fulfillmentType, setFulfillmentType] = useState<'delivery' | 'self_pickup'>('delivery');
+  const [transporter, setTransporter] = useState('');
+  const [promisedDeliveryDate, setPromisedDeliveryDate] = useState('');
+  const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState('');
+  const [dispatchRemark, setDispatchRemark] = useState('');
   const [orderId, setOrderId] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -201,6 +209,11 @@ export function NewOrder() {
         if (o.priceBasis || o.eximCode || o.customPoint || o.pan || o.hsn) setShowExim(true);
         if (o.poFileName) setExistingPoFileName(o.poFileName);
         if (o.shipToAddress) setShipAddr(o.shipToAddress);
+        if (o.fulfillmentType) setFulfillmentType(o.fulfillmentType);
+        if (o.transporter) setTransporter(o.transporter);
+        if (o.promisedDeliveryDate) setPromisedDeliveryDate(o.promisedDeliveryDate);
+        if (o.estimatedDeliveryDate) setEstimatedDeliveryDate(o.estimatedDeliveryDate);
+        if (o.remark) setDispatchRemark(o.remark);
         if (o.siteId) setSiteId(o.siteId);
         if (o.contactId) setContactId(o.contactId);
         if (o.contact) setContact(o.contact);
@@ -408,6 +421,11 @@ export function NewOrder() {
     pan: pan || undefined,
     hsn: defaultHsn || undefined,
     shipToAddress: shipAddr || undefined,
+    fulfillmentType,
+    transporter: transporter || undefined,
+    promisedDeliveryDate: promisedDeliveryDate || undefined,
+    estimatedDeliveryDate: estimatedDeliveryDate || undefined,
+    remark: dispatchRemark || undefined,
     // Preserve original doer on edit; stamp submitter email on new
     doer: editOrderId ? (data.orders.find(o => o.id === editOrderId)?.doer) : stampName(),
     };
@@ -853,6 +871,39 @@ export function NewOrder() {
                     </div>
                   );
                 })()}
+
+                {/* Dispatch details — captured here so they're already on the order by the time a dispatch entry is created for it */}
+                <div className="p-[0_16px_12px] border-t border-g100 mt-[2px]">
+                  <div className="pt-[12px] grid grid-cols-2 sm:grid-cols-3 gap-[10px]">
+                    <div>
+                      <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Fulfillment Type</label>
+                      <select value={fulfillmentType} onChange={e => setFulfillmentType(e.target.value as 'delivery' | 'self_pickup')} className={selectCls}>
+                        <option value="delivery">Delivery</option>
+                        <option value="self_pickup">Self Pickup</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Transporter</label>
+                      <input type="text" value={transporter} onChange={e => setTransporter(e.target.value)} placeholder="Transporter name"
+                        className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Promised Delivery Date</label>
+                      <input type="date" value={promisedDeliveryDate} onChange={e => setPromisedDeliveryDate(e.target.value)}
+                        className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Estimated Delivery Date</label>
+                      <input type="date" value={estimatedDeliveryDate} onChange={e => setEstimatedDeliveryDate(e.target.value)}
+                        className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
+                    </div>
+                    <div className="col-span-2 sm:col-span-1">
+                      <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Remark</label>
+                      <input type="text" value={dispatchRemark} onChange={e => setDispatchRemark(e.target.value)} placeholder="Optional remark"
+                        className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="col-span-4 bg-white border border-g200">

@@ -241,6 +241,13 @@ export interface Order {
   shipToAddress?: string;
   sheetsExportedAt?: string;
   doer?: string;
+  // Dispatch-related fields, capturable at order-creation time and carried
+  // forward as defaults when a dispatch entry is later created for this order.
+  fulfillmentType?: DispatchFulfillmentType;
+  transporter?: string;
+  promisedDeliveryDate?: string;
+  estimatedDeliveryDate?: string;
+  remark?: string;
 }
 
 export interface CompanyUnit {

@@ -504,6 +504,11 @@ const mapEnquiryToDB = (e: any) => {
     if (o.pan) obj.pan = o.pan;
     if (o.hsn) obj.hsn = o.hsn;
     if (o.pay) obj.pay = o.pay;
+    if (o.fulfillment_type) obj.fulfillmentType = o.fulfillment_type;
+    if (o.transporter) obj.transporter = o.transporter;
+    if (o.promised_delivery_date) obj.promisedDeliveryDate = o.promised_delivery_date;
+    if (o.estimated_delivery_date) obj.estimatedDeliveryDate = o.estimated_delivery_date;
+    if (o.remark) obj.remark = o.remark;
     if ('authorized_person' in o) {
       obj.authorizedPerson = o.authorized_person;
       delete obj.authorized_person;
@@ -534,6 +539,9 @@ const mapEnquiryToDB = (e: any) => {
     delete obj.custom_point;
     delete obj.pan;
     delete obj.hsn;
+    delete obj.fulfillment_type;
+    delete obj.promised_delivery_date;
+    delete obj.estimated_delivery_date;
 
     return obj;
   };
@@ -587,6 +595,11 @@ const mapEnquiryToDB = (e: any) => {
     if ('terms' in o) obj.terms = o.terms || null;
     if ('pay' in o) obj.pay = o.pay || null;
     if ('doer' in o) obj.doer = o.doer;
+    if ('fulfillmentType' in o) obj.fulfillment_type = o.fulfillmentType || null;
+    if ('transporter' in o) obj.transporter = o.transporter || null;
+    if ('promisedDeliveryDate' in o) obj.promised_delivery_date = o.promisedDeliveryDate || null;
+    if ('estimatedDeliveryDate' in o) obj.estimated_delivery_date = o.estimatedDeliveryDate || null;
+    if ('remark' in o) obj.remark = o.remark || null;
 
     return obj;
   };
