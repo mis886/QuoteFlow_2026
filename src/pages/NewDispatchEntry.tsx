@@ -280,7 +280,14 @@ export function NewDispatchEntry() {
       // of it has since been dispatched; what's actually being dispatched
       // now lives on the dispatch entry itself (below), and any undispatched
       // remainder lives on the leftover order split off above.
-      await updateOrder(selectedOrderId, {
+      //
+      // A leftover order (status "Order Pending for Dispatch") that's now
+      // getting its own dispatch entry — whether fully dispatched here or
+      // partially (splitting off yet another remainder above) — is done
+      // being "pending"; flip it back to "Order Confirmed" so it drops out
+      // of that tab. Orders that started as Order Confirmed/Processing/
+      // Delivered are left untouched.
+      const orderUpdates: Partial<Order> = {
         contact: contact || undefined,
         phone: phone || undefined,
         email: email || undefined,
@@ -290,7 +297,11 @@ export function NewDispatchEntry() {
         pay: pay || undefined,
         shipToAddress: shipAddr || undefined,
         custEnquiryDocNo: custEnquiryDocNo || undefined,
-      });
+      };
+      if (selectedOrder.status === 'Order Pending for Dispatch') {
+        orderUpdates.status = 'Order Confirmed';
+      }
+      await updateOrder(selectedOrderId, orderUpdates);
 
       const extra = {
         transporter: transporter || undefined,
