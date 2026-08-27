@@ -251,6 +251,10 @@ export interface Order {
   // Set on the leftover order automatically created by a partial dispatch —
   // points back to the order it was split off from, for traceability.
   splitFromOrderId?: string;
+  // One-way flag: set true the first time a dispatch entry is created for a
+  // split order, and never reset — used to permanently hide it from the
+  // Orders module even after that dispatch entry is later deleted.
+  dispatchFinalized?: boolean;
 }
 
 export interface CompanyUnit {

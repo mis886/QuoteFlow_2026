@@ -301,6 +301,13 @@ export function NewDispatchEntry() {
       if (selectedOrder.status === 'Order Pending for Dispatch') {
         orderUpdates.status = 'Order Confirmed';
       }
+      // Permanent marker for a split order once it's ever been dispatched —
+      // unlike the status flip above, this is never reset, so the order
+      // stays hidden from the Orders module (see isRetiredSplitOrder in
+      // Orders.tsx) even after this dispatch entry is later deleted.
+      if (selectedOrder.splitFromOrderId) {
+        orderUpdates.dispatchFinalized = true;
+      }
       await updateOrder(selectedOrderId, orderUpdates);
 
       const extra = {

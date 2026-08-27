@@ -62,18 +62,20 @@ export function Orders() {
   const [sheetsToast, setSheetsToast] = useState<{type: "ok"|"warn"|"err"; msg: string} | null>(null);
 
   // A leftover order split off a partial dispatch (splitFromOrderId set) is
-  // only a temporary placeholder for its undispatched remainder. Once it has
-  // a dispatch entry of its own — dispatched in full, or partially with yet
-  // another remainder split off — it's done its job and should stop showing
-  // as its own order row anywhere in this module. It still exists as a real
-  // Order record (Dispatch.tsx looks it up by id from data.orders directly),
-  // so this only hides it here, it doesn't delete it.
+  // only a temporary placeholder for its undispatched remainder. Once it's
+  // ever been dispatched — dispatched in full, or partially with yet another
+  // remainder split off — it's done its job and should stop showing as its
+  // own order row anywhere in this module, permanently (dispatchFinalized is
+  // a one-way flag, never reset — even deleting its dispatch entry later
+  // doesn't bring it back). It still exists as a real Order record
+  // (Dispatch.tsx looks it up by id from data.orders directly), so this only
+  // hides it here, it doesn't delete it.
   const isRetiredSplitOrder = (o: Order) =>
-    !!o.splitFromOrderId && data.dispatchEntries.some(e => e.orderId === o.id);
+    !!o.splitFromOrderId && !!o.dispatchFinalized;
 
   const visibleOrders = useMemo(
     () => data.orders.filter(o => !isRetiredSplitOrder(o)),
-    [data.orders, data.dispatchEntries]
+    [data.orders]
   );
 
   const statusCounts = {
