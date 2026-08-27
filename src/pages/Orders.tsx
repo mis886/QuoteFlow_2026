@@ -237,7 +237,7 @@ export function Orders() {
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <TabSelect current="All" label="All" count={statusCounts.All} />
           <TabSelect current="Order Confirmed" label="Order Confirmed" count={statusCounts['Order Confirmed']} />
-          <TabSelect current="Processing" label="Processing" count={statusCounts.Processing} />
+          <TabSelect current="Processing" label="Order Pending for Payment" count={statusCounts.Processing} />
           <TabSelect current="Order Pending for Dispatch" label="Order Pending for Dispatch" count={statusCounts['Order Pending for Dispatch']} />
           <TabSelect current="Delivered" label="Delivered" count={statusCounts.Delivered} />
         </div>

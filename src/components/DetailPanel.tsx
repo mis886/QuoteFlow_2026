@@ -653,7 +653,7 @@ export function DetailPanel() {
               }}
               className="font-sans text-[12px] text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none hover:border-g400"
             >
-              <option value="Processing">Processing</option>
+              <option value="Processing">Order Pending for Payment</option>
               <option value="Delivered" disabled={!canComplete} title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}>Delivered</option>
             </select>
           </div>

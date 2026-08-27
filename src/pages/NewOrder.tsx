@@ -638,7 +638,7 @@ export function NewOrder() {
                   }}
                   className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer">
                   <option value="Order Confirmed">Order Confirmed</option>
-                  <option value="Processing">Processing</option>
+                  <option value="Processing">Order Pending for Payment</option>
                   <option value="Delivered" disabled={!canComplete} title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}>Delivered</option>
                 </select>
               </div>

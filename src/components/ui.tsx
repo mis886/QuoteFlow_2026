@@ -42,13 +42,19 @@ export const Badge = ({ status, className }: { status: EnqStatus | QuoteStatus |
     'Low': 'bg-sL',
   };
 
+  // Display-only override — the underlying status value stays 'Processing'
+  // everywhere (DB, comparisons, filters); only what the user reads changes.
+  const displayLabels: Record<string, string> = {
+    'Processing': 'Order Pending for Payment',
+  };
+
   const colorStyle = badgeColors[status] || 'bg-sL/10 text-sL';
   const dotStyle = dotColors[status] || 'bg-sL';
 
   return (
     <span className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[3px] text-[10.5px] font-semibold whitespace-nowrap", colorStyle, className)}>
       <span className={cn("w-[5px] h-[5px] rounded-full shrink-0", dotStyle)} />
-      {status}
+      {displayLabels[status] || status}
     </span>
   );
 };
