@@ -107,6 +107,14 @@ export function NewDispatchEntry() {
     setItems(ni);
   };
 
+  // Unlike NewOrder.tsx's removeItem, this deliberately does NOT renumber the
+  // remaining items' `seq` after a removal — handleSubmit's leftover-split
+  // calc below matches edited items back to baselineItems by seq, and this
+  // form (unlike NewOrder.tsx) never adds new lines, only removes existing
+  // ones. Renumbering would shift a later item onto an earlier item's seq,
+  // making the calc compare the wrong pair and misattribute quantities.
+  const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx)); };
+
   // Preload from ?orderRef= — used both when the order/customer picker
   // hasn't run yet, and for the "Edit" flow off an existing dispatch entry.
   // Guarded to run once so it never clobbers in-progress edits.
@@ -190,12 +198,17 @@ export function NewDispatchEntry() {
       // confirmed, however many times it's since been split.
       const existingEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : null;
       const baselineItems = (existingEntry?.items && existingEntry.items.length) ? existingEntry.items : selectedOrder.items;
-      const origBySeq = new Map(baselineItems.map(i => [i.seq, i]));
+      // Iterate the BASELINE items, not the edited `items` — a line fully
+      // removed from `items` (via the delete-row button) has no seq to look
+      // up there, so iterating `items` would silently drop its entire
+      // original quantity instead of carrying it into the leftover order.
+      // A baseline line missing from `items` is treated as 0 dispatched.
+      const editedBySeq = new Map(items.map(i => [i.seq, i]));
       const leftoverItemsRaw: OrderItem[] = [];
-      items.forEach(edited => {
-        const orig = origBySeq.get(edited.seq);
-        if (!orig) return;
-        const remainderQty = Number(orig.qty) - Number(edited.qty);
+      baselineItems.forEach(orig => {
+        const edited = editedBySeq.get(orig.seq);
+        const editedQty = edited ? Number(edited.qty) : 0;
+        const remainderQty = Number(orig.qty) - editedQty;
         if (remainderQty > 0) {
           const packingNum = parseFloat(orig.packing || '') || 0;
           const totalQty = remainderQty * (packingNum || 1);
@@ -552,6 +565,7 @@ export function NewDispatchEntry() {
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Unit Rate ({orderTotals.isINR ? '₹' : '$'})</th>
                       {orderTotals.isINR && <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-20">GST %</th>}
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-right border border-g400 w-28">Amount ({orderTotals.isINR ? '₹' : '$'})</th>
+                      <th className="w-8 border border-g400"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -636,18 +650,23 @@ export function NewDispatchEntry() {
                             </td>
                           )}
                           <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] font-bold text-blk">{formatINR(i.total)}</td>
+                          <td className="px-1 py-[5px] border border-g400 align-middle">
+                            <button type="button" onClick={() => removeItem(idx)} disabled={items.length === 1} className="text-g400 hover:text-red-mrt p-1 transition-colors disabled:opacity-30" title="Remove">
+                              <svg viewBox="0 0 16 16" width="13" height="13" className="fill-current"><path d="M5.5 1h5v1h-5V1zM3 3v1h10V3H3zm1 2v9h8V5H4zm2 1h1v7H6V6zm3 0h1v7H9V6z" /></svg>
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-g200 bg-g50/50">
-                      <td colSpan={orderTotals.isINR ? 10 : 9} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
+                      <td colSpan={orderTotals.isINR ? 11 : 10} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
                       <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(orderTotals.subTotal)}</td>
                     </tr>
                     {orderTotals.isINR && (
                       <tr className="border-b border-g200 bg-g50/50">
-                        <td colSpan={10} className="px-3 py-2 text-right">
+                        <td colSpan={11} className="px-3 py-2 text-right">
                           <span className="text-[11px] text-g500">Insurance</span>
                           <button
                             type="button"
@@ -670,7 +689,7 @@ export function NewDispatchEntry() {
                     )}
                     {orderTotals.adj.lines.filter(l => l.taxable).map(l => (
                       <tr key={l.id} className="bg-g50/50">
-                        <td colSpan={orderTotals.isINR ? 10 : 9} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
+                        <td colSpan={orderTotals.isINR ? 11 : 10} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
                           {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
                         </td>
                         <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
@@ -680,19 +699,19 @@ export function NewDispatchEntry() {
                     ))}
                     {orderTotals.isINR && (orderTotals.adj.preNet !== 0 || orderTotals.ins > 0) && (
                       <tr className="bg-g50/50">
-                        <td colSpan={10} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
+                        <td colSpan={11} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
                         <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk border-t border-g100">{formatINR(orderTotals.subTotal + orderTotals.ins + orderTotals.adj.preNet)}</td>
                       </tr>
                     )}
                     {orderTotals.isINR && (
                       <tr className="border-b border-g200 bg-g50/50">
-                        <td colSpan={10} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
+                        <td colSpan={11} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
                         <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(orderTotals.gstTotal)}</td>
                       </tr>
                     )}
                     {orderTotals.adj.lines.filter(l => !l.taxable).map(l => (
                       <tr key={l.id} className="bg-g50/50">
-                        <td colSpan={orderTotals.isINR ? 10 : 9} className="px-3 py-2 text-right text-[11px] text-g500">
+                        <td colSpan={orderTotals.isINR ? 11 : 10} className="px-3 py-2 text-right text-[11px] text-g500">
                           {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
                         </td>
                         <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
@@ -701,7 +720,7 @@ export function NewDispatchEntry() {
                       </tr>
                     ))}
                     <tr className="bg-[#1e293b]">
-                      <td colSpan={orderTotals.isINR ? 10 : 9} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
+                      <td colSpan={orderTotals.isINR ? 11 : 10} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
                       <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{formatINR(orderTotals.grandTotal)}</td>
                     </tr>
                   </tfoot>
