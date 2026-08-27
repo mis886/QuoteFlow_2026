@@ -109,6 +109,8 @@ export function Dispatch() {
                     const order = orderFor(entry);
                     const isExpanded = expandedRow === entry.id;
                     const lineItems = (entry.items && entry.items.length > 0) ? entry.items : (order?.items || []);
+                    const subTotal = lineItems.reduce((s, i) => s + i.total, 0);
+                    const itemGst = lineItems.reduce((s, i) => s + (i.total * i.gst / 100), 0);
                     return (
                       <React.Fragment key={entry.id}>
                         <tr
@@ -188,6 +190,13 @@ export function Dispatch() {
                                       })}
                                     </tbody>
                                   </table>
+                                )}
+                                {lineItems.length > 0 && (
+                                  <div className="flex justify-end pt-2 border-t border-g200 gap-5 items-center">
+                                    <span className="text-[12px] text-g600">Sub-Total: <strong className="text-blk font-bold font-mono">{formatINR(subTotal)}</strong></span>
+                                    <span className="text-[12px] text-g600">GST: <strong className="text-blk font-bold font-mono">{formatINR(Math.round(itemGst))}</strong></span>
+                                    <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(Math.round(entry.value || 0))}</span>
+                                  </div>
                                 )}
                               </div>
                             </td>

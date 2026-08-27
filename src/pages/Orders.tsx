@@ -520,6 +520,11 @@ export function Orders() {
                                   })}
                                 </tbody>
                               </table>
+                              <div className="flex justify-end pt-2 border-t border-g200 gap-5 items-center">
+                                <span className="text-[12px] text-g600">Sub-Total: <strong className="text-blk font-bold font-mono">{formatINR(subTotal)}</strong></span>
+                                <span className="text-[12px] text-g600">GST: <strong className="text-blk font-bold font-mono">{formatINR(Math.round(itemGst))}</strong></span>
+                                <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(Math.round(grandTotal))}</span>
+                              </div>
                             </div>
                           </td>
                         </tr>
