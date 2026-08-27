@@ -35,14 +35,6 @@ export function Dispatch() {
             </h1>
             <p className="text-xs text-g500 mt-1 font-light">Every confirmed order, stage by stage — split by how it leaves the warehouse.</p>
           </div>
-          <div className="flex items-center gap-2 mt-1 shrink-0">
-            <Button
-              onClick={() => navigate('/dispatch/new')}
-              className="gap-2 bg-[#EAF8F1] border-[1.5px] border-[#A2DEBD] text-[#229A58] hover:bg-[#D5F2E1] font-bold tracking-[2.5px] px-4"
-            >
-              <span className="font-mono pt-[1px] font-bold">+</span> New Dispatch Entry
-            </Button>
-          </div>
         </div>
       </div>
 

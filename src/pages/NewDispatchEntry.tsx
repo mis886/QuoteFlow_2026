@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { Search, X } from 'lucide-react';
 import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, generateId } from '../lib/utils';
 import { DispatchFulfillmentType, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
@@ -33,13 +32,12 @@ export function NewDispatchEntry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const orderRef = searchParams.get('orderRef');
-  const { data, user, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder } = useAppStore();
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
   const [type, setType] = useState<DispatchFulfillmentType>('delivery');
-  const [orderQuery, setOrderQuery] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [existingEntryId, setExistingEntryId] = useState<string | null>(null);
 
@@ -144,16 +142,18 @@ export function NewDispatchEntry() {
     }
   }, [orderRef, data.orders, data.dispatchEntries]);
 
-  const eligibleOrders = useMemo(() => {
-    const takenIds = new Set(data.dispatchEntries.map(e => e.orderId));
-    return data.orders.filter(o => (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && !takenIds.has(o.id));
-  }, [data.orders, data.dispatchEntries]);
-
-  const filteredOrders = useMemo(() => {
-    const q = orderQuery.trim().toLowerCase();
-    if (!q) return eligibleOrders.slice(0, 30);
-    return eligibleOrders.filter(o => o.cust.toLowerCase().includes(q) || o.poNo.toLowerCase().includes(q) || o.id.toLowerCase().includes(q)).slice(0, 30);
-  }, [eligibleOrders, orderQuery]);
+  // This page only ever supports the ?orderRef= entry point now (the
+  // standalone "search any order" mode has been removed) — once the store
+  // has finished loading, if hydration above didn't find a real order to
+  // work with (no orderRef, or a stale/invalid one), bounce back to the
+  // Dispatch list instead of showing anything here. Guarded on `loading` so
+  // this doesn't fire prematurely on a fresh page load before data.orders
+  // has arrived, which would incorrectly bounce away a valid orderRef.
+  useEffect(() => {
+    if (loading) return;
+    if (hydratedRef.current) return;
+    navigate('/dispatch', { replace: true });
+  }, [loading, orderRef, data.orders]);
 
   const selectedOrder = selectedOrderId ? data.orders.find(o => o.id === selectedOrderId) : null;
   const isEditMode = !!existingEntryId;
@@ -382,10 +382,7 @@ export function NewDispatchEntry() {
             <div className={sectionHeaderCls}>Order Selection</div>
             <div className="p-[14px_16px]">
               <div>
-                <label className={labelCls}>
-                  Order (must be Order Confirmed)
-                  {eligibleOrders.length === 0 && !selectedOrder && <span className="text-g400 normal-case font-normal tracking-normal"> — none available</span>}
-                </label>
+                <label className={labelCls}>Order (must be Order Confirmed)</label>
                 {selectedOrder ? (
                   <div className="flex items-center justify-between gap-2 border border-g200 rounded-[3px] px-3 h-[38px] bg-g50">
                     <div className="min-w-0 text-[13px]">
@@ -393,40 +390,11 @@ export function NewDispatchEntry() {
                       <span className="font-semibold">{selectedOrder.cust}</span>
                       <span className="text-g500 font-mono ml-2">{selectedOrder.poNo}</span>
                     </div>
-                    {!isEditMode && (
-                      <button onClick={() => setSelectedOrderId(null)} className="text-g400 hover:text-blk shrink-0"><X size={14} /></button>
-                    )}
                   </div>
                 ) : (
-                  <div className="relative">
-                    <div className="flex items-center gap-1.5 border border-g300 rounded-[3px] px-[10px] h-[36px] focus-within:border-red-mrt focus-within:ring-[3px] focus-within:ring-red-lt">
-                      <Search size={13} className="text-g400 shrink-0" />
-                      <input
-                        type="text"
-                        placeholder="Search customer, PO No, Order No..."
-                        value={orderQuery}
-                        onChange={e => setOrderQuery(e.target.value)}
-                        className="bg-transparent border-none outline-none font-sans text-[13px] text-blk w-full placeholder:text-g400"
-                      />
-                    </div>
-                    <div className="border border-g200 border-t-0 rounded-b-[3px] max-h-[240px] overflow-y-auto bg-white">
-                      {filteredOrders.length === 0 ? (
-                        <div className="text-g400 text-[11.5px] px-3 py-4 text-center">No confirmed orders match — pick a different order or check it doesn't already have a dispatch entry.</div>
-                      ) : (
-                        filteredOrders.map(o => (
-                          <div
-                            key={o.id}
-                            onClick={() => { setSelectedOrderId(o.id); hydrateFromOrder(o); }}
-                            className="px-3 py-2 text-[12.5px] cursor-pointer hover:bg-g100 border-b border-g100 last:border-b-0 flex items-center gap-2 transition-colors"
-                          >
-                            <span className="font-mono font-bold text-sW shrink-0">{o.id}</span>
-                            <span className="font-semibold truncate">{o.cust}</span>
-                            <span className="text-g500 font-mono text-[10.5px] ml-auto shrink-0">{o.poNo}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                  // Only visible for a single render tick before the
+                  // redirect effect above sends us back to /dispatch.
+                  <div className="text-g400 text-[12.5px] px-1 py-2">Loading…</div>
                 )}
               </div>
             </div>
