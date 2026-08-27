@@ -917,17 +917,6 @@ const mapEnquiryToDB = (e: any) => {
       setData(prev => ({ ...prev, dispatchEntries: prev.dispatchEntries.filter(d => d.id !== id) }));
       const order = data.orders.find(o => o.id === before?.orderId);
       logActivity({ module: 'dispatch_entries', recordId: id, recordLabel: order?.poNo || id, action: 'delete', before });
-      // Undo the "Order Pending for Dispatch" → "Order Confirmed" flip made
-      // when this entry was created, so a leftover order (one split off a
-      // partial dispatch) goes back to showing under its original tab once
-      // its dispatch entry is removed — rather than being stranded as
-      // "Order Confirmed" with no dispatch entry and no way back.
-      if (order && order.splitFromOrderId && order.status !== 'Order Pending for Dispatch') {
-        const stillHasEntry = data.dispatchEntries.some(d => d.id !== id && d.orderId === order.id);
-        if (!stillHasEntry) {
-          await updateOrder(order.id, { status: 'Order Pending for Dispatch' });
-        }
-      }
     } else {
       console.error('Error deleting dispatch entry:', error);
       throw error;
