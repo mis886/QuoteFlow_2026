@@ -60,12 +60,28 @@ export function Orders() {
   const [sendModalOrder, setSendModalOrder] = useState<Order | null>(null);
   const [exportingSheets, setExportingSheets] = useState<string | null>(null);
   const [sheetsToast, setSheetsToast] = useState<{type: "ok"|"warn"|"err"; msg: string} | null>(null);
+
+  // A leftover order split off a partial dispatch (splitFromOrderId set) is
+  // only a temporary placeholder for its undispatched remainder. Once it has
+  // a dispatch entry of its own — dispatched in full, or partially with yet
+  // another remainder split off — it's done its job and should stop showing
+  // as its own order row anywhere in this module. It still exists as a real
+  // Order record (Dispatch.tsx looks it up by id from data.orders directly),
+  // so this only hides it here, it doesn't delete it.
+  const isRetiredSplitOrder = (o: Order) =>
+    !!o.splitFromOrderId && data.dispatchEntries.some(e => e.orderId === o.id);
+
+  const visibleOrders = useMemo(
+    () => data.orders.filter(o => !isRetiredSplitOrder(o)),
+    [data.orders, data.dispatchEntries]
+  );
+
   const statusCounts = {
-    'Order Confirmed': data.orders.filter(o => o.status === 'Order Confirmed').length,
-    Processing: data.orders.filter(o => o.status === 'Processing').length,
-    Delivered: data.orders.filter(o => o.status === 'Delivered').length,
-    'Order Pending for Dispatch': data.orders.filter(o => o.status === 'Order Pending for Dispatch').length,
-    All: data.orders.length
+    'Order Confirmed': visibleOrders.filter(o => o.status === 'Order Confirmed').length,
+    Processing: visibleOrders.filter(o => o.status === 'Processing').length,
+    Delivered: visibleOrders.filter(o => o.status === 'Delivered').length,
+    'Order Pending for Dispatch': visibleOrders.filter(o => o.status === 'Order Pending for Dispatch').length,
+    All: visibleOrders.length
   };
 
   const handleDownloadPO = async (poFileName: string, orderId: string, poNo: string) => {
@@ -108,7 +124,7 @@ export function Orders() {
   const filteredOrders = useMemo(() => {
     const qs = localSearch.toLowerCase();
     const sq = siteDebounced.toLowerCase();
-    const list = data.orders.filter(o => {
+    const list = visibleOrders.filter(o => {
       if (!qs && tab !== 'All' && o.status !== tab) return false;
       if (qs) {
         const qsNorm = normalizeSearchText(qs);
@@ -143,7 +159,7 @@ export function Orders() {
     });
     if (qs) list.sort((a, b) => nameTier(a.cust, qs, [a.id, a.poNo]) - nameTier(b.cust, qs, [b.id, b.poNo]));
     return list;
-  }, [data.orders, data.customers, localSearch, siteDebounced, tab, globalDateRange, sortCol, sortDir]);
+  }, [visibleOrders, data.customers, localSearch, siteDebounced, tab, globalDateRange, sortCol, sortDir]);
 
   const TabSelect = ({ current, label, count }: { current: string, label: string, count?: number }) => {
     const isActive = tab === current;
