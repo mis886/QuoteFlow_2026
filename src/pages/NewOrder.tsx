@@ -112,7 +112,7 @@ export function NewOrder() {
   // Dispatch-related fields — capturable here so they're already on the order
   // by the time a dispatch entry gets created for it (NewDispatchEntry.tsx
   // carries these forward as defaults, overridden by the entry's own values).
-  const [fulfillmentType, setFulfillmentType] = useState<'delivery' | 'self_pickup'>('delivery');
+  const [fulfillmentType, setFulfillmentType] = useState<'' | 'delivery' | 'self_pickup'>('');
   const [transporter, setTransporter] = useState('');
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState('');
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState('');
@@ -277,6 +277,18 @@ export function NewOrder() {
       setCurr(customer.curr || 'INR');
       if (!priceBasis) setPriceBasis(ci || '');
       if (!quoteRef) setCustomerTier(customer.tier || '');
+      // Default Fulfillment Type + Transporter from the customer master (their
+      // typical order-history pattern) — only fills blanks, never overrides a
+      // value the user already picked/typed. 'Both' is ambiguous so it's left
+      // for the user to choose explicitly.
+      if (!fulfillmentType) {
+        if (customer.fulfilmentType === 'Self Pickup') setFulfillmentType('self_pickup');
+        else if (customer.fulfilmentType === 'Delivery') setFulfillmentType('delivery');
+      }
+      if (!transporter) {
+        const defaultTransporter = (customer.sites ?? [])[0]?.transporter;
+        if (defaultTransporter) setTransporter(defaultTransporter);
+      }
     }
     const sites = customer.sites ?? [];
     if (siteId) {
@@ -421,7 +433,7 @@ export function NewOrder() {
     pan: pan || undefined,
     hsn: defaultHsn || undefined,
     shipToAddress: shipAddr || undefined,
-    fulfillmentType,
+    fulfillmentType: fulfillmentType === '' ? undefined : fulfillmentType,
     transporter: transporter || undefined,
     promisedDeliveryDate: promisedDeliveryDate || undefined,
     estimatedDeliveryDate: estimatedDeliveryDate || undefined,
@@ -877,7 +889,8 @@ export function NewOrder() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-[10px]">
                     <div>
                       <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Fulfillment Type</label>
-                      <select value={fulfillmentType} onChange={e => setFulfillmentType(e.target.value as 'delivery' | 'self_pickup')} className={selectCls}>
+                      <select value={fulfillmentType} onChange={e => setFulfillmentType(e.target.value as '' | 'delivery' | 'self_pickup')} className={selectCls}>
+                        <option value="">— Select —</option>
                         <option value="delivery">Delivery</option>
                         <option value="self_pickup">Self Pickup</option>
                       </select>

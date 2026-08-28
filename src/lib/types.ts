@@ -319,6 +319,7 @@ export interface Customer {
   nextOrders?: string[]; // derived display list (product names from nextOrder1/2)
   customerType?: string; // customer_type
   crm?: string; // crm (DB column) — name of the person/CRM owner handling this customer
+  fulfilmentType?: string; // fulfilment_type — customer's typical pattern: 'Self Pickup' | 'Delivery' | 'Both', derived from order history. Used to default Order/Dispatch fulfillment type + transporter.
 }
 
 export interface FollowUpLog {

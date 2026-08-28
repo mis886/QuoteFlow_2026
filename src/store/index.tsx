@@ -1004,6 +1004,7 @@ const mapEnquiryToDB = (e: any) => {
       nextOrders: [nextOrder1?.product, nextOrder2?.product].filter(Boolean) as string[],
       customerType: c.customer_type || '',
       crm: c.crm || '',
+      fulfilmentType: c.fulfilment_type || '',
       sites: [primarySite],
     };
   };
@@ -1037,6 +1038,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('modifiedDate' in c) obj.modified_date = c.modifiedDate ?? null;
     if ('customerType' in c) obj.customer_type = c.customerType ?? null;
     if ('crm' in c) obj.crm = c.crm || null;
+    if ('fulfilmentType' in c) obj.fulfilment_type = c.fulfilmentType || null;
 
     // Primary site → flat address columns
     if (primarySite) {
