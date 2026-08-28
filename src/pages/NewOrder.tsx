@@ -114,6 +114,12 @@ export function NewOrder() {
   // carries these forward as defaults, overridden by the entry's own values).
   const [fulfillmentType, setFulfillmentType] = useState<'' | 'delivery' | 'self_pickup'>('');
   const [transporter, setTransporter] = useState('');
+  // Tracks the value we last auto-filled from the customer master, so switching
+  // to a different customer can safely re-derive these two fields — but only
+  // when the field still holds what we auto-filled (i.e. the user hasn't typed
+  // their own value over it). See the customer cascade effect below.
+  const autoFulfillmentTypeRef = useRef<'' | 'delivery' | 'self_pickup'>('');
+  const autoTransporterRef = useRef('');
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState('');
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState('');
   const [dispatchRemark, setDispatchRemark] = useState('');
@@ -278,16 +284,24 @@ export function NewOrder() {
       if (!priceBasis) setPriceBasis(ci || '');
       if (!quoteRef) setCustomerTier(customer.tier || '');
       // Default Fulfillment Type + Transporter from the customer master (their
-      // typical order-history pattern) — only fills blanks, never overrides a
-      // value the user already picked/typed. 'Both' is ambiguous so it's left
-      // for the user to choose explicitly.
-      if (!fulfillmentType) {
-        if (customer.fulfilmentType === 'Self Pickup') setFulfillmentType('self_pickup');
-        else if (customer.fulfilmentType === 'Delivery') setFulfillmentType('delivery');
+      // typical order-history pattern). Re-derives whenever the customer
+      // changes, but only overwrites the field if it still holds whatever we
+      // auto-filled last time — so switching customers updates the default
+      // instead of leaving the previous customer's stale value behind, while
+      // a value the user typed/picked themselves is never touched.
+      // 'Both' is ambiguous so it's left for the user to choose explicitly.
+      const derivedFulfillmentType: '' | 'delivery' | 'self_pickup' =
+        customer.fulfilmentType === 'Self Pickup' ? 'self_pickup'
+        : customer.fulfilmentType === 'Delivery' ? 'delivery'
+        : '';
+      if (fulfillmentType === '' || fulfillmentType === autoFulfillmentTypeRef.current) {
+        setFulfillmentType(derivedFulfillmentType);
+        autoFulfillmentTypeRef.current = derivedFulfillmentType;
       }
-      if (!transporter) {
-        const defaultTransporter = (customer.sites ?? [])[0]?.transporter;
-        if (defaultTransporter) setTransporter(defaultTransporter);
+      const derivedTransporter = (customer.sites ?? [])[0]?.transporter || '';
+      if (transporter === '' || transporter === autoTransporterRef.current) {
+        setTransporter(derivedTransporter);
+        autoTransporterRef.current = derivedTransporter;
       }
     }
     const sites = customer.sites ?? [];
