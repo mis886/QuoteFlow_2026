@@ -30,6 +30,10 @@ const InfoItem = ({ label, value }: { label: string, value: string }) => (
   </div>
 );
 
+// Ticket attachments are most often a bug-report screenshot — worth an
+// inline thumbnail rather than just a filename, unlike other file types.
+const isImageFileName = (name?: string | null): boolean => !!name && /\.(png|jpe?g|webp|gif)$/i.test(name);
+
 export function DetailPanel() {
   const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, deleteEnquiry, closeFollowUp, updateTicket, stampName } = useAppStore();
   const navigate = useNavigate();
@@ -37,6 +41,7 @@ export function DetailPanel() {
   const [downloadingItemId, setDownloadingItemId] = React.useState<string | null>(null);
   const [showLineItems, setShowLineItems] = React.useState(false);
   const [ticketNoteDraft, setTicketNoteDraft] = React.useState<string | null>(null);
+  const [ticketImagePreviewUrl, setTicketImagePreviewUrl] = React.useState<string | null>(null);
 
   const handleDownload = async (path: string, id: string, name?: string) => {
     if (path.startsWith('mock') || downloadingItemId === id) return;
@@ -73,6 +78,19 @@ export function DetailPanel() {
   // a different record (or closes) — otherwise a draft typed for one ticket
   // would leak into the next one opened.
   useEffect(() => { setTicketNoteDraft(null); }, [detailPanel.id]);
+
+  // Fetch a signed preview URL for image attachments on the ticket panel
+  // (separate from handleDownload's own signed-URL fetch, which forces a
+  // save-as-file instead of inline display).
+  useEffect(() => {
+    setTicketImagePreviewUrl(null);
+    if (detailPanel.type !== 'ticket' || !detailPanel.id) return;
+    const t = data.tickets.find(x => x.id === detailPanel.id);
+    if (!t?.attachmentPath || !isImageFileName(t.attachmentName || t.attachmentPath)) return;
+    let cancelled = false;
+    getS3SignedUrl(t.attachmentPath).then(url => { if (!cancelled) setTicketImagePreviewUrl(url); });
+    return () => { cancelled = true; };
+  }, [detailPanel.type, detailPanel.id]);
 
   if (!detailPanel.type || !detailPanel.id) return null;
 
@@ -723,21 +741,37 @@ export function DetailPanel() {
 
           {t.attachmentPath && (
             <Section title="Attachment">
-              <div className="flex items-center justify-between p-3 bg-white border border-g200 rounded-[3px] hover:border-red-mrt/50 transition-colors group">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-red-lt flex items-center justify-center text-red-mrt">
-                    <Paperclip size={16} />
+              {isImageFileName(t.attachmentName || t.attachmentPath) && ticketImagePreviewUrl ? (
+                <div className="border border-g200 rounded-[3px] overflow-hidden bg-g50">
+                  <img src={ticketImagePreviewUrl} alt={t.attachmentName || 'Attachment'} className="w-full max-h-[320px] object-contain bg-black/5" />
+                  <div className="flex items-center justify-between p-2 border-t border-g200 bg-white">
+                    <div className="text-[12px] font-medium text-blk truncate">{t.attachmentName}</div>
+                    <button
+                      onClick={() => handleDownload(t.attachmentPath!, t.id, t.attachmentName)}
+                      disabled={downloadingItemId === t.id}
+                      className="p-1.5 text-g400 hover:text-red-mrt transition-colors disabled:opacity-50"
+                    >
+                      {downloadingItemId === t.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                    </button>
                   </div>
-                  <div className="text-[13px] font-bold text-blk leading-tight">{t.attachmentName || t.attachmentPath}</div>
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDownload(t.attachmentPath!, t.id, t.attachmentName); }}
-                  disabled={downloadingItemId === t.id}
-                  className="p-2 text-g400 hover:text-red-mrt transition-colors disabled:opacity-50"
-                >
-                  {downloadingItemId === t.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-                </button>
-              </div>
+              ) : (
+                <div className="flex items-center justify-between p-3 bg-white border border-g200 rounded-[3px] hover:border-red-mrt/50 transition-colors group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded bg-red-lt flex items-center justify-center text-red-mrt">
+                      <Paperclip size={16} />
+                    </div>
+                    <div className="text-[13px] font-bold text-blk leading-tight">{t.attachmentName || t.attachmentPath}</div>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDownload(t.attachmentPath!, t.id, t.attachmentName); }}
+                    disabled={downloadingItemId === t.id}
+                    className="p-2 text-g400 hover:text-red-mrt transition-colors disabled:opacity-50"
+                  >
+                    {downloadingItemId === t.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                  </button>
+                </div>
+              )}
             </Section>
           )}
 

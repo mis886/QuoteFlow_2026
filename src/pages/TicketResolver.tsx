@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../store';
-import { Badge, Button } from '../components/ui';
-import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { Badge } from '../components/ui';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import { fmtIST, normalizeSearchText } from '../lib/utils';
 import { TicketStatus } from '../lib/types';
-import { TicketRaiseForm } from './TicketRaise';
 
 export function TicketResolver() {
   const { data, openDetailPanel } = useAppStore();
@@ -12,7 +11,6 @@ export function TicketResolver() {
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string>('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [showNewTicket, setShowNewTicket] = useState(false);
 
   const statusCounts = {
     All: data.tickets.length,
@@ -75,20 +73,11 @@ export function TicketResolver() {
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
       <div className="pt-5 px-6">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">Support</div>
-            <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">
-              Ticket <em className="italic text-red-mrt">Resolver</em>
-            </h1>
-            <p className="text-xs text-g500 mt-1 font-light">Every ticket raised across the team.</p>
-          </div>
-          <div className="flex items-center gap-2 mt-1 shrink-0">
-            <Button onClick={() => setShowNewTicket(true)} variant="primary" className="gap-2">
-              <Plus size={14} className="stroke-2" /> New Ticket
-            </Button>
-          </div>
-        </div>
+        <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">Support</div>
+        <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">
+          Ticket <em className="italic text-red-mrt">Resolver</em>
+        </h1>
+        <p className="text-xs text-g500 mt-1 font-light">Every ticket raised across the team.</p>
       </div>
 
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
@@ -158,23 +147,6 @@ export function TicketResolver() {
           </table>
         </div>
       </div>
-
-      {showNewTicket && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) setShowNewTicket(false); }}>
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] border border-g300">
-            <div className="p-4 border-b border-g200 flex items-center justify-between bg-white">
-              <div>
-                <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-1">Support</div>
-                <div className="text-base font-semibold text-blk">New Ticket</div>
-              </div>
-              <button onClick={() => setShowNewTicket(false)} className="p-2 text-g400 hover:text-blk bg-g100 hover:bg-g200 rounded-md transition-colors"><X size={14} strokeWidth={2.5} /></button>
-            </div>
-            <div className="overflow-y-auto">
-              <TicketRaiseForm onSubmitted={() => setShowNewTicket(false)} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
