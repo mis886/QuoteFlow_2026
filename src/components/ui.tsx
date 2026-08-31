@@ -1,9 +1,9 @@
 import React from 'react';
 import { cn } from '../lib/utils';
-import { EnqStatus, OrderStatus, QuoteStatus, Urgency } from '../lib/types';
+import { EnqStatus, OrderStatus, QuoteStatus, Urgency, TicketStatus } from '../lib/types';
 import { Mail, Phone, MessageCircle, Home, Globe, LayoutDashboard, Plus, Calendar, X } from 'lucide-react';
 
-export const Badge = ({ status, className }: { status: EnqStatus | QuoteStatus | OrderStatus | Urgency, className?: string }) => {
+export const Badge = ({ status, className }: { status: EnqStatus | QuoteStatus | OrderStatus | Urgency | TicketStatus, className?: string }) => {
   const badgeColors: Record<string, string> = {
     'New': 'bg-sN/10 text-sN',
     'In Review': 'bg-sR/10 text-sR',
@@ -21,6 +21,11 @@ export const Badge = ({ status, className }: { status: EnqStatus | QuoteStatus |
     'Urgent': 'bg-sP/10 text-sP',
     'Normal': 'bg-sN/10 text-sN',
     'Low': 'bg-sL/10 text-sL',
+    // Ticket statuses — Open→amber, In Progress→blue, Resolved→green, Closed→gray
+    'Open': 'bg-sR/10 text-sR',
+    'In Progress': 'bg-sN/10 text-sN',
+    'Resolved': 'bg-sW/10 text-sW',
+    'Closed': 'bg-sL/10 text-sL',
   };
 
   const dotColors: Record<string, string> = {
@@ -40,6 +45,10 @@ export const Badge = ({ status, className }: { status: EnqStatus | QuoteStatus |
     'Urgent': 'bg-sP',
     'Normal': 'bg-sN',
     'Low': 'bg-sL',
+    'Open': 'bg-sR',
+    'In Progress': 'bg-sN',
+    'Resolved': 'bg-sW',
+    'Closed': 'bg-sL',
   };
 
   // Display-only override — the underlying status value stays 'Processing'

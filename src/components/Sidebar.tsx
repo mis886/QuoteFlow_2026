@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileText, FileSignature, ShoppingCart, Users, LineChart, Settings, Boxes, LogOut, Phone, Brain, ChevronRight, ChevronLeft, Gauge, FlaskConical, History, Truck } from 'lucide-react';
+import { LayoutDashboard, FileText, FileSignature, ShoppingCart, Users, LineChart, Settings, Boxes, LogOut, Phone, Brain, ChevronRight, ChevronLeft, Gauge, FlaskConical, History, Truck, LifeBuoy } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -16,7 +16,7 @@ export function useSidebarCollapse() {
 
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const location = useLocation();
-  const { data, user, logout } = useAppStore();
+  const { data, user, logout, isAdmin } = useAppStore();
   const [logoError, setLogoError] = useState(false);
 
   const [overdueSamplesCount, setOverdueSamplesCount] = useState(0);
@@ -41,6 +41,10 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
     if (!quote || quote.status !== 'Sent') return false;
     return f.next_date && new Date(f.next_date) < today;
   }).length;
+
+  const openTicketsCount = isAdmin
+    ? data.tickets.filter(t => t.status === 'Open').length
+    : data.tickets.filter(t => t.raisedByEmail?.toLowerCase() === user?.email?.toLowerCase() && t.status === 'Open').length;
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -99,6 +103,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           <NavItem to="/sampling" icon={<FlaskConical size={15} />} label="Sampling" active={isActive('/sampling')} collapsed={collapsed}
             badge={overdueSamplesCount > 0 ? { text: overdueSamplesCount.toString(), className: 'bg-amber-500' } : undefined} />
           <NavItem to="/customers" icon={<Users size={15} />} label="Customers" active={isActive('/customers')} collapsed={collapsed} dataTour="nav-customers" />
+          <NavItem to="/tickets" icon={<LifeBuoy size={15} />} label="Tickets" active={isActive('/tickets')} collapsed={collapsed}
+            badge={openTicketsCount > 0 ? { text: openTicketsCount.toString(), className: 'bg-red-mrt' } : undefined} />
         </div>
 
         {!collapsed && (

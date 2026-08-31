@@ -469,6 +469,7 @@ export interface DataStore {
   bankAccounts: BankAccount[];
   roster: TeamMember[];
   dispatchEntries: DispatchEntry[];
+  tickets: Ticket[];
 }
 
 // ── Dispatch (Order → Dispatch) ────────────────────────────────────
@@ -503,6 +504,32 @@ export interface DispatchEntry {
   items?: OrderItem[];
   insurance?: number;
   value?: number;
+}
+
+// ── Tickets (internal issue-tracking) ──────────────────────────────
+// One row per ticket, no threaded replies — a single description in, a
+// single resolution note out, plus a status field. Raised by any staff
+// member (src/pages/TicketRaise.tsx), triaged/resolved by admins
+// (src/pages/TicketResolver.tsx). See supabase/migrations/20260831060000_add_tickets_table.sql.
+export type TicketModule = 'Enquiry' | 'Quotation' | 'Order' | 'Dispatch' | 'Customer' | 'Sampling' | 'Other';
+export type TicketPriority = 'Low' | 'Medium' | 'High';
+export type TicketStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
+
+export interface Ticket {
+  id: string;
+  raisedByEmail: string;
+  raisedByName: string;
+  module: TicketModule;
+  subject: string;
+  description: string;
+  priority: TicketPriority;
+  status: TicketStatus;
+  attachmentPath?: string;
+  attachmentName?: string;
+  resolvedBy?: string;
+  resolutionNote?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface AuthorizedSignatory {

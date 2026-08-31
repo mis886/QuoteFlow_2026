@@ -31,11 +31,12 @@ const InfoItem = ({ label, value }: { label: string, value: string }) => (
 );
 
 export function DetailPanel() {
-  const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, deleteEnquiry, closeFollowUp } = useAppStore();
+  const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, deleteEnquiry, closeFollowUp, updateTicket, stampName } = useAppStore();
   const navigate = useNavigate();
   const canComplete = canCompleteOrder(user?.email);
   const [downloadingItemId, setDownloadingItemId] = React.useState<string | null>(null);
   const [showLineItems, setShowLineItems] = React.useState(false);
+  const [ticketNoteDraft, setTicketNoteDraft] = React.useState<string | null>(null);
 
   const handleDownload = async (path: string, id: string, name?: string) => {
     if (path.startsWith('mock') || downloadingItemId === id) return;
@@ -67,6 +68,11 @@ export function DetailPanel() {
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, [closeDetailPanel]);
+
+  // Discard any in-progress resolution-note edit when the panel switches to
+  // a different record (or closes) — otherwise a draft typed for one ticket
+  // would leak into the next one opened.
+  useEffect(() => { setTicketNoteDraft(null); }, [detailPanel.id]);
 
   if (!detailPanel.type || !detailPanel.id) return null;
 
@@ -678,10 +684,106 @@ export function DetailPanel() {
     );
   };
 
+  const renderTicket = () => {
+    const t = data.tickets.find(x => x.id === detailPanel.id);
+    if (!t) return null;
+
+    const noteValue = ticketNoteDraft ?? (t.resolutionNote || '');
+
+    return (
+      <div className="flex flex-col h-full bg-white relative animate-in slide-in-from-right duration-300 w-full sm:w-[500px]">
+        <div className="p-6 border-b border-g200 flex justify-between items-start">
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="font-mono text-sm font-bold text-red-mrt">{t.id}</span>
+              <span className="font-mono text-[9.5px] font-bold uppercase text-g500 bg-g100 px-1.5 py-0.5 rounded-[3px]">{t.priority}</span>
+              <Badge status={t.status} />
+            </div>
+            <h2 className="font-serif text-2xl text-blk">{t.subject}</h2>
+          </div>
+          <button type="button" title="Close" onClick={closeDetailPanel} className="text-g500 hover:text-blk p-1 border border-g300 rounded hover:bg-g100 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <Section title="Ticket Details">
+            <Grid>
+              <InfoItem label="Raised By" value={t.raisedByName} />
+              <InfoItem label="Email" value={t.raisedByEmail} />
+              <InfoItem label="Module" value={t.module} />
+              <InfoItem label="Date" value={t.created_at ? fmtIST(new Date(t.created_at), 'dd-MMM-yyyy, hh:mm a') : '—'} />
+            </Grid>
+          </Section>
+
+          <Section title="Description">
+            <div className="bg-g50 border border-g200 p-3 text-[12.5px] text-blk rounded-[3px] whitespace-pre-wrap">
+              {t.description}
+            </div>
+          </Section>
+
+          {t.attachmentPath && (
+            <Section title="Attachment">
+              <div className="flex items-center justify-between p-3 bg-white border border-g200 rounded-[3px] hover:border-red-mrt/50 transition-colors group">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded bg-red-lt flex items-center justify-center text-red-mrt">
+                    <Paperclip size={16} />
+                  </div>
+                  <div className="text-[13px] font-bold text-blk leading-tight">{t.attachmentName || t.attachmentPath}</div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDownload(t.attachmentPath!, t.id, t.attachmentName); }}
+                  disabled={downloadingItemId === t.id}
+                  className="p-2 text-g400 hover:text-red-mrt transition-colors disabled:opacity-50"
+                >
+                  {downloadingItemId === t.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                </button>
+              </div>
+            </Section>
+          )}
+
+          <Section title="Resolution">
+            <div className="space-y-3">
+              <select
+                value={t.status}
+                onChange={async (e) => { await updateTicket(t.id, { status: e.target.value as any }); }}
+                className="font-sans text-[12px] text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none hover:border-g400"
+              >
+                <option value="Open">Open</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Closed">Closed</option>
+              </select>
+              <textarea
+                value={noteValue}
+                onChange={(e) => setTicketNoteDraft(e.target.value)}
+                rows={4}
+                placeholder="Resolution note for the person who raised this ticket..."
+                className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none"
+              />
+              {t.resolvedBy && (
+                <div className="text-[10.5px] text-g500">Resolved by {t.resolvedBy}</div>
+              )}
+            </div>
+          </Section>
+        </div>
+        <div className="p-4 border-t border-g200 flex items-center justify-end gap-2 bg-g100/30">
+          <Button variant="secondary" onClick={async () => {
+            await updateTicket(t.id, { resolutionNote: noteValue });
+            setTicketNoteDraft(null);
+          }}>Save Note</Button>
+          <Button variant="primary" onClick={async () => {
+            await updateTicket(t.id, { status: 'Resolved', resolutionNote: noteValue, resolvedBy: stampName() });
+            setTicketNoteDraft(null);
+          }}>Mark Resolved</Button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       {/* Backdrop */}
-      <div 
+      <div
         className="absolute inset-0 bg-black/20 backdrop-blur-[1px] animate-in fade-in duration-300"
         onClick={closeDetailPanel}
       />
@@ -689,6 +791,7 @@ export function DetailPanel() {
       {detailPanel.type === 'enquiry' && renderEnquiry()}
       {detailPanel.type === 'quote' && renderQuote()}
       {detailPanel.type === 'order' && renderOrder()}
+      {detailPanel.type === 'ticket' && renderTicket()}
     </div>
   );
 }

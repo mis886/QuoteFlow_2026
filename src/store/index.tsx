@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
+import type { Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, Ticket } from '../lib/types';
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
@@ -50,6 +50,10 @@ export type SignatoryResolution =
   | { status: 'needs-picker' };
 
 export const SALES_EMAIL = 'sales@himalayaterpene.com';
+// Tickets module admins — see the Ticket Resolver view in src/pages/Tickets.tsx.
+// Compared against the logged-in Supabase Auth email (user?.email?.toLowerCase()),
+// NOT the self-picked "doer" identity used for KPI attribution elsewhere.
+export const ADMIN_EMAILS = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com', 'anil@himalayaterpene.com'];
 export const SALES_SIGNATORY_NAMES = ['Nimisha Pawar', 'Ruby'] as const;
 export type SalesSignatoryName = typeof SALES_SIGNATORY_NAMES[number];
 
@@ -123,6 +127,11 @@ interface AppContextType {
   addTeamMember: (m: TeamMember) => Promise<void>;
   updateTeamMember: (email: string, role: DoerRole, displayName: string, updates: Partial<TeamMember>) => Promise<void>;
   deleteTeamMember: (email: string, role: DoerRole, displayName: string) => Promise<void>;
+  // Tickets (internal issue-tracking) — see src/pages/Tickets.tsx.
+  addTicket: (t: Ticket) => Promise<void>;
+  updateTicket: (id: string, updates: Partial<Ticket>) => Promise<void>;
+  // Whether the logged-in Supabase Auth email is one of ADMIN_EMAILS.
+  isAdmin: boolean;
   roleForDoer: (nameOrEmail?: string | null) => DoerRole[];
   // Active doer (post-login identity on a possibly-shared Google login).
   activeDoer: ActiveDoer | null;
@@ -141,8 +150,8 @@ interface AppContextType {
   setGlobalSearchQuery: (query: string) => void;
   globalDateRange: GlobalDateRange | null;
   setGlobalDateRange: (range: GlobalDateRange | null) => void;
-  detailPanel: { type: 'enquiry' | 'quote' | 'order' | null, id: string | null };
-  openDetailPanel: (type: 'enquiry' | 'quote' | 'order', id: string) => void;
+  detailPanel: { type: 'enquiry' | 'quote' | 'order' | 'ticket' | null, id: string | null };
+  openDetailPanel: (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string) => void;
   closeDetailPanel: () => void;
   attachmentModal: { type: 'enquiry' | 'quote' | 'order' | null, id: string | null };
   openAttachmentModal: (type: 'enquiry' | 'quote' | 'order', id: string) => void;
@@ -200,6 +209,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     bankAccounts: [],
     roster: [],
     dispatchEntries: [],
+    tickets: [],
   });
 
   const [loading, setLoading] = useState(true);
@@ -219,7 +229,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try { return (localStorage.getItem('sales_signatory_identity') as SalesSignatoryName | null) ?? null; } catch { return null; }
   });
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
-  const [detailPanel, setDetailPanel] = useState<{ type: 'enquiry' | 'quote' | 'order' | null, id: string | null }>({ type: null, id: null });
+  const [detailPanel, setDetailPanel] = useState<{ type: 'enquiry' | 'quote' | 'order' | 'ticket' | null, id: string | null }>({ type: null, id: null });
   const [attachmentModal, setAttachmentModal] = useState<{ type: 'enquiry' | 'quote' | 'order' | null, id: string | null }>({ type: null, id: null });
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [globalDateRange, setGlobalDateRange] = useState<GlobalDateRange | null>(() => {
@@ -227,7 +237,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return stored ? JSON.parse(stored) : null;
   });
 
-  const openDetailPanel = (type: 'enquiry' | 'quote' | 'order', id: string) => setDetailPanel({ type, id });
+  const openDetailPanel = (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string) => setDetailPanel({ type, id });
   const closeDetailPanel = () => setDetailPanel({ type: null, id: null });
 
   const openAttachmentModal = (type: 'enquiry' | 'quote' | 'order', id: string) => setAttachmentModal({ type, id });
@@ -276,7 +286,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (mounted) setLoading(false);
         });
       } else {
-        setData({ enquiries: [], quotes: [], orders: [], customers: [], followups: [], settings: null, signatories: [], units: [], bankAccounts: [], roster: [], dispatchEntries: [] });
+        setData({ enquiries: [], quotes: [], orders: [], customers: [], followups: [], settings: null, signatories: [], units: [], bankAccounts: [], roster: [], dispatchEntries: [], tickets: [] });
         setLoading(false);
       }
     });
@@ -333,6 +343,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // array scans over data.signatories) rather than its own
   // useState+useEffect, so it can never lag one render behind user/data.
   const email = user?.email?.toLowerCase() ?? null;
+  const isAdmin = !!email && ADMIN_EMAILS.includes(email);
   const resolvedSignatory: SignatoryResolution = (() => {
     if (!email) return { status: 'unmapped' };
     if (email === SALES_EMAIL) {
@@ -652,6 +663,41 @@ const mapEnquiryToDB = (e: any) => {
     return obj;
   };
 
+  const mapTicketFromDB = (t: any): Ticket => ({
+    id: t.id,
+    raisedByEmail: t.raised_by_email,
+    raisedByName: t.raised_by_name,
+    module: t.module,
+    subject: t.subject,
+    description: t.description,
+    priority: t.priority || 'Medium',
+    status: t.status || 'Open',
+    attachmentPath: t.attachment_path || undefined,
+    attachmentName: t.attachment_name || undefined,
+    resolvedBy: t.resolved_by || undefined,
+    resolutionNote: t.resolution_note || undefined,
+    created_at: t.created_at,
+    updated_at: t.updated_at,
+  });
+
+  const mapTicketToDB = (t: any) => {
+    const obj: any = {};
+    if ('id' in t) obj.id = t.id;
+    if ('raisedByEmail' in t) obj.raised_by_email = t.raisedByEmail;
+    if ('raisedByName' in t) obj.raised_by_name = t.raisedByName;
+    if ('module' in t) obj.module = t.module;
+    if ('subject' in t) obj.subject = t.subject;
+    if ('description' in t) obj.description = t.description;
+    if ('priority' in t) obj.priority = t.priority;
+    if ('status' in t) obj.status = t.status;
+    if ('attachmentPath' in t) obj.attachment_path = t.attachmentPath || null;
+    if ('attachmentName' in t) obj.attachment_name = t.attachmentName || null;
+    if ('resolvedBy' in t) obj.resolved_by = t.resolvedBy || null;
+    if ('resolutionNote' in t) obj.resolution_note = t.resolutionNote || null;
+    obj.updated_at = new Date().toISOString();
+    return obj;
+  };
+
   const refreshData = async () => {
     try {
       const [
@@ -666,6 +712,7 @@ const mapEnquiryToDB = (e: any) => {
         { data: bankAccountsData },
         { data: rosterData },
         { data: dispatchEntriesData },
+        { data: ticketsData },
       ] = await Promise.all([
         supabase.from('enquiries').select('*').order('recv', { ascending: false }),
         supabase.from('quotes').select('*').order('date', { ascending: false }),
@@ -678,6 +725,7 @@ const mapEnquiryToDB = (e: any) => {
         supabase.from('bank_accounts').select('*'),
         supabase.from('team_roster').select('*').order('display_name'),
         supabase.from('dispatch_entries').select('*').order('created_at', { ascending: false }),
+        supabase.from('tickets').select('*').order('created_at', { ascending: false }),
       ]);
 
       setData({
@@ -697,6 +745,7 @@ const mapEnquiryToDB = (e: any) => {
         bankAccounts: bankAccountsData || [],
         roster: (rosterData as TeamMember[]) || [],
         dispatchEntries: (dispatchEntriesData || []).map(mapDispatchEntryFromDB),
+        tickets: (ticketsData || []).map(mapTicketFromDB),
       });
       await linkPendingPOSubmissions();
     } catch (error) {
@@ -922,6 +971,45 @@ const mapEnquiryToDB = (e: any) => {
       logActivity({ module: 'dispatch_entries', recordId: id, recordLabel: order?.poNo || id, action: 'delete', before });
     } else {
       console.error('Error deleting dispatch entry:', error);
+      throw error;
+    }
+  };
+
+  // Tickets (internal issue-tracking). One row per ticket, no threaded
+  // replies — see src/pages/TicketRaise.tsx / TicketResolver.tsx.
+  const addTicket = async (t: Ticket) => {
+    const { error, finalRecord } = await insertWithIdRetry<Ticket>(
+      'tickets',
+      t,
+      mapTicketToDB,
+      'TKT',
+      async () => {
+        const { data: rows } = await supabase.from('tickets').select('id');
+        return (rows ?? []).map(r => r.id);
+      },
+    );
+    if (!error) {
+      setData(prev => ({ ...prev, tickets: [finalRecord, ...prev.tickets] }));
+      logActivity({ module: 'tickets', recordId: finalRecord.id, recordLabel: finalRecord.subject || finalRecord.id, action: 'insert', after: finalRecord });
+    } else {
+      console.error('Error adding ticket:', error);
+      throw error;
+    }
+  };
+
+  const updateTicket = async (id: string, updates: Partial<Ticket>) => {
+    const before = data.tickets.find(t => t.id === id);
+    const dbUpdates = mapTicketToDB(updates);
+    const { error } = await supabase.from('tickets').update(dbUpdates).eq('id', id);
+    if (!error) {
+      setData(prev => ({
+        ...prev,
+        tickets: prev.tickets.map(t => t.id === id ? { ...t, ...updates } : t)
+      }));
+      const after = before ? { ...before, ...updates } : updates;
+      logActivity({ module: 'tickets', recordId: id, recordLabel: (after as Ticket).subject || id, action: 'update', before, after });
+    } else {
+      console.error('Error updating ticket:', error);
       throw error;
     }
   };
@@ -1762,6 +1850,9 @@ const mapEnquiryToDB = (e: any) => {
         addTeamMember,
         updateTeamMember,
         deleteTeamMember,
+        addTicket,
+        updateTicket,
+        isAdmin,
         roleForDoer,
         activeDoer,
         setActiveDoer,
