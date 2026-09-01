@@ -26,6 +26,7 @@ import { IntelligenceBoard } from './pages/IntelligenceBoard';
 import { DoerKPI } from './pages/DoerKPI';
 import { DoerDetail } from './pages/DoerDetail';
 import { Tickets } from './pages/Tickets';
+import { Stockbook } from './pages/Stockbook';
 import { useAppStore } from './store';
 import { Loader2 } from 'lucide-react';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
@@ -93,6 +94,7 @@ export default function App() {
                   <Route path="quotes/new" element={<NewQuote />} />
                   <Route path="orders" element={<Orders />} />
                   <Route path="orders/new" element={<NewOrder />} />
+                  <Route path="stockbook" element={<Stockbook />} />
                   <Route path="dispatch" element={<Dispatch />} />
                   <Route path="dispatch/new" element={<NewDispatchEntry />} />
                   <Route path="customers" element={<Customers />} />

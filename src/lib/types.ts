@@ -532,6 +532,41 @@ export interface Ticket {
   updated_at?: string;
 }
 
+// Stockbook module — lot-wise raw-material stock ledger, migrated from the
+// "Stock Lot Godown Wise" tab of the HIMALAYA STOCK SUMMARY Google Sheet.
+// Quantity is split across whichever party/godown currently holds it.
+// See supabase/migrations/20260901060000_create_stock_lots_table.sql.
+export interface StockLot {
+  id: string;
+  whLotNo?: string;
+  factLotNo?: string;
+  lotType?: string;           // 'W' | 'TR' | other, free text
+  productCode?: string;
+  productName: string;
+  inwardDate?: string;        // ISO date
+  sampleOff: boolean;
+  opQty?: number;
+  tankerUnload?: string;
+  coaFile?: string;
+  qtyHariom?: number;
+  qtyWadaHe?: number;
+  qtyHe?: number;
+  qtyReliable?: number;
+  qtySwastik?: number;
+  qtyBalaji?: number;
+  qtyWada?: number;
+  packing?: number;
+  unit?: string;
+  packagingType?: string;
+  quantity?: number;
+  make?: string;
+  remark?: string;
+  created_by?: string;
+  updated_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface AuthorizedSignatory {
   id: string;
   name: string;

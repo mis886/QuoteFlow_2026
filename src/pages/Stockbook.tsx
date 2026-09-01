@@ -1,0 +1,273 @@
+// Stockbook — lot-wise raw-material stock ledger, by godown/party.
+// Migrated from the "Stock Lot Godown Wise" tab of the HIMALAYA STOCK
+// SUMMARY Google Sheet; managed directly in EnqBoss from here on.
+// Self-contained (own Supabase queries, no global store plumbing) — same
+// pattern as ProductCatalogManager.tsx. See src/components/StockLotModal.tsx
+// for the add/edit form and supabase/migrations/20260901060000_create_stock_lots_table.sql
+// for the schema.
+
+import React, { useEffect, useMemo, useState } from 'react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Plus, Pencil, Trash2, RefreshCw, Warehouse } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { fmtDate, normalizeSearchText } from '../lib/utils';
+import { StockLot } from '../lib/types';
+import { StockLotModal } from '../components/StockLotModal';
+
+function mapRow(r: any): StockLot {
+  return {
+    id: r.id,
+    whLotNo: r.wh_lot_no ?? undefined,
+    factLotNo: r.fact_lot_no ?? undefined,
+    lotType: r.lot_type ?? undefined,
+    productCode: r.product_code ?? undefined,
+    productName: r.product_name,
+    inwardDate: r.inward_date ?? undefined,
+    sampleOff: !!r.sample_off,
+    opQty: r.op_qty ?? undefined,
+    tankerUnload: r.tanker_unload ?? undefined,
+    coaFile: r.coa_file ?? undefined,
+    qtyHariom: r.qty_hariom ?? undefined,
+    qtyWadaHe: r.qty_wada_he ?? undefined,
+    qtyHe: r.qty_he ?? undefined,
+    qtyReliable: r.qty_reliable ?? undefined,
+    qtySwastik: r.qty_swastik ?? undefined,
+    qtyBalaji: r.qty_balaji ?? undefined,
+    qtyWada: r.qty_wada ?? undefined,
+    packing: r.packing ?? undefined,
+    unit: r.unit ?? undefined,
+    packagingType: r.packaging_type ?? undefined,
+    quantity: r.quantity ?? undefined,
+    make: r.make ?? undefined,
+    remark: r.remark ?? undefined,
+    created_by: r.created_by ?? undefined,
+    updated_by: r.updated_by ?? undefined,
+    created_at: r.created_at ?? undefined,
+    updated_at: r.updated_at ?? undefined,
+  };
+}
+
+const num = (v?: number) => (v === undefined || v === null ? '—' : v.toLocaleString('en-IN'));
+
+export function Stockbook() {
+  const [lots, setLots] = useState<StockLot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [sortCol, setSortCol] = useState<string>('inwardDate');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingLot, setEditingLot] = useState<StockLot | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('stock_lots')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (!error && data) setLots(data.map(mapRow));
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const toggleSort = (col: string) => {
+    if (sortCol === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortCol(col); setSortDir('asc'); }
+  };
+
+  const filtered = useMemo(() => {
+    const q = normalizeSearchText(search.trim());
+    let list = lots.filter(l => {
+      if (!q) return true;
+      const hay = normalizeSearchText([
+        l.whLotNo, l.factLotNo, l.productCode, l.productName, l.make, l.remark,
+      ].filter(Boolean).join(' '));
+      return hay.includes(q);
+    });
+    list = [...list].sort((a, b) => {
+      let av: any, bv: any;
+      if (sortCol === 'productName') { av = a.productName?.toLowerCase() || ''; bv = b.productName?.toLowerCase() || ''; }
+      else if (sortCol === 'whLotNo') { av = a.whLotNo || ''; bv = b.whLotNo || ''; }
+      else if (sortCol === 'quantity') { av = a.quantity ?? -Infinity; bv = b.quantity ?? -Infinity; }
+      else if (sortCol === 'make') { av = a.make?.toLowerCase() || ''; bv = b.make?.toLowerCase() || ''; }
+      else { av = a.inwardDate || ''; bv = b.inwardDate || ''; }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [lots, search, sortCol, sortDir]);
+
+  const openAdd = () => { setEditingLot(null); setModalOpen(true); };
+  const openEdit = (lot: StockLot) => { setEditingLot(lot); setModalOpen(true); };
+
+  const handleDelete = async (lot: StockLot) => {
+    if (!window.confirm(`Delete stock lot "${lot.productName}" (${lot.whLotNo || lot.factLotNo || 'no lot no.'})?`)) return;
+    const { error } = await supabase.from('stock_lots').delete().eq('id', lot.id);
+    if (!error) setLots(prev => prev.filter(l => l.id !== lot.id));
+  };
+
+  const SortTh = ({ col, label }: { col: string; label: string }) => (
+    <th
+      onClick={() => toggleSort(col)}
+      className={`font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 cursor-pointer select-none hover:bg-g200 transition-colors text-left ${sortCol === col ? 'text-red-mrt bg-red-lt/40' : 'text-g500'}`}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {sortCol === col ? (sortDir === 'asc' ? <ChevronUp size={9} /> : <ChevronDown size={9} />) : <ChevronsUpDown size={9} className="text-g300" />}
+      </span>
+    </th>
+  );
+
+  const Th = ({ label }: { label: string }) => (
+    <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-left text-g500">
+      {label}
+    </th>
+  );
+
+  return (
+    <div className="flex flex-col h-full animate-in fade-in duration-300">
+      <div className="pt-5 px-6">
+        <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">Inventory</div>
+        <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight flex items-center gap-2">
+          <Warehouse size={20} className="text-red-mrt shrink-0" />
+          Stock <em className="italic text-red-mrt">Book</em>
+        </h1>
+        <p className="text-xs text-g500 mt-1 font-light">Lot-wise raw-material stock, split by party / godown.</p>
+      </div>
+
+      <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
+        <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[240px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
+          <Search size={11} className="text-g400 shrink-0" />
+          <input
+            type="text"
+            placeholder="Lot no., product, make..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={openAdd}
+          className="inline-flex items-center gap-1.5 h-7 px-3 rounded-[3px] bg-red-mrt text-white text-[11px] font-bold hover:bg-red-h transition-colors"
+        >
+          <Plus size={12} /> Add Stock Lot
+        </button>
+
+        <button
+          type="button"
+          onClick={load}
+          title="Refresh"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-[3px] text-g500 hover:bg-g100 hover:text-blk transition-colors"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+        </button>
+
+        <div className="ml-auto font-mono text-[10px] text-g500">{filtered.length} lots</div>
+      </div>
+
+      <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
+        <div className="bg-white border border-g200 overflow-x-auto m-0">
+          <table className="w-full border-collapse text-[12px]">
+            <thead className="bg-g100">
+              <tr>
+                <SortTh col="whLotNo" label="WH Lot No" />
+                <Th label="Fact Lot No" />
+                <Th label="Type" />
+                <Th label="Product Code" />
+                <SortTh col="productName" label="Product Name" />
+                <SortTh col="inwardDate" label="Inward Date" />
+                <Th label="Sample Off" />
+                <Th label="Op" />
+                <Th label="Hariom" />
+                <Th label="Wada-HE" />
+                <Th label="HE" />
+                <Th label="Reliable" />
+                <Th label="Swastik" />
+                <Th label="BALAJI" />
+                <Th label="Wada" />
+                <Th label="Packing" />
+                <Th label="Unit" />
+                <Th label="Packaging" />
+                <SortTh col="quantity" label="Quantity" />
+                <SortTh col="make" label="Make" />
+                <Th label="Remark" />
+                <th className="px-[13px] py-[9px] border-b border-g200 w-[70px]" />
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+              ) : (
+                filtered.map(l => (
+                  <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
+                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{l.whLotNo || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.factLotNo || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.lotType || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.productCode || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top font-semibold text-blk min-w-[200px]">{l.productName}</td>
+                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{fmtDate(l.inwardDate)}</td>
+                    <td className="px-[13px] py-[9px] align-top">
+                      {l.sampleOff
+                        ? <span className="text-[10px] font-semibold text-sW">Yes</span>
+                        : <span className="text-[10px] text-g400">No</span>}
+                    </td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.opQty)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyHariom)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyWadaHe)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyHe)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyReliable)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtySwastik)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyBalaji)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyWada)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.packing)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.unit || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.packagingType || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(l.quantity)}</td>
+                    <td className="px-[13px] py-[9px] align-top whitespace-nowrap">
+                      {l.make
+                        ? <span className="inline-flex items-center text-[10.5px] text-g600 bg-g100 px-2 py-0.5 rounded-[3px] font-medium">{l.make}</span>
+                        : '—'}
+                    </td>
+                    <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={l.remark}>{l.remark || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top">
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(l)}
+                          className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors"
+                          title="Edit"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(l)}
+                          className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <StockLotModal
+        open={modalOpen}
+        lot={editingLot}
+        onClose={() => setModalOpen(false)}
+        onSaved={load}
+      />
+    </div>
+  );
+}
