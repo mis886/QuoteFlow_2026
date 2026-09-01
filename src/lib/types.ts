@@ -538,6 +538,7 @@ export interface Ticket {
 // See supabase/migrations/20260901060000_create_stock_lots_table.sql.
 export interface StockLot {
   id: string;
+  serialNo?: number;          // running S.No. — matches the original sheet's row order for migrated lots
   whLotNo?: string;
   factLotNo?: string;
   lotType?: string;           // 'W' | 'TR' | other, free text

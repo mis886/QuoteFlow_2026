@@ -16,6 +16,7 @@ import { StockLotModal } from '../components/StockLotModal';
 function mapRow(r: any): StockLot {
   return {
     id: r.id,
+    serialNo: r.serial_no ?? undefined,
     whLotNo: r.wh_lot_no ?? undefined,
     factLotNo: r.fact_lot_no ?? undefined,
     lotType: r.lot_type ?? undefined,
@@ -52,8 +53,8 @@ export function Stockbook() {
   const [lots, setLots] = useState<StockLot[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [sortCol, setSortCol] = useState<string>('inwardDate');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [sortCol, setSortCol] = useState<string>('serialNo');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingLot, setEditingLot] = useState<StockLot | null>(null);
@@ -63,7 +64,7 @@ export function Stockbook() {
     const { data, error } = await supabase
       .from('stock_lots')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('serial_no', { ascending: true, nullsFirst: false });
     if (!error && data) setLots(data.map(mapRow));
     setLoading(false);
   };
@@ -86,7 +87,8 @@ export function Stockbook() {
     });
     list = [...list].sort((a, b) => {
       let av: any, bv: any;
-      if (sortCol === 'productName') { av = a.productName?.toLowerCase() || ''; bv = b.productName?.toLowerCase() || ''; }
+      if (sortCol === 'serialNo') { av = a.serialNo ?? Infinity; bv = b.serialNo ?? Infinity; }
+      else if (sortCol === 'productName') { av = a.productName?.toLowerCase() || ''; bv = b.productName?.toLowerCase() || ''; }
       else if (sortCol === 'whLotNo') { av = a.whLotNo || ''; bv = b.whLotNo || ''; }
       else if (sortCol === 'quantity') { av = a.quantity ?? -Infinity; bv = b.quantity ?? -Infinity; }
       else if (sortCol === 'make') { av = a.make?.toLowerCase() || ''; bv = b.make?.toLowerCase() || ''; }
@@ -173,6 +175,7 @@ export function Stockbook() {
           <table className="w-full border-collapse text-[12px]">
             <thead className="bg-g100">
               <tr>
+                <SortTh col="serialNo" label="S.No." />
                 <SortTh col="whLotNo" label="WH Lot No" />
                 <Th label="Fact Lot No" />
                 <Th label="Type" />
@@ -199,12 +202,13 @@ export function Stockbook() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
                 filtered.map(l => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
+                    <td className="px-[13px] py-[9px] align-top font-mono text-[11px] text-g500 whitespace-nowrap">{l.serialNo ?? '—'}</td>
                     <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{l.whLotNo || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.factLotNo || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.lotType || '—'}</td>
