@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Search, FlaskConical, Clock, CheckCircle2, XCircle, X, Loader2, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
+import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import { localDateStr, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 
@@ -274,6 +275,7 @@ export function Sampling() {
   const [loading, setLoading] = useState(true);
   const [feedbackTarget, setFeedbackTarget] = useState<Sample | null>(null);
   const [tabFilter, setTabFilter] = useState<'all' | SampleStatus>('all');
+  const tableScrollRef = useRef<HTMLDivElement>(null);
 
   const handleDelete = async (id: string) => {
     if (!confirm(`Delete sample ${id}? This cannot be undone.`)) return;
@@ -414,7 +416,7 @@ export function Sampling() {
 
       {/* Sample register table */}
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-        <div className="bg-white border border-g200 overflow-x-auto">
+        <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto">
           <table className="w-full border-collapse text-[12.5px]">
             <thead className="bg-g100">
               <tr>
@@ -548,6 +550,7 @@ export function Sampling() {
           </table>
         </div>
       </div>
+      <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
 
       {/* Modals */}
       {feedbackTarget && (

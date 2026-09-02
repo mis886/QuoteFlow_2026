@@ -6,12 +6,13 @@
 // for the add/edit form and supabase/migrations/20260901060000_create_stock_lots_table.sql
 // for the schema.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Plus, Pencil, Trash2, RefreshCw, Warehouse } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockLot } from '../lib/types';
 import { StockLotModal } from '../components/StockLotModal';
+import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 
 function mapRow(r: any): StockLot {
   return {
@@ -58,6 +59,7 @@ export function Stockbook() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingLot, setEditingLot] = useState<StockLot | null>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -171,7 +173,7 @@ export function Stockbook() {
       </div>
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-        <div className="bg-white border border-g200 overflow-x-auto m-0">
+        <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto m-0">
           <table className="w-full border-collapse text-[12px]">
             <thead className="bg-g100">
               <tr>
@@ -265,6 +267,7 @@ export function Stockbook() {
           </table>
         </div>
       </div>
+      <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
 
       <StockLotModal
         open={modalOpen}
