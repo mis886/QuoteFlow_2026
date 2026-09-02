@@ -131,7 +131,7 @@ export default function FloatingVerticalScrollbar({
   return (
     <div
       className="fixed right-0 z-40 flex flex-col items-center gap-0.5 bg-white border-l border-g200 shadow-[-2px_0_6px_rgba(0,0,0,0.08)] px-1 py-1"
-      style={{ top: rect.top, height: barHeight, width: FLOATING_SCROLLBAR_THICKNESS }}
+      style={{ top: rect.top, height: barHeight }}
     >
       <button
         type="button"
