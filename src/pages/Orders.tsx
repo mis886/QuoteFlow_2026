@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../store';
 import { Badge, Button, DateFilterBanner } from '../components/ui';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
+import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
@@ -50,6 +51,7 @@ export function Orders() {
   const [sortCol, setSortCol] = useState('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const tableScrollRef = useRef<HTMLDivElement>(null);
+  const verticalScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSiteDebounced(siteQuery), 250);
@@ -273,7 +275,7 @@ export function Orders() {
         </div>
       </div>
 
-      <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
+      <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto m-0">
           <table className="w-full border-collapse text-[12.5px]">
             <thead className="bg-g100">
@@ -540,6 +542,7 @@ export function Orders() {
         </div>
       </div>
       <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
+      <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
       {sendModalOrder && (
         <SendEmailModal
           mode="order"

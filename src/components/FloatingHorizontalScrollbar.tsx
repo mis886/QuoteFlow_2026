@@ -5,6 +5,12 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 // short of a full page so a little of the previous view stays in sight.
 const SCROLL_STEP_RATIO = 0.8;
 
+// Rendered thickness of a floating bar (button + padding), shared with
+// FloatingVerticalScrollbar so it can shorten itself by this much when both
+// bars are showing for the same table, leaving the corner clear instead of
+// overlapping this bar's own right-hand arrow button.
+export const FLOATING_SCROLLBAR_THICKNESS = 28;
+
 interface HorizontalRect {
   left: number;
   width: number;

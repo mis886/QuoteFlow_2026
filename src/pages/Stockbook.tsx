@@ -13,6 +13,7 @@ import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockLot } from '../lib/types';
 import { StockLotModal } from '../components/StockLotModal';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
+import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 
 function mapRow(r: any): StockLot {
   return {
@@ -60,6 +61,7 @@ export function Stockbook() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingLot, setEditingLot] = useState<StockLot | null>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
+  const verticalScrollRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -172,7 +174,7 @@ export function Stockbook() {
         <div className="ml-auto font-mono text-[10px] text-g500">{filtered.length} lots</div>
       </div>
 
-      <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
+      <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto m-0">
           <table className="w-full border-collapse text-[12px]">
             <thead className="bg-g100">
@@ -268,6 +270,7 @@ export function Stockbook() {
         </div>
       </div>
       <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
+      <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
 
       <StockLotModal
         open={modalOpen}
