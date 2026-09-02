@@ -549,6 +549,7 @@ export interface StockLot {
   opQty?: number;
   tankerUnload?: string;
   coaFile?: string;
+  coaUrl?: string;             // public Supabase Storage URL for the actual COA PDF, when one has been uploaded/matched
   qtyHariom?: number;
   qtyWadaHe?: number;
   qtyHe?: number;

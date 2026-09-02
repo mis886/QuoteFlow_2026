@@ -3,7 +3,7 @@
 // ProductCatalogManager.tsx. See src/pages/Stockbook.tsx for the list view.
 
 import React, { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, ExternalLink } from 'lucide-react';
 import { Button } from './ui';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
@@ -188,7 +188,19 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
               <Field label="Quantity"><input type="number" className={inp} value={form.quantity} onChange={set('quantity')} /></Field>
               <Field label="Make"><input className={inp} value={form.make} onChange={set('make')} placeholder="WADA / PRIVI / ..." /></Field>
               <Field label="Tanker Unload"><input className={inp} value={form.tankerUnload} onChange={set('tankerUnload')} /></Field>
-              <Field label="COA File"><input className={inp} value={form.coaFile} onChange={set('coaFile')} /></Field>
+              <Field label="COA File">
+                <input className={inp} value={form.coaFile} onChange={set('coaFile')} />
+                {lot?.coaUrl && (
+                  <a
+                    href={lot.coaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 text-[10.5px] text-red-mrt hover:underline"
+                  >
+                    <ExternalLink size={10} /> View current PDF
+                  </a>
+                )}
+              </Field>
             </div>
           </div>
 

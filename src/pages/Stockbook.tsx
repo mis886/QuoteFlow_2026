@@ -29,6 +29,7 @@ function mapRow(r: any): StockLot {
     opQty: r.op_qty ?? undefined,
     tankerUnload: r.tanker_unload ?? undefined,
     coaFile: r.coa_file ?? undefined,
+    coaUrl: r.coa_url ?? undefined,
     qtyHariom: r.qty_hariom ?? undefined,
     qtyWadaHe: r.qty_wada_he ?? undefined,
     qtyHe: r.qty_he ?? undefined,
@@ -228,7 +229,24 @@ export function Stockbook() {
                     </td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.opQty)}</td>
                     <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap max-w-[160px] truncate" title={l.tankerUnload}>{l.tankerUnload || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap max-w-[160px] truncate" title={l.coaFile}>{l.coaFile || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] whitespace-nowrap max-w-[160px] truncate">
+                      {l.coaUrl ? (
+                        <a
+                          href={l.coaUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`Open ${l.coaFile || 'COA PDF'}`}
+                          className="text-red-mrt underline decoration-dotted hover:decoration-solid"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {l.coaFile || 'View PDF'}
+                        </a>
+                      ) : l.coaFile ? (
+                        <span className="text-g600" title="No PDF on file for this lot yet">{l.coaFile}</span>
+                      ) : (
+                        <span className="text-g600">—</span>
+                      )}
+                    </td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyHariom)}</td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyWadaHe)}</td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyHe)}</td>
