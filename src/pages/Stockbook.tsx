@@ -188,6 +188,8 @@ export function Stockbook() {
                 <SortTh col="inwardDate" label="Inward Date" />
                 <Th label="Sample Off" />
                 <Th label="Op" />
+                <Th label="Tanker Unload" />
+                <Th label="COA" />
                 <Th label="Hariom" />
                 <Th label="Wada-HE" />
                 <Th label="HE" />
@@ -206,9 +208,9 @@ export function Stockbook() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={25} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+                <tr><td colSpan={25} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
                 filtered.map(l => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -225,6 +227,8 @@ export function Stockbook() {
                         : <span className="text-[10px] text-g400">No</span>}
                     </td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.opQty)}</td>
+                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap max-w-[160px] truncate" title={l.tankerUnload}>{l.tankerUnload || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap max-w-[160px] truncate" title={l.coaFile}>{l.coaFile || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyHariom)}</td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyWadaHe)}</td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyHe)}</td>

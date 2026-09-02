@@ -187,6 +187,7 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
               <Field label="Packaging Type"><input className={inp} value={form.packagingType} onChange={set('packagingType')} placeholder="Plastic / Barrel / MS" /></Field>
               <Field label="Quantity"><input type="number" className={inp} value={form.quantity} onChange={set('quantity')} /></Field>
               <Field label="Make"><input className={inp} value={form.make} onChange={set('make')} placeholder="WADA / PRIVI / ..." /></Field>
+              <Field label="Tanker Unload"><input className={inp} value={form.tankerUnload} onChange={set('tankerUnload')} /></Field>
               <Field label="COA File"><input className={inp} value={form.coaFile} onChange={set('coaFile')} /></Field>
             </div>
           </div>
