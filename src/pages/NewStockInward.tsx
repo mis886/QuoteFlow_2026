@@ -260,7 +260,7 @@ export function NewStockInward() {
       </div>
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-[14px] max-w-[820px]">
+        <div className="flex flex-col gap-[14px] max-w-3xl">
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Lot Details</div>
             <div className="grid grid-cols-2 gap-[12px]">
