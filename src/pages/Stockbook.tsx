@@ -2,11 +2,14 @@
 // Migrated from the "Stock Lot Godown Wise" tab of the HIMALAYA STOCK
 // SUMMARY Google Sheet; managed directly in EnqBoss from here on.
 // Self-contained (own Supabase queries, no global store plumbing) — same
-// pattern as ProductCatalogManager.tsx. See src/components/StockLotModal.tsx
-// for the add/edit form and supabase/migrations/20260901060000_create_stock_lots_table.sql
-// for the schema.
+// pattern as ProductCatalogManager.tsx. Adding a new lot is a full page —
+// see src/pages/NewStockLot.tsx (route /stockbook/new) — while editing an
+// existing lot still opens src/components/StockLotModal.tsx, edit-only now.
+// See supabase/migrations/20260901060000_create_stock_lots_table.sql for
+// the schema.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Plus, Pencil, Trash2, RefreshCw, Warehouse } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
@@ -53,6 +56,7 @@ function mapRow(r: any): StockLot {
 const num = (v?: number) => (v === undefined || v === null ? '—' : v.toLocaleString('en-IN'));
 
 export function Stockbook() {
+  const navigate = useNavigate();
   const [lots, setLots] = useState<StockLot[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -105,7 +109,6 @@ export function Stockbook() {
     return list;
   }, [lots, search, sortCol, sortDir]);
 
-  const openAdd = () => { setEditingLot(null); setModalOpen(true); };
   const openEdit = (lot: StockLot) => { setEditingLot(lot); setModalOpen(true); };
 
   const handleDelete = async (lot: StockLot) => {
@@ -157,7 +160,7 @@ export function Stockbook() {
 
         <button
           type="button"
-          onClick={openAdd}
+          onClick={() => navigate('/stockbook/new')}
           className="inline-flex items-center gap-1.5 h-7 px-3 rounded-[3px] bg-red-mrt text-white text-[11px] font-bold hover:bg-red-h transition-colors"
         >
           <Plus size={12} /> Add Stock Lot
@@ -294,12 +297,14 @@ export function Stockbook() {
       <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
       <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
 
-      <StockLotModal
-        open={modalOpen}
-        lot={editingLot}
-        onClose={() => setModalOpen(false)}
-        onSaved={load}
-      />
+      {editingLot && (
+        <StockLotModal
+          open={modalOpen}
+          lot={editingLot}
+          onClose={() => setModalOpen(false)}
+          onSaved={load}
+        />
+      )}
     </div>
   );
 }

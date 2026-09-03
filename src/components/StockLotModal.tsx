@@ -1,6 +1,7 @@
-// Add / edit modal for a single Stockbook lot. Self-contained — talks to
-// Supabase directly (no global store plumbing), same pattern as
-// ProductCatalogManager.tsx. See src/pages/Stockbook.tsx for the list view.
+// Edit modal for a single Stockbook lot. Self-contained — talks to Supabase
+// directly (no global store plumbing), same pattern as ProductCatalogManager.tsx.
+// Edit-only: creating a new lot is now a full page, src/pages/NewStockLot.tsx
+// (route /stockbook/new) — see src/pages/Stockbook.tsx for both entry points.
 
 import React, { useEffect, useState } from 'react';
 import { X, ExternalLink } from 'lucide-react';
@@ -23,7 +24,7 @@ function Field({ label, children, className }: { label: string; children: React.
 
 interface Props {
   open: boolean;
-  lot: StockLot | null; // null = add mode
+  lot: StockLot;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }
@@ -43,35 +44,31 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    if (lot) {
-      setForm({
-        whLotNo: lot.whLotNo || '',
-        factLotNo: lot.factLotNo || '',
-        lotType: lot.lotType || '',
-        productCode: lot.productCode || '',
-        productName: lot.productName || '',
-        inwardDate: lot.inwardDate || '',
-        sampleOff: !!lot.sampleOff,
-        opQty: lot.opQty?.toString() ?? '',
-        tankerUnload: lot.tankerUnload || '',
-        coaFile: lot.coaFile || '',
-        qtyHariom: lot.qtyHariom?.toString() ?? '',
-        qtyWadaHe: lot.qtyWadaHe?.toString() ?? '',
-        qtyHe: lot.qtyHe?.toString() ?? '',
-        qtyReliable: lot.qtyReliable?.toString() ?? '',
-        qtySwastik: lot.qtySwastik?.toString() ?? '',
-        qtyBalaji: lot.qtyBalaji?.toString() ?? '',
-        qtyWada: lot.qtyWada?.toString() ?? '',
-        packing: lot.packing?.toString() ?? '',
-        unit: lot.unit || '',
-        packagingType: lot.packagingType || '',
-        quantity: lot.quantity?.toString() ?? '',
-        make: lot.make || '',
-        remark: lot.remark || '',
-      });
-    } else {
-      setForm(emptyForm);
-    }
+    setForm({
+      whLotNo: lot.whLotNo || '',
+      factLotNo: lot.factLotNo || '',
+      lotType: lot.lotType || '',
+      productCode: lot.productCode || '',
+      productName: lot.productName || '',
+      inwardDate: lot.inwardDate || '',
+      sampleOff: !!lot.sampleOff,
+      opQty: lot.opQty?.toString() ?? '',
+      tankerUnload: lot.tankerUnload || '',
+      coaFile: lot.coaFile || '',
+      qtyHariom: lot.qtyHariom?.toString() ?? '',
+      qtyWadaHe: lot.qtyWadaHe?.toString() ?? '',
+      qtyHe: lot.qtyHe?.toString() ?? '',
+      qtyReliable: lot.qtyReliable?.toString() ?? '',
+      qtySwastik: lot.qtySwastik?.toString() ?? '',
+      qtyBalaji: lot.qtyBalaji?.toString() ?? '',
+      qtyWada: lot.qtyWada?.toString() ?? '',
+      packing: lot.packing?.toString() ?? '',
+      unit: lot.unit || '',
+      packagingType: lot.packagingType || '',
+      quantity: lot.quantity?.toString() ?? '',
+      make: lot.make || '',
+      remark: lot.remark || '',
+    });
     setError('');
   }, [open, lot]);
 
@@ -113,12 +110,9 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
       remark: form.remark.trim() || null,
     };
 
-    const { error: err } = lot
-      ? await supabase.from('stock_lots')
-          .update({ ...payload, updated_at: new Date().toISOString(), updated_by: user?.email ?? null })
-          .eq('id', lot.id)
-      : await supabase.from('stock_lots')
-          .insert({ ...payload, created_by: user?.email ?? null });
+    const { error: err } = await supabase.from('stock_lots')
+      .update({ ...payload, updated_at: new Date().toISOString(), updated_by: user?.email ?? null })
+      .eq('id', lot.id);
 
     if (err) {
       setError(err.message);
@@ -133,7 +127,7 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
     <div className="fixed inset-0 bg-black/40 z-[300] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-[4px] w-full max-w-[720px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3.5 border-b border-g200 flex items-center justify-between sticky top-0 bg-white z-10">
-          <div className="text-[13.5px] font-semibold text-blk">{lot ? 'Edit Stock Lot' : 'Add Stock Lot'}</div>
+          <div className="text-[13.5px] font-semibold text-blk">Edit Stock Lot</div>
           <button type="button" onClick={onClose} title="Close" aria-label="Close" className="text-g500 hover:text-blk">
             <X size={16} />
           </button>
@@ -190,7 +184,7 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
               <Field label="Tanker Unload"><input className={inp} value={form.tankerUnload} onChange={set('tankerUnload')} /></Field>
               <Field label="COA File">
                 <input className={inp} value={form.coaFile} onChange={set('coaFile')} />
-                {lot?.coaUrl && (
+                {lot.coaUrl && (
                   <a
                     href={lot.coaUrl}
                     target="_blank"
@@ -214,7 +208,7 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
         <div className="px-5 py-3.5 border-t border-g200 flex items-center justify-end gap-2 sticky bottom-0 bg-white">
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={save} disabled={!form.productName.trim() || saving}>
-            {saving ? 'Saving…' : lot ? 'Save Changes' : 'Add Stock Lot'}
+            {saving ? 'Saving…' : 'Save Changes'}
           </Button>
         </div>
       </div>

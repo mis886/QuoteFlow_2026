@@ -27,6 +27,7 @@ import { DoerKPI } from './pages/DoerKPI';
 import { DoerDetail } from './pages/DoerDetail';
 import { Tickets } from './pages/Tickets';
 import { Stockbook } from './pages/Stockbook';
+import { NewStockLot } from './pages/NewStockLot';
 import { StockMovements } from './pages/StockMovements';
 import { NewStockInward } from './pages/NewStockInward';
 import { NewStockOutward } from './pages/NewStockOutward';
@@ -98,6 +99,7 @@ export default function App() {
                   <Route path="orders" element={<Orders />} />
                   <Route path="orders/new" element={<NewOrder />} />
                   <Route path="stockbook" element={<Stockbook />} />
+                  <Route path="stockbook/new" element={<NewStockLot />} />
                   <Route path="stock-movements" element={<StockMovements />} />
                   <Route path="stock-movements/new" element={<NewStockInward />} />
                   <Route path="stock-movements/new-outward" element={<NewStockOutward />} />
