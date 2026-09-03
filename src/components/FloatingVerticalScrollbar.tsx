@@ -6,18 +6,16 @@ import { FLOATING_SCROLLBAR_THICKNESS } from './FloatingHorizontalScrollbar';
 // short of a full page so a little of the previous view stays in sight.
 const SCROLL_STEP_RATIO = 0.8;
 
-// Outer container's total width (thickness) — bumped from the horizontal
-// bar's 28px so the vertical bar is easier to see and grab. The button
-// size and the inner scroll-track/icon size are both derived from this
-// (rather than hardcoded) so they scale with it instead of looking
-// cramped inside a wider bar. OUTER_PADDING mirrors the px-1 (4px) side
-// padding on the outer container's own className below.
-const OUTER_THICKNESS = 40;
+// OUTER_PADDING mirrors the px-1 (4px) side padding on the outer
+// container's own className below. The up/down arrow buttons stay
+// comfortably clickable even though the scroll track itself (TRACK_SIZE)
+// is kept slim — matching how thin the app's native scrollbar already is
+// (4px, see src/index.css) — rather than sizing the whole bar off the old
+// bulky 40px-wide design.
 const OUTER_PADDING = 4;
-const BUTTON_SIZE = OUTER_THICKNESS - OUTER_PADDING * 2;
-// Same button-to-track/icon ratio the original 20px-button/14px-track
-// design used (14/20 = 0.7).
-const TRACK_SIZE = Math.round(BUTTON_SIZE * 0.7);
+const BUTTON_SIZE = 16;
+const ICON_SIZE = 10;
+const TRACK_SIZE = 7;
 
 interface VerticalRect {
   top: number;
@@ -153,7 +151,7 @@ export default function FloatingVerticalScrollbar({
         className="shrink-0 flex items-center justify-center rounded text-red-mrt hover:bg-red-lt"
         style={{ width: BUTTON_SIZE, height: BUTTON_SIZE }}
       >
-        <ChevronUp size={TRACK_SIZE} />
+        <ChevronUp size={ICON_SIZE} />
       </button>
       <div ref={floatingRef} className="flex-1 overflow-y-auto overflow-x-hidden" style={{ width: TRACK_SIZE }}>
         <div style={{ height: scrollHeight, width: 1 }} />
@@ -165,7 +163,7 @@ export default function FloatingVerticalScrollbar({
         className="shrink-0 flex items-center justify-center rounded text-red-mrt hover:bg-red-lt"
         style={{ width: BUTTON_SIZE, height: BUTTON_SIZE }}
       >
-        <ChevronDown size={TRACK_SIZE} />
+        <ChevronDown size={ICON_SIZE} />
       </button>
     </div>
   );

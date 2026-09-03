@@ -8,8 +8,9 @@ const SCROLL_STEP_RATIO = 0.8;
 // Rendered thickness of a floating bar (button + padding), shared with
 // FloatingVerticalScrollbar so it can shorten itself by this much when both
 // bars are showing for the same table, leaving the corner clear instead of
-// overlapping this bar's own right-hand arrow button.
-export const FLOATING_SCROLLBAR_THICKNESS = 28;
+// overlapping this bar's own right-hand arrow button. Matches this bar's
+// own 16px arrow buttons (w-4 h-4 below) + 2×4px padding.
+export const FLOATING_SCROLLBAR_THICKNESS = 24;
 
 interface HorizontalRect {
   left: number;
@@ -129,20 +130,20 @@ export default function FloatingHorizontalScrollbar({
         type="button"
         onClick={() => scrollByStep(-1)}
         aria-label="Scroll table left"
-        className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-red-mrt hover:bg-red-lt"
+        className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-red-mrt hover:bg-red-lt"
       >
-        <ChevronLeft size={14} />
+        <ChevronLeft size={10} />
       </button>
-      <div ref={floatingRef} className="flex-1 overflow-x-auto overflow-y-hidden" style={{ height: 14 }}>
+      <div ref={floatingRef} className="flex-1 overflow-x-auto overflow-y-hidden" style={{ height: 7 }}>
         <div style={{ width: scrollWidth, height: 1 }} />
       </div>
       <button
         type="button"
         onClick={() => scrollByStep(1)}
         aria-label="Scroll table right"
-        className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-red-mrt hover:bg-red-lt"
+        className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-red-mrt hover:bg-red-lt"
       >
-        <ChevronRight size={14} />
+        <ChevronRight size={10} />
       </button>
     </div>
   );
