@@ -260,10 +260,10 @@ export function NewStockInward() {
       </div>
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-[14px] max-w-3xl">
+        <div className="flex flex-col gap-[14px]">
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Lot Details</div>
-            <div className="grid grid-cols-2 gap-[12px]">
+            <div className="grid grid-cols-4 gap-[12px]">
               <div>
                 <label className={labelCls}>Warehouse <span className="text-red-mrt">*</span></label>
                 <select className={selectCls} value={form.warehouse} onChange={set('warehouse')}>
@@ -291,7 +291,7 @@ export function NewStockInward() {
 
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Quantity</div>
-            <div className="grid grid-cols-3 gap-[12px]">
+            <div className="grid grid-cols-6 gap-[12px]">
               <div>
                 <label className={labelCls}>Lot Date <span className="text-red-mrt">*</span></label>
                 <input type="date" className={inputCls} value={form.lotDate} onChange={set('lotDate')} />
@@ -328,7 +328,7 @@ export function NewStockInward() {
 
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Other</div>
-            <div className="grid grid-cols-2 gap-[12px]">
+            <div className="grid grid-cols-4 gap-[12px]">
               <div>
                 <label className={labelCls}>Make</label>
                 <input className={inputCls} value={form.make} onChange={set('make')} />
