@@ -29,6 +29,7 @@ import { Tickets } from './pages/Tickets';
 import { Stockbook } from './pages/Stockbook';
 import { StockMovements } from './pages/StockMovements';
 import { NewStockInward } from './pages/NewStockInward';
+import { NewStockOutward } from './pages/NewStockOutward';
 import { useAppStore } from './store';
 import { Loader2 } from 'lucide-react';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
@@ -99,6 +100,7 @@ export default function App() {
                   <Route path="stockbook" element={<Stockbook />} />
                   <Route path="stock-movements" element={<StockMovements />} />
                   <Route path="stock-movements/new" element={<NewStockInward />} />
+                  <Route path="stock-movements/new-outward" element={<NewStockOutward />} />
                   <Route path="dispatch" element={<Dispatch />} />
                   <Route path="dispatch/new" element={<NewDispatchEntry />} />
                   <Route path="customers" element={<Customers />} />

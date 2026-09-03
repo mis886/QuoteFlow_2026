@@ -576,14 +576,16 @@ export interface StockLot {
 // is the current-balance view. See src/pages/StockMovements.tsx and
 // supabase/migrations/20260903060000_create_stock_movements_table.sql.
 export type StockMovementType = 'inward' | 'outward';
-// The form's Warehouse dropdown only ever offers these 4 parties/godowns.
+// The Inward form's Warehouse dropdown only ever offers these 4 parties/
+// godowns. Outward has its own separate list (adds WADA + free-text
+// "Other") defined locally in NewStockOutward.tsx.
 export type StockMovementWarehouse = 'Hariom' | 'Reliable' | 'Swastik' | 'Balaji';
 
 export interface StockMovement {
   id: string;
   type: StockMovementType;
   warehouse: string;
-  whLotNo: string;
+  whLotNo?: string;          // required for inward; optional for outward (a DO can be logged with no known lot)
   stockCategory?: string;
   productName: string;
   lotDate?: string;
@@ -594,6 +596,16 @@ export interface StockMovement {
   totalQty?: number;
   make?: string;
   remark?: string;
+  // Outward-only fields (Delivery Order Sale form) — see src/pages/NewStockOutward.tsx
+  // and supabase/migrations/20260903120000_stock_movements_add_outward_columns.sql.
+  doNumber?: string;
+  doDate?: string;
+  numArticles?: string;
+  partyName?: string;
+  otherParty?: string;
+  transporter?: string;
+  otherTransporter?: string;
+  note?: string;
   created_by?: string;
   created_at?: string;
 }

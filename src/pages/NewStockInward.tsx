@@ -14,13 +14,14 @@
 // supabase/migrations/20260903060000_create_stock_movements_table.sql for
 // the schema.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import ReactDOM from 'react-dom';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
+import { SearchableCombobox } from '../components/SearchableCombobox';
 import { StockMovementWarehouse } from '../lib/types';
+import { PRODUCT_NAMES, PACKAGING_TYPES } from '../lib/stockMovementOptions';
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
@@ -49,108 +50,6 @@ const STOCK_CATEGORIES = [
   'PINE OIL 211', 'PINE OIL 311', 'Turpentine Mixture', 'Methyl Pentanone HB', 'Terpinyl Acetate',
   'Ester Gum', 'EUCALYPTUS OIL',
 ];
-
-const PRODUCT_NAMES = [
-  'Alpha Pinene 95% -ve 24', 'Alpha Pinene 95 +ve', 'Alpha Pinene 96+ve32', 'Alpha Pinene 96+ve32 ROB',
-  'Alpha Pinene 98 - ve', 'Alpha Pinene 98 +ve', 'Anthamber Residue', 'Anthamber Tops Yellow',
-  'Anthamber Tops White', 'Anthamber Tops', 'Beta Pinene', 'Beta Pinene 95%', 'Beta Pinene 98%',
-  'Base Oil SK 70N', 'Beta Pinene 98% ROB', 'Bhakti 100', 'Camphene', 'Camphor oil', 'Camphor Oil PFG',
-  'Camphor Oil Comm.', 'Camphor Powder', 'Camphor powder (blue)', 'Camphor NATURAL', 'Citronella Oil',
-  'D-Limonene', 'Dipentene LC (Not to be issued)', 'Delta Carene 92%', 'Delta Carene 95%', 'DHM Residue',
-  'DHM Tops White', 'DHM Yellow', 'Dipentene', 'DHM Terpene 100', 'Dipentene Ind Paint', 'DHM tops',
-  'DHM Tops Yellow', 'ESTER T AND B', 'Fenchone', 'Gamma Terpinene 90%', 'Gamma Terpinene 95%',
-  'Gamma Terpinene 96%', 'Geraniol HB', 'Geraniol Tops', 'Gum Rosin Indian', 'Gum Rosin Indo NON PHT',
-  'Gum Rosin WG', 'Gum Rosin N', 'Gum Rosin K', 'Gum Rosin D', 'GAMMA TERPENTINE',
-  'Isolongifolene Keton Comm', 'Isoborneol Acetate', 'Isoborneol Flakes', 'Isoborneol', 'Isolongifolene PFG',
-  'Gum Rosin X', 'Gum Rosin Indo PHT', 'Gum Rosin', 'Gamma Terpenene 65', 'Longifolene',
-  'LOOSE TERPINEOL EP', 'Nerol Iso Tops', 'OT PT', 'Pine Oil', 'Pine Oil 211', 'Pine Oil 311 (22%)',
-  'Pine Oil 411 (32%)', 'Pine Oil 50', 'Pine Oil 511 (40% To 42%)', 'Pine Oil 65', 'PINE OIL 85',
-  'Pine Oil (Indigo)', 'Pine Oil 40', 'Pine Tar', 'Turpentine ITC (Dipentene HC DT)', 'Pine Tar 300',
-  'SODIUM ACETATE TRIHYDRATE', 'Turpentine (Dipentene LC)', 'Turpentine', 'Turpentine Pharma',
-  'Terpinolene', 'Terpineol Comm', 'Terpineol CP', 'Terpineol DG', 'Terpineol EP', 'Terpineol MG',
-  'Terpineol MU', 'Terpineol PG', 'Terpinolene 20', 'Terpinolene 30', 'Terpineol', 'Terpinolene 90',
-  'TMCM T&B Residue', 'TMCM T&B Tops', 'Turpentine Mixture', 'Loose Anthamber TOPS',
-  'Loose Anthamber Tops-yellow', 'Loose DHM Tops', 'Loose Dipentene [Pine Indigo]',
-  'loose Dipentene Ind Paint', 'Loose Terpineol EP', 'LOOSE Terpineol PG', 'Loose-Beta Pinene',
-  'Loose Turpentine', 'Loose DHM Tops white', 'Loose DHM Tops Yellow', 'Loose-Gamma Terpinene 98',
-  'Loose DL-Limonene Bhilai', 'Methyl Pentanone HB', 'DL Limonene', 'Terpinyl Acetate', 'DELTA 3 CARENE',
-  'Ester Gum', 'EUCALYPTUS OIL', 'Delta 3 carene', 'ROSIN Aegentina',
-];
-
-const PACKAGING_TYPES = [
-  'HDPE barrel', 'MS', 'Bag', 'Carboy', 'MS Barrel', 'Drum', 'New HTPL HDPE', 'Carbouys', 'MS Patra',
-  'HDPE', 'GI patra', 'BOX', 'Used GI Drum', 'MS EPOXY', 'Tanker', 'New GI DRUM',
-];
-
-// Searchable combobox for Product Name — the list is long, so a plain
-// <select> is unwieldy. Positions its dropdown via a portal (like
-// ProductSearch.tsx) so it can't be clipped by any scroll container.
-function ProductNameField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [query, setQuery] = useState(value);
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { setQuery(value); }, [value]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? PRODUCT_NAMES.filter(n => n.toLowerCase().includes(q)) : PRODUCT_NAMES;
-  }, [query]);
-
-  const calcPos = () => {
-    if (containerRef.current) {
-      const r = containerRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 2, left: r.left, width: r.width });
-    }
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    const outside = (e: MouseEvent) => { if (!containerRef.current?.contains(e.target as Node)) close(); };
-    document.addEventListener('mousedown', outside);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
-    return () => {
-      document.removeEventListener('mousedown', outside);
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
-    };
-  }, [open]);
-
-  const pick = (name: string) => { onChange(name); setQuery(name); setOpen(false); };
-
-  return (
-    <div ref={containerRef} className="relative">
-      <input
-        className={inputCls}
-        value={query}
-        placeholder="Type to search…"
-        autoComplete="off"
-        onChange={e => { setQuery(e.target.value); onChange(e.target.value); if (!open) calcPos(); setOpen(true); }}
-        onFocus={() => { calcPos(); setOpen(true); }}
-      />
-      {open && filtered.length > 0 && pos && ReactDOM.createPortal(
-        <div
-          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
-          className="bg-white border border-g200 rounded-[3px] shadow-lg max-h-[220px] overflow-y-auto"
-        >
-          {filtered.map(name => (
-            <div
-              key={name}
-              onMouseDown={e => { e.preventDefault(); pick(name); }}
-              className={`px-2.5 py-1.5 cursor-pointer text-[12px] ${name === value ? 'bg-red-lt/40 text-red-mrt font-medium' : 'text-blk hover:bg-g100'}`}
-            >
-              {name}
-            </div>
-          ))}
-        </div>,
-        document.body
-      )}
-    </div>
-  );
-}
 
 const emptyForm = {
   warehouse: '', whLotNo: '', stockCategory: '', productName: '',
@@ -284,7 +183,7 @@ export function NewStockInward() {
               </div>
               <div>
                 <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
-                <ProductNameField value={form.productName} onChange={v => setForm(f => ({ ...f, productName: v }))} />
+                <SearchableCombobox className={inputCls} options={PRODUCT_NAMES} value={form.productName} onChange={v => setForm(f => ({ ...f, productName: v }))} />
               </div>
             </div>
           </div>

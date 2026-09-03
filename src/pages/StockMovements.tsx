@@ -1,11 +1,11 @@
 // Stock Movements — inward/outward stock entry ledger, replacing the
-// "Stock Inward" Google Form. Self-contained (own Supabase queries, no
-// global store plumbing), same pattern as Stockbook.tsx. Inward is fully
-// functional; Outward is parked until that DO form's fields are shared —
-// see src/pages/NewStockInward.tsx for the add form (a full page, same
-// convention as NewEnquiry/NewOrder — not a modal) and
-// supabase/migrations/20260903060000_create_stock_movements_table.sql for
-// the schema.
+// "Stock Inward" / "Delivery Order Sale" Google Forms. Self-contained (own
+// Supabase queries, no global store plumbing), same pattern as Stockbook.tsx.
+// Both Inward and Outward are fully functional — see src/pages/NewStockInward.tsx
+// and src/pages/NewStockOutward.tsx for the add forms (full pages, same
+// convention as NewEnquiry/NewOrder — not modals) and
+// supabase/migrations/20260903060000_create_stock_movements_table.sql (+ the
+// later additive outward-column migrations) for the schema.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -21,7 +21,7 @@ function mapRow(r: any): StockMovement {
     id: r.id,
     type: r.type,
     warehouse: r.warehouse,
-    whLotNo: r.wh_lot_no,
+    whLotNo: r.wh_lot_no ?? undefined,
     stockCategory: r.stock_category ?? undefined,
     productName: r.product_name,
     lotDate: r.lot_date ?? undefined,
@@ -32,6 +32,14 @@ function mapRow(r: any): StockMovement {
     totalQty: r.total_qty ?? undefined,
     make: r.make ?? undefined,
     remark: r.remark ?? undefined,
+    doNumber: r.do_number ?? undefined,
+    doDate: r.do_date ?? undefined,
+    numArticles: r.num_articles ?? undefined,
+    partyName: r.party_name ?? undefined,
+    otherParty: r.other_party ?? undefined,
+    transporter: r.transporter ?? undefined,
+    otherTransporter: r.other_transporter ?? undefined,
+    note: r.note ?? undefined,
     created_by: r.created_by ?? undefined,
     created_at: r.created_at ?? undefined,
   };
@@ -76,6 +84,7 @@ export function StockMovements() {
       if (!q) return true;
       const hay = normalizeSearchText([
         m.whLotNo, m.stockCategory, m.productName, m.warehouse, m.make, m.remark,
+        m.doNumber, m.partyName, m.otherParty, m.transporter, m.otherTransporter, m.note,
       ].filter(Boolean).join(' '));
       return hay.includes(q);
     });
@@ -89,7 +98,7 @@ export function StockMovements() {
           <ArrowLeftRight size={20} className="text-red-mrt shrink-0" />
           Stock <em className="italic text-red-mrt">Movements</em>
         </h1>
-        <p className="text-xs text-g500 mt-1 font-light">Inward &amp; outward stock entries, replacing the Stock Inward Google Form.</p>
+        <p className="text-xs text-g500 mt-1 font-light">Inward &amp; outward stock entries, replacing the Stock Inward and Delivery Order Sale Google Forms.</p>
       </div>
 
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
@@ -101,8 +110,8 @@ export function StockMovements() {
             Inward ({inwardCount})
           </div>
           <div
-            title="Parked until the Outward form is ready"
-            className="px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium text-g400 whitespace-nowrap select-none cursor-not-allowed"
+            onClick={() => setTab('outward')}
+            className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${tab === 'outward' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
           >
             Outward ({outwardCount})
           </div>
@@ -131,6 +140,16 @@ export function StockMovements() {
           </button>
         )}
 
+        {tab === 'outward' && (
+          <button
+            type="button"
+            onClick={() => navigate('/stock-movements/new-outward')}
+            className="inline-flex items-center gap-1.5 h-7 px-3 rounded-[3px] bg-red-mrt text-white text-[11px] font-bold hover:bg-red-h transition-colors"
+          >
+            <Plus size={12} /> New Outward
+          </button>
+        )}
+
         <button
           type="button"
           onClick={load}
@@ -144,10 +163,61 @@ export function StockMovements() {
       </div>
 
       {tab === 'outward' ? (
-        <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-          <div className="bg-white border border-g200 rounded-[4px] p-10 text-center text-g400 text-[13px]">
-            Outward stock entry is parked until the Outward form is ready — not built yet.
+        <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
+          <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto m-0">
+            <table className="w-full border-collapse text-[12px]">
+              <thead className="bg-g100">
+                <tr>
+                  <Th label="DO Date" />
+                  <Th label="DO Number" />
+                  <Th label="WH Lot No" />
+                  <Th label="Product Name" />
+                  <Th label="Warehouse" />
+                  <Th label="Party Name" />
+                  <Th label="Transporter" />
+                  <Th label="Articles" align="right" />
+                  <Th label="Packing" align="right" />
+                  <Th label="Weight Type" />
+                  <Th label="Type" />
+                  <Th label="Total Qty" align="right" />
+                  <Th label="Note" />
+                  <Th label="Entered By" />
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={14} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                ) : filtered.length === 0 ? (
+                  <tr><td colSpan={14} className="text-center p-8 text-g400 text-[13px]">No outward entries match this filter</td></tr>
+                ) : (
+                  filtered.map(m => (
+                    <tr key={m.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
+                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{fmtDate(m.doDate)}</td>
+                      <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{m.doNumber || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{m.whLotNo || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top font-semibold text-blk min-w-[180px]">{m.productName}</td>
+                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.warehouse}</td>
+                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap max-w-[180px] truncate" title={m.partyName === 'Other' ? m.otherParty : m.partyName}>
+                        {m.partyName === 'Other' ? (m.otherParty || 'Other') : (m.partyName || '—')}
+                      </td>
+                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap max-w-[160px] truncate" title={m.transporter === 'Other' ? m.otherTransporter : m.transporter}>
+                        {m.transporter === 'Other' ? (m.otherTransporter || 'Other') : (m.transporter || '—')}
+                      </td>
+                      <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{m.numArticles || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(m.packing)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.weightType || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.packagingType || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(m.totalQty)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.note}>{m.note || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-g500 whitespace-nowrap">{m.created_by || '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
+          <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
+          <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
         </div>
       ) : (
         <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
