@@ -74,6 +74,16 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-g300); border-radius: 4px; }
 
+/* Floating horizontal table scrollbar (FloatingHorizontalScrollbar.tsx) —
+   deliberately chunkier than the site's thin 4px native scrollbar above so
+   it reads as a clearly visible, easy-to-grab draggable control at the
+   bottom of a wide table, rather than a flat line. Scoped to this class
+   only — doesn't affect any other scrollbar (including the floating
+   vertical one), which stays on the thin themed default. */
+.floating-h-scrollbar-track::-webkit-scrollbar { height: 9px; }
+.floating-h-scrollbar-track::-webkit-scrollbar-track { background: transparent; }
+.floating-h-scrollbar-track::-webkit-scrollbar-thumb { background: var(--color-g300); border-radius: 9px; }
+
 /* Email modal body — wider, visible scrollbar with red hover accent */
 .email-modal-body::-webkit-scrollbar { width: 9px; }
 .email-modal-body::-webkit-scrollbar-track { background: var(--color-g100); border-radius: 4px; }

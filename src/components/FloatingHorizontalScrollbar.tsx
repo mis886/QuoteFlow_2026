@@ -139,7 +139,7 @@ export default function FloatingHorizontalScrollbar({
       >
         <ChevronLeft size={14} />
       </button>
-      <div ref={floatingRef} className="flex-1 overflow-x-auto overflow-y-hidden" style={{ height: 14 }}>
+      <div ref={floatingRef} className="floating-h-scrollbar-track flex-1 overflow-x-auto overflow-y-hidden" style={{ height: 14 }}>
         <div style={{ width: scrollWidth, height: 1 }} />
       </div>
       <button
