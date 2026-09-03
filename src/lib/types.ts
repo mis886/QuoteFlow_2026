@@ -569,6 +569,35 @@ export interface StockLot {
   updated_at?: string;
 }
 
+// Stock Movements module — append-only inward/outward ledger, replacing the
+// "Stock Inward" Google Form. Saving an inward entry also upserts the
+// matching stock_lots row (by wh_lot_no) so Stockbook's running balances
+// stay correct — this table is the immutable transaction log, stock_lots
+// is the current-balance view. See src/pages/StockMovements.tsx and
+// supabase/migrations/20260903060000_create_stock_movements_table.sql.
+export type StockMovementType = 'inward' | 'outward';
+// The form's Warehouse dropdown only ever offers these 4 parties/godowns.
+export type StockMovementWarehouse = 'Hariom' | 'Reliable' | 'Swastik' | 'Balaji';
+
+export interface StockMovement {
+  id: string;
+  type: StockMovementType;
+  warehouse: string;
+  whLotNo: string;
+  stockCategory?: string;
+  productName: string;
+  lotDate?: string;
+  lotQty?: number;
+  packing?: number;
+  weightType?: string;
+  packagingType?: string;
+  totalQty?: number;
+  make?: string;
+  remark?: string;
+  created_by?: string;
+  created_at?: string;
+}
+
 export interface AuthorizedSignatory {
   id: string;
   name: string;

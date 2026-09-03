@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileText, FileSignature, ShoppingCart, Users, LineChart, Settings, Boxes, LogOut, Phone, Brain, ChevronRight, ChevronLeft, Gauge, FlaskConical, History, Truck, LifeBuoy, Warehouse } from 'lucide-react';
+import { LayoutDashboard, FileText, FileSignature, ShoppingCart, Users, LineChart, Settings, Boxes, LogOut, Phone, Brain, ChevronRight, ChevronLeft, Gauge, FlaskConical, History, Truck, LifeBuoy, Warehouse, ArrowLeftRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -98,6 +98,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           <NavItem to="/orders" icon={<ShoppingCart size={15} />} label="Orders" active={isActive('/orders')} collapsed={collapsed}
             badge={activeOrdersCount > 0 ? { text: activeOrdersCount.toString(), className: 'bg-sW' } : undefined} dataTour="nav-orders" />
           <NavItem to="/stockbook" icon={<Warehouse size={15} />} label="Stockbook" active={isActive('/stockbook')} collapsed={collapsed} dataTour="nav-stockbook" />
+          <NavItem to="/stock-movements" icon={<ArrowLeftRight size={15} />} label="Stock Movements" active={isActive('/stock-movements')} collapsed={collapsed} dataTour="nav-stock-movements" />
           <NavItem to="/dispatch" icon={<Truck size={15} />} label="Dispatch" active={isActive('/dispatch')} collapsed={collapsed} dataTour="nav-dispatch" />
           <NavItem to="/followups" icon={<Phone size={15} />} label="Follow-Ups" active={isActive('/followups')} collapsed={collapsed}
             badge={overdueFollowUpsCount > 0 ? { text: overdueFollowUpsCount.toString(), className: 'bg-red-mrt' } : undefined} dataTour="nav-followups" />
