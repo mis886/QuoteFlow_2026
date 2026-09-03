@@ -2,16 +2,17 @@
 // "Stock Inward" Google Form. Self-contained (own Supabase queries, no
 // global store plumbing), same pattern as Stockbook.tsx. Inward is fully
 // functional; Outward is parked until that DO form's fields are shared —
-// see src/components/StockInwardModal.tsx for the add form and
+// see src/pages/NewStockInward.tsx for the add form (a full page, same
+// convention as NewEnquiry/NewOrder — not a modal) and
 // supabase/migrations/20260903060000_create_stock_movements_table.sql for
 // the schema.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, Plus, RefreshCw, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockMovement } from '../lib/types';
-import { StockInwardModal } from '../components/StockInwardModal';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 
@@ -45,11 +46,11 @@ const Th = ({ label, align }: { label: string; align?: 'right' }) => (
 );
 
 export function StockMovements() {
+  const navigate = useNavigate();
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'inward' | 'outward'>('inward');
-  const [modalOpen, setModalOpen] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const verticalScrollRef = useRef<HTMLDivElement>(null);
 
@@ -123,7 +124,7 @@ export function StockMovements() {
         {tab === 'inward' && (
           <button
             type="button"
-            onClick={() => setModalOpen(true)}
+            onClick={() => navigate('/stock-movements/new')}
             className="inline-flex items-center gap-1.5 h-7 px-3 rounded-[3px] bg-red-mrt text-white text-[11px] font-bold hover:bg-red-h transition-colors"
           >
             <Plus size={12} /> New Inward
@@ -204,12 +205,6 @@ export function StockMovements() {
           <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
         </div>
       )}
-
-      <StockInwardModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSaved={load}
-      />
     </div>
   );
 }

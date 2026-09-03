@@ -1,35 +1,32 @@
-// "New Inward" entry modal for the Stock Movements module — replaces the
-// "Stock Inward" Google Form. Self-contained (own Supabase queries, no
-// global store plumbing), same pattern as StockLotModal.tsx. Append-only:
-// there's no edit mode, only new entries.
+// Full-page "New Inward" entry form for the Stock Movements module —
+// replaces the "Stock Inward" Google Form. Page chrome (header/back button,
+// sectioned white cards, sticky bottom action bar) mirrors NewEnquiry.tsx /
+// NewDispatchEntry.tsx rather than a modal, per the same convention used
+// throughout the app for "add a new record" flows.
 //
-// On save this does two things client-side (no DB trigger):
+// Save logic (moved here from the old StockInwardModal.tsx) does two things
+// client-side, no DB trigger:
 //   1. Inserts one row into stock_movements (the immutable audit trail).
 //   2. Upserts the matching stock_lots row by wh_lot_no, so Stockbook's
 //      running party/godown balances stay correct without Stockbook.tsx
 //      itself changing at all.
 // See src/pages/StockMovements.tsx for the list view and
-// supabase/migrations/20260903060000_create_stock_movements_table.sql.
+// supabase/migrations/20260903060000_create_stock_movements_table.sql for
+// the schema.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { X } from 'lucide-react';
-import { Button } from './ui';
-import { supabase } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
+import { supabase } from '../lib/supabase';
+import { Button } from '../components/ui';
 import { StockMovementWarehouse } from '../lib/types';
 
-const inp = 'w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[3px] px-2.5 py-[7px] outline-none focus:border-red-mrt focus:ring-2 focus:ring-red-lt transition-shadow';
-const lbl = 'block text-[10px] font-mono font-bold tracking-[1px] uppercase text-g500 mb-1';
-
-function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={className}>
-      <label className={lbl}>{label}</label>
-      {children}
-    </div>
-  );
-}
+const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow";
+const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
+const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]";
+const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200";
+const cardCls = "bg-white border border-g200 p-[18px_20px]";
 
 const WAREHOUSES: StockMovementWarehouse[] = ['Hariom', 'Reliable', 'Swastik', 'Balaji'];
 
@@ -87,7 +84,7 @@ const PACKAGING_TYPES = [
 
 // Searchable combobox for Product Name — the list is long, so a plain
 // <select> is unwieldy. Positions its dropdown via a portal (like
-// ProductSearch.tsx) so it isn't clipped by this modal's own scroll area.
+// ProductSearch.tsx) so it can't be clipped by any scroll container.
 function ProductNameField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
@@ -127,7 +124,7 @@ function ProductNameField({ value, onChange }: { value: string; onChange: (v: st
   return (
     <div ref={containerRef} className="relative">
       <input
-        className={inp}
+        className={inputCls}
         value={query}
         placeholder="Type to search…"
         autoComplete="off"
@@ -155,29 +152,18 @@ function ProductNameField({ value, onChange }: { value: string; onChange: (v: st
   );
 }
 
-interface Props {
-  open: boolean;
-  onClose: () => void;
-  onSaved: () => void | Promise<void>;
-}
-
 const emptyForm = {
   warehouse: '', whLotNo: '', stockCategory: '', productName: '',
   lotDate: '', lotQty: '', packing: '', weightType: '', packagingType: '', totalQty: '',
   make: '', remark: '',
 };
 
-export function StockInwardModal({ open, onClose, onSaved }: Props) {
+export function NewStockInward() {
+  const navigate = useNavigate();
   const { user } = useAppStore();
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (open) { setForm(emptyForm); setError(''); }
-  }, [open]);
-
-  if (!open) return null;
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -255,89 +241,114 @@ export function StockInwardModal({ open, onClose, onSaved }: Props) {
     if (lotErr) {
       setError(lotErr.message);
     } else {
-      await onSaved();
-      onClose();
+      navigate('/stock-movements');
     }
     setSaving(false);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-[300] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-[4px] w-full max-w-[720px] max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-3.5 border-b border-g200 flex items-center justify-between sticky top-0 bg-white z-10">
-          <div className="text-[13.5px] font-semibold text-blk">New Inward Entry</div>
-          <button type="button" onClick={onClose} title="Close" aria-label="Close" className="text-g500 hover:text-blk">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-5">
+    <div className="flex flex-col h-full animate-in fade-in duration-300">
+      <div className="pt-5 px-6">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-[10px] font-mono font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">Lot Details</div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Warehouse *">
-                <select className={inp} value={form.warehouse} onChange={set('warehouse')}>
-                  <option value="">Select…</option>
+            <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">Stock Movements Module</div>
+            <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">Log <em className="italic text-red-mrt">New Inward</em></h1>
+            <p className="text-xs text-g500 mt-1 font-light">Record a raw-material inward receipt — replaces the Stock Inward Google Form.</p>
+          </div>
+          <Button variant="secondary" onClick={() => navigate('/stock-movements')}>Back</Button>
+        </div>
+      </div>
+
+      <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
+        <div className="flex flex-col gap-[14px] max-w-[820px]">
+          <div className={cardCls}>
+            <div className={sectionHeaderCls}>Lot Details</div>
+            <div className="grid grid-cols-2 gap-[12px]">
+              <div>
+                <label className={labelCls}>Warehouse <span className="text-red-mrt">*</span></label>
+                <select className={selectCls} value={form.warehouse} onChange={set('warehouse')}>
+                  <option value="">Select...</option>
                   {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
                 </select>
-              </Field>
-              <Field label="Lot No *">
-                <input className={inp} value={form.whLotNo} onChange={set('whLotNo')} />
-              </Field>
-              <Field label="Stock Category *">
-                <select className={inp} value={form.stockCategory} onChange={set('stockCategory')}>
-                  <option value="">Select…</option>
+              </div>
+              <div>
+                <label className={labelCls}>Lot No <span className="text-red-mrt">*</span></label>
+                <input className={inputCls} value={form.whLotNo} onChange={set('whLotNo')} />
+              </div>
+              <div>
+                <label className={labelCls}>Stock Category <span className="text-red-mrt">*</span></label>
+                <select className={selectCls} value={form.stockCategory} onChange={set('stockCategory')}>
+                  <option value="">Select...</option>
                   {STOCK_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-              </Field>
-              <Field label="Product Name *">
+              </div>
+              <div>
+                <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
                 <ProductNameField value={form.productName} onChange={v => setForm(f => ({ ...f, productName: v }))} />
-              </Field>
+              </div>
             </div>
           </div>
 
-          <div>
-            <div className="text-[10px] font-mono font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">Quantity</div>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Lot Date *"><input type="date" className={inp} value={form.lotDate} onChange={set('lotDate')} /></Field>
-              <Field label="Lot Quantity *"><input type="number" className={inp} value={form.lotQty} onChange={set('lotQty')} /></Field>
-              <Field label="Packing *"><input type="number" className={inp} value={form.packing} onChange={set('packing')} /></Field>
-              <Field label="Weight Type">
-                <select className={inp} value={form.weightType} onChange={set('weightType')}>
-                  <option value="">Select…</option>
+          <div className={cardCls}>
+            <div className={sectionHeaderCls}>Quantity</div>
+            <div className="grid grid-cols-3 gap-[12px]">
+              <div>
+                <label className={labelCls}>Lot Date <span className="text-red-mrt">*</span></label>
+                <input type="date" className={inputCls} value={form.lotDate} onChange={set('lotDate')} />
+              </div>
+              <div>
+                <label className={labelCls}>Lot Quantity <span className="text-red-mrt">*</span></label>
+                <input type="number" className={inputCls} value={form.lotQty} onChange={set('lotQty')} />
+              </div>
+              <div>
+                <label className={labelCls}>Packing <span className="text-red-mrt">*</span></label>
+                <input type="number" className={inputCls} value={form.packing} onChange={set('packing')} />
+              </div>
+              <div>
+                <label className={labelCls}>Weight Type</label>
+                <select className={selectCls} value={form.weightType} onChange={set('weightType')}>
+                  <option value="">Select...</option>
                   <option value="KG">KG</option>
                   <option value="LTR">LTR</option>
                 </select>
-              </Field>
-              <Field label="Type">
-                <select className={inp} value={form.packagingType} onChange={set('packagingType')}>
-                  <option value="">Select…</option>
+              </div>
+              <div>
+                <label className={labelCls}>Type</label>
+                <select className={selectCls} value={form.packagingType} onChange={set('packagingType')}>
+                  <option value="">Select...</option>
                   {PACKAGING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
-              </Field>
-              <Field label="Total Quantity *"><input type="number" className={inp} value={form.totalQty} onChange={set('totalQty')} /></Field>
+              </div>
+              <div>
+                <label className={labelCls}>Total Quantity <span className="text-red-mrt">*</span></label>
+                <input type="number" className={inputCls} value={form.totalQty} onChange={set('totalQty')} />
+              </div>
             </div>
           </div>
 
-          <div>
-            <div className="text-[10px] font-mono font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">Other</div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Make"><input className={inp} value={form.make} onChange={set('make')} /></Field>
+          <div className={cardCls}>
+            <div className={sectionHeaderCls}>Other</div>
+            <div className="grid grid-cols-2 gap-[12px]">
+              <div>
+                <label className={labelCls}>Make</label>
+                <input className={inputCls} value={form.make} onChange={set('make')} />
+              </div>
             </div>
-            <Field label="Remark" className="mt-3">
-              <textarea className={`${inp} min-h-[60px]`} value={form.remark} onChange={set('remark')} />
-            </Field>
+            <div className="mt-3">
+              <label className={labelCls}>Remark</label>
+              <textarea className={`${inputCls} min-h-[68px]`} value={form.remark} onChange={set('remark')} />
+            </div>
           </div>
-
-          {error && <p className="text-[11.5px] text-red-mrt font-medium">{error}</p>}
         </div>
+      </div>
 
-        <div className="px-5 py-3.5 border-t border-g200 flex items-center justify-end gap-2 sticky bottom-0 bg-white">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={save} disabled={!isValid || saving}>
-            {saving ? 'Saving…' : 'Save Inward Entry'}
-          </Button>
-        </div>
+      <div className="flex items-center gap-2 p-[14px_20px] bg-g100 border-t border-g200 sticky bottom-0">
+        <Button variant="primary" onClick={save} disabled={!isValid || saving}>
+          {saving ? 'Saving…' : 'Save Inward Entry'}
+        </Button>
+        <Button variant="secondary" onClick={() => navigate('/stock-movements')} disabled={saving}>Cancel</Button>
+        <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>
+        {error && <div className="ml-4 text-red-mrt text-[11px] font-bold">{error}</div>}
       </div>
     </div>
   );
