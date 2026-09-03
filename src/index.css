@@ -65,8 +65,12 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom scrollbar matching original design */
-::-webkit-scrollbar { width: 4px; }
+/* Custom scrollbar matching original design. Both width (vertical
+   scrollbars) and height (horizontal scrollbars) are set — leaving height
+   unset makes horizontal scrollbars fall back to the browser/OS default
+   thickness instead of this thin themed one, which is what made floating
+   horizontal scrollbars look mismatched next to vertical ones. */
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-g300); border-radius: 4px; }
 

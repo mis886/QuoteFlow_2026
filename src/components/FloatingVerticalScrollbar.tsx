@@ -1,21 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronUp, ChevronDown } from 'lucide-react';
-import { FLOATING_SCROLLBAR_THICKNESS } from './FloatingHorizontalScrollbar';
+import { FLOATING_SCROLLBAR_THICKNESS, SCROLLBAR_TRACK_THICKNESS } from './FloatingHorizontalScrollbar';
 
 // How much of the container's visible height an arrow-button click jumps —
 // short of a full page so a little of the previous view stays in sight.
 const SCROLL_STEP_RATIO = 0.8;
 
-// OUTER_PADDING mirrors the px-1 (4px) side padding on the outer
-// container's own className below. The up/down arrow buttons stay
-// comfortably clickable even though the scroll track itself (TRACK_SIZE)
-// is kept slim — matching how thin the app's native scrollbar already is
-// (4px, see src/index.css) — rather than sizing the whole bar off the old
-// bulky 40px-wide design.
-const OUTER_PADDING = 4;
+// The up/down arrow buttons stay comfortably clickable even though the
+// scroll track itself (SCROLLBAR_TRACK_THICKNESS, imported from
+// FloatingHorizontalScrollbar so both bars are provably the same
+// thickness) is kept slim.
 const BUTTON_SIZE = 16;
 const ICON_SIZE = 10;
-const TRACK_SIZE = 7;
 
 interface VerticalRect {
   top: number;
@@ -153,7 +149,7 @@ export default function FloatingVerticalScrollbar({
       >
         <ChevronUp size={ICON_SIZE} />
       </button>
-      <div ref={floatingRef} className="flex-1 overflow-y-auto overflow-x-hidden" style={{ width: TRACK_SIZE }}>
+      <div ref={floatingRef} className="flex-1 overflow-y-auto overflow-x-hidden" style={{ width: SCROLLBAR_TRACK_THICKNESS }}>
         <div style={{ height: scrollHeight, width: 1 }} />
       </div>
       <button

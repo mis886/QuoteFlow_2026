@@ -12,6 +12,13 @@ const SCROLL_STEP_RATIO = 0.8;
 // own 16px arrow buttons (w-4 h-4 below) + 2×4px padding.
 export const FLOATING_SCROLLBAR_THICKNESS = 24;
 
+// The actual track/thumb strip thickness — imported by
+// FloatingVerticalScrollbar.tsx so both bars use the exact same value
+// instead of two independently-maintained numbers that could drift apart.
+// They render as the same scrollbar style rotated 90°: this is the
+// horizontal bar's track height, and the vertical bar's track width.
+export const SCROLLBAR_TRACK_THICKNESS = 7;
+
 interface HorizontalRect {
   left: number;
   width: number;
@@ -134,7 +141,7 @@ export default function FloatingHorizontalScrollbar({
       >
         <ChevronLeft size={10} />
       </button>
-      <div ref={floatingRef} className="flex-1 overflow-x-auto overflow-y-hidden" style={{ height: 7 }}>
+      <div ref={floatingRef} className="flex-1 overflow-x-auto overflow-y-hidden" style={{ height: SCROLLBAR_TRACK_THICKNESS }}>
         <div style={{ width: scrollWidth, height: 1 }} />
       </div>
       <button
