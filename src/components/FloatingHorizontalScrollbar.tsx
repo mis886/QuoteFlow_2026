@@ -9,14 +9,12 @@ const SCROLL_STEP_RATIO = 0.8;
 // FloatingVerticalScrollbar so it can shorten itself by this much when both
 // bars are showing for the same table, leaving the corner clear instead of
 // overlapping this bar's own right-hand arrow button. Matches this bar's
-// own 16px arrow buttons (w-4 h-4 below) + 2×4px padding.
-export const FLOATING_SCROLLBAR_THICKNESS = 24;
+// own 20px arrow buttons (w-5 h-5 below) + 2×4px padding.
+export const FLOATING_SCROLLBAR_THICKNESS = 28;
 
-// The actual track/thumb strip thickness — imported by
-// FloatingVerticalScrollbar.tsx so both bars use the exact same value
-// instead of two independently-maintained numbers that could drift apart.
-// They render as the same scrollbar style rotated 90°: this is the
-// horizontal bar's track height, and the vertical bar's track width.
+// FloatingVerticalScrollbar's own (intentionally slim) track width —
+// imported there so it isn't a separately-maintained number. This bar's
+// own track below uses its own thickness and isn't tied to this constant.
 export const SCROLLBAR_TRACK_THICKNESS = 7;
 
 interface HorizontalRect {
@@ -137,20 +135,20 @@ export default function FloatingHorizontalScrollbar({
         type="button"
         onClick={() => scrollByStep(-1)}
         aria-label="Scroll table left"
-        className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-red-mrt hover:bg-red-lt"
+        className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-red-mrt hover:bg-red-lt"
       >
-        <ChevronLeft size={10} />
+        <ChevronLeft size={14} />
       </button>
-      <div ref={floatingRef} className="flex-1 overflow-x-auto overflow-y-hidden" style={{ height: SCROLLBAR_TRACK_THICKNESS }}>
+      <div ref={floatingRef} className="flex-1 overflow-x-auto overflow-y-hidden" style={{ height: 14 }}>
         <div style={{ width: scrollWidth, height: 1 }} />
       </div>
       <button
         type="button"
         onClick={() => scrollByStep(1)}
         aria-label="Scroll table right"
-        className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-red-mrt hover:bg-red-lt"
+        className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-red-mrt hover:bg-red-lt"
       >
-        <ChevronRight size={10} />
+        <ChevronRight size={14} />
       </button>
     </div>
   );
