@@ -2,15 +2,15 @@
 // Migrated from the "Stock Lot Godown Wise" tab of the HIMALAYA STOCK
 // SUMMARY Google Sheet; managed directly in EnqBoss from here on.
 // Self-contained (own Supabase queries, no global store plumbing) — same
-// pattern as ProductCatalogManager.tsx. Adding a new lot is a full page —
-// see src/pages/NewStockLot.tsx (route /stockbook/new) — while editing an
-// existing lot still opens src/components/StockLotModal.tsx, edit-only now.
+// pattern as ProductCatalogManager.tsx. Editing an existing lot opens
+// src/components/StockLotModal.tsx (edit-only). There is currently no
+// in-app "add a new lot" entry point — that full-page flow
+// (src/pages/NewStockLot.tsx, route /stockbook/new) was removed.
 // See supabase/migrations/20260901060000_create_stock_lots_table.sql for
 // the schema.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Plus, Pencil, Trash2, RefreshCw, Warehouse } from 'lucide-react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Pencil, Trash2, RefreshCw, Warehouse } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockLot } from '../lib/types';
@@ -56,7 +56,6 @@ function mapRow(r: any): StockLot {
 const num = (v?: number) => (v === undefined || v === null ? '—' : v.toLocaleString('en-IN'));
 
 export function Stockbook() {
-  const navigate = useNavigate();
   const [lots, setLots] = useState<StockLot[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -157,14 +156,6 @@ export function Stockbook() {
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
           />
         </div>
-
-        <button
-          type="button"
-          onClick={() => navigate('/stockbook/new')}
-          className="inline-flex items-center gap-1.5 h-7 px-3 rounded-[3px] bg-red-mrt text-white text-[11px] font-bold hover:bg-red-h transition-colors"
-        >
-          <Plus size={12} /> Add Stock Lot
-        </button>
 
         <button
           type="button"

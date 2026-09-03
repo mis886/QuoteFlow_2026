@@ -1,7 +1,8 @@
 // Edit modal for a single Stockbook lot. Self-contained — talks to Supabase
 // directly (no global store plumbing), same pattern as ProductCatalogManager.tsx.
-// Edit-only: creating a new lot is now a full page, src/pages/NewStockLot.tsx
-// (route /stockbook/new) — see src/pages/Stockbook.tsx for both entry points.
+// Edit-only — there is currently no in-app "add a new lot" flow; see
+// src/pages/Stockbook.tsx for where this is opened (the row-level Edit
+// button).
 
 import React, { useEffect, useState } from 'react';
 import { X, ExternalLink } from 'lucide-react';
