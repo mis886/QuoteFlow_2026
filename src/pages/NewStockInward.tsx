@@ -165,7 +165,7 @@ export function NewStockInward() {
         <div className="flex flex-col gap-[14px]">
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Lot Details</div>
-            <div className="grid grid-cols-6 gap-[12px]">
+            <div className="grid grid-cols-5 gap-[12px]">
               <div>
                 <label className={labelCls}>Warehouse <span className="text-red-mrt">*</span></label>
                 <select className={selectCls} value={form.warehouse} onChange={set('warehouse')}>
@@ -178,46 +178,44 @@ export function NewStockInward() {
                 <input className={inputCls} value={form.whLotNo} onChange={set('whLotNo')} />
               </div>
               <div>
+                <label className={labelCls}>Lot Date <span className="text-red-mrt">*</span></label>
+                <input type="date" className={inputCls} value={form.lotDate} onChange={set('lotDate')} />
+              </div>
+              <div>
                 <label className={labelCls}>Factory Lot Number</label>
                 <input className={inputCls} value={form.factLotNo} onChange={set('factLotNo')} />
               </div>
               <div>
-                <label className={labelCls}>Product Code</label>
-                <input className={inputCls} value={form.productCode} onChange={set('productCode')} />
+                <label className={labelCls}>Lot Quantity <span className="text-red-mrt">*</span></label>
+                <input type="number" className={inputCls} value={form.lotQty} onChange={set('lotQty')} />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-[12px] mt-3">
               <div>
                 <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
                 <SearchableCombobox className={inputCls} options={PRODUCT_NAMES} value={form.productName} onChange={v => setForm(f => ({ ...f, productName: v }))} />
               </div>
               <div>
-                <label className={labelCls}>Packing</label>
-                <input className={inputCls} value={form.packingDetail} onChange={set('packingDetail')} />
+                <label className={labelCls}>Product Code</label>
+                <input className={inputCls} value={form.productCode} onChange={set('productCode')} />
               </div>
             </div>
           </div>
 
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Quantity</div>
-            <div className="grid grid-cols-6 gap-[12px]">
-              <div>
-                <label className={labelCls}>Lot Date <span className="text-red-mrt">*</span></label>
-                <input type="date" className={inputCls} value={form.lotDate} onChange={set('lotDate')} />
-              </div>
-              <div>
-                <label className={labelCls}>Lot Quantity <span className="text-red-mrt">*</span></label>
-                <input type="number" className={inputCls} value={form.lotQty} onChange={set('lotQty')} />
-              </div>
+            <div className="grid grid-cols-5 gap-[12px]">
               <div>
                 <label className={labelCls}>No of Barrels <span className="text-red-mrt">*</span></label>
                 <input type="number" className={inputCls} value={form.noOfBarrels} onChange={set('noOfBarrels')} />
               </div>
               <div>
-                <label className={labelCls}>MOU (Measure of Unit)</label>
-                <select className={selectCls} value={form.weightType} onChange={set('weightType')}>
-                  <option value="">Select...</option>
-                  <option value="KG">KG</option>
-                  <option value="LTR">LTR</option>
-                </select>
+                <label className={labelCls}>Packing</label>
+                <input className={inputCls} value={form.packingDetail} onChange={set('packingDetail')} />
+              </div>
+              <div>
+                <label className={labelCls}>Total Quantity <span className="text-red-mrt">*</span></label>
+                <input type="number" className={inputCls} value={form.totalQty} onChange={set('totalQty')} />
               </div>
               <div>
                 <label className={labelCls}>Packing Type</label>
@@ -227,23 +225,27 @@ export function NewStockInward() {
                 </select>
               </div>
               <div>
-                <label className={labelCls}>Total Quantity <span className="text-red-mrt">*</span></label>
-                <input type="number" className={inputCls} value={form.totalQty} onChange={set('totalQty')} />
+                <label className={labelCls}>MOU (Measure of Unit)</label>
+                <select className={selectCls} value={form.weightType} onChange={set('weightType')}>
+                  <option value="">Select...</option>
+                  <option value="KG">KG</option>
+                  <option value="LTR">LTR</option>
+                </select>
               </div>
             </div>
           </div>
 
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Other</div>
-            <div className="grid grid-cols-4 gap-[12px]">
+            <div className="grid grid-cols-2 gap-[12px]">
               <div>
                 <label className={labelCls}>Make</label>
                 <input className={inputCls} value={form.make} onChange={set('make')} />
               </div>
-            </div>
-            <div className="mt-3">
-              <label className={labelCls}>Remark</label>
-              <textarea className={`${inputCls} min-h-[68px]`} value={form.remark} onChange={set('remark')} />
+              <div>
+                <label className={labelCls}>Remark</label>
+                <textarea className={`${inputCls} min-h-[68px]`} value={form.remark} onChange={set('remark')} />
+              </div>
             </div>
           </div>
         </div>
