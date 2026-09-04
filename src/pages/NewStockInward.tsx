@@ -65,7 +65,7 @@ const PARTY_COLUMN: Record<string, string> = {
 
 const emptyForm = {
   warehouse: '', whLotNo: '', factLotNo: '', productCode: '', productName: '',
-  lotDate: '', lotQty: '', noOfBarrels: '', weightType: '', packagingType: '', packingDetail: '', totalQty: '',
+  lotDate: '', noOfBarrels: '', weightType: '', packagingType: '', packingDetail: '', totalQty: '',
   make: '', remark: '',
 };
 
@@ -118,7 +118,7 @@ export function NewStockInward() {
 
   const isValid = !!(
     form.warehouse && form.whLotNo.trim() && form.productName.trim() &&
-    form.lotDate && form.lotQty.trim() && form.noOfBarrels.trim() && form.totalQty.trim()
+    form.lotDate && form.noOfBarrels.trim() && form.totalQty.trim()
   );
 
   const save = async () => {
@@ -127,7 +127,6 @@ export function NewStockInward() {
     setError('');
 
     const whLotNo = form.whLotNo.trim();
-    const lotQty = num(form.lotQty);
     const totalQty = num(form.totalQty);
 
     const movementPayload = {
@@ -137,7 +136,11 @@ export function NewStockInward() {
       fact_lot_no: form.factLotNo.trim() || null,
       product_name: form.productName.trim(),
       lot_date: form.lotDate,
-      lot_qty: lotQty,
+      // Lot Quantity field was removed; Total Quantity is now the single
+      // source of truth for how much stock this entry adds, so lot_qty
+      // (still read by StockMovements.tsx's Inward "Qty" column) mirrors
+      // it instead of going blank on every new row.
+      lot_qty: totalQty,
       no_of_barrels: form.noOfBarrels.trim() || null,
       mou: form.weightType || null,
       packing_type: form.packagingType || null,
@@ -164,7 +167,7 @@ export function NewStockInward() {
     const lotErr = existing
       ? (await supabase.from('stock_lots')
           .update({
-            [partyCol]: (existing[partyCol] ?? 0) + (lotQty ?? 0),
+            [partyCol]: (existing[partyCol] ?? 0) + (totalQty ?? 0),
             quantity: (existing.quantity ?? 0) + (totalQty ?? 0),
             updated_at: new Date().toISOString(),
             updated_by: user?.email ?? null,
@@ -176,7 +179,7 @@ export function NewStockInward() {
           fact_lot_no: form.factLotNo.trim() || null,
           product_code: form.productCode.trim() || null,
           inward_date: form.lotDate,
-          [partyCol]: lotQty,
+          [partyCol]: totalQty,
           no_of_barrels: form.noOfBarrels.trim() || null,
           mou: form.weightType || null,
           packing_type: form.packagingType || null,
@@ -212,7 +215,7 @@ export function NewStockInward() {
         <div className="flex flex-col gap-[14px]">
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Lot Details</div>
-            <div className="grid grid-cols-5 gap-[12px]">
+            <div className="grid grid-cols-4 gap-[12px]">
               <div>
                 <label className={labelCls}>Warehouse <span className="text-red-mrt">*</span></label>
                 <select className={selectCls} value={form.warehouse} onChange={set('warehouse')}>
@@ -231,10 +234,6 @@ export function NewStockInward() {
               <div>
                 <label className={labelCls}>Factory Lot Number</label>
                 <input className={inputCls} value={form.factLotNo} onChange={set('factLotNo')} />
-              </div>
-              <div>
-                <label className={labelCls}>Lot Quantity <span className="text-red-mrt">*</span></label>
-                <input type="number" className={inputCls} value={form.lotQty} onChange={set('lotQty')} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-[12px] mt-3">
