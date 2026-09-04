@@ -592,15 +592,24 @@ export interface StockMovement {
   warehouse: string;
   whLotNo?: string;          // required for inward; optional for outward (a DO can be logged with no known lot)
   stockCategory?: string;
+  factLotNo?: string;        // inward only — stock_movements.fact_lot_no
   productName: string;
   lotDate?: string;
   lotQty?: number;
-  packing?: number;
-  weightType?: string;
-  packagingType?: string;
+  packing?: number;          // outward's own "Packing" field (stock_movements.packing) — NOT the same as packingDetail below
+  weightType?: string;       // outward's own "Weight Type" field (stock_movements.weight_type)
+  packagingType?: string;    // outward's own "Type" field (stock_movements.packaging_type)
   totalQty?: number;
   make?: string;
   remark?: string;
+  // Inward-only fields — exclusive columns added for the Stock Inward form
+  // (see supabase/migrations/20260903120400_stock_inward_exclusive_columns.sql).
+  // Deliberately separate from packing/weightType/packagingType above, which
+  // Inward does NOT write to — do not conflate the two sets.
+  noOfBarrels?: string;      // stock_movements.no_of_barrels
+  mou?: string;              // stock_movements.mou (Measure of Unit — KG/LTR)
+  packingType?: string;      // stock_movements.packing_type (16-option Packing Type list)
+  packingDetail?: string;    // stock_movements.packing_detail (Inward's own "Packing" field)
   // Outward-only fields (Delivery Order Sale form) — see src/pages/NewStockOutward.tsx
   // and supabase/migrations/20260903120000_stock_movements_add_outward_columns.sql.
   doNumber?: string;
