@@ -81,6 +81,41 @@ export function NewStockInward() {
 
   const num = (v: string) => (v.trim() === '' ? null : Number(v));
 
+  // Returns a finite number, or null if v is empty/not a valid number —
+  // used to gate the Total Quantity auto-calc below (never NaN, never
+  // treats "" as 0).
+  const parseNum = (v: string): number | null => {
+    const t = v.trim();
+    if (t === '') return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  // Auto-fills Total Quantity = No of Barrels × Packing whenever both are
+  // valid numbers. Total Quantity stays a normal editable field — this
+  // only overwrites it when its two source fields change; the user can
+  // still retype it manually afterward. If either source is empty/invalid,
+  // Total Quantity is left exactly as it is (no clearing, no NaN).
+  const onNoOfBarrelsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setForm(f => {
+      const barrels = parseNum(v);
+      const packing = parseNum(f.packingDetail);
+      const totalQty = barrels !== null && packing !== null ? String(barrels * packing) : f.totalQty;
+      return { ...f, noOfBarrels: v, totalQty };
+    });
+  };
+
+  const onPackingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setForm(f => {
+      const barrels = parseNum(f.noOfBarrels);
+      const packing = parseNum(v);
+      const totalQty = barrels !== null && packing !== null ? String(barrels * packing) : f.totalQty;
+      return { ...f, packingDetail: v, totalQty };
+    });
+  };
+
   const isValid = !!(
     form.warehouse && form.whLotNo.trim() && form.productName.trim() &&
     form.lotDate && form.lotQty.trim() && form.noOfBarrels.trim() && form.totalQty.trim()
@@ -227,11 +262,11 @@ export function NewStockInward() {
             <div className="grid grid-cols-5 gap-[12px]">
               <div>
                 <label className={labelCls}>No of Barrels <span className="text-red-mrt">*</span></label>
-                <input type="number" className={inputCls} value={form.noOfBarrels} onChange={set('noOfBarrels')} />
+                <input type="number" className={inputCls} value={form.noOfBarrels} onChange={onNoOfBarrelsChange} />
               </div>
               <div>
                 <label className={labelCls}>Packing</label>
-                <input className={inputCls} value={form.packingDetail} onChange={set('packingDetail')} />
+                <input className={inputCls} value={form.packingDetail} onChange={onPackingChange} />
               </div>
               <div>
                 <label className={labelCls}>Total Quantity <span className="text-red-mrt">*</span></label>
