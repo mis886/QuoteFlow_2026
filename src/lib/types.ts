@@ -610,7 +610,7 @@ export interface StockMovement {
   mou?: string;              // stock_movements.mou (Measure of Unit — KG/LTR)
   packingType?: string;      // stock_movements.packing_type (16-option Packing Type list)
   packingDetail?: string;    // stock_movements.packing_detail (Inward's own "Packing" field)
-  sampleOff?: boolean;       // stock_movements.sample_off — mirrors stock_lots.sample_off (see [[stockbook_module]])
+  sampleOff?: boolean;       // stock_movements.sample_off — mirrors stock_lots.sample_off
   coaFile?: string;          // stock_movements.coa_file — mirrors stock_lots.coa_file
   coaUrl?: string;           // stock_movements.coa_url — mirrors stock_lots.coa_url
   // Outward-only fields (Delivery Order Sale form) — see src/pages/NewStockOutward.tsx
