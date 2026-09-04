@@ -33,15 +33,16 @@
 // supabase/migrations/20260903060000_create_stock_movements_table.sql for
 // the base schema.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { supabase } from '../lib/supabase';
+import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { SearchableCombobox } from '../components/SearchableCombobox';
 import { StockMovementWarehouse } from '../lib/types';
 import { PACKAGING_TYPES } from '../lib/stockMovementOptions';
 import { PRODUCTS } from '../lib/stockInwardProducts';
+import { Loader2, Search, X } from 'lucide-react';
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
@@ -66,7 +67,7 @@ const PARTY_COLUMN: Record<string, string> = {
 const emptyForm = {
   warehouse: '', whLotNo: '', factLotNo: '', productCode: '', productName: '',
   inwardDate: '', noOfBarrels: '', weightType: '', packagingType: '', packingDetail: '', totalQty: '',
-  make: '', remark: '',
+  make: '', remark: '', sampleOff: false, coaFile: '', coaUrl: '',
 };
 
 export function NewStockInward() {
@@ -116,6 +117,80 @@ export function NewStockInward() {
     });
   };
 
+  // COA picker — search existing coa_document rows (by product name or lot
+  // no.) and attach one, or upload a brand-new certificate. Adapted from the
+  // quote-only COA panel in AttachmentModal.tsx, but single-select: a Stock
+  // Lot has exactly one coa_file/coa_url (not an attachments array like
+  // enquiries/quotes/orders), so picking a result just sets those two form
+  // fields locally — nothing is written to the DB until the main Save
+  // button below runs, same as every other field on this form.
+  const [coaSearch, setCoaSearch] = useState('');
+  const [coaSearchDebounced, setCoaSearchDebounced] = useState('');
+  const [coaResults, setCoaResults] = useState<any[]>([]);
+  const [coaSearchLoading, setCoaSearchLoading] = useState(false);
+  const [newCoaFile, setNewCoaFile] = useState<File | null>(null);
+  const [coaUploading, setCoaUploading] = useState(false);
+  const [coaUploadError, setCoaUploadError] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setCoaSearchDebounced(coaSearch.trim()), 350);
+    return () => clearTimeout(t);
+  }, [coaSearch]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setCoaSearchLoading(true);
+    let query = supabase.from('coa_document').select('*').order('created_at', { ascending: false }).limit(20).abortSignal(controller.signal);
+    if (coaSearchDebounced) query = query.or(`product_name.ilike.%${coaSearchDebounced}%,lot_no.ilike.%${coaSearchDebounced}%`);
+    query.then(({ data: rows, error }) => {
+      if (controller.signal.aborted) return;
+      if (error) { console.error(error); setCoaResults([]); setCoaSearchLoading(false); return; }
+      setCoaResults(rows ?? []);
+      setCoaSearchLoading(false);
+    });
+    return () => controller.abort();
+  }, [coaSearchDebounced]);
+
+  const selectCoaDoc = (doc: any) => {
+    setForm(f => ({ ...f, coaFile: doc.file_name, coaUrl: resolveCoaStorageUrl(doc.storage_path) }));
+  };
+
+  const clearCoa = () => setForm(f => ({ ...f, coaFile: '', coaUrl: '' }));
+
+  const handleUploadNewCoa = async () => {
+    setCoaUploadError('');
+    if (!form.productName.trim()) { setCoaUploadError('Enter Product Name above first.'); return; }
+    if (!newCoaFile) { setCoaUploadError('Choose a file to upload.'); return; }
+
+    setCoaUploading(true);
+    try {
+      const ext = newCoaFile.name.split('.').pop() || 'bin';
+      const safeProductName = form.productName.trim().replace(/[^a-zA-Z0-9]/g, '_');
+      const path = `COA/${safeProductName}_${form.whLotNo.trim() || 'nolot'}_${Date.now()}.${ext}`;
+      const { data: url, error: uploadError } = await uploadPublicFile('coa-gc-documents', path, newCoaFile);
+      if (uploadError || !url) throw uploadError || new Error('Upload failed');
+
+      const { data: row, error: insertError } = await supabase.from('coa_document').insert({
+        product_name: form.productName.trim(),
+        lot_no: form.whLotNo.trim() || null,
+        doc_type: 'COA',
+        file_name: newCoaFile.name,
+        storage_path: url,
+        file_size: newCoaFile.size,
+        uploaded_by: user?.email ?? null,
+      }).select().single();
+      if (insertError || !row) throw insertError || new Error('Could not save document reference');
+
+      selectCoaDoc(row);
+      setCoaResults(prev => [row, ...prev]);
+      setNewCoaFile(null);
+    } catch (e: any) {
+      console.error(e);
+      setCoaUploadError(e?.message || 'Failed to upload document.');
+    }
+    setCoaUploading(false);
+  };
+
   const isValid = !!(
     form.warehouse && form.whLotNo.trim() && form.productName.trim() &&
     form.inwardDate && form.noOfBarrels.trim() && form.totalQty.trim()
@@ -148,6 +223,9 @@ export function NewStockInward() {
       total_qty: totalQty,
       make: form.make.trim() || null,
       remark: form.remark.trim() || null,
+      sample_off: form.sampleOff,
+      coa_file: form.coaFile.trim() || null,
+      coa_url: form.coaUrl.trim() || null,
       created_by: user?.email ?? null,
     };
 
@@ -187,6 +265,9 @@ export function NewStockInward() {
           quantity: totalQty,
           make: form.make.trim() || null,
           remark: form.remark.trim() || null,
+          sample_off: form.sampleOff,
+          coa_file: form.coaFile.trim() || null,
+          coa_url: form.coaUrl.trim() || null,
           created_by: user?.email ?? null,
         })).error;
 
@@ -287,6 +368,81 @@ export function NewStockInward() {
                 </select>
               </div>
             </div>
+          </div>
+
+          <div className={cardCls}>
+            <div className={sectionHeaderCls}>Sample &amp; COA</div>
+            <label className="inline-flex items-center gap-2 text-[12px] text-g600 cursor-pointer select-none mb-3">
+              <input
+                type="checkbox"
+                checked={form.sampleOff}
+                onChange={e => setForm(f => ({ ...f, sampleOff: e.target.checked }))}
+                className="w-3.5 h-3.5 accent-red-mrt"
+              />
+              Sample Off
+            </label>
+
+            <label className={labelCls}>COA</label>
+            {form.coaFile ? (
+              <div className="flex items-center justify-between gap-2 bg-g100 border border-g200 rounded-[3px] px-2.5 py-2 mb-3">
+                <div className="min-w-0">
+                  <div className="text-[12px] font-semibold text-blk truncate">{form.coaFile}</div>
+                  {form.coaUrl && (
+                    <a href={form.coaUrl} target="_blank" rel="noopener noreferrer" className="text-[10.5px] text-red-mrt hover:underline">View PDF</a>
+                  )}
+                </div>
+                <button type="button" onClick={clearCoa} className="p-1 text-g400 hover:text-red-mrt shrink-0" title="Remove"><X size={14} /></button>
+              </div>
+            ) : (
+              <>
+                <div className="relative mb-2">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-g400 pointer-events-none" />
+                  <input
+                    type="text" value={coaSearch} onChange={e => setCoaSearch(e.target.value)}
+                    placeholder="Search existing COA by product or lot no."
+                    className={`${inputCls} pl-8 pr-8`}
+                  />
+                  {coaSearchLoading && <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-g400 animate-spin" />}
+                </div>
+                <div className="max-h-[160px] overflow-y-auto border border-g200 rounded-[3px] divide-y divide-g100 mb-3">
+                  {coaResults.length === 0 ? (
+                    <div className="text-center py-4 text-g400 text-xs italic">
+                      {coaSearchLoading ? 'Searching…' : 'No matching COA documents found.'}
+                    </div>
+                  ) : (
+                    coaResults.map(doc => (
+                      <button
+                        type="button" key={doc.id} onClick={() => selectCoaDoc(doc)}
+                        className="w-full text-left flex items-center gap-3 p-2 hover:bg-g50"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[12px] font-semibold text-blk truncate">{doc.product_name}{doc.lot_no ? ` — Lot ${doc.lot_no}` : ''}</div>
+                          <div className="text-[10px] text-g500 truncate">{doc.file_name}</div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-g200">
+                  <div className="text-[10px] font-medium text-g500 mb-2 uppercase tracking-wider font-mono">Or Upload New COA</div>
+                  <input
+                    type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    onChange={e => setNewCoaFile(e.target.files?.[0] ?? null)}
+                    className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-g100 file:text-g700 hover:file:bg-g200"
+                  />
+                  {coaUploadError && <p className="mt-2 text-[10.5px] text-red-mrt font-medium">{coaUploadError}</p>}
+                  <div className="flex justify-end mt-2">
+                    <button
+                      type="button" onClick={handleUploadNewCoa} disabled={coaUploading}
+                      className="bg-blk hover:bg-g700 text-white text-xs font-semibold px-4 py-2 rounded shadow-sm disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+                    >
+                      {coaUploading ? <><Loader2 size={14} className="animate-spin"/> Uploading...</> : 'Upload & Attach'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <div className={cardCls}>
