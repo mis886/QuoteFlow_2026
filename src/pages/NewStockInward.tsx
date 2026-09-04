@@ -240,7 +240,7 @@ export function NewStockInward() {
             <div className="grid grid-cols-2 gap-[12px] items-start">
               <div>
                 <label className={labelCls}>Make</label>
-                <textarea rows={1} className={`${inputCls} h-20 resize-none`} value={form.make} onChange={set('make')} />
+                <input className={`${inputCls} h-20`} value={form.make} onChange={set('make')} />
               </div>
               <div>
                 <label className={labelCls}>Remark</label>
