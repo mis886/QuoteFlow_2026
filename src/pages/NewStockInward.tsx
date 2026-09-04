@@ -65,7 +65,7 @@ const PARTY_COLUMN: Record<string, string> = {
 
 const emptyForm = {
   warehouse: '', whLotNo: '', factLotNo: '', productCode: '', productName: '',
-  lotDate: '', noOfBarrels: '', weightType: '', packagingType: '', packingDetail: '', totalQty: '',
+  inwardDate: '', noOfBarrels: '', weightType: '', packagingType: '', packingDetail: '', totalQty: '',
   make: '', remark: '',
 };
 
@@ -118,7 +118,7 @@ export function NewStockInward() {
 
   const isValid = !!(
     form.warehouse && form.whLotNo.trim() && form.productName.trim() &&
-    form.lotDate && form.noOfBarrels.trim() && form.totalQty.trim()
+    form.inwardDate && form.noOfBarrels.trim() && form.totalQty.trim()
   );
 
   const save = async () => {
@@ -135,7 +135,7 @@ export function NewStockInward() {
       wh_lot_no: whLotNo,
       fact_lot_no: form.factLotNo.trim() || null,
       product_name: form.productName.trim(),
-      lot_date: form.lotDate,
+      inward_date: form.inwardDate,
       // Lot Quantity field was removed; Total Quantity is now the single
       // source of truth for how much stock this entry adds, so lot_qty
       // (still read by StockMovements.tsx's Inward "Qty" column) mirrors
@@ -178,7 +178,7 @@ export function NewStockInward() {
           wh_lot_no: whLotNo,
           fact_lot_no: form.factLotNo.trim() || null,
           product_code: form.productCode.trim() || null,
-          inward_date: form.lotDate,
+          inward_date: form.inwardDate,
           [partyCol]: totalQty,
           no_of_barrels: form.noOfBarrels.trim() || null,
           mou: form.weightType || null,
@@ -228,8 +228,8 @@ export function NewStockInward() {
                 <input className={inputCls} value={form.whLotNo} onChange={set('whLotNo')} />
               </div>
               <div>
-                <label className={labelCls}>Lot Date <span className="text-red-mrt">*</span></label>
-                <input type="date" className={inputCls} value={form.lotDate} onChange={set('lotDate')} />
+                <label className={labelCls}>Inward Date <span className="text-red-mrt">*</span></label>
+                <input type="date" className={inputCls} value={form.inwardDate} onChange={set('inwardDate')} />
               </div>
               <div>
                 <label className={labelCls}>Factory Lot Number</label>

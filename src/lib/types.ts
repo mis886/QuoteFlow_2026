@@ -594,7 +594,7 @@ export interface StockMovement {
   stockCategory?: string;
   factLotNo?: string;        // inward only — stock_movements.fact_lot_no
   productName: string;
-  lotDate?: string;
+  inwardDate?: string;       // stock_movements.inward_date — Inward's "Inward Date"; also holds Outward's own "Lot Date" (shared DB column)
   lotQty?: number;
   packing?: number;          // outward's own "Packing" field (stock_movements.packing) — NOT the same as packingDetail below
   weightType?: string;       // outward's own "Weight Type" field (stock_movements.weight_type)

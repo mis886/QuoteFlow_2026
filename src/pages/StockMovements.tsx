@@ -41,7 +41,7 @@ function mapRow(r: any): StockMovement {
     stockCategory: r.stock_category ?? undefined,
     factLotNo: r.fact_lot_no ?? undefined,
     productName: r.product_name,
-    lotDate: r.lot_date ?? undefined,
+    inwardDate: r.inward_date ?? undefined,
     lotQty: r.lot_qty ?? undefined,
     packing: r.packing ?? undefined,
     weightType: r.weight_type ?? undefined,
@@ -302,7 +302,7 @@ export function StockMovements() {
             <table className="w-full border-collapse text-[12px]">
               <thead className="bg-g100">
                 <tr>
-                  <Th label="Date" />
+                  <Th label="Inward Date" />
                   <Th label="WH Lot No" />
                   <Th label="Factory Lot No" />
                   <Th label="Product Name" />
@@ -326,7 +326,7 @@ export function StockMovements() {
                 ) : (
                   filtered.map(m => (
                     <tr key={m.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{fmtDate(m.lotDate)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{fmtDate(m.inwardDate)}</td>
                       <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{m.whLotNo || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{m.factLotNo || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top font-semibold text-blk min-w-[180px]">{m.productName}</td>

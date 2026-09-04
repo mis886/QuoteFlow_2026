@@ -65,7 +65,7 @@ const PRODUCT_NAME_OPTIONS = PRODUCTS.map(p => p.name);
 
 const emptyForm = {
   warehouse: '', whLotNo: '', factLotNo: '', productCode: '', productName: '',
-  lotDate: '', noOfBarrels: '', mou: '', packingType: '', packingDetail: '', totalQty: '',
+  inwardDate: '', noOfBarrels: '', mou: '', packingType: '', packingDetail: '', totalQty: '',
   make: '', remark: '',
 };
 
@@ -84,7 +84,7 @@ export function InwardEditModal({ open, movement, onClose, onSaved }: Props) {
       factLotNo: movement.factLotNo || '',
       productCode: match ? match.code : '',
       productName: movement.productName || '',
-      lotDate: movement.lotDate || '',
+      inwardDate: movement.inwardDate || '',
       noOfBarrels: movement.noOfBarrels || '',
       mou: movement.mou || '',
       packingType: movement.packingType || '',
@@ -131,7 +131,7 @@ export function InwardEditModal({ open, movement, onClose, onSaved }: Props) {
   };
 
   const save = async () => {
-    if (!form.warehouse || !form.whLotNo.trim() || !form.productName.trim() || !form.lotDate || !form.noOfBarrels.trim() || !form.totalQty.trim()) {
+    if (!form.warehouse || !form.whLotNo.trim() || !form.productName.trim() || !form.inwardDate || !form.noOfBarrels.trim() || !form.totalQty.trim()) {
       setError('Please fill in all required fields.');
       return;
     }
@@ -184,7 +184,7 @@ export function InwardEditModal({ open, movement, onClose, onSaved }: Props) {
             wh_lot_no: newWhLotNo,
             fact_lot_no: form.factLotNo.trim() || null,
             product_code: form.productCode.trim() || null,
-            inward_date: form.lotDate,
+            inward_date: form.inwardDate,
             [newPartyCol]: newTotalQty,
             no_of_barrels: form.noOfBarrels.trim() || null,
             mou: form.mou || null,
@@ -205,7 +205,7 @@ export function InwardEditModal({ open, movement, onClose, onSaved }: Props) {
       wh_lot_no: newWhLotNo,
       fact_lot_no: form.factLotNo.trim() || null,
       product_name: form.productName.trim(),
-      lot_date: form.lotDate,
+      inward_date: form.inwardDate,
       lot_qty: newTotalQty,
       no_of_barrels: form.noOfBarrels.trim() || null,
       mou: form.mou || null,
@@ -250,7 +250,7 @@ export function InwardEditModal({ open, movement, onClose, onSaved }: Props) {
                 </select>
               </Field>
               <Field label="Lot No *"><input className={inp} value={form.whLotNo} onChange={set('whLotNo')} /></Field>
-              <Field label="Lot Date *"><input type="date" className={inp} value={form.lotDate} onChange={set('lotDate')} /></Field>
+              <Field label="Inward Date *"><input type="date" className={inp} value={form.inwardDate} onChange={set('inwardDate')} /></Field>
               <Field label="Factory Lot Number"><input className={inp} value={form.factLotNo} onChange={set('factLotNo')} /></Field>
               <Field label="Product Name *" className="col-span-2">
                 <SearchableCombobox

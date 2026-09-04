@@ -108,7 +108,7 @@ export function NewStockOutward() {
       product_name: form.productName.trim(),
       do_number: form.doNumber.trim(),
       do_date: form.doDate || null,
-      lot_date: form.lotDate || null,
+      inward_date: form.lotDate || null,
       num_articles: form.numArticles.trim() || null,
       packing: num(form.packing),
       weight_type: form.weightType || null,
