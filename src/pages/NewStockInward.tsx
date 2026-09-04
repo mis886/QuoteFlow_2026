@@ -237,14 +237,14 @@ export function NewStockInward() {
 
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Other</div>
-            <div className="grid grid-cols-2 gap-[12px]">
+            <div className="grid grid-cols-2 gap-[12px] items-start">
               <div>
                 <label className={labelCls}>Make</label>
                 <input className={inputCls} value={form.make} onChange={set('make')} />
               </div>
               <div>
                 <label className={labelCls}>Remark</label>
-                <textarea className={`${inputCls} min-h-[68px]`} value={form.remark} onChange={set('remark')} />
+                <textarea className={`${inputCls} h-20 resize-none`} value={form.remark} onChange={set('remark')} />
               </div>
             </div>
           </div>
