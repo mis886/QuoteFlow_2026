@@ -40,7 +40,7 @@ const PARTY_COLUMN: Record<string, string> = {
 };
 
 const emptyForm = {
-  warehouse: '', whLotNo: '', productName: '',
+  warehouse: '', whLotNo: '', factLotNo: '', productName: '',
   lotDate: '', lotQty: '', packing: '', weightType: '', packagingType: '', totalQty: '',
   make: '', remark: '',
 };
@@ -76,6 +76,7 @@ export function NewStockInward() {
       type: 'inward',
       warehouse: form.warehouse,
       wh_lot_no: whLotNo,
+      fact_lot_no: form.factLotNo.trim() || null,
       product_name: form.productName.trim(),
       lot_date: form.lotDate,
       lot_qty: lotQty,
@@ -113,6 +114,7 @@ export function NewStockInward() {
       : (await supabase.from('stock_lots').insert({
           product_name: form.productName.trim(),
           wh_lot_no: whLotNo,
+          fact_lot_no: form.factLotNo.trim() || null,
           inward_date: form.lotDate,
           [partyCol]: lotQty,
           packing,
@@ -149,7 +151,7 @@ export function NewStockInward() {
         <div className="flex flex-col gap-[14px]">
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Lot Details</div>
-            <div className="grid grid-cols-3 gap-[12px]">
+            <div className="grid grid-cols-4 gap-[12px]">
               <div>
                 <label className={labelCls}>Warehouse <span className="text-red-mrt">*</span></label>
                 <select className={selectCls} value={form.warehouse} onChange={set('warehouse')}>
@@ -160,6 +162,10 @@ export function NewStockInward() {
               <div>
                 <label className={labelCls}>Lot No <span className="text-red-mrt">*</span></label>
                 <input className={inputCls} value={form.whLotNo} onChange={set('whLotNo')} />
+              </div>
+              <div>
+                <label className={labelCls}>Factory Lot Number</label>
+                <input className={inputCls} value={form.factLotNo} onChange={set('factLotNo')} />
               </div>
               <div>
                 <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
@@ -180,11 +186,11 @@ export function NewStockInward() {
                 <input type="number" className={inputCls} value={form.lotQty} onChange={set('lotQty')} />
               </div>
               <div>
-                <label className={labelCls}>Packing <span className="text-red-mrt">*</span></label>
+                <label className={labelCls}>No of Barrels <span className="text-red-mrt">*</span></label>
                 <input type="number" className={inputCls} value={form.packing} onChange={set('packing')} />
               </div>
               <div>
-                <label className={labelCls}>Weight Type</label>
+                <label className={labelCls}>MOU</label>
                 <select className={selectCls} value={form.weightType} onChange={set('weightType')}>
                   <option value="">Select...</option>
                   <option value="KG">KG</option>
@@ -192,7 +198,7 @@ export function NewStockInward() {
                 </select>
               </div>
               <div>
-                <label className={labelCls}>Type</label>
+                <label className={labelCls}>Packing Type</label>
                 <select className={selectCls} value={form.packagingType} onChange={set('packagingType')}>
                   <option value="">Select...</option>
                   {PACKAGING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
