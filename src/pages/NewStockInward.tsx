@@ -39,20 +39,8 @@ const PARTY_COLUMN: Record<string, string> = {
   Balaji: 'qty_balaji',
 };
 
-const STOCK_CATEGORIES = [
-  'Alpha Pinene', 'Anthamber Residue', 'Anthamber Tops', 'Beta Pinene', 'Base Oil SK 70N', 'Bhakti 100',
-  'Camphene', 'Camphor Oil', 'Camphor Powder', 'D-Limonene', 'Turpentine', 'Delta Carene', 'DHM Residue',
-  'DHM Tops', 'Dipentene', 'ESTER T AND B', 'Fenchone', 'Gamma Terpinene', 'Geraniol HB', 'Geraniol Tops',
-  'Isoborneol', 'Isoborneol Acetate', 'Isolongifolene Keton Comm', 'Isoborneol Flakes', 'LOOSE TERPINEOL EP',
-  'Longifolene', 'OT PT', 'Pine Oil', 'Pine Tar', 'Rosin', 'SODIUM ACETATE TRIHYDRATE', 'Terpineol',
-  'Terpinolene', 'TMCM T&B Residue', 'TMCM T&B Tops', 'Turpentine -Pharma', 'Loose Anthamber TOPS',
-  'Loose DHM Tops', 'Nerol Iso Tops', 'Citronella Oil', 'Loose DL-Limonene Bhilai', 'DHM Terpene 100',
-  'PINE OIL 211', 'PINE OIL 311', 'Turpentine Mixture', 'Methyl Pentanone HB', 'Terpinyl Acetate',
-  'Ester Gum', 'EUCALYPTUS OIL',
-];
-
 const emptyForm = {
-  warehouse: '', whLotNo: '', stockCategory: '', productName: '',
+  warehouse: '', whLotNo: '', productName: '',
   lotDate: '', lotQty: '', packing: '', weightType: '', packagingType: '', totalQty: '',
   make: '', remark: '',
 };
@@ -70,7 +58,7 @@ export function NewStockInward() {
   const num = (v: string) => (v.trim() === '' ? null : Number(v));
 
   const isValid = !!(
-    form.warehouse && form.whLotNo.trim() && form.stockCategory && form.productName.trim() &&
+    form.warehouse && form.whLotNo.trim() && form.productName.trim() &&
     form.lotDate && form.lotQty.trim() && form.packing.trim() && form.totalQty.trim()
   );
 
@@ -88,7 +76,6 @@ export function NewStockInward() {
       type: 'inward',
       warehouse: form.warehouse,
       wh_lot_no: whLotNo,
-      stock_category: form.stockCategory,
       product_name: form.productName.trim(),
       lot_date: form.lotDate,
       lot_qty: lotQty,
@@ -162,7 +149,7 @@ export function NewStockInward() {
         <div className="flex flex-col gap-[14px]">
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Lot Details</div>
-            <div className="grid grid-cols-4 gap-[12px]">
+            <div className="grid grid-cols-3 gap-[12px]">
               <div>
                 <label className={labelCls}>Warehouse <span className="text-red-mrt">*</span></label>
                 <select className={selectCls} value={form.warehouse} onChange={set('warehouse')}>
@@ -173,13 +160,6 @@ export function NewStockInward() {
               <div>
                 <label className={labelCls}>Lot No <span className="text-red-mrt">*</span></label>
                 <input className={inputCls} value={form.whLotNo} onChange={set('whLotNo')} />
-              </div>
-              <div>
-                <label className={labelCls}>Stock Category <span className="text-red-mrt">*</span></label>
-                <select className={selectCls} value={form.stockCategory} onChange={set('stockCategory')}>
-                  <option value="">Select...</option>
-                  {STOCK_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
               </div>
               <div>
                 <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
