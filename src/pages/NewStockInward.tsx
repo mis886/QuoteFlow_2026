@@ -22,6 +22,13 @@
 // (also edited via StockLotModal.tsx), the same way product_name/wh_lot_no/
 // fact_lot_no already work — populated at lot creation, editable after.
 //
+// Product Name / Product Code source: src/lib/stockInwardProducts.ts's
+// PRODUCTS array (code+name pairs) — exclusive to this form, deliberately
+// separate from PRODUCT_NAMES in stockMovementOptions.ts (still used
+// unchanged by NewStockOutward.tsx). Product Code is derived, read-only —
+// it's looked up from PRODUCTS whenever Product Name changes, never
+// typed directly.
+//
 // See src/pages/StockMovements.tsx for the list view and
 // supabase/migrations/20260903060000_create_stock_movements_table.sql for
 // the base schema.
@@ -33,7 +40,8 @@ import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { SearchableCombobox } from '../components/SearchableCombobox';
 import { StockMovementWarehouse } from '../lib/types';
-import { PRODUCT_NAMES, PACKAGING_TYPES } from '../lib/stockMovementOptions';
+import { PACKAGING_TYPES } from '../lib/stockMovementOptions';
+import { PRODUCTS } from '../lib/stockInwardProducts';
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
@@ -42,6 +50,10 @@ const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppe
 const cardCls = "bg-white border border-g200 p-[18px_20px]";
 
 const WAREHOUSES: StockMovementWarehouse[] = ['Hariom', 'Reliable', 'Swastik', 'Balaji'];
+
+// Combobox options — derived from PRODUCTS, the single source of truth
+// also used for the Product Code auto-fill lookup below.
+const PRODUCT_NAME_OPTIONS = PRODUCTS.map(p => p.name);
 
 // Party/godown → the stock_lots quantity column it feeds.
 const PARTY_COLUMN: Record<string, string> = {
@@ -193,11 +205,19 @@ export function NewStockInward() {
             <div className="grid grid-cols-2 gap-[12px] mt-3">
               <div>
                 <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
-                <SearchableCombobox className={inputCls} options={PRODUCT_NAMES} value={form.productName} onChange={v => setForm(f => ({ ...f, productName: v }))} />
+                <SearchableCombobox
+                  className={inputCls}
+                  options={PRODUCT_NAME_OPTIONS}
+                  value={form.productName}
+                  onChange={v => {
+                    const match = PRODUCTS.find(p => p.name === v);
+                    setForm(f => ({ ...f, productName: v, productCode: match ? match.code : '' }));
+                  }}
+                />
               </div>
               <div>
                 <label className={labelCls}>Product Code</label>
-                <input className={inputCls} value={form.productCode} onChange={set('productCode')} />
+                <input className={`${inputCls} bg-g100 text-g600 cursor-not-allowed`} value={form.productCode} readOnly />
               </div>
             </div>
           </div>
