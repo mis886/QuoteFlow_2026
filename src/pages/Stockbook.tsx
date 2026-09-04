@@ -24,13 +24,11 @@ function mapRow(r: any): StockLot {
     serialNo: r.serial_no ?? undefined,
     whLotNo: r.wh_lot_no ?? undefined,
     factLotNo: r.fact_lot_no ?? undefined,
-    lotType: r.lot_type ?? undefined,
     productCode: r.product_code ?? undefined,
     productName: r.product_name,
     inwardDate: r.inward_date ?? undefined,
     sampleOff: !!r.sample_off,
-    opQty: r.op_qty ?? undefined,
-    tankerUnload: r.tanker_unload ?? undefined,
+    noOfBarrels: r.no_of_barrels ?? undefined,
     coaFile: r.coa_file ?? undefined,
     coaUrl: r.coa_url ?? undefined,
     qtyHariom: r.qty_hariom ?? undefined,
@@ -41,8 +39,8 @@ function mapRow(r: any): StockLot {
     qtyBalaji: r.qty_balaji ?? undefined,
     qtyWada: r.qty_wada ?? undefined,
     packing: r.packing ?? undefined,
-    unit: r.unit ?? undefined,
-    packagingType: r.packaging_type ?? undefined,
+    mou: r.mou ?? undefined,
+    packingType: r.packing_type ?? undefined,
     quantity: r.quantity ?? undefined,
     make: r.make ?? undefined,
     remark: r.remark ?? undefined,
@@ -175,15 +173,13 @@ export function Stockbook() {
             <thead className="bg-g100">
               <tr>
                 <SortTh col="serialNo" label="S.No." />
-                <SortTh col="whLotNo" label="WH Lot No" />
-                <Th label="Fact Lot No" />
-                <Th label="Type" />
+                <SortTh col="whLotNo" label="Lot No" />
+                <Th label="Factory Lot Number" />
                 <Th label="Product Code" />
                 <SortTh col="productName" label="Product Name" />
                 <SortTh col="inwardDate" label="Inward Date" />
                 <Th label="Sample Off" />
-                <Th label="Op" />
-                <Th label="Tanker Unload" />
+                <Th label="No of Barrels" />
                 <Th label="COA" />
                 <Th label="Hariom" />
                 <Th label="Wada-HE" />
@@ -193,9 +189,9 @@ export function Stockbook() {
                 <Th label="BALAJI" />
                 <Th label="Wada" />
                 <Th label="Packing" />
-                <Th label="Unit" />
-                <Th label="Packaging" />
-                <SortTh col="quantity" label="Quantity" />
+                <Th label="MOU" />
+                <Th label="Packing Type" />
+                <SortTh col="quantity" label="Total Quantity" />
                 <SortTh col="make" label="Make" />
                 <Th label="Remark" />
                 <th className="px-[13px] py-[9px] border-b border-g200 w-[70px]" />
@@ -203,16 +199,15 @@ export function Stockbook() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={25} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={25} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
                 filtered.map(l => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
                     <td className="px-[13px] py-[9px] align-top font-mono text-[11px] text-g500 whitespace-nowrap">{l.serialNo ?? '—'}</td>
                     <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{l.whLotNo || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.factLotNo || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.lotType || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.productCode || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top font-semibold text-blk min-w-[200px]">{l.productName}</td>
                     <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{fmtDate(l.inwardDate)}</td>
@@ -221,8 +216,7 @@ export function Stockbook() {
                         ? <span className="text-[10px] font-semibold text-sW">Yes</span>
                         : <span className="text-[10px] text-g400">No</span>}
                     </td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.opQty)}</td>
-                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap max-w-[160px] truncate" title={l.tankerUnload}>{l.tankerUnload || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{l.noOfBarrels || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] whitespace-nowrap max-w-[160px] truncate">
                       {l.coaUrl ? (
                         <a
@@ -249,8 +243,8 @@ export function Stockbook() {
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyBalaji)}</td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyWada)}</td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.packing)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.unit || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.packagingType || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.mou || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.packingType || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(l.quantity)}</td>
                     <td className="px-[13px] py-[9px] align-top whitespace-nowrap">
                       {l.make

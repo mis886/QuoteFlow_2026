@@ -31,10 +31,10 @@ interface Props {
 }
 
 const emptyForm = {
-  whLotNo: '', factLotNo: '', lotType: '', productCode: '', productName: '',
-  inwardDate: '', sampleOff: false, opQty: '', tankerUnload: '', coaFile: '',
+  whLotNo: '', factLotNo: '', productCode: '', productName: '',
+  inwardDate: '', sampleOff: false, noOfBarrels: '', coaFile: '',
   qtyHariom: '', qtyWadaHe: '', qtyHe: '', qtyReliable: '', qtySwastik: '', qtyBalaji: '', qtyWada: '',
-  packing: '', unit: '', packagingType: '', quantity: '', make: '', remark: '',
+  packing: '', mou: '', packingType: '', quantity: '', make: '', remark: '',
 };
 
 export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
@@ -48,13 +48,11 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
     setForm({
       whLotNo: lot.whLotNo || '',
       factLotNo: lot.factLotNo || '',
-      lotType: lot.lotType || '',
       productCode: lot.productCode || '',
       productName: lot.productName || '',
       inwardDate: lot.inwardDate || '',
       sampleOff: !!lot.sampleOff,
-      opQty: lot.opQty?.toString() ?? '',
-      tankerUnload: lot.tankerUnload || '',
+      noOfBarrels: lot.noOfBarrels || '',
       coaFile: lot.coaFile || '',
       qtyHariom: lot.qtyHariom?.toString() ?? '',
       qtyWadaHe: lot.qtyWadaHe?.toString() ?? '',
@@ -64,8 +62,8 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
       qtyBalaji: lot.qtyBalaji?.toString() ?? '',
       qtyWada: lot.qtyWada?.toString() ?? '',
       packing: lot.packing?.toString() ?? '',
-      unit: lot.unit || '',
-      packagingType: lot.packagingType || '',
+      mou: lot.mou || '',
+      packingType: lot.packingType || '',
       quantity: lot.quantity?.toString() ?? '',
       make: lot.make || '',
       remark: lot.remark || '',
@@ -88,13 +86,11 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
     const payload = {
       wh_lot_no: form.whLotNo.trim() || null,
       fact_lot_no: form.factLotNo.trim() || null,
-      lot_type: form.lotType.trim() || null,
       product_code: form.productCode.trim() || null,
       product_name: form.productName.trim(),
       inward_date: form.inwardDate || null,
       sample_off: form.sampleOff,
-      op_qty: num(form.opQty),
-      tanker_unload: form.tankerUnload.trim() || null,
+      no_of_barrels: form.noOfBarrels.trim() || null,
       coa_file: form.coaFile.trim() || null,
       qty_hariom: num(form.qtyHariom),
       qty_wada_he: num(form.qtyWadaHe),
@@ -104,8 +100,8 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
       qty_balaji: num(form.qtyBalaji),
       qty_wada: num(form.qtyWada),
       packing: num(form.packing),
-      unit: form.unit.trim() || null,
-      packaging_type: form.packagingType.trim() || null,
+      mou: form.mou.trim() || null,
+      packing_type: form.packingType.trim() || null,
       quantity: num(form.quantity),
       make: form.make.trim() || null,
       remark: form.remark.trim() || null,
@@ -138,9 +134,8 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
           <div>
             <div className="text-[10px] font-mono font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">Lot Details</div>
             <div className="grid grid-cols-3 gap-3">
-              <Field label="WH Lot No"><input className={inp} value={form.whLotNo} onChange={set('whLotNo')} /></Field>
-              <Field label="Fact Lot No"><input className={inp} value={form.factLotNo} onChange={set('factLotNo')} /></Field>
-              <Field label="Lot Type"><input className={inp} value={form.lotType} onChange={set('lotType')} placeholder="W / TR" /></Field>
+              <Field label="Lot No"><input className={inp} value={form.whLotNo} onChange={set('whLotNo')} /></Field>
+              <Field label="Factory Lot Number"><input className={inp} value={form.factLotNo} onChange={set('factLotNo')} /></Field>
               <Field label="Product Code"><input className={inp} value={form.productCode} onChange={set('productCode')} /></Field>
               <Field label="Product Name *" className="col-span-2">
                 <input className={inp} value={form.productName} onChange={set('productName')} placeholder="e.g. Alpha Pinene 95% -ve" />
@@ -157,7 +152,7 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
                   Sample Off
                 </label>
               </div>
-              <Field label="Op Qty"><input type="number" className={inp} value={form.opQty} onChange={set('opQty')} /></Field>
+              <Field label="No of Barrels"><input type="number" className={inp} value={form.noOfBarrels} onChange={set('noOfBarrels')} /></Field>
             </div>
           </div>
 
@@ -178,11 +173,10 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
             <div className="text-[10px] font-mono font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">Packing &amp; Total</div>
             <div className="grid grid-cols-3 gap-3">
               <Field label="Packing"><input type="number" className={inp} value={form.packing} onChange={set('packing')} /></Field>
-              <Field label="Unit"><input className={inp} value={form.unit} onChange={set('unit')} placeholder="Kg / Ltr" /></Field>
-              <Field label="Packaging Type"><input className={inp} value={form.packagingType} onChange={set('packagingType')} placeholder="Plastic / Barrel / MS" /></Field>
-              <Field label="Quantity"><input type="number" className={inp} value={form.quantity} onChange={set('quantity')} /></Field>
+              <Field label="MOU"><input className={inp} value={form.mou} onChange={set('mou')} placeholder="KG / LTR" /></Field>
+              <Field label="Packing Type"><input className={inp} value={form.packingType} onChange={set('packingType')} placeholder="Plastic / Barrel / MS" /></Field>
+              <Field label="Total Quantity"><input type="number" className={inp} value={form.quantity} onChange={set('quantity')} /></Field>
               <Field label="Make"><input className={inp} value={form.make} onChange={set('make')} placeholder="WADA / PRIVI / ..." /></Field>
-              <Field label="Tanker Unload"><input className={inp} value={form.tankerUnload} onChange={set('tankerUnload')} /></Field>
               <Field label="COA File">
                 <input className={inp} value={form.coaFile} onChange={set('coaFile')} />
                 {lot.coaUrl && (

@@ -536,18 +536,23 @@ export interface Ticket {
 // "Stock Lot Godown Wise" tab of the HIMALAYA STOCK SUMMARY Google Sheet.
 // Quantity is split across whichever party/godown currently holds it.
 // See supabase/migrations/20260901060000_create_stock_lots_table.sql.
+// 2026-09-04: lot_type ("Type") and tanker_unload ("Tanker Unload") were
+// dropped from the table entirely. op_qty/unit/packaging_type were also
+// dropped and merged into no_of_barrels/mou/packing_type — the same
+// columns the Stock Inward form (NewStockInward.tsx) writes to — so data
+// entered via Inward now shows up in Stockbook instead of landing in
+// columns nobody displayed. See
+// supabase/migrations/20260904130000_stockbook_drop_type_tanker_merge_columns.sql.
 export interface StockLot {
   id: string;
   serialNo?: number;          // running S.No. — matches the original sheet's row order for migrated lots
   whLotNo?: string;
   factLotNo?: string;
-  lotType?: string;           // 'W' | 'TR' | other, free text
   productCode?: string;
   productName: string;
   inwardDate?: string;        // ISO date
   sampleOff: boolean;
-  opQty?: number;
-  tankerUnload?: string;
+  noOfBarrels?: string;        // no_of_barrels column — shared with the Stock Inward form
   coaFile?: string;
   coaUrl?: string;             // public Supabase Storage URL for the actual COA PDF, when one has been uploaded/matched
   qtyHariom?: number;
@@ -558,8 +563,8 @@ export interface StockLot {
   qtyBalaji?: number;
   qtyWada?: number;
   packing?: number;
-  unit?: string;
-  packagingType?: string;
+  mou?: string;                 // mou column (Measure of Unit) — shared with the Stock Inward form
+  packingType?: string;         // packing_type column — shared with the Stock Inward form
   quantity?: number;
   make?: string;
   remark?: string;
