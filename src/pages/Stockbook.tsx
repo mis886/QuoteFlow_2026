@@ -117,9 +117,9 @@ export function Stockbook() {
   const SortTh = ({ col, label }: { col: string; label: string }) => (
     <th
       onClick={() => toggleSort(col)}
-      className={`font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 cursor-pointer select-none hover:bg-g200 transition-colors text-left ${sortCol === col ? 'text-red-mrt bg-red-lt/40' : 'text-g500'}`}
+      className={`font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 cursor-pointer select-none hover:bg-g200 transition-colors text-center ${sortCol === col ? 'text-red-mrt bg-red-lt/40' : 'text-g500'}`}
     >
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1 w-full">
         {label}
         {sortCol === col ? (sortDir === 'asc' ? <ChevronUp size={9} /> : <ChevronDown size={9} />) : <ChevronsUpDown size={9} className="text-g300" />}
       </span>
@@ -127,7 +127,7 @@ export function Stockbook() {
   );
 
   const Th = ({ label }: { label: string }) => (
-    <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-left text-g500">
+    <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-center text-g500">
       {label}
     </th>
   );
