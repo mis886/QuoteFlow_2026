@@ -205,19 +205,19 @@ export function Stockbook() {
               ) : (
                 filtered.map(l => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
-                    <td className="px-[13px] py-[9px] align-top font-mono text-[11px] text-g500 whitespace-nowrap">{l.serialNo ?? '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{l.whLotNo || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.factLotNo || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.productCode || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top font-semibold text-blk min-w-[200px]">{l.productName}</td>
-                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{fmtDate(l.inwardDate)}</td>
-                    <td className="px-[13px] py-[9px] align-top">
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g500 whitespace-nowrap">{l.serialNo ?? '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{l.whLotNo || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.factLotNo || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.productCode || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-semibold text-blk min-w-[200px]">{l.productName}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{fmtDate(l.inwardDate)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center">
                       {l.sampleOff
                         ? <span className="text-[10px] font-semibold text-sW">Yes</span>
                         : <span className="text-[10px] text-g400">No</span>}
                     </td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{l.noOfBarrels || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] whitespace-nowrap max-w-[160px] truncate">
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{l.noOfBarrels || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] whitespace-nowrap max-w-[160px] truncate">
                       {l.coaUrl ? (
                         <a
                           href={l.coaUrl}
@@ -235,23 +235,23 @@ export function Stockbook() {
                         <span className="text-g600">—</span>
                       )}
                     </td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyHariom)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyWadaHe)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyHe)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyReliable)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtySwastik)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyBalaji)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.qtyWada)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(l.packing)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.mou || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{l.packingType || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(l.quantity)}</td>
-                    <td className="px-[13px] py-[9px] align-top whitespace-nowrap">
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyHariom)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyWadaHe)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyHe)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyReliable)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtySwastik)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyBalaji)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyWada)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.packing)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.mou || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.packingType || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(l.quantity)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center whitespace-nowrap">
                       {l.make
                         ? <span className="inline-flex items-center text-[10.5px] text-g600 bg-g100 px-2 py-0.5 rounded-[3px] font-medium">{l.make}</span>
                         : '—'}
                     </td>
-                    <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={l.remark}>{l.remark || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center text-g500 max-w-[220px] truncate" title={l.remark}>{l.remark || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
