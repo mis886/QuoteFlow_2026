@@ -190,7 +190,7 @@ export function NewStockInward() {
                 <input type="number" className={inputCls} value={form.packing} onChange={set('packing')} />
               </div>
               <div>
-                <label className={labelCls}>MOU</label>
+                <label className={labelCls}>MOU (Measure of Unit)</label>
                 <select className={selectCls} value={form.weightType} onChange={set('weightType')}>
                   <option value="">Select...</option>
                   <option value="KG">KG</option>
