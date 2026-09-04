@@ -10,9 +10,21 @@
 //   2. Upserts the matching stock_lots row by wh_lot_no, so Stockbook's
 //      running party/godown balances stay correct without Stockbook.tsx
 //      itself changing at all.
+//
+// Column ownership: no_of_barrels / packing_type / mou / packing_detail are
+// exclusive to this form (see supabase/migrations/20260903120400_stock_inward_exclusive_columns.sql)
+// — NewStockOutward.tsx and StockLotModal.tsx keep using the older packing /
+// packaging_type / weight_type / unit columns unaffected. The only columns
+// still shared with Outward are the party quantity columns (qty_hariom,
+// qty_reliable, qty_swastik, qty_balaji, qty_wada) and quantity/total_qty,
+// matched via wh_lot_no — that's the deliberate reconciliation mechanism.
+// product_code is the one exception: it reuses stock_lots' existing column
+// (also edited via StockLotModal.tsx), the same way product_name/wh_lot_no/
+// fact_lot_no already work — populated at lot creation, editable after.
+//
 // See src/pages/StockMovements.tsx for the list view and
 // supabase/migrations/20260903060000_create_stock_movements_table.sql for
-// the schema.
+// the base schema.
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -40,8 +52,8 @@ const PARTY_COLUMN: Record<string, string> = {
 };
 
 const emptyForm = {
-  warehouse: '', whLotNo: '', factLotNo: '', productName: '',
-  lotDate: '', lotQty: '', packing: '', weightType: '', packagingType: '', totalQty: '',
+  warehouse: '', whLotNo: '', factLotNo: '', productCode: '', productName: '',
+  lotDate: '', lotQty: '', noOfBarrels: '', weightType: '', packagingType: '', packingDetail: '', totalQty: '',
   make: '', remark: '',
 };
 
@@ -59,7 +71,7 @@ export function NewStockInward() {
 
   const isValid = !!(
     form.warehouse && form.whLotNo.trim() && form.productName.trim() &&
-    form.lotDate && form.lotQty.trim() && form.packing.trim() && form.totalQty.trim()
+    form.lotDate && form.lotQty.trim() && form.noOfBarrels.trim() && form.totalQty.trim()
   );
 
   const save = async () => {
@@ -69,7 +81,6 @@ export function NewStockInward() {
 
     const whLotNo = form.whLotNo.trim();
     const lotQty = num(form.lotQty);
-    const packing = num(form.packing);
     const totalQty = num(form.totalQty);
 
     const movementPayload = {
@@ -80,9 +91,10 @@ export function NewStockInward() {
       product_name: form.productName.trim(),
       lot_date: form.lotDate,
       lot_qty: lotQty,
-      packing,
-      weight_type: form.weightType || null,
-      packaging_type: form.packagingType || null,
+      no_of_barrels: form.noOfBarrels.trim() || null,
+      mou: form.weightType || null,
+      packing_type: form.packagingType || null,
+      packing_detail: form.packingDetail.trim() || null,
       total_qty: totalQty,
       make: form.make.trim() || null,
       remark: form.remark.trim() || null,
@@ -115,11 +127,13 @@ export function NewStockInward() {
           product_name: form.productName.trim(),
           wh_lot_no: whLotNo,
           fact_lot_no: form.factLotNo.trim() || null,
+          product_code: form.productCode.trim() || null,
           inward_date: form.lotDate,
           [partyCol]: lotQty,
-          packing,
-          unit: form.weightType || null,
-          packaging_type: form.packagingType || null,
+          no_of_barrels: form.noOfBarrels.trim() || null,
+          mou: form.weightType || null,
+          packing_type: form.packagingType || null,
+          packing_detail: form.packingDetail.trim() || null,
           quantity: totalQty,
           make: form.make.trim() || null,
           remark: form.remark.trim() || null,
@@ -151,7 +165,7 @@ export function NewStockInward() {
         <div className="flex flex-col gap-[14px]">
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Lot Details</div>
-            <div className="grid grid-cols-4 gap-[12px]">
+            <div className="grid grid-cols-6 gap-[12px]">
               <div>
                 <label className={labelCls}>Warehouse <span className="text-red-mrt">*</span></label>
                 <select className={selectCls} value={form.warehouse} onChange={set('warehouse')}>
@@ -168,8 +182,16 @@ export function NewStockInward() {
                 <input className={inputCls} value={form.factLotNo} onChange={set('factLotNo')} />
               </div>
               <div>
+                <label className={labelCls}>Product Code</label>
+                <input className={inputCls} value={form.productCode} onChange={set('productCode')} />
+              </div>
+              <div>
                 <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
                 <SearchableCombobox className={inputCls} options={PRODUCT_NAMES} value={form.productName} onChange={v => setForm(f => ({ ...f, productName: v }))} />
+              </div>
+              <div>
+                <label className={labelCls}>Packing</label>
+                <input className={inputCls} value={form.packingDetail} onChange={set('packingDetail')} />
               </div>
             </div>
           </div>
@@ -187,7 +209,7 @@ export function NewStockInward() {
               </div>
               <div>
                 <label className={labelCls}>No of Barrels <span className="text-red-mrt">*</span></label>
-                <input type="number" className={inputCls} value={form.packing} onChange={set('packing')} />
+                <input type="number" className={inputCls} value={form.noOfBarrels} onChange={set('noOfBarrels')} />
               </div>
               <div>
                 <label className={labelCls}>MOU (Measure of Unit)</label>
