@@ -19,6 +19,22 @@
 // columns (see supabase/migrations/20260903120400_stock_inward_exclusive_columns.sql)
 // — those were always showing "—". Outward's columns were unaffected (it
 // still writes packing/weight_type/packaging_type as before).
+//
+// 2026-09-05: two follow-on fixes.
+// 1. mapRow() below was never reading sample_off/coa_file/coa_url off the
+//    stock_movements row, so every Inward entry's `sampleOff`/`coaFile`/
+//    `coaUrl` came through as undefined here even though the DB row had the
+//    real values (NewStockInward.tsx's save() writes them; the columns exist
+//    on StockMovement per src/lib/types.ts) — that's why editing an Inward
+//    entry looked like Sample Off / COA had never been filled in. Fixed by
+//    mapping all three columns like every other field.
+// 2. Inward's Edit button now navigates to /stock-movements/new?movementId=<id>
+//    (src/pages/NewStockInward.tsx handles both create and edit, same
+//    ?id=-style full-page-edit convention as Orders/Quotes) instead of
+//    opening src/components/InwardEditModal.tsx as a popup — the user wanted
+//    Inward's edit to match how Orders/Quotes edit (a full page). Outward's
+//    Edit button is UNCHANGED — it still opens OutwardEditModal.tsx as a
+//    popup; only Inward was asked to become a full page.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -27,7 +43,6 @@ import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockMovement } from '../lib/types';
-import { InwardEditModal } from '../components/InwardEditModal';
 import { OutwardEditModal } from '../components/OutwardEditModal';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
@@ -61,6 +76,9 @@ function mapRow(r: any): StockMovement {
     mou: r.mou ?? undefined,
     packingType: r.packing_type ?? undefined,
     packingDetail: r.packing_detail ?? undefined,
+    sampleOff: !!r.sample_off,
+    coaFile: r.coa_file ?? undefined,
+    coaUrl: r.coa_url ?? undefined,
     created_by: r.created_by ?? undefined,
     created_at: r.created_at ?? undefined,
   };
@@ -379,7 +397,10 @@ export function StockMovements() {
                       <td className="px-[13px] py-[9px] align-top text-g500 whitespace-nowrap">{m.created_by || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button type="button" onClick={() => openEdit(m)} className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors" title="Edit">
+                          {/* Inward's Edit opens the full-page NewStockInward.tsx (same
+                              ?id=-style full-page-edit convention as Orders/Quotes),
+                              not a modal — see the 2026-09-05 file-header note above. */}
+                          <button type="button" onClick={() => navigate(`/stock-movements/new?movementId=${m.id}`)} className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors" title="Edit">
                             <Pencil size={12} />
                           </button>
                           <button type="button" onClick={() => handleDelete(m)} className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors" title="Delete">
@@ -396,15 +417,6 @@ export function StockMovements() {
           <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
           <FloatingVerticalScrollbar containerRef={tableScrollRef} horizontalContainerRef={tableScrollRef} />
         </div>
-      )}
-
-      {editingMovement && editingMovement.type === 'inward' && (
-        <InwardEditModal
-          open={modalOpen}
-          movement={editingMovement}
-          onClose={() => setModalOpen(false)}
-          onSaved={load}
-        />
       )}
 
       {editingMovement && editingMovement.type === 'outward' && (

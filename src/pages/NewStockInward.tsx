@@ -38,9 +38,24 @@
 // See src/pages/StockMovements.tsx for the list view and
 // supabase/migrations/20260903060000_create_stock_movements_table.sql for
 // the base schema.
+//
+// 2026-09-05: this page now also handles EDITING an existing Inward entry,
+// via ?movementId=<id> in the URL (same convention as NewOrder.tsx's
+// ?orderId=<id> / NewQuote.tsx's ?id=<id> — a full page, not a popup).
+// Previously editing used src/components/InwardEditModal.tsx, a compact
+// modal; the user found that inconsistent with how Orders/Quotes edit (a
+// full page reached via the same "new" route) and asked for the same
+// treatment here. When movementId is present, this page fetches that one
+// stock_movements row directly (this module is self-contained — no global
+// store cache of movements to read from, unlike NewOrder.tsx/data.orders),
+// pre-fills the form, and save() reverses the OLD entry's effect on
+// stock_lots before re-applying the edited one — the exact reversal/reapply
+// logic InwardEditModal.tsx used to do. InwardEditModal.tsx itself is no
+// longer used by src/pages/StockMovements.tsx but is left on disk unused
+// rather than deleted, in case anything still references it.
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { Button } from '../components/ui';
@@ -79,9 +94,59 @@ const emptyForm = {
 export function NewStockInward() {
   const navigate = useNavigate();
   const { user } = useAppStore();
+  const [searchParams] = useSearchParams();
+  const movementId = searchParams.get('movementId');
+  const isEditing = !!movementId;
+
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [loadingMovement, setLoadingMovement] = useState(isEditing);
+  // Captured once, when loading an existing entry for editing — the values
+  // stock_lots was last adjusted with, so save() can reverse that OLD effect
+  // before applying the edited one. Not kept in sync with `form` afterward.
+  const [original, setOriginal] = useState<{ warehouse: string; whLotNo: string; totalQty: number; noOfBarrels: string } | null>(null);
+
+  useEffect(() => {
+    if (!movementId) return;
+    let cancelled = false;
+    setLoadingMovement(true);
+    supabase.from('stock_movements').select('*').eq('id', movementId).single().then(({ data, error: fetchErr }) => {
+      if (cancelled) return;
+      if (fetchErr || !data) {
+        setError(fetchErr?.message || 'Could not load this Inward entry.');
+        setLoadingMovement(false);
+        return;
+      }
+      const match = PRODUCTS.find(p => p.name === data.product_name);
+      setForm({
+        warehouse: data.warehouse || '',
+        whLotNo: data.wh_lot_no || '',
+        factLotNo: data.fact_lot_no || '',
+        productCode: match ? match.code : '',
+        productName: data.product_name || '',
+        inwardDate: data.inward_date || '',
+        noOfBarrels: data.no_of_barrels || '',
+        weightType: data.mou || '',
+        packagingType: data.packing_type || '',
+        packingDetail: data.packing_detail || '',
+        totalQty: data.total_qty?.toString() ?? '',
+        make: data.make || '',
+        remark: data.remark || '',
+        sampleOff: !!data.sample_off,
+        coaFile: data.coa_file || '',
+        coaUrl: data.coa_url || '',
+      });
+      setOriginal({
+        warehouse: data.warehouse || '',
+        whLotNo: data.wh_lot_no || '',
+        totalQty: data.total_qty ?? 0,
+        noOfBarrels: data.no_of_barrels || '',
+      });
+      setLoadingMovement(false);
+    });
+    return () => { cancelled = true; };
+  }, [movementId]);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -213,6 +278,98 @@ export function NewStockInward() {
     // not Total Quantity — see the file-header comment above.
     const barrels = num(form.noOfBarrels);
 
+    // Editing an existing entry: reverse the OLD entry's effect on
+    // stock_lots (using the values it had before this edit), then re-apply
+    // the NEW (edited) effect — same reversal/reapply InwardEditModal.tsx
+    // used to do, now inlined here since editing is a full page. If the old
+    // and new lot are the same lot, the two steps net out to the correct
+    // delta. This branch UPDATEs the existing stock_movements row instead of
+    // inserting a new one, then returns — the create-new-entry flow below
+    // never runs for an edit.
+    if (isEditing && movementId && original) {
+      const oldPartyCol = PARTY_COLUMN[original.warehouse];
+      const newPartyCol = PARTY_COLUMN[form.warehouse];
+      const oldBarrels = num(original.noOfBarrels) ?? 0;
+
+      if (oldPartyCol && original.whLotNo) {
+        const { data: oldLots, error: findOldErr } = await supabase
+          .from('stock_lots').select('*').ilike('wh_lot_no', original.whLotNo).limit(1);
+        if (findOldErr) { setError(findOldErr.message); setSaving(false); return; }
+        const oldLot = oldLots?.[0];
+        if (oldLot) {
+          const { error: revErr } = await supabase.from('stock_lots').update({
+            [oldPartyCol]: (oldLot[oldPartyCol] ?? 0) - oldBarrels,
+            quantity: (oldLot.quantity ?? 0) - original.totalQty,
+            updated_at: new Date().toISOString(),
+            updated_by: user?.email ?? null,
+          }).eq('id', oldLot.id);
+          if (revErr) { setError(revErr.message); setSaving(false); return; }
+        }
+      }
+
+      if (newPartyCol && whLotNo) {
+        const { data: newLots, error: findNewErr } = await supabase
+          .from('stock_lots').select('*').ilike('wh_lot_no', whLotNo).limit(1);
+        if (findNewErr) { setError(findNewErr.message); setSaving(false); return; }
+        const newLot = newLots?.[0];
+
+        const lotErr = newLot
+          ? (await supabase.from('stock_lots')
+              .update({
+                [newPartyCol]: (newLot[newPartyCol] ?? 0) + (barrels ?? 0),
+                quantity: (newLot.quantity ?? 0) + (totalQty ?? 0),
+                updated_at: new Date().toISOString(),
+                updated_by: user?.email ?? null,
+              })
+              .eq('id', newLot.id)).error
+          : (await supabase.from('stock_lots').insert({
+              product_name: form.productName.trim(),
+              wh_lot_no: whLotNo,
+              fact_lot_no: form.factLotNo.trim() || null,
+              product_code: form.productCode.trim() || null,
+              inward_date: form.inwardDate,
+              [newPartyCol]: barrels,
+              no_of_barrels: form.noOfBarrels.trim() || null,
+              mou: form.weightType || null,
+              packing_type: form.packagingType || null,
+              packing_detail: form.packingDetail.trim() || null,
+              quantity: totalQty,
+              make: form.make.trim() || null,
+              remark: form.remark.trim() || null,
+              sample_off: form.sampleOff,
+              coa_file: form.coaFile.trim() || null,
+              coa_url: form.coaUrl.trim() || null,
+              created_by: user?.email ?? null,
+            })).error;
+
+        if (lotErr) { setError(lotErr.message); setSaving(false); return; }
+      }
+
+      const { error: moveErr } = await supabase.from('stock_movements').update({
+        warehouse: form.warehouse,
+        wh_lot_no: whLotNo,
+        fact_lot_no: form.factLotNo.trim() || null,
+        product_name: form.productName.trim(),
+        inward_date: form.inwardDate,
+        lot_qty: totalQty,
+        no_of_barrels: form.noOfBarrels.trim() || null,
+        mou: form.weightType || null,
+        packing_type: form.packagingType || null,
+        packing_detail: form.packingDetail.trim() || null,
+        total_qty: totalQty,
+        make: form.make.trim() || null,
+        remark: form.remark.trim() || null,
+        sample_off: form.sampleOff,
+        coa_file: form.coaFile.trim() || null,
+        coa_url: form.coaUrl.trim() || null,
+      }).eq('id', movementId);
+
+      if (moveErr) { setError(moveErr.message); setSaving(false); return; }
+      navigate('/stock-movements');
+      setSaving(false);
+      return;
+    }
+
     const movementPayload = {
       type: 'inward',
       warehouse: form.warehouse,
@@ -288,14 +445,27 @@ export function NewStockInward() {
     setSaving(false);
   };
 
+  if (loadingMovement) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-g400">
+        <Loader2 size={28} className="animate-spin" />
+        <div className="font-mono text-[10px] font-bold tracking-[2px] uppercase">Loading Inward Entry…</div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
       <div className="pt-5 px-6">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">Stock Movements Module</div>
-            <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">Log <em className="italic text-red-mrt">New Inward</em></h1>
-            <p className="text-xs text-g500 mt-1 font-light">Record a raw-material inward receipt — replaces the Stock Inward Google Form.</p>
+            <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">
+              {isEditing ? <>Edit <em className="italic text-red-mrt">Inward Entry</em></> : <>Log <em className="italic text-red-mrt">New Inward</em></>}
+            </h1>
+            <p className="text-xs text-g500 mt-1 font-light">
+              {isEditing ? 'Update a previously logged raw-material inward receipt.' : 'Record a raw-material inward receipt — replaces the Stock Inward Google Form.'}
+            </p>
           </div>
           <Button variant="secondary" onClick={() => navigate('/stock-movements')}>Back</Button>
         </div>
@@ -478,7 +648,7 @@ export function NewStockInward() {
 
       <div className="flex items-center gap-2 p-[14px_20px] bg-g100 border-t border-g200 sticky bottom-0">
         <Button variant="primary" onClick={save} disabled={!isValid || saving}>
-          {saving ? 'Saving…' : 'Save Inward Entry'}
+          {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save Inward Entry'}
         </Button>
         <Button variant="secondary" onClick={() => navigate('/stock-movements')} disabled={saving}>Cancel</Button>
         <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>

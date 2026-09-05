@@ -2,19 +2,26 @@
 // Migrated from the "Stock Lot Godown Wise" tab of the HIMALAYA STOCK
 // SUMMARY Google Sheet; managed directly in EnqBoss from here on.
 // Self-contained (own Supabase queries, no global store plumbing) — same
-// pattern as ProductCatalogManager.tsx. Editing an existing lot opens
-// src/components/StockLotModal.tsx (edit-only). There is currently no
-// in-app "add a new lot" entry point — that full-page flow
-// (src/pages/NewStockLot.tsx, route /stockbook/new) was removed.
+// pattern as ProductCatalogManager.tsx.
 // See supabase/migrations/20260901060000_create_stock_lots_table.sql for
 // the schema.
+//
+// 2026-09-05: the per-row Edit/Delete buttons (which opened
+// src/components/StockLotModal.tsx) were removed entirely at the user's
+// request — editing a lot's numbers directly here bypassed Stock Movements'
+// Inward/Outward forms and could silently diverge from them (this is the
+// same root cause as the "No of Barrels" removal earlier today — see
+// StockLotModal.tsx's own comment and stock_movements_module.md). Stockbook
+// is now purely a read-only ledger view; all changes to a lot's quantities
+// go through Stock Movements (src/pages/StockMovements.tsx) instead.
+// StockLotModal.tsx itself is left on disk unused rather than deleted, in
+// case anything still references it.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Pencil, Trash2, RefreshCw, Warehouse } from 'lucide-react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, Warehouse } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockLot } from '../lib/types';
-import { StockLotModal } from '../components/StockLotModal';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 
@@ -60,8 +67,6 @@ export function Stockbook() {
   const [sortCol, setSortCol] = useState<string>('serialNo');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingLot, setEditingLot] = useState<StockLot | null>(null);
   // Single scroll container for both axes — sticky headers below need to
   // stick to the SAME element that scrolls vertically, and nesting a
   // separate overflow-x-auto div inside a separate overflow-y-auto one
@@ -111,14 +116,6 @@ export function Stockbook() {
     });
     return list;
   }, [lots, search, sortCol, sortDir]);
-
-  const openEdit = (lot: StockLot) => { setEditingLot(lot); setModalOpen(true); };
-
-  const handleDelete = async (lot: StockLot) => {
-    if (!window.confirm(`Delete stock lot "${lot.productName}" (${lot.whLotNo || lot.factLotNo || 'no lot no.'})?`)) return;
-    const { error } = await supabase.from('stock_lots').delete().eq('id', lot.id);
-    if (!error) setLots(prev => prev.filter(l => l.id !== lot.id));
-  };
 
   // sticky top-0 + z-10 + an explicit (non-transparent) background pins
   // these header cells to the top of the table's own scroll container as
@@ -209,14 +206,13 @@ export function Stockbook() {
                 <SortTh col="quantity" label="Total Quantity" />
                 <SortTh col="make" label="Make" />
                 <Th label="Remark" />
-                <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[70px]" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={21} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+                <tr><td colSpan={21} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
                 filtered.map(l => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -271,26 +267,6 @@ export function Stockbook() {
                         : '—'}
                     </td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g500 max-w-[220px] truncate" title={l.remark}>{l.remark || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top">
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(l)}
-                          className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(l)}
-                          className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </td>
                   </tr>
                 ))
               )}
@@ -300,15 +276,6 @@ export function Stockbook() {
       </div>
       <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
       <FloatingVerticalScrollbar containerRef={tableScrollRef} horizontalContainerRef={tableScrollRef} />
-
-      {editingLot && (
-        <StockLotModal
-          open={modalOpen}
-          lot={editingLot}
-          onClose={() => setModalOpen(false)}
-          onSaved={load}
-        />
-      )}
     </div>
   );
 }
