@@ -48,11 +48,22 @@
 // treatment here. When movementId is present, this page fetches that one
 // stock_movements row directly (this module is self-contained — no global
 // store cache of movements to read from, unlike NewOrder.tsx/data.orders),
-// pre-fills the form, and save() reverses the OLD entry's effect on
-// stock_lots before re-applying the edited one — the exact reversal/reapply
-// logic InwardEditModal.tsx used to do. InwardEditModal.tsx itself is no
-// longer used by src/pages/StockMovements.tsx but is left on disk unused
-// rather than deleted, in case anything still references it.
+// pre-fills the form, and save() applies the edited quantities/details
+// straight onto the SAME stock_lots row this movement is already linked to.
+// InwardEditModal.tsx itself is no longer used by src/pages/StockMovements.tsx
+// but is left on disk unused rather than deleted, in case anything still
+// references it.
+//
+// 2026-09-05 (bugfix, same day): editing an entry was creating a duplicate
+// row in Stockbook instead of updating the original one. Root cause: the
+// save() edit-mode logic re-found "the new lot" via a fresh lot-no lookup
+// after reversing the old one, instead of reusing one fixed row throughout —
+// any mismatch between those two lookups (e.g. this movement's lot having
+// never been created in stock_lots to begin with, a separate pre-existing
+// issue) silently fell into the insert-a-new-lot branch. Fixed by resolving
+// the linked stock_lots row's id ONCE when the page loads (see `original`
+// state below) and updating that same id directly in save(), rather than
+// matching by lot-no string a second time.
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -105,13 +116,24 @@ export function NewStockInward() {
   // Captured once, when loading an existing entry for editing — the values
   // stock_lots was last adjusted with, so save() can reverse that OLD effect
   // before applying the edited one. Not kept in sync with `form` afterward.
-  const [original, setOriginal] = useState<{ warehouse: string; whLotNo: string; totalQty: number; noOfBarrels: string } | null>(null);
+  // 2026-09-05 (bugfix): also captures lotId — the id of the stock_lots row
+  // this movement is actually linked to, resolved once here by matching its
+  // wh_lot_no. save() now reuses THIS SAME id for both the reversal and the
+  // re-apply, instead of re-matching "the new lot" by lot-no string a second
+  // time — that second lookup was the bug: if the lot no wasn't changed it
+  // should always re-find the same row, but any mismatch (a rename, or a
+  // lot that never got created for this movement in the first place) made
+  // it fall into the insert-a-new-lot branch, so editing an entry could
+  // spin off a duplicate row in Stockbook instead of updating the original
+  // one. Tying the edit to the id captured here removes that ambiguity.
+  const [original, setOriginal] = useState<{ warehouse: string; whLotNo: string; totalQty: number; noOfBarrels: string; lotId: string | null } | null>(null);
 
   useEffect(() => {
     if (!movementId) return;
     let cancelled = false;
     setLoadingMovement(true);
-    supabase.from('stock_movements').select('*').eq('id', movementId).single().then(({ data, error: fetchErr }) => {
+    (async () => {
+      const { data, error: fetchErr } = await supabase.from('stock_movements').select('*').eq('id', movementId).single();
       if (cancelled) return;
       if (fetchErr || !data) {
         setError(fetchErr?.message || 'Could not load this Inward entry.');
@@ -137,14 +159,23 @@ export function NewStockInward() {
         coaFile: data.coa_file || '',
         coaUrl: data.coa_url || '',
       });
+
+      let lotId: string | null = null;
+      if (data.wh_lot_no) {
+        const { data: lotRows } = await supabase.from('stock_lots').select('id').ilike('wh_lot_no', data.wh_lot_no).limit(1);
+        lotId = lotRows?.[0]?.id ?? null;
+      }
+      if (cancelled) return;
+
       setOriginal({
         warehouse: data.warehouse || '',
         whLotNo: data.wh_lot_no || '',
         totalQty: data.total_qty ?? 0,
         noOfBarrels: data.no_of_barrels || '',
+        lotId,
       });
       setLoadingMovement(false);
-    });
+    })();
     return () => { cancelled = true; };
   }, [movementId]);
 
@@ -278,36 +309,56 @@ export function NewStockInward() {
     // not Total Quantity — see the file-header comment above.
     const barrels = num(form.noOfBarrels);
 
-    // Editing an existing entry: reverse the OLD entry's effect on
-    // stock_lots (using the values it had before this edit), then re-apply
-    // the NEW (edited) effect — same reversal/reapply InwardEditModal.tsx
-    // used to do, now inlined here since editing is a full page. If the old
-    // and new lot are the same lot, the two steps net out to the correct
-    // delta. This branch UPDATEs the existing stock_movements row instead of
-    // inserting a new one, then returns — the create-new-entry flow below
-    // never runs for an edit.
+    // Editing an existing entry: apply the edited quantities/details to the
+    // SAME stock_lots row this movement is already linked to (original.lotId,
+    // resolved once when the page loaded) — one update, one row, always.
+    // 2026-09-05 (bugfix): previously this re-matched "the new lot" by lot-no
+    // string in a separate lookup after reversing the old one; if that
+    // lookup didn't land on the same row (e.g. the lot for this movement had
+    // never been created, a separate known issue), it silently created a
+    // brand-new stock_lots row instead — editing an entry could spin off a
+    // duplicate in Stockbook rather than updating the original. Using the id
+    // captured at load time removes that ambiguity. The only remaining
+    // lookup-by-lot-no fallback is for a movement whose lot truly doesn't
+    // exist yet (original.lotId is null) — same as a fresh Inward entry.
     if (isEditing && movementId && original) {
       const oldPartyCol = PARTY_COLUMN[original.warehouse];
       const newPartyCol = PARTY_COLUMN[form.warehouse];
       const oldBarrels = num(original.noOfBarrels) ?? 0;
 
-      if (oldPartyCol && original.whLotNo) {
-        const { data: oldLots, error: findOldErr } = await supabase
-          .from('stock_lots').select('*').ilike('wh_lot_no', original.whLotNo).limit(1);
-        if (findOldErr) { setError(findOldErr.message); setSaving(false); return; }
-        const oldLot = oldLots?.[0];
-        if (oldLot) {
-          const { error: revErr } = await supabase.from('stock_lots').update({
-            [oldPartyCol]: (oldLot[oldPartyCol] ?? 0) - oldBarrels,
-            quantity: (oldLot.quantity ?? 0) - original.totalQty,
-            updated_at: new Date().toISOString(),
-            updated_by: user?.email ?? null,
-          }).eq('id', oldLot.id);
-          if (revErr) { setError(revErr.message); setSaving(false); return; }
-        }
-      }
+      if (original.lotId) {
+        const { data: lotRow, error: lotFetchErr } = await supabase
+          .from('stock_lots').select('*').eq('id', original.lotId).single();
+        if (lotFetchErr || !lotRow) { setError(lotFetchErr?.message || 'Could not load the linked stock lot.'); setSaving(false); return; }
 
-      if (newPartyCol && whLotNo) {
+        const patch: Record<string, any> = {
+          product_name: form.productName.trim(),
+          wh_lot_no: whLotNo,
+          fact_lot_no: form.factLotNo.trim() || null,
+          product_code: form.productCode.trim() || null,
+          inward_date: form.inwardDate,
+          no_of_barrels: form.noOfBarrels.trim() || null,
+          mou: form.weightType || null,
+          packing_type: form.packagingType || null,
+          packing_detail: form.packingDetail.trim() || null,
+          make: form.make.trim() || null,
+          remark: form.remark.trim() || null,
+          sample_off: form.sampleOff,
+          coa_file: form.coaFile.trim() || null,
+          coa_url: form.coaUrl.trim() || null,
+          updated_at: new Date().toISOString(),
+          updated_by: user?.email ?? null,
+          quantity: (lotRow.quantity ?? 0) - original.totalQty + (totalQty ?? 0),
+        };
+        // Same warehouse: net old-vs-new barrels on that one column. Changed
+        // warehouse: subtract the old contribution from its column, add the
+        // new contribution to the (different) new column.
+        if (oldPartyCol) patch[oldPartyCol] = (lotRow[oldPartyCol] ?? 0) - oldBarrels + (oldPartyCol === newPartyCol ? (barrels ?? 0) : 0);
+        if (newPartyCol && newPartyCol !== oldPartyCol) patch[newPartyCol] = (lotRow[newPartyCol] ?? 0) + (barrels ?? 0);
+
+        const { error: lotErr } = await supabase.from('stock_lots').update(patch).eq('id', original.lotId);
+        if (lotErr) { setError(lotErr.message); setSaving(false); return; }
+      } else if (newPartyCol && whLotNo) {
         const { data: newLots, error: findNewErr } = await supabase
           .from('stock_lots').select('*').ilike('wh_lot_no', whLotNo).limit(1);
         if (findNewErr) { setError(findNewErr.message); setSaving(false); return; }
