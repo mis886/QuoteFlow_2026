@@ -45,6 +45,17 @@ const moduleLabel = (m: string) => MODULE_LABELS[m] ?? m;
 // scoped to this list so that guarantee holds regardless of what gets logged.
 const CRM_MODULES = Object.keys(MODULE_LABELS);
 
+// record_id is the module's own human-readable number only for these four
+// (see insertWithIdRetry()/generateId() in src/store/index.tsx — enquiries
+// get "ENQ-...", quotes "HTP-...", orders "ORD-...", and a followup's
+// record_id is the id of the quote it belongs to). For every other module
+// in CRM_MODULES, record_id is an internal key (a raw id, or for team_roster
+// a composite "email::role::name") that isn't meant for display, so the
+// Module No. column is left blank there instead of showing something ugly.
+const MODULE_NO_MODULES = new Set(['enquiries', 'quotes', 'orders', 'followups']);
+const moduleNo = (row: Pick<ActivityLogRow, 'module' | 'record_id'>) =>
+  MODULE_NO_MODULES.has(row.module) ? row.record_id : '—';
+
 function ActionPill({ action }: { action: ActivityAction }) {
   const styles: Record<ActivityAction, string> = {
     insert: 'bg-sW/10 text-sW border-sW/30',
@@ -116,10 +127,9 @@ export function HistoryLog() {
   const [staffFilter, setStaffFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  // Free-text search — matches the Record column (customer name AND the
-  // module's own number, e.g. "DIP CHEMICAL INDUSTRIES — ORD-2026-476", now
-  // that record_label carries both — see logActivity() call sites in
-  // src/store/index.tsx). Runs server-side (activity_log is paginated, not
+  // Free-text search — matches either of the table's two record columns:
+  // Customer Name (record_label) or Module No. (record_id, e.g.
+  // "ORD-2026-476"). Runs server-side (activity_log is paginated, not
   // loaded in full), so it's applied inside the main query effect below
   // rather than filtered client-side over just the current page.
   const [searchTerm, setSearchTerm] = useState('');
@@ -158,11 +168,22 @@ export function HistoryLog() {
       if (staffFilter) query = query.eq('actor_name', staffFilter);
       if (fromDate) query = query.gte('created_at', `${fromDate}T00:00:00`);
       if (toDate) query = query.lte('created_at', `${toDate}T23:59:59`);
-      // record_label now always carries both the customer name and the
-      // module's own number (e.g. "DIP CHEMICAL INDUSTRIES — ORD-2026-476"
-      // for orders; see logActivity() call sites in src/store/index.tsx), so
-      // a single ilike on it searches both at once.
-      if (searchTerm) query = query.ilike('record_label', `%${searchTerm}%`);
+      // Matches either column shown to the user: the customer name
+      // (record_label) or the module number (record_id, e.g. "ORD-2026-476").
+      // .or() takes a raw PostgREST filter string where `,`, `.`, `:` and `()`
+      // are reserved syntax (comma separates conditions, parens group them) —
+      // unlike a single-column .ilike(), which parameterizes its value safely.
+      // Real customer names in this DB contain both commas and parentheses
+      // (e.g. "... (INDIA) PVT LTD"), which would otherwise split the filter
+      // into malformed fragments and silently return zero rows. Wrapping the
+      // value in double quotes makes PostgREST treat it as an opaque string;
+      // stripping literal double quotes from the input sidesteps having to
+      // handle an escaped-quote-inside-a-quoted-value edge case that a search
+      // box will realistically never need anyway.
+      if (searchTerm) {
+        const safeTerm = searchTerm.replace(/"/g, '');
+        query = query.or(`record_label.ilike."%${safeTerm}%",record_id.ilike."%${safeTerm}%"`);
+      }
       query = query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
       const { data, count, error } = await query;
@@ -248,7 +269,7 @@ export function HistoryLog() {
           <table className="min-w-full border-collapse text-[12.5px]">
             <thead>
               <tr>
-                {['', 'When', 'Who', 'Email', 'Module', 'Record', 'Action'].map(label => (
+                {['', 'When', 'Who', 'Email', 'Module', 'Customer Name', 'Module No.', 'Action'].map(label => (
                   <th key={label}
                     className="sticky top-0 z-10 bg-g100 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 shadow-[0_1px_0_0_theme(colors.g200)] text-g500">
                     {label}
@@ -258,9 +279,9 @@ export function HistoryLog() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={8} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={7} className="text-center p-8 text-g400 text-[13px]">No history matches</td></tr>
+                <tr><td colSpan={8} className="text-center p-8 text-g400 text-[13px]">No history matches</td></tr>
               ) : rows.map(row => {
                 const isExpanded = expandedId === row.id;
                 return (
@@ -278,12 +299,13 @@ export function HistoryLog() {
                       <td className="px-[13px] py-[11px] align-middle font-medium text-blk">{row.actor_name || '—'}</td>
                       <td className="px-[13px] py-[11px] align-middle font-mono text-[10.5px] text-g500">{row.actor_email || '—'}</td>
                       <td className="px-[13px] py-[11px] align-middle text-g600">{moduleLabel(row.module)}</td>
-                      <td className="px-[13px] py-[11px] align-middle text-blk font-medium">{row.record_label || row.record_id}</td>
+                      <td className="px-[13px] py-[11px] align-middle text-blk font-medium">{row.record_label || '—'}</td>
+                      <td className="px-[13px] py-[11px] align-middle font-mono text-[11px] text-g600">{moduleNo(row)}</td>
                       <td className="px-[13px] py-[11px] align-middle"><ActionPill action={row.action} /></td>
                     </tr>
                     {isExpanded && (
                       <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">
-                        <td colSpan={7} className="p-0">
+                        <td colSpan={8} className="p-0">
                           <div className="p-[12px_16px]">
                             <ChangesDetail action={row.action} changes={row.changes} />
                           </div>
