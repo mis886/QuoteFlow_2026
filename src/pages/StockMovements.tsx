@@ -136,12 +136,28 @@ export function StockMovements() {
         const { data: lots } = await supabase.from('stock_lots').select('*').ilike('wh_lot_no', whLotNo).limit(1);
         const lot = lots?.[0];
         if (lot) {
-          await supabase.from('stock_lots').update({
-            [partyCol]: (lot[partyCol] ?? 0) + delta,
-            quantity: (lot.quantity ?? 0) + delta,
-            updated_at: new Date().toISOString(),
-            updated_by: user?.email ?? null,
-          }).eq('id', lot.id);
+          const newQuantity = (lot.quantity ?? 0) + delta;
+          if (newQuantity <= 0) {
+            // The entry being deleted was the only thing keeping this lot's
+            // Total Quantity above zero — e.g. it was the sole Inward entry
+            // that ever created this lot. Leaving behind a zeroed-out row
+            // (every descriptive field still filled in, but every quantity
+            // column reading 0) reads as a stale "ghost" lot in Stockbook,
+            // not as "this entry was undone" — so the whole stock_lots row
+            // is removed instead of updated to a zero. If OTHER movements
+            // still reference this same wh_lot_no, they simply won't find a
+            // matching lot next time (same as any Stock Movements entry
+            // whose lot was never created / already deleted directly from
+            // Stockbook) rather than corrupting a lot that's still in use.
+            await supabase.from('stock_lots').delete().eq('id', lot.id);
+          } else {
+            await supabase.from('stock_lots').update({
+              [partyCol]: (lot[partyCol] ?? 0) + delta,
+              quantity: newQuantity,
+              updated_at: new Date().toISOString(),
+              updated_by: user?.email ?? null,
+            }).eq('id', lot.id);
+          }
         }
       } catch (e) {
         console.error('Stock Movements delete: stock_lots reversal failed (movement is still deleted):', e);
