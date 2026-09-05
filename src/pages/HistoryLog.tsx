@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronRight, ChevronDown, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, X, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fmtIST } from '../lib/utils';
 
@@ -116,6 +116,21 @@ export function HistoryLog() {
   const [staffFilter, setStaffFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  // Free-text search — matches the Record column (customer name AND the
+  // module's own number, e.g. "DIP CHEMICAL INDUSTRIES — ORD-2026-476", now
+  // that record_label carries both — see logActivity() call sites in
+  // src/store/index.tsx). Runs server-side (activity_log is paginated, not
+  // loaded in full), so it's applied inside the main query effect below
+  // rather than filtered client-side over just the current page.
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+
+  // Debounced: only re-queries 300ms after the user stops typing, so every
+  // keystroke doesn't fire its own request.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const [staffOptions, setStaffOptions] = useState<string[]>([]);
 
@@ -132,7 +147,7 @@ export function HistoryLog() {
 
   useEffect(() => {
     setPage(0);
-  }, [moduleFilter, staffFilter, fromDate, toDate]);
+  }, [moduleFilter, staffFilter, fromDate, toDate, searchTerm]);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +158,11 @@ export function HistoryLog() {
       if (staffFilter) query = query.eq('actor_name', staffFilter);
       if (fromDate) query = query.gte('created_at', `${fromDate}T00:00:00`);
       if (toDate) query = query.lte('created_at', `${toDate}T23:59:59`);
+      // record_label now always carries both the customer name and the
+      // module's own number (e.g. "DIP CHEMICAL INDUSTRIES — ORD-2026-476"
+      // for orders; see logActivity() call sites in src/store/index.tsx), so
+      // a single ilike on it searches both at once.
+      if (searchTerm) query = query.ilike('record_label', `%${searchTerm}%`);
       query = query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
       const { data, count, error } = await query;
@@ -153,12 +173,12 @@ export function HistoryLog() {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [moduleFilter, staffFilter, fromDate, toDate, page]);
+  }, [moduleFilter, staffFilter, fromDate, toDate, searchTerm, page]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const hasFilters = moduleFilter || staffFilter || fromDate || toDate;
+  const hasFilters = moduleFilter || staffFilter || fromDate || toDate || searchTerm;
 
-  const clearFilters = () => { setModuleFilter(''); setStaffFilter(''); setFromDate(''); setToDate(''); };
+  const clearFilters = () => { setModuleFilter(''); setStaffFilter(''); setFromDate(''); setToDate(''); setSearchInput(''); };
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -178,6 +198,17 @@ export function HistoryLog() {
 
       {/* Filters */}
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-2">
+        <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[240px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
+          <Search size={11} className="text-g400 shrink-0" />
+          <input
+            type="text"
+            placeholder="Customer name, order/quote/enquiry no..."
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
+          />
+        </div>
+
         <select title="Filter by module" value={moduleFilter} onChange={e => setModuleFilter(e.target.value)}
           className="select-filter font-sans text-xs text-blk bg-white border border-g200 rounded py-1 pl-2 pr-6 cursor-pointer outline-none appearance-none">
           <option value="">All Modules</option>

@@ -768,7 +768,7 @@ const mapEnquiryToDB = (e: any) => {
     );
     if (!error) {
       setData(prev => ({ ...prev, enquiries: [finalRecord, ...prev.enquiries] }));
-      logActivity({ module: 'enquiries', recordId: finalRecord.id, recordLabel: finalRecord.id, action: 'insert', after: finalRecord });
+      logActivity({ module: 'enquiries', recordId: finalRecord.id, recordLabel: finalRecord.cust ? `${finalRecord.cust} — ${finalRecord.id}` : finalRecord.id, action: 'insert', after: finalRecord });
     } else {
       console.error('Error adding enquiry:', error);
       throw new Error(error.message || 'Error adding enquiry');
@@ -784,7 +784,7 @@ const mapEnquiryToDB = (e: any) => {
         ...prev,
         enquiries: prev.enquiries.map(e => e.id === id ? { ...e, ...updates } : e)
       }));
-      logActivity({ module: 'enquiries', recordId: id, recordLabel: id, action: 'update', before, after: before ? { ...before, ...updates } : updates });
+      logActivity({ module: 'enquiries', recordId: id, recordLabel: before?.cust ? `${before.cust} — ${id}` : id, action: 'update', before, after: before ? { ...before, ...updates } : updates });
     } else {
       console.error('Error updating enquiry:', error);
       throw error;
@@ -806,7 +806,7 @@ const mapEnquiryToDB = (e: any) => {
       quotes: prev.quotes.map(q => q.enqRef === id ? { ...q, enqRef: null } : q),
       orders: prev.orders.map(o => o.enqRef === id ? { ...o, enqRef: null } : o),
     }));
-    logActivity({ module: 'enquiries', recordId: id, recordLabel: id, action: 'delete', before });
+    logActivity({ module: 'enquiries', recordId: id, recordLabel: before?.cust ? `${before.cust} — ${id}` : id, action: 'delete', before });
   };
 
   const addQuote = async (quote: Quote) => {
@@ -822,7 +822,7 @@ const mapEnquiryToDB = (e: any) => {
     );
     if (!error) {
       setData(prev => ({ ...prev, quotes: [finalRecord, ...prev.quotes] }));
-      logActivity({ module: 'quotes', recordId: finalRecord.id, recordLabel: finalRecord.id, action: 'insert', after: finalRecord });
+      logActivity({ module: 'quotes', recordId: finalRecord.id, recordLabel: finalRecord.cust ? `${finalRecord.cust} — ${finalRecord.id}` : finalRecord.id, action: 'insert', after: finalRecord });
     } else {
       console.error('Error adding quote:', error);
       throw error;
@@ -838,7 +838,7 @@ const mapEnquiryToDB = (e: any) => {
         ...prev,
         quotes: prev.quotes.map(q => q.id === id ? { ...q, ...updates } : q)
       }));
-      logActivity({ module: 'quotes', recordId: id, recordLabel: id, action: 'update', before, after: before ? { ...before, ...updates } : updates });
+      logActivity({ module: 'quotes', recordId: id, recordLabel: before?.cust ? `${before.cust} — ${id}` : id, action: 'update', before, after: before ? { ...before, ...updates } : updates });
     } else {
       console.error('Error updating quote:', error);
       throw error;
@@ -860,7 +860,7 @@ const mapEnquiryToDB = (e: any) => {
       orders: prev.orders.map(o => o.quoteRef === id ? { ...o, quoteRef: null } : o),
       followups: prev.followups.map((f: any) => f.quote_id === id ? { ...f, quote_id: null } : f),
     }));
-    logActivity({ module: 'quotes', recordId: id, recordLabel: id, action: 'delete', before });
+    logActivity({ module: 'quotes', recordId: id, recordLabel: before?.cust ? `${before.cust} — ${id}` : id, action: 'delete', before });
   };
 
   const addOrder = async (order: Order) => {
@@ -876,7 +876,7 @@ const mapEnquiryToDB = (e: any) => {
     );
     if (!error) {
       setData(prev => ({ ...prev, orders: [finalRecord, ...prev.orders] }));
-      logActivity({ module: 'orders', recordId: finalRecord.id, recordLabel: finalRecord.poNo || finalRecord.id, action: 'insert', after: finalRecord });
+      logActivity({ module: 'orders', recordId: finalRecord.id, recordLabel: finalRecord.cust ? `${finalRecord.cust} — ${finalRecord.id}` : finalRecord.id, action: 'insert', after: finalRecord });
     } else {
       console.error('Error adding order:', error);
       throw error;
@@ -893,7 +893,8 @@ const mapEnquiryToDB = (e: any) => {
         orders: prev.orders.map(o => o.id === id ? { ...o, ...updates } : o)
       }));
       const after = before ? { ...before, ...updates } : updates;
-      logActivity({ module: 'orders', recordId: id, recordLabel: (after as Order).poNo || id, action: 'update', before, after });
+      const orderCust = (after as Order).cust;
+      logActivity({ module: 'orders', recordId: id, recordLabel: orderCust ? `${orderCust} — ${id}` : id, action: 'update', before, after });
     } else {
       console.error('Error updating order:', error);
       throw error;
@@ -905,7 +906,7 @@ const mapEnquiryToDB = (e: any) => {
     const { error } = await supabase.from('orders').delete().eq('id', id);
     if (!error) {
       setData(prev => ({ ...prev, orders: prev.orders.filter(o => o.id !== id) }));
-      logActivity({ module: 'orders', recordId: id, recordLabel: before?.poNo || id, action: 'delete', before });
+      logActivity({ module: 'orders', recordId: id, recordLabel: before?.cust ? `${before.cust} — ${id}` : id, action: 'delete', before });
     } else {
       console.error('Error deleting order:', error);
       throw error;
@@ -1252,7 +1253,8 @@ const mapEnquiryToDB = (e: any) => {
     // A followup row has no customer name of its own — look it up via the
     // quote it belongs to so the History Log shows something recognizable
     // instead of just the quote id repeated in both columns.
-    const followUpLabel = data.quotes.find(q => q.id === quoteId)?.cust || quoteId;
+    const followUpCust = data.quotes.find(q => q.id === quoteId)?.cust;
+    const followUpLabel = followUpCust ? `${followUpCust} — ${quoteId}` : quoteId;
 
     if (existing) {
       const updatedLogs = [log, ...existing.logs];
@@ -1354,12 +1356,13 @@ const mapEnquiryToDB = (e: any) => {
       ...prev,
       enquiries: prev.enquiries.map(e => e.id === enqId ? { ...e, status: enqStatus } : e),
     }));
-    logActivity({ module: 'enquiries', recordId: enqId, recordLabel: enqId, action: 'update', before: enq, after: { ...enq, status: enqStatus } });
+    logActivity({ module: 'enquiries', recordId: enqId, recordLabel: enq.cust ? `${enq.cust} — ${enqId}` : enqId, action: 'update', before: enq, after: { ...enq, status: enqStatus } });
   };
 
   const closeFollowUp = async (quoteId: string, outcome: PipelineOutcome = 'Other') => {
     const existingFollowUp = data.followups.find(f => f.quote_id === quoteId);
-    const followUpLabel = data.quotes.find(q => q.id === quoteId)?.cust || quoteId;
+    const followUpCust = data.quotes.find(q => q.id === quoteId)?.cust;
+    const followUpLabel = followUpCust ? `${followUpCust} — ${quoteId}` : quoteId;
     const nowIso = new Date().toISOString();
 
     const { error } = await supabase
@@ -1392,7 +1395,7 @@ const mapEnquiryToDB = (e: any) => {
         .update({ status: outcome })
         .eq('id', quoteId);
       if (qErr) console.error('Error updating quote status:', qErr);
-      else logActivity({ module: 'quotes', recordId: quoteId, recordLabel: quoteId, action: 'update', before: quoteBefore, after: quoteBefore ? { ...quoteBefore, status: outcome } : undefined });
+      else logActivity({ module: 'quotes', recordId: quoteId, recordLabel: quoteBefore?.cust ? `${quoteBefore.cust} — ${quoteId}` : quoteId, action: 'update', before: quoteBefore, after: quoteBefore ? { ...quoteBefore, status: outcome } : undefined });
       // Propagate to the parent enquiry so enquiry-based views stay in sync.
       await syncEnquiryStatusForQuote(quoteId, outcome);
     }
@@ -1414,7 +1417,8 @@ const mapEnquiryToDB = (e: any) => {
     const nowIso = new Date().toISOString();
     const isClosed = stage === 'Closed';
     const existing = data.followups.find(f => f.quote_id === quoteId);
-    const followUpLabel = data.quotes.find(q => q.id === quoteId)?.cust || quoteId;
+    const followUpCust = data.quotes.find(q => q.id === quoteId)?.cust;
+    const followUpLabel = followUpCust ? `${followUpCust} — ${quoteId}` : quoteId;
 
     const update: Record<string, any> = {
       stage,
@@ -1452,7 +1456,7 @@ const mapEnquiryToDB = (e: any) => {
       const quoteBefore = data.quotes.find(q => q.id === quoteId);
       const { error: qErr } = await supabase.from('quotes').update({ status: resolvedOutcome }).eq('id', quoteId);
       if (qErr) console.error('Error updating quote status on stage close:', qErr);
-      else logActivity({ module: 'quotes', recordId: quoteId, recordLabel: quoteId, action: 'update', before: quoteBefore, after: quoteBefore ? { ...quoteBefore, status: resolvedOutcome } : undefined });
+      else logActivity({ module: 'quotes', recordId: quoteId, recordLabel: quoteBefore?.cust ? `${quoteBefore.cust} — ${quoteId}` : quoteId, action: 'update', before: quoteBefore, after: quoteBefore ? { ...quoteBefore, status: resolvedOutcome } : undefined });
       await syncEnquiryStatusForQuote(quoteId, resolvedOutcome);
     }
 
@@ -1474,7 +1478,8 @@ const mapEnquiryToDB = (e: any) => {
     // restarts that stage's TAT clock.
     const nowIso = new Date().toISOString();
     const existingFollowUp = data.followups.find(f => f.quote_id === quoteId);
-    const followUpLabel = data.quotes.find(q => q.id === quoteId)?.cust || quoteId;
+    const followUpCust = data.quotes.find(q => q.id === quoteId)?.cust;
+    const followUpLabel = followUpCust ? `${followUpCust} — ${quoteId}` : quoteId;
     const { error } = await supabase
       .from('followups')
       .update({ status: 'open', stage: 'Negotiation', outcome: null, stage_entered_at: nowIso, updated_at: nowIso })
@@ -1492,7 +1497,7 @@ const mapEnquiryToDB = (e: any) => {
     const quoteBefore = data.quotes.find(q => q.id === quoteId);
     const { error: qErr } = await supabase.from('quotes').update({ status: 'Sent' }).eq('id', quoteId);
     if (qErr) console.error('Error resetting quote status on reopen:', qErr);
-    else logActivity({ module: 'quotes', recordId: quoteId, recordLabel: quoteId, action: 'update', before: quoteBefore, after: quoteBefore ? { ...quoteBefore, status: 'Sent' } : undefined });
+    else logActivity({ module: 'quotes', recordId: quoteId, recordLabel: quoteBefore?.cust ? `${quoteBefore.cust} — ${quoteId}` : quoteId, action: 'update', before: quoteBefore, after: quoteBefore ? { ...quoteBefore, status: 'Sent' } : undefined });
     // The enquiry had a quote, so it returns to 'Quoted' (not Won/Lost).
     await syncEnquiryStatusForQuote(quoteId, 'Quoted');
 
