@@ -30,9 +30,16 @@ interface Props {
   onSaved: () => void | Promise<void>;
 }
 
+// No of Barrels is deliberately NOT editable here (2026-09-05): it used to be
+// its own independent field, separate from the qty_* party columns below —
+// editing it here silently diverged from the barrel count Stock Movements'
+// Inward/Outward forms track per warehouse, which was confusing (this field
+// could say one number while the real per-party total said another). The
+// per-warehouse columns are now the single source of truth for barrel count;
+// see src/pages/NewStockInward.tsx's 2026-09-05 comment.
 const emptyForm = {
   whLotNo: '', factLotNo: '', productCode: '', productName: '',
-  inwardDate: '', sampleOff: false, noOfBarrels: '', coaFile: '',
+  inwardDate: '', sampleOff: false, coaFile: '',
   qtyHariom: '', qtyWadaHe: '', qtyHe: '', qtyReliable: '', qtySwastik: '', qtyBalaji: '', qtyWada: '',
   packing: '', mou: '', packingType: '', quantity: '', make: '', remark: '',
 };
@@ -52,7 +59,6 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
       productName: lot.productName || '',
       inwardDate: lot.inwardDate || '',
       sampleOff: !!lot.sampleOff,
-      noOfBarrels: lot.noOfBarrels || '',
       coaFile: lot.coaFile || '',
       qtyHariom: lot.qtyHariom?.toString() ?? '',
       qtyWadaHe: lot.qtyWadaHe?.toString() ?? '',
@@ -90,7 +96,6 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
       product_name: form.productName.trim(),
       inward_date: form.inwardDate || null,
       sample_off: form.sampleOff,
-      no_of_barrels: form.noOfBarrels.trim() || null,
       coa_file: form.coaFile.trim() || null,
       qty_hariom: num(form.qtyHariom),
       qty_wada_he: num(form.qtyWadaHe),
@@ -152,7 +157,6 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
                   Sample Off
                 </label>
               </div>
-              <Field label="No of Barrels"><input type="number" className={inp} value={form.noOfBarrels} onChange={set('noOfBarrels')} /></Field>
             </div>
           </div>
 

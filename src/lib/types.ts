@@ -552,7 +552,13 @@ export interface StockLot {
   productName: string;
   inwardDate?: string;        // ISO date
   sampleOff: boolean;
-  noOfBarrels?: string;        // no_of_barrels column — shared with the Stock Inward form
+  // No of Barrels used to be its own field here — removed from the Stockbook
+  // UI 2026-09-05 (see StockLotModal.tsx's comment): it was editable
+  // independently of the qty_* party columns below and could silently
+  // diverge from the real per-warehouse barrel count that Stock Movements'
+  // Inward/Outward forms track. The stock_lots.no_of_barrels column still
+  // exists and is still written once at lot creation (NewStockInward.tsx),
+  // but Stockbook no longer reads or edits it.
   coaFile?: string;
   coaUrl?: string;             // public Supabase Storage URL for the actual COA PDF, when one has been uploaded/matched
   qtyHariom?: number;

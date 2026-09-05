@@ -28,7 +28,6 @@ function mapRow(r: any): StockLot {
     productName: r.product_name,
     inwardDate: r.inward_date ?? undefined,
     sampleOff: !!r.sample_off,
-    noOfBarrels: r.no_of_barrels ?? undefined,
     coaFile: r.coa_file ?? undefined,
     coaUrl: r.coa_url ?? undefined,
     qtyHariom: r.qty_hariom ?? undefined,
@@ -196,7 +195,6 @@ export function Stockbook() {
                 <SortTh col="productName" label="Product Name" />
                 <SortTh col="inwardDate" label="Inward Date" />
                 <Th label="Sample Off" />
-                <Th label="No of Barrels" />
                 <Th label="COA" />
                 <Th label="Hariom" />
                 <Th label="Wada-HE" />
@@ -216,9 +214,9 @@ export function Stockbook() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
                 filtered.map(l => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -233,7 +231,6 @@ export function Stockbook() {
                         ? <span className="text-[10px] font-semibold text-sW">Yes</span>
                         : <span className="text-[10px] text-g400">No</span>}
                     </td>
-                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{l.noOfBarrels || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] whitespace-nowrap max-w-[160px] truncate">
                       {l.coaUrl ? (
                         <a
