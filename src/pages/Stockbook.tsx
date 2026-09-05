@@ -16,9 +16,19 @@
 // go through Stock Movements (src/pages/StockMovements.tsx) instead.
 // StockLotModal.tsx itself is left on disk unused rather than deleted, in
 // case anything still references it.
+//
+// 2026-09-05 (later, same day): Delete was asked back — user wants to be
+// able to remove a whole row/lot from Stockbook, just not edit its numbers
+// directly (Edit is deliberately NOT restored — that's the part that caused
+// the earlier confusion). Delete here is a plain confirm-then-delete of the
+// stock_lots row, same as it worked before the removal above — it does NOT
+// touch stock_movements (the Inward/Outward audit log is unaffected; if
+// entries referencing this lot no still exist there, they simply won't find
+// a matching lot next time, same as the existing behavior documented in
+// StockMovements.tsx's own handleDelete comment).
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, Warehouse } from 'lucide-react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Trash2, RefreshCw, Warehouse } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockLot } from '../lib/types';
@@ -87,6 +97,12 @@ export function Stockbook() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const handleDelete = async (lot: StockLot) => {
+    if (!window.confirm(`Delete stock lot "${lot.productName}" (${lot.whLotNo || lot.factLotNo || 'no lot no.'})? This only removes it from Stockbook — it does not touch any Stock Movements entries.`)) return;
+    const { error } = await supabase.from('stock_lots').delete().eq('id', lot.id);
+    if (!error) setLots(prev => prev.filter(l => l.id !== lot.id));
+  };
 
   const toggleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
@@ -206,13 +222,14 @@ export function Stockbook() {
                 <SortTh col="quantity" label="Total Quantity" />
                 <SortTh col="make" label="Make" />
                 <Th label="Remark" />
+                <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[50px]" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={21} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={21} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
                 filtered.map(l => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -267,6 +284,18 @@ export function Stockbook() {
                         : '—'}
                     </td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g500 max-w-[220px] truncate" title={l.remark}>{l.remark || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top">
+                      <div className="flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(l)}
+                          className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
