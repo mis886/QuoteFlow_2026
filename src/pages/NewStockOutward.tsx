@@ -9,10 +9,16 @@
 //      immutable audit trail.
 //   2. IF a Lot No was given and it matches an existing stock_lots row
 //      AND the Warehouse is one of the 5 known parties (not "Other"),
-//      decrements that party's qty_* column and stock_lots.quantity by
-//      Total Quantity. Otherwise (no Lot No, no match, or Warehouse
-//      "Other") the movement is still logged — the stock_lots side is
-//      best-effort and never blocks the save.
+//      decrements stock_lots.quantity by Total Quantity and that party's
+//      qty_* column by Number of Articles (barrel/article count — same
+//      "party column tracks count, not quantity" rule as Inward's
+//      no_of_barrels; see NewStockInward.tsx's 2026-09-05 comment).
+//      Otherwise (no Lot No, no match, or Warehouse "Other") the movement
+//      is still logged — the stock_lots side is best-effort and never
+//      blocks the save. Number of Articles isn't a required field here
+//      (unlike Inward's No of Barrels), so an Outward entry that leaves it
+//      blank won't move the party column at all, even though Total
+//      Quantity still goes down — fill it in when it's known.
 // See src/pages/StockMovements.tsx for the list view and
 // supabase/migrations/20260903120000_stock_movements_add_outward_columns.sql /
 // 20260903120100_stock_movements_lot_no_nullable.sql /
@@ -100,6 +106,9 @@ export function NewStockOutward() {
     const warehouseToSave = isOtherWarehouse ? form.otherWarehouse.trim() : form.warehouse;
     const lotNo = form.lotNo.trim();
     const totalQty = num(form.totalQty);
+    // The party column tracks Number of Articles (barrel/article count),
+    // not Total Quantity — see the file-header comment above.
+    const numArticles = num(form.numArticles);
 
     const movementPayload = {
       type: 'outward',
@@ -141,7 +150,7 @@ export function NewStockOutward() {
         if (existing) {
           await supabase.from('stock_lots')
             .update({
-              [partyCol]: (existing[partyCol] ?? 0) - (totalQty ?? 0),
+              [partyCol]: (existing[partyCol] ?? 0) - (numArticles ?? 0),
               quantity: (existing.quantity ?? 0) - (totalQty ?? 0),
               updated_at: new Date().toISOString(),
               updated_by: user?.email ?? null,

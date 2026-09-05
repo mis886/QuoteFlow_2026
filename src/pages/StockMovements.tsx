@@ -128,10 +128,16 @@ export function StockMovements() {
     const partyCol = m.type === 'inward' ? INWARD_PARTY_COLUMN[m.warehouse] : OUTWARD_PARTY_COLUMN[m.warehouse];
     const whLotNo = (m.whLotNo || '').trim();
     const qty = m.totalQty ?? 0;
-    if (partyCol && whLotNo && qty) {
-      // Inward added `qty` to the lot, so deleting subtracts it back off.
-      // Outward subtracted `qty`, so deleting adds it back.
+    // The party column tracks barrel/article count (No of Barrels for
+    // Inward, Number of Articles for Outward), NOT Total Quantity — see
+    // NewStockInward.tsx's 2026-09-05 comment — so its delta is computed
+    // from that field, separately from `quantity`'s Total-Quantity-based delta.
+    const partyQty = Number((m.type === 'inward' ? m.noOfBarrels : m.numArticles) || 0) || 0;
+    if (partyCol && whLotNo && (qty || partyQty)) {
+      // Inward added `qty`/`partyQty` to the lot, so deleting subtracts them
+      // back off. Outward subtracted them, so deleting adds them back.
       const delta = m.type === 'inward' ? -qty : qty;
+      const partyDelta = m.type === 'inward' ? -partyQty : partyQty;
       try {
         const { data: lots } = await supabase.from('stock_lots').select('*').ilike('wh_lot_no', whLotNo).limit(1);
         const lot = lots?.[0];
@@ -152,7 +158,7 @@ export function StockMovements() {
             await supabase.from('stock_lots').delete().eq('id', lot.id);
           } else {
             await supabase.from('stock_lots').update({
-              [partyCol]: (lot[partyCol] ?? 0) + delta,
+              [partyCol]: (lot[partyCol] ?? 0) + partyDelta,
               quantity: newQuantity,
               updated_at: new Date().toISOString(),
               updated_by: user?.email ?? null,

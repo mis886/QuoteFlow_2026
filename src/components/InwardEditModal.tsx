@@ -13,11 +13,14 @@
 // same insert/update branching NewStockInward.tsx uses when creating a
 // fresh entry. If the old and new lot are the same lot, the two steps net
 // out to the correct delta. Descriptive-only fields (Make, Remark, Factory
-// Lot Number, No of Barrels, MOU, Packing Type, Packing) are NOT re-applied
-// onto an already-existing stock_lots row — only onto a brand-new one this
-// edit ends up creating — matching NewStockInward.tsx's own behavior
-// (its "existing lot" branch only ever touches the party qty column +
-// quantity, never the descriptive fields).
+// Lot Number, MOU, Packing Type, Packing) are NOT re-applied onto an
+// already-existing stock_lots row — only onto a brand-new one this edit ends
+// up creating — matching NewStockInward.tsx's own behavior (its "existing
+// lot" branch only ever touches the party qty column + quantity, never the
+// descriptive fields). No of Barrels is the one exception: it drives the
+// party qty column's own delta (see NewStockInward.tsx's 2026-09-05 comment)
+// so it IS reversed/re-applied here even on an existing lot, same as
+// Total Quantity is for the plain `quantity` column.
 
 import React, { useEffect, useState } from 'react';
 import { X, Loader2, Search } from 'lucide-react';
@@ -214,8 +217,10 @@ export function InwardEditModal({ open, movement, onClose, onSaved }: Props) {
 
     const newWhLotNo = form.whLotNo.trim();
     const newTotalQty = num(form.totalQty) ?? 0;
+    const newBarrels = num(form.noOfBarrels) ?? 0;
     const oldWhLotNo = (movement.whLotNo || '').trim();
     const oldTotalQty = movement.totalQty ?? 0;
+    const oldBarrels = num(movement.noOfBarrels || '') ?? 0;
     const oldPartyCol = PARTY_COLUMN[movement.warehouse];
     const newPartyCol = PARTY_COLUMN[form.warehouse];
 
@@ -227,7 +232,7 @@ export function InwardEditModal({ open, movement, onClose, onSaved }: Props) {
       const oldLot = oldLots?.[0];
       if (oldLot) {
         const { error: revErr } = await supabase.from('stock_lots').update({
-          [oldPartyCol]: (oldLot[oldPartyCol] ?? 0) - oldTotalQty,
+          [oldPartyCol]: (oldLot[oldPartyCol] ?? 0) - oldBarrels,
           quantity: (oldLot.quantity ?? 0) - oldTotalQty,
           updated_at: new Date().toISOString(),
           updated_by: user?.email ?? null,
@@ -247,7 +252,7 @@ export function InwardEditModal({ open, movement, onClose, onSaved }: Props) {
       const lotErr = newLot
         ? (await supabase.from('stock_lots')
             .update({
-              [newPartyCol]: (newLot[newPartyCol] ?? 0) + newTotalQty,
+              [newPartyCol]: (newLot[newPartyCol] ?? 0) + newBarrels,
               quantity: (newLot.quantity ?? 0) + newTotalQty,
               updated_at: new Date().toISOString(),
               updated_by: user?.email ?? null,
@@ -259,7 +264,7 @@ export function InwardEditModal({ open, movement, onClose, onSaved }: Props) {
             fact_lot_no: form.factLotNo.trim() || null,
             product_code: form.productCode.trim() || null,
             inward_date: form.inwardDate,
-            [newPartyCol]: newTotalQty,
+            [newPartyCol]: newBarrels,
             no_of_barrels: form.noOfBarrels.trim() || null,
             mou: form.mou || null,
             packing_type: form.packingType || null,

@@ -18,6 +18,12 @@
 // still shared with Outward are the party quantity columns (qty_hariom,
 // qty_reliable, qty_swastik, qty_balaji, qty_wada) and quantity/total_qty,
 // matched via wh_lot_no — that's the deliberate reconciliation mechanism.
+// 2026-09-05: the party column tracks the running BARREL count for that
+// party/godown (i.e. No of Barrels), not Total Quantity — quantity/total_qty
+// is the only place Total Quantity (barrels × packing) is meant to show up.
+// Previously both were being set to the same Total Quantity value, which
+// made Stockbook's per-party column redundant with its own Total Quantity
+// column instead of showing barrel counts.
 // product_code is the one exception: it reuses stock_lots' existing column
 // (also edited via StockLotModal.tsx), the same way product_name/wh_lot_no/
 // fact_lot_no already work — populated at lot creation, editable after.
@@ -203,6 +209,9 @@ export function NewStockInward() {
 
     const whLotNo = form.whLotNo.trim();
     const totalQty = num(form.totalQty);
+    // The party column (qty_hariom/qty_reliable/etc.) tracks barrel count,
+    // not Total Quantity — see the file-header comment above.
+    const barrels = num(form.noOfBarrels);
 
     const movementPayload = {
       type: 'inward',
@@ -245,7 +254,7 @@ export function NewStockInward() {
     const lotErr = existing
       ? (await supabase.from('stock_lots')
           .update({
-            [partyCol]: (existing[partyCol] ?? 0) + (totalQty ?? 0),
+            [partyCol]: (existing[partyCol] ?? 0) + (barrels ?? 0),
             quantity: (existing.quantity ?? 0) + (totalQty ?? 0),
             updated_at: new Date().toISOString(),
             updated_by: user?.email ?? null,
@@ -257,7 +266,7 @@ export function NewStockInward() {
           fact_lot_no: form.factLotNo.trim() || null,
           product_code: form.productCode.trim() || null,
           inward_date: form.inwardDate,
-          [partyCol]: totalQty,
+          [partyCol]: barrels,
           no_of_barrels: form.noOfBarrels.trim() || null,
           mou: form.weightType || null,
           packing_type: form.packagingType || null,

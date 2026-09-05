@@ -3,14 +3,18 @@
 // (same convention as StockLotModal.tsx / InwardEditModal.tsx) rather than
 // a full page.
 //
-// Reconciliation: an outward entry's Warehouse/Lot No/Total Quantity drive
-// a best-effort DECREMENT on the matching stock_lots row when the save
-// happens (see NewStockOutward.tsx's save()) — it never blocks the save if
-// no lot matches. Editing one of those fields means the original decrement
-// is stale, so save() here first reverses it (adds the old quantity back to
-// whatever lot the OLD values matched), then re-applies the new decrement
-// (subtracts the new quantity from whatever lot the NEW values match) —
-// both steps best-effort, exactly like the create flow.
+// Reconciliation: an outward entry's Warehouse/Lot No/Total Quantity/Number
+// of Articles drive a best-effort DECREMENT on the matching stock_lots row
+// when the save happens (see NewStockOutward.tsx's save()) — it never blocks
+// the save if no lot matches. quantity is decremented by Total Quantity, but
+// the party qty_* column is decremented by Number of Articles instead — it
+// tracks a barrel/article count, not a quantity (see NewStockInward.tsx's
+// 2026-09-05 comment for the same rule on the Inward side). Editing one of
+// those fields means the original decrement is stale, so save() here first
+// reverses it (adds the old amounts back to whatever lot the OLD values
+// matched), then re-applies the new decrement (subtracts the new amounts
+// from whatever lot the NEW values match) — both steps best-effort, exactly
+// like the create flow.
 
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
@@ -74,15 +78,19 @@ const emptyForm = {
 // Applies a best-effort +/- delta to whichever stock_lots row `whLotNo`
 // matches (via the given party column). Never throws — mirrors
 // NewStockOutward.tsx's try/catch-and-log, non-blocking behavior.
-async function adjustLot(partyCol: string | undefined, whLotNo: string, delta: number, userEmail?: string | null) {
-  if (!partyCol || !whLotNo || !delta) return;
+// qtyDelta (Total Quantity) and partyDelta (Number of Articles — barrel/
+// article count) are separate: the party column tracks count, not
+// quantity, same "party column tracks count, not quantity" rule as
+// Inward's no_of_barrels — see NewStockInward.tsx's 2026-09-05 comment.
+async function adjustLot(partyCol: string | undefined, whLotNo: string, qtyDelta: number, partyDelta: number, userEmail?: string | null) {
+  if (!partyCol || !whLotNo || (!qtyDelta && !partyDelta)) return;
   try {
     const { data: lots } = await supabase.from('stock_lots').select('*').ilike('wh_lot_no', whLotNo).limit(1);
     const lot = lots?.[0];
     if (lot) {
       await supabase.from('stock_lots').update({
-        [partyCol]: (lot[partyCol] ?? 0) + delta,
-        quantity: (lot.quantity ?? 0) + delta,
+        [partyCol]: (lot[partyCol] ?? 0) + partyDelta,
+        quantity: (lot.quantity ?? 0) + qtyDelta,
         updated_at: new Date().toISOString(),
         updated_by: userEmail ?? null,
       }).eq('id', lot.id);
@@ -145,15 +153,17 @@ export function OutwardEditModal({ open, movement, onClose, onSaved }: Props) {
     const warehouseToSave = isOtherWarehouse ? form.otherWarehouse.trim() : form.warehouse;
     const newLotNo = form.lotNo.trim();
     const newTotalQty = num(form.totalQty) ?? 0;
+    const newNumArticles = num(form.numArticles) ?? 0;
     const oldLotNo = (movement.whLotNo || '').trim();
     const oldTotalQty = movement.totalQty ?? 0;
+    const oldNumArticles = num(movement.numArticles || '') ?? 0;
     const oldPartyCol = PARTY_COLUMN[movement.warehouse];
     const newPartyCol = PARTY_COLUMN[warehouseToSave];
 
     // 1. Reverse the OLD entry's decrement (add its quantity back).
-    await adjustLot(oldPartyCol, oldLotNo, oldTotalQty, user?.email);
+    await adjustLot(oldPartyCol, oldLotNo, oldTotalQty, oldNumArticles, user?.email);
     // 2. Re-apply the NEW (edited) decrement.
-    await adjustLot(newPartyCol, newLotNo, -newTotalQty, user?.email);
+    await adjustLot(newPartyCol, newLotNo, -newTotalQty, -newNumArticles, user?.email);
 
     // 3. Update the stock_movements row itself.
     const movementPayload = {
