@@ -375,18 +375,23 @@ export function InwardEditModal({ open, movement, onClose, onSaved }: Props) {
           </div>
 
           <div>
-            <div className="text-[10px] font-mono font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">Sample &amp; COA</div>
-            <label className="inline-flex items-center gap-2 text-[12px] text-g600 cursor-pointer select-none mb-3">
-              <input
-                type="checkbox"
-                checked={form.sampleOff}
-                onChange={e => setForm(f => ({ ...f, sampleOff: e.target.checked }))}
-                className="w-3.5 h-3.5 accent-red-mrt"
-              />
-              Sample Off
-            </label>
+            <div className="text-[10px] font-mono font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">Sample Off</div>
+            <div className="grid grid-cols-4 gap-3">
+              <Field label="Sample Off">
+                <select
+                  className={sel}
+                  value={form.sampleOff ? 'Yes' : 'No'}
+                  onChange={e => setForm(f => ({ ...f, sampleOff: e.target.value === 'Yes' }))}
+                >
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                </select>
+              </Field>
+            </div>
+          </div>
 
-            <label className={lbl}>COA</label>
+          <div>
+            <div className="text-[10px] font-mono font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">COA</div>
             {form.coaFile ? (
               <div className="flex items-center justify-between gap-2 bg-g100 border border-g200 rounded-[3px] px-2.5 py-2">
                 <div className="min-w-0">

@@ -371,18 +371,24 @@ export function NewStockInward() {
           </div>
 
           <div className={cardCls}>
-            <div className={sectionHeaderCls}>Sample &amp; COA</div>
-            <label className="inline-flex items-center gap-2 text-[12px] text-g600 cursor-pointer select-none mb-3">
-              <input
-                type="checkbox"
-                checked={form.sampleOff}
-                onChange={e => setForm(f => ({ ...f, sampleOff: e.target.checked }))}
-                className="w-3.5 h-3.5 accent-red-mrt"
-              />
-              Sample Off
-            </label>
+            <div className={sectionHeaderCls}>Sample Off</div>
+            <div className="grid grid-cols-4 gap-[12px]">
+              <div>
+                <label className={labelCls}>Sample Off</label>
+                <select
+                  className={selectCls}
+                  value={form.sampleOff ? 'Yes' : 'No'}
+                  onChange={e => setForm(f => ({ ...f, sampleOff: e.target.value === 'Yes' }))}
+                >
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                </select>
+              </div>
+            </div>
+          </div>
 
-            <label className={labelCls}>COA</label>
+          <div className={cardCls}>
+            <div className={sectionHeaderCls}>COA</div>
             {form.coaFile ? (
               <div className="flex items-center justify-between gap-2 bg-g100 border border-g200 rounded-[3px] px-2.5 py-2 mb-3">
                 <div className="min-w-0">
