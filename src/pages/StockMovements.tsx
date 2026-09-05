@@ -78,8 +78,13 @@ const OUTWARD_PARTY_COLUMN: Record<string, string> = {
   Hariom: 'qty_hariom', Reliable: 'qty_reliable', Swastik: 'qty_swastik', BALAJI: 'qty_balaji', WADA: 'qty_wada',
 };
 
+// sticky top-0 + z-10 + an explicit (non-transparent) background pins this
+// header cell to the top of the table's own scroll container as the body
+// scrolls past underneath — see the merged single-scroll-axis container
+// (tableScrollRef) below for why this only works reliably once the table
+// has ONE scrolling ancestor instead of two nested ones.
 const Th = ({ label, align }: { label: string; align?: 'right' }) => (
-  <th className={`font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-g500 ${align === 'right' ? 'text-right' : 'text-left'}`}>
+  <th className={`sticky top-0 z-10 bg-g100 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-g500 ${align === 'right' ? 'text-right' : 'text-left'}`}>
     {label}
   </th>
 );
@@ -93,8 +98,15 @@ export function StockMovements() {
   const [tab, setTab] = useState<'inward' | 'outward'>('inward');
   const [editingMovement, setEditingMovement] = useState<StockMovement | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  // Single scroll container for both axes, shared by whichever tab
+  // (Inward/Outward) is currently rendered — sticky headers below need to
+  // stick to the SAME element that scrolls vertically, and nesting a
+  // separate overflow-x-auto div inside a separate overflow-y-auto one
+  // breaks that (the inner div's overflow-x forces its own overflow-y to
+  // compute as "auto" too, per the CSS overflow spec, making IT the sticky
+  // positioning ancestor instead of the actual outer scroller — the classic
+  // "sticky header doesn't stick" nested-scroll-container gotcha).
   const tableScrollRef = useRef<HTMLDivElement>(null);
-  const verticalScrollRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -229,8 +241,8 @@ export function StockMovements() {
       </div>
 
       {tab === 'outward' ? (
-        <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-          <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto m-0">
+        <div className="px-6 pb-7 pt-[14px] flex-1 min-h-0">
+          <div ref={tableScrollRef} className="h-full bg-white border border-g200 overflow-auto m-0">
             <table className="w-full border-collapse text-[12px]">
               <thead className="bg-g100">
                 <tr>
@@ -248,7 +260,7 @@ export function StockMovements() {
                   <Th label="Total Qty" align="right" />
                   <Th label="Note" />
                   <Th label="Entered By" />
-                  <th className="px-[13px] py-[9px] border-b border-g200 w-[70px]" />
+                  <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[70px]" />
                 </tr>
               </thead>
               <tbody>
@@ -294,11 +306,11 @@ export function StockMovements() {
             </table>
           </div>
           <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
-          <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
+          <FloatingVerticalScrollbar containerRef={tableScrollRef} horizontalContainerRef={tableScrollRef} />
         </div>
       ) : (
-        <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-          <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto m-0">
+        <div className="px-6 pb-7 pt-[14px] flex-1 min-h-0">
+          <div ref={tableScrollRef} className="h-full bg-white border border-g200 overflow-auto m-0">
             <table className="w-full border-collapse text-[12px]">
               <thead className="bg-g100">
                 <tr>
@@ -315,7 +327,7 @@ export function StockMovements() {
                   <Th label="Make" />
                   <Th label="Remark" />
                   <Th label="Entered By" />
-                  <th className="px-[13px] py-[9px] border-b border-g200 w-[70px]" />
+                  <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[70px]" />
                 </tr>
               </thead>
               <tbody>
@@ -360,7 +372,7 @@ export function StockMovements() {
             </table>
           </div>
           <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
-          <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
+          <FloatingVerticalScrollbar containerRef={tableScrollRef} horizontalContainerRef={tableScrollRef} />
         </div>
       )}
 

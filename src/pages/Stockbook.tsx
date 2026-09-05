@@ -62,8 +62,14 @@ export function Stockbook() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingLot, setEditingLot] = useState<StockLot | null>(null);
+  // Single scroll container for both axes — sticky headers below need to
+  // stick to the SAME element that scrolls vertically, and nesting a
+  // separate overflow-x-auto div inside a separate overflow-y-auto one
+  // breaks that (the inner div's overflow-x forces its own overflow-y to
+  // compute as "auto" too, per the CSS overflow spec, making IT the sticky
+  // positioning ancestor instead of the actual outer scroller — the classic
+  // "sticky header doesn't stick" nested-scroll-container gotcha).
   const tableScrollRef = useRef<HTMLDivElement>(null);
-  const verticalScrollRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -114,10 +120,15 @@ export function Stockbook() {
     if (!error) setLots(prev => prev.filter(l => l.id !== lot.id));
   };
 
+  // sticky top-0 + z-10 + an explicit (non-transparent) background pins
+  // these header cells to the top of the table's own scroll container as
+  // the body scrolls past underneath — see the merged single-scroll-axis
+  // container below (tableScrollRef) for why this only works reliably once
+  // the table has ONE scrolling ancestor instead of two nested ones.
   const SortTh = ({ col, label }: { col: string; label: string }) => (
     <th
       onClick={() => toggleSort(col)}
-      className={`font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 cursor-pointer select-none hover:bg-g200 transition-colors text-center ${sortCol === col ? 'text-red-mrt bg-red-lt/40' : 'text-g500'}`}
+      className={`sticky top-0 z-10 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 cursor-pointer select-none hover:bg-g200 transition-colors text-center ${sortCol === col ? 'text-red-mrt bg-red-lt/40' : 'text-g500 bg-g100'}`}
     >
       <span className="inline-flex items-center justify-center gap-1 w-full">
         {label}
@@ -127,7 +138,7 @@ export function Stockbook() {
   );
 
   const Th = ({ label }: { label: string }) => (
-    <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-center text-g500">
+    <th className="sticky top-0 z-10 bg-g100 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-center text-g500">
       {label}
     </th>
   );
@@ -167,8 +178,8 @@ export function Stockbook() {
         <div className="ml-auto font-mono text-[10px] text-g500">{filtered.length} lots</div>
       </div>
 
-      <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-        <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto m-0">
+      <div className="px-6 pb-7 pt-[14px] flex-1 min-h-0">
+        <div ref={tableScrollRef} className="h-full bg-white border border-g200 overflow-auto m-0">
           <table className="w-full border-collapse text-[12px]">
             <thead className="bg-g100">
               <tr>
@@ -194,7 +205,7 @@ export function Stockbook() {
                 <SortTh col="quantity" label="Total Quantity" />
                 <SortTh col="make" label="Make" />
                 <Th label="Remark" />
-                <th className="px-[13px] py-[9px] border-b border-g200 w-[70px]" />
+                <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[70px]" />
               </tr>
             </thead>
             <tbody>
@@ -280,7 +291,7 @@ export function Stockbook() {
         </div>
       </div>
       <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
-      <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
+      <FloatingVerticalScrollbar containerRef={tableScrollRef} horizontalContainerRef={tableScrollRef} />
 
       {editingLot && (
         <StockLotModal
