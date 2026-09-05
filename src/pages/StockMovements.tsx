@@ -242,7 +242,7 @@ export function StockMovements() {
 
       {tab === 'outward' ? (
         <div className="px-6 pb-7 pt-[14px] flex-1 min-h-0">
-          <div ref={tableScrollRef} className="h-full bg-white border border-g200 overflow-auto m-0">
+          <div ref={tableScrollRef} className="table-scroll-hide-native-bar h-full bg-white border border-g200 overflow-auto m-0">
             <table className="w-full border-collapse text-[12px]">
               <thead className="bg-g100">
                 <tr>
@@ -310,7 +310,7 @@ export function StockMovements() {
         </div>
       ) : (
         <div className="px-6 pb-7 pt-[14px] flex-1 min-h-0">
-          <div ref={tableScrollRef} className="h-full bg-white border border-g200 overflow-auto m-0">
+          <div ref={tableScrollRef} className="table-scroll-hide-native-bar h-full bg-white border border-g200 overflow-auto m-0">
             <table className="w-full border-collapse text-[12px]">
               <thead className="bg-g100">
                 <tr>

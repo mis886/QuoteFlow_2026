@@ -10,6 +10,13 @@
   --color-red-mrt: #D42027;
   --color-red-h: #B91C22;
   --color-red-lt: rgba(212, 32, 39, 0.06);
+  /* Opaque equivalent of --color-red-lt, for spots (like a sticky/fixed
+     header cell) that must fully hide whatever scrolls underneath them —
+     --color-red-lt itself is a low-alpha rgba() and lets content bleed
+     through no matter what Tailwind opacity modifier (e.g. /40) is applied
+     on top of it, since that only stacks another alpha multiplier on an
+     already-transparent color. */
+  --color-red-lt-solid: #F7E9E9;
   --color-blk: #111111;
   --color-dark: #1C1C1C;
   --color-cream: #FAF9F7;
@@ -83,6 +90,15 @@ body {
 .floating-h-scrollbar-track::-webkit-scrollbar { height: 9px; }
 .floating-h-scrollbar-track::-webkit-scrollbar-track { background: transparent; }
 .floating-h-scrollbar-track::-webkit-scrollbar-thumb { background: var(--color-g300); border-radius: 9px; }
+
+/* Stockbook / Stock Movements table scroll container (tableScrollRef in
+   Stockbook.tsx and StockMovements.tsx) — this element has its own native
+   scrollbars (both axes) PLUS the custom floating ones from
+   FloatingHorizontalScrollbar.tsx/FloatingVerticalScrollbar.tsx, which mirror
+   it and are meant to be the only ones the user sees/uses. Scoped to this
+   class only, so it doesn't hide scrollbars anywhere else on the site. */
+.table-scroll-hide-native-bar::-webkit-scrollbar { display: none; }
+.table-scroll-hide-native-bar { scrollbar-width: none; }
 
 /* Email modal body — wider, visible scrollbar with red hover accent */
 .email-modal-body::-webkit-scrollbar { width: 9px; }

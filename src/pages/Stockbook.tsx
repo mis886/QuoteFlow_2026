@@ -125,10 +125,15 @@ export function Stockbook() {
   // the body scrolls past underneath — see the merged single-scroll-axis
   // container below (tableScrollRef) for why this only works reliably once
   // the table has ONE scrolling ancestor instead of two nested ones.
+  // The active-sort branch uses --color-red-lt-solid (an opaque tint) rather
+  // than bg-red-lt/40 — --color-red-lt is itself a low-alpha rgba(), so a
+  // sticky header using it (or any opacity-modified version of it) let
+  // scrolled-past row text visibly bleed through instead of being hidden
+  // like every other (opaque bg-g100) header.
   const SortTh = ({ col, label }: { col: string; label: string }) => (
     <th
       onClick={() => toggleSort(col)}
-      className={`sticky top-0 z-10 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 cursor-pointer select-none hover:bg-g200 transition-colors text-center ${sortCol === col ? 'text-red-mrt bg-red-lt/40' : 'text-g500 bg-g100'}`}
+      className={`sticky top-0 z-10 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 cursor-pointer select-none hover:bg-g200 transition-colors text-center ${sortCol === col ? 'text-red-mrt bg-red-lt-solid' : 'text-g500 bg-g100'}`}
     >
       <span className="inline-flex items-center justify-center gap-1 w-full">
         {label}
@@ -179,7 +184,7 @@ export function Stockbook() {
       </div>
 
       <div className="px-6 pb-7 pt-[14px] flex-1 min-h-0">
-        <div ref={tableScrollRef} className="h-full bg-white border border-g200 overflow-auto m-0">
+        <div ref={tableScrollRef} className="table-scroll-hide-native-bar h-full bg-white border border-g200 overflow-auto m-0">
           <table className="w-full border-collapse text-[12px]">
             <thead className="bg-g100">
               <tr>
