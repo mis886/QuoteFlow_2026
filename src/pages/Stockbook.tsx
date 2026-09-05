@@ -39,6 +39,7 @@ function mapRow(r: any): StockLot {
     qtyBalaji: r.qty_balaji ?? undefined,
     qtyWada: r.qty_wada ?? undefined,
     packing: r.packing ?? undefined,
+    packingDetail: r.packing_detail ?? undefined,
     mou: r.mou ?? undefined,
     packingType: r.packing_type ?? undefined,
     quantity: r.quantity ?? undefined,
@@ -258,7 +259,12 @@ export function Stockbook() {
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtySwastik)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyBalaji)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyWada)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.packing)}</td>
+                    {/* l.packing is the legacy numeric "pack size per unit" (set via StockLotModal's manual
+                        edit); l.packingDetail is the text value the Inward form's own "Packing" field
+                        writes — a lot created via New Inward only ever has packingDetail set, so fall back
+                        to it whenever packing itself is empty, rather than showing "—" despite Inward data
+                        existing for this lot. */}
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{l.packing != null ? num(l.packing) : (l.packingDetail || '—')}</td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.mou || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.packingType || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(l.quantity)}</td>

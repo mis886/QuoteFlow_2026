@@ -562,7 +562,9 @@ export interface StockLot {
   qtySwastik?: number;
   qtyBalaji?: number;
   qtyWada?: number;
-  packing?: number;
+  packing?: number;             // legacy numeric "pack size per unit" — set via StockLotModal's manual edit, NOT by Inward
+  packingDetail?: string;       // packing_detail column — Inward's own "Packing" field (text); the value a lot created via
+                                 // New Inward actually has, since Inward never writes the legacy numeric `packing` above
   mou?: string;                 // mou column (Measure of Unit) — shared with the Stock Inward form
   packingType?: string;         // packing_type column — shared with the Stock Inward form
   quantity?: number;
