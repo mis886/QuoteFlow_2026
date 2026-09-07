@@ -15,6 +15,17 @@
 // matched), then re-applies the new decrement (subtracts the new amounts
 // from whatever lot the NEW values match) — both steps best-effort, exactly
 // like the create flow.
+//
+// 2026-09-07: brought DO & Lot Details' layout and Product Code field in
+// line with NewStockOutward.tsx's create form — the user noticed the two
+// looked different and asked for this modal to match. Two of NewStockOutward
+// .tsx's other 2026-09-07 changes (the Warehouse dropdown trim removing
+// WADA/Other, and the Quantity-section required+auto-calc rework) were NOT
+// brought over here in this same pass — only the layout/Product Code change
+// was explicitly asked for. This modal's WAREHOUSES list still offers
+// WADA/Other, and its "Quantity & Packing" section still has the old
+// optional fields/Weight Type radio/Type select. Flag this gap again if the
+// user notices — see stock_movements_module.md for the full history.
 
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
@@ -23,7 +34,13 @@ import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { StockMovement } from '../lib/types';
 import { SearchableCombobox } from './SearchableCombobox';
-import { PRODUCT_NAMES, PACKAGING_TYPES } from '../lib/stockMovementOptions';
+import { PACKAGING_TYPES } from '../lib/stockMovementOptions';
+// Product Name/Code now shares NewStockOutward.tsx's source — see that
+// file's 2026-09-07 header comment for why PRODUCT_NAMES (plain strings,
+// no codes) couldn't stay in place once a Product Code field was added.
+import { PRODUCTS } from '../lib/stockInwardProducts';
+
+const PRODUCT_NAME_OPTIONS = PRODUCTS.map(p => p.name);
 
 const inp = 'w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[3px] px-2.5 py-[7px] outline-none focus:border-red-mrt focus:ring-2 focus:ring-red-lt transition-shadow';
 const sel = `${inp} appearance-none cursor-pointer`;
@@ -70,7 +87,7 @@ const TRANSPORTERS = [
 
 const emptyForm = {
   warehouse: '', otherWarehouse: '',
-  doNumber: '', doDate: '', lotNo: '', lotDate: '', productName: '',
+  doNumber: '', doDate: '', lotNo: '', lotDate: '', productName: '', productCode: '',
   numArticles: '', packing: '', totalQty: '', weightType: '', packagingType: '',
   partyName: '', otherParty: '', transporter: '', otherTransporter: '', note: '',
 };
@@ -109,6 +126,7 @@ export function OutwardEditModal({ open, movement, onClose, onSaved }: Props) {
   useEffect(() => {
     if (!open) return;
     const isKnownWarehouse = WAREHOUSES.slice(0, -1).includes(movement.warehouse);
+    const productMatch = PRODUCTS.find(p => p.name === movement.productName);
     setForm({
       warehouse: isKnownWarehouse ? movement.warehouse : (movement.warehouse ? 'Other' : ''),
       otherWarehouse: isKnownWarehouse ? '' : (movement.warehouse || ''),
@@ -117,6 +135,7 @@ export function OutwardEditModal({ open, movement, onClose, onSaved }: Props) {
       lotNo: movement.whLotNo || '',
       lotDate: movement.inwardDate || '',
       productName: movement.productName || '',
+      productCode: productMatch ? productMatch.code : '',
       numArticles: movement.numArticles || '',
       packing: movement.packing?.toString() ?? '',
       totalQty: movement.totalQty?.toString() ?? '',
@@ -211,7 +230,10 @@ export function OutwardEditModal({ open, movement, onClose, onSaved }: Props) {
         <div className="p-5 space-y-5">
           <div>
             <div className="text-[10px] font-mono font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">DO &amp; Lot Details</div>
-            <div className="grid grid-cols-4 gap-3">
+            {/* 2026-09-07: grid-cols-4 -> -5, matching NewStockOutward.tsx's
+                create form — Warehouse/DO Number/DO Date/Lot No/Lot Date on
+                one line, Product Name/Product Code on the next. */}
+            <div className="grid grid-cols-5 gap-3">
               <Field label="Warehouse *">
                 <select className={sel} value={form.warehouse} onChange={set('warehouse')}>
                   <option value="">Select...</option>
@@ -225,8 +247,19 @@ export function OutwardEditModal({ open, movement, onClose, onSaved }: Props) {
               <Field label="DO Date"><input type="date" className={inp} value={form.doDate} onChange={set('doDate')} /></Field>
               <Field label="Lot No"><input className={inp} value={form.lotNo} onChange={set('lotNo')} /></Field>
               <Field label="Lot Date"><input type="date" className={inp} value={form.lotDate} onChange={set('lotDate')} /></Field>
-              <Field label="Product Name *" className="col-span-2">
-                <SearchableCombobox className={inp} options={PRODUCT_NAMES} value={form.productName} onChange={v => setForm(f => ({ ...f, productName: v }))} />
+              <Field label="Product Name *">
+                <SearchableCombobox
+                  className={inp}
+                  options={PRODUCT_NAME_OPTIONS}
+                  value={form.productName}
+                  onChange={v => {
+                    const match = PRODUCTS.find(p => p.name === v);
+                    setForm(f => ({ ...f, productName: v, productCode: match ? match.code : '' }));
+                  }}
+                />
+              </Field>
+              <Field label="Product Code">
+                <input className={`${inp} bg-g100 text-g600 cursor-not-allowed`} value={form.productCode} readOnly />
               </Field>
             </div>
           </div>
