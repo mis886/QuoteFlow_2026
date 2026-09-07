@@ -26,6 +26,14 @@
 // entries referencing this lot no still exist there, they simply won't find
 // a matching lot next time, same as the existing behavior documented in
 // StockMovements.tsx's own handleDelete comment).
+//
+// 2026-09-07: `num()` (the per-cell quantity formatter) now shows a dash for
+// 0 as well as null/undefined — editing an Inward entry's Warehouse moves
+// its barrels to the new party column and nets the OLD one down to exactly
+// 0 (not null), so a warehouse that no longer holds any of a lot was
+// showing a literal "0" instead of the usual "—" for "no stock here". See
+// NewStockInward.tsx / stock_movements_module.md for the edit-mode logic
+// that produces that 0.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Trash2, RefreshCw, Warehouse } from 'lucide-react';
@@ -68,7 +76,13 @@ function mapRow(r: any): StockLot {
   };
 }
 
-const num = (v?: number) => (v === undefined || v === null ? '—' : v.toLocaleString('en-IN'));
+// 2026-09-07: zero is now shown as a dash too, same as an empty/never-set
+// column — a warehouse that currently holds none of a lot (e.g. after
+// editing an Inward entry to move its barrels to a different warehouse,
+// which nets the old warehouse's column down to exactly 0 rather than
+// leaving it null) reads the same as "no stock here" either way, and
+// showing a bare "0" instead of "—" was confusing/looked like a bug.
+const num = (v?: number) => (v === undefined || v === null || v === 0 ? '—' : v.toLocaleString('en-IN'));
 
 export function Stockbook() {
   const [lots, setLots] = useState<StockLot[]>([]);
