@@ -15,10 +15,7 @@
 //      no_of_barrels; see NewStockInward.tsx's 2026-09-05 comment).
 //      Otherwise (no Lot No, no match, or Warehouse "Other") the movement
 //      is still logged — the stock_lots side is best-effort and never
-//      blocks the save. Number of Articles isn't a required field here
-//      (unlike Inward's No of Barrels), so an Outward entry that leaves it
-//      blank won't move the party column at all, even though Total
-//      Quantity still goes down — fill it in when it's known.
+//      blocks the save.
 // See src/pages/StockMovements.tsx for the list view and
 // supabase/migrations/20260903120000_stock_movements_add_outward_columns.sql /
 // 20260903120100_stock_movements_lot_no_nullable.sql /
@@ -27,6 +24,31 @@
 // Party Name and Transporter option lists are placeholders (small seed
 // lists, marked TODO below) pending the full 533-entry / 193-entry lists
 // from the real Delivery Order Sale form.
+//
+// 2026-09-07: the "Quantity & Packing" section was replaced with a copy of
+// NewStockInward.tsx's "Quantity" section, field-for-field, at the user's
+// request (they compared the two forms directly). What changed, underlying
+// state keys unchanged (still `numArticles`/`packing`/`totalQty`/
+// `weightType`/`packagingType`, still writing the same stock_movements
+// columns — this was a UI/behavior change, not a schema change):
+//   - "Number of Articles" relabeled "No of Barrels", now REQUIRED (was
+//     optional), and got the same barrels×packing→Total Quantity auto-calc
+//     Inward's No of Barrels field has (see onNumArticlesChange/
+//     onPackingChange below) — previously these three fields were
+//     independent and all optional.
+//   - "Total Quantity" is now also REQUIRED (was optional).
+//   - "Packing" lost its `type="number"` (Inward's own Packing field is
+//     plain text) — purely cosmetic, values are handled as strings either
+//     way.
+//   - "Weight Type" (a KG/LTR radio-button pair) became "MOU (Measure of
+//     Unit)", a KG/LTR **select** — same two choices, same underlying
+//     `weightType` field/DB column, just a different widget matching
+//     Inward's MOU field exactly.
+//   - "Type" (a PACKAGING_TYPES select) was simply relabeled "Packing
+//     Type" — same select, same options, same `packagingType` field.
+// This means an Outward entry that used to skip Number of Articles no
+// longer can — see this file's PARTY_COLUMN-decrement comment above, which
+// is now accurate unconditionally rather than only "when filled in".
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -95,13 +117,56 @@ export function NewStockOutward() {
 
   const num = (v: string) => (v.trim() === '' ? null : Number(v));
 
+  // Returns a finite number, or null if v is empty/not a valid number — same
+  // helper NewStockInward.tsx uses to gate its Total Quantity auto-calc
+  // below (never NaN, never treats "" as 0).
+  const parseNum = (v: string): number | null => {
+    const t = v.trim();
+    if (t === '') return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  // Auto-fills Total Quantity = No of Barrels × Packing whenever both are
+  // valid numbers — mirrors NewStockInward.tsx's onNoOfBarrelsChange/
+  // onPackingChange exactly, added 2026-09-07 when this section was made to
+  // match Inward's Quantity section field-for-field (see file header). Total
+  // Quantity stays a normal editable field otherwise; if either source is
+  // empty/invalid, it's left exactly as it is (no clearing, no NaN).
+  const onNumArticlesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setForm(f => {
+      const barrels = parseNum(v);
+      const packing = parseNum(f.packing);
+      const totalQty = barrels !== null && packing !== null ? String(barrels * packing) : f.totalQty;
+      return { ...f, numArticles: v, totalQty };
+    });
+  };
+
+  const onPackingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setForm(f => {
+      const barrels = parseNum(f.numArticles);
+      const packing = parseNum(v);
+      const totalQty = barrels !== null && packing !== null ? String(barrels * packing) : f.totalQty;
+      return { ...f, packing: v, totalQty };
+    });
+  };
+
   const isOtherWarehouse = form.warehouse === 'Other';
   const isOtherParty = form.partyName === 'Other';
   const isOtherTransporter = form.transporter === 'Other';
 
+  // 2026-09-07: Number of Articles ("No of Barrels" now) and Total Quantity
+  // became required here too, matching Inward's Quantity section exactly —
+  // previously both were optional (see the file-header comment's now-stale
+  // note about that). PARTY_COLUMN's decrement below already treated
+  // numArticles as the barrel-count-equivalent field; this just makes that
+  // relationship required rather than optional, same as Inward's.
   const isValid = !!(
     form.warehouse && (!isOtherWarehouse || form.otherWarehouse.trim()) &&
-    form.doNumber.trim() && form.productName.trim()
+    form.doNumber.trim() && form.productName.trim() &&
+    form.numArticles.trim() && form.totalQty.trim()
   );
 
   const save = async () => {
@@ -227,43 +292,33 @@ export function NewStockOutward() {
           </div>
 
           <div className={cardCls}>
-            <div className={sectionHeaderCls}>Quantity &amp; Packing</div>
+            <div className={sectionHeaderCls}>Quantity</div>
             <div className="grid grid-cols-5 gap-[12px]">
               <div>
-                <label className={labelCls}>Number of Articles</label>
-                <input type="number" className={inputCls} value={form.numArticles} onChange={set('numArticles')} />
+                <label className={labelCls}>No of Barrels <span className="text-red-mrt">*</span></label>
+                <input type="number" className={inputCls} value={form.numArticles} onChange={onNumArticlesChange} />
               </div>
               <div>
                 <label className={labelCls}>Packing</label>
-                <input type="number" className={inputCls} value={form.packing} onChange={set('packing')} />
+                <input className={inputCls} value={form.packing} onChange={onPackingChange} />
               </div>
               <div>
-                <label className={labelCls}>Total Quantity</label>
+                <label className={labelCls}>Total Quantity <span className="text-red-mrt">*</span></label>
                 <input type="number" className={inputCls} value={form.totalQty} onChange={set('totalQty')} />
               </div>
               <div>
-                <label className={labelCls}>Weight Type</label>
-                <div className="flex items-center gap-4 h-[35px]">
-                  {['KG', 'LTR'].map(wt => (
-                    <label key={wt} className="inline-flex items-center gap-1.5 text-[12.5px] text-blk cursor-pointer select-none">
-                      <input
-                        type="radio"
-                        name="weightType"
-                        value={wt}
-                        checked={form.weightType === wt}
-                        onChange={() => setForm(f => ({ ...f, weightType: wt }))}
-                        className="w-3.5 h-3.5 accent-red-mrt"
-                      />
-                      {wt}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className={labelCls}>Type</label>
+                <label className={labelCls}>Packing Type</label>
                 <select className={selectCls} value={form.packagingType} onChange={set('packagingType')}>
                   <option value="">Select...</option>
                   {PACKAGING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>MOU (Measure of Unit)</label>
+                <select className={selectCls} value={form.weightType} onChange={set('weightType')}>
+                  <option value="">Select...</option>
+                  <option value="KG">KG</option>
+                  <option value="LTR">LTR</option>
                 </select>
               </div>
             </div>
