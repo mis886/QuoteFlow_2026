@@ -49,6 +49,37 @@
 // This means an Outward entry that used to skip Number of Articles no
 // longer can — see this file's PARTY_COLUMN-decrement comment above, which
 // is now accurate unconditionally rather than only "when filled in".
+//
+// 2026-09-07 (later, same day): "DO & Lot Details" reflowed to one line of
+// Warehouse/DO Number/DO Date/Lot No/Lot Date followed by a second line of
+// Product Name/Product Code, at the user's request (grid-cols-4 → -5, no
+// field order change was needed). This ALSO added a Product Code field to
+// Outward for the first time, matching Inward's own read-only auto-derived
+// field — which required a real decision, asked via AskUserQuestion (user
+// chose "add it, matching Inward"): Product Name here previously drew its
+// options from PRODUCT_NAMES (stockMovementOptions.ts, plain strings, no
+// codes) while Product Code only exists tied to PRODUCTS
+// (stockInwardProducts.ts, {name, code} pairs) — the two lists' name
+// strings don't reliably match each other (e.g. "Alpha Pinene 95 +ve" here
+// vs. "Alpha Pinene 95 +ve 30-35" in PRODUCTS), so a code lookup against the
+// old list would come back blank most of the time. Fixed by switching
+// Product Name's own source to PRODUCTS too — same list Inward's dropdown
+// offers, same code lookup on selection (see onChange below). This is a
+// real, deliberate side effect worth knowing about: the exact option
+// strings in Outward's Product Name dropdown changed (some old
+// PRODUCT_NAMES entries have no exact match in PRODUCTS and vice versa) —
+// flag if the user reports a product they used to be able to pick is now
+// missing from the list. PRODUCT_NAMES/stockMovementOptions.ts itself is
+// untouched and no longer imported here (still used elsewhere? — grep
+// before removing it outright if that's ever asked).
+// Product Code itself is UI-only here, same as it effectively is for
+// Inward's own "existing lot" path: it's derived locally for the user's
+// reference and is never written to stock_lots, because Outward's
+// stock_lots decrement below only ever UPDATEs an existing lot's party
+// column + quantity (never descriptive fields, never an INSERT) — the same
+// "insert-only" convention documented for Inward (see PARTY_COLUMN comment
+// above). There is no stock_movements.product_code column either (Inward
+// doesn't write one there), so nothing about the save() logic changed.
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -56,7 +87,18 @@ import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { SearchableCombobox } from '../components/SearchableCombobox';
-import { PRODUCT_NAMES, PACKAGING_TYPES } from '../lib/stockMovementOptions';
+import { PACKAGING_TYPES } from '../lib/stockMovementOptions';
+// 2026-09-07: Product Name now draws from the same PRODUCTS list Inward
+// uses (instead of stockMovementOptions.ts's plain-string PRODUCT_NAMES),
+// so a Product Code can be looked up on selection — see the file-header
+// comment above for why the two lists couldn't stay separate once Product
+// Code was added.
+import { PRODUCTS } from '../lib/stockInwardProducts';
+
+// Combobox options — derived from PRODUCTS, the single source of truth also
+// used for the Product Code auto-fill lookup below (same pattern as
+// NewStockInward.tsx's own PRODUCT_NAME_OPTIONS).
+const PRODUCT_NAME_OPTIONS = PRODUCTS.map(p => p.name);
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
@@ -100,7 +142,7 @@ const TRANSPORTERS = [
 
 const emptyForm = {
   warehouse: '', otherWarehouse: '',
-  doNumber: '', doDate: '', lotNo: '', lotDate: '', productName: '',
+  doNumber: '', doDate: '', lotNo: '', lotDate: '', productName: '', productCode: '',
   numArticles: '', packing: '', totalQty: '', weightType: '', packagingType: '',
   partyName: '', otherParty: '', transporter: '', otherTransporter: '', note: '',
 };
@@ -254,7 +296,10 @@ export function NewStockOutward() {
         <div className="flex flex-col gap-[14px]">
           <div className={cardCls}>
             <div className={sectionHeaderCls}>DO &amp; Lot Details</div>
-            <div className="grid grid-cols-4 gap-[12px]">
+            {/* 2026-09-07: grid-cols-4 -> -5 so Warehouse/DO Number/DO Date/
+                Lot No/Lot Date sit on one line and Product Name/Product Code
+                wrap to the next, at the user's request. */}
+            <div className="grid grid-cols-5 gap-[12px]">
               <div>
                 <label className={labelCls}>Warehouse <span className="text-red-mrt">*</span></label>
                 <select className={selectCls} value={form.warehouse} onChange={set('warehouse')}>
@@ -286,7 +331,19 @@ export function NewStockOutward() {
               </div>
               <div>
                 <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
-                <SearchableCombobox className={inputCls} options={PRODUCT_NAMES} value={form.productName} onChange={v => setForm(f => ({ ...f, productName: v }))} />
+                <SearchableCombobox
+                  className={inputCls}
+                  options={PRODUCT_NAME_OPTIONS}
+                  value={form.productName}
+                  onChange={v => {
+                    const match = PRODUCTS.find(p => p.name === v);
+                    setForm(f => ({ ...f, productName: v, productCode: match ? match.code : '' }));
+                  }}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Product Code</label>
+                <input className={`${inputCls} bg-g100 text-g600 cursor-not-allowed`} value={form.productCode} readOnly />
               </div>
             </div>
           </div>

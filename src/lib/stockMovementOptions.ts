@@ -1,7 +1,15 @@
-// Shared fixed option lists for the Stock Movements module (Inward +
-// Outward forms), kept in one place so both forms draw from the same
-// source instead of duplicating a long list. See src/pages/NewStockInward.tsx
-// and src/pages/NewStockOutward.tsx.
+// Shared fixed option lists for the Stock Movements module. PACKAGING_TYPES
+// is genuinely shared (Inward + both Outward forms). PRODUCT_NAMES is NOT
+// used by Inward (which has always drawn Product Name/Code from PRODUCTS in
+// stockInwardProducts.ts) and, as of 2026-09-07, is no longer used by
+// NewStockOutward.tsx's "create" form either — that form switched to
+// PRODUCTS too, once it got its own Product Code field (see that file's
+// header comment). PRODUCT_NAMES is now only used by OutwardEditModal.tsx
+// (Outward's edit popup, not yet updated to match — a known, flagged
+// inconsistency: editing an existing Outward entry currently offers a
+// different Product Name list, and no Product Code field, versus creating
+// a new one). See src/pages/NewStockInward.tsx, src/pages/NewStockOutward.tsx,
+// and src/components/OutwardEditModal.tsx.
 
 export const PRODUCT_NAMES = [
   'Alpha Pinene 95% -ve 24', 'Alpha Pinene 95 +ve', 'Alpha Pinene 96+ve32', 'Alpha Pinene 96+ve32 ROB',

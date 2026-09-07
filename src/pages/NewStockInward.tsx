@@ -29,11 +29,13 @@
 // fact_lot_no already work — populated at lot creation, editable after.
 //
 // Product Name / Product Code source: src/lib/stockInwardProducts.ts's
-// PRODUCTS array (code+name pairs) — exclusive to this form, deliberately
-// separate from PRODUCT_NAMES in stockMovementOptions.ts (still used
-// unchanged by NewStockOutward.tsx). Product Code is derived, read-only —
-// it's looked up from PRODUCTS whenever Product Name changes, never
-// typed directly.
+// PRODUCTS array (code+name pairs). Originally exclusive to this form,
+// deliberately separate from PRODUCT_NAMES in stockMovementOptions.ts — as
+// of 2026-09-07, NewStockOutward.tsx's "create" form (not yet its edit
+// modal, OutwardEditModal.tsx) also switched to PRODUCTS directly, once it
+// got its own read-only Product Code field (see that file's header comment
+// for why). Product Code is derived, read-only — it's looked up from
+// PRODUCTS whenever Product Name changes, never typed directly.
 //
 // See src/pages/StockMovements.tsx for the list view and
 // supabase/migrations/20260903060000_create_stock_movements_table.sql for

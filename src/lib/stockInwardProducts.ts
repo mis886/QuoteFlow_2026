@@ -1,8 +1,13 @@
-// Authoritative product code/name list for the New Inward form
-// (src/pages/NewStockInward.tsx) ONLY — deliberately separate from
-// PRODUCT_NAMES in stockMovementOptions.ts, which NewStockOutward.tsx
-// still uses unchanged. Single source of truth for both the Product Name
-// combobox and the Product Code auto-fill lookup.
+// Authoritative product code/name list — originally the New Inward form
+// (src/pages/NewStockInward.tsx) ONLY, deliberately separate from
+// PRODUCT_NAMES in stockMovementOptions.ts. As of 2026-09-07, New Outward
+// (src/pages/NewStockOutward.tsx) also imports PRODUCTS directly, once a
+// read-only Product Code field was added there too (see that file's header
+// comment for why the two product lists couldn't stay separate once
+// Outward needed a code lookup) — PRODUCT_NAMES/stockMovementOptions.ts is
+// no longer imported by either Inward or Outward's product-name field.
+// Single source of truth for both forms' Product Name combobox and the
+// Product Code auto-fill lookup.
 export interface StockInwardProduct {
   code: string;
   name: string;
