@@ -42,10 +42,16 @@ const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] upperca
 const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200";
 const cardCls = "bg-white border border-g200 p-[18px_20px]";
 
-// Outward's own Warehouse list (distinct from Inward's — includes WADA and
-// a free-text "Other"). "Other" has no dedicated DB column, so its typed
-// text is saved directly as the warehouse value instead — see save().
-const WAREHOUSES = ['Hariom', 'Reliable', 'Swastik', 'BALAJI', 'WADA', 'Other'];
+// Outward's own Warehouse list. Originally also offered WADA and a
+// free-text "Other" (distinct from Inward's 4-option list); both were
+// removed from the dropdown 2026-09-07 at the user's request. The
+// isOtherWarehouse/otherWarehouse form logic below is left in place but is
+// now unreachable (form.warehouse can never be 'Other' again) rather than
+// torn out, in case "Other" is ever wanted back — same "leave it, don't
+// delete" convention used elsewhere in this module (StockLotModal.tsx,
+// InwardEditModal.tsx). PARTY_COLUMN's WADA entry is similarly harmless
+// dead data now, left as-is for the same reason.
+const WAREHOUSES = ['Hariom', 'Reliable', 'Swastik', 'BALAJI'];
 
 // Party/godown → the stock_lots quantity column it feeds. Only the 5 known
 // parties have an entry — "Other" (and any custom typed name) intentionally
