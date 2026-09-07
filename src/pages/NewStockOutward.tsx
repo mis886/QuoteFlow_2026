@@ -80,8 +80,25 @@
 // "insert-only" convention documented for Inward (see PARTY_COLUMN comment
 // above). There is no stock_movements.product_code column either (Inward
 // doesn't write one there), so nothing about the save() logic changed.
+//
+// 2026-09-07 (still later): Party Name and Transporter switched from the
+// two small hardcoded placeholder lists (PARTY_NAMES/TRANSPORTERS below —
+// TODO'd since this module was first built, meant to eventually hold the
+// real 533/193-entry lists) to a live query against the `customers` table,
+// at the user's request. Only customers with a preferred_transporter on
+// file appear in Party Name now (fulfilment_type — Self Pickup / Delivery
+// / Both — is deliberately NOT filtered on, per the user's explicit ask to
+// include both). Selecting a Party Name auto-fills Transporter with that
+// customer's preferred_transporter (still a normal editable combobox
+// afterward — this is a convenience prefill, not a lock, since the "Other"
+// escape hatch and manual correction both still need to work). Transporter's
+// own dropdown options are now the distinct preferred_transporter values
+// found across those same customers, instead of the old short hardcoded
+// list. See loadPartyTransporters() below. PARTY_NAMES/TRANSPORTERS consts
+// are left in place, unused, per this module's "don't delete superseded
+// code" convention — nothing in this file references them anymore.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -128,13 +145,13 @@ const PARTY_COLUMN: Record<string, string> = {
   WADA: 'qty_wada',
 };
 
-// TODO: replace with full 533-entry list from Delivery Order Sale form
+// Superseded 2026-09-07 — Party Name/Transporter now come live from the
+// `customers` table (see loadPartyTransporters() in the component below).
+// Left here unused rather than deleted, per this module's convention.
 const PARTY_NAMES = [
   'A P INK', 'AARAV FRAGRANCES & FLAVOURS PVT. LTD.', 'ASIAN PAINTS LTD', 'BERGER PAINTS INDIA LTD',
   'GRASIM INDUSTRIES LIMITED', 'ITC LIMITED', 'ROBERTET INDIA PRIVATE LIMITED', 'SHALIMAR PAINTS LTD', 'Other',
 ];
-
-// TODO: replace with full 193-entry list
 const TRANSPORTERS = [
   'A H TRANSPORT', 'AASHIRWAD GOODS CARRIES', 'ABHINAV TRANSPORT (INDIA) PVT. LTD.', 'VRL LOGISTICS',
   'YASHWANT TRANSPORT', 'Other',
@@ -153,6 +170,44 @@ export function NewStockOutward() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // 2026-09-07: Party Name options + the customer->transporter lookup used
+  // to auto-fill Transporter, both sourced live from `customers` — see the
+  // file-header comment. Only customers with a preferred_transporter on
+  // file are included (fulfilment_type is not filtered on). 'Other' is
+  // appended so a party not yet in the customers table can still be typed
+  // in via the existing isOtherParty/otherParty free-text field.
+  const [partyNameOptions, setPartyNameOptions] = useState<string[]>([]);
+  const [transporterOptions, setTransporterOptions] = useState<string[]>([]);
+  const [transporterByParty, setTransporterByParty] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPartyTransporters = async () => {
+      const { data, error: fetchErr } = await supabase
+        .from('customers')
+        .select('company_name, preferred_transporter')
+        .not('preferred_transporter', 'is', null)
+        .neq('preferred_transporter', '')
+        .order('company_name', { ascending: true });
+      if (fetchErr || !data || cancelled) return;
+      const names: string[] = [];
+      const map: Record<string, string> = {};
+      const transporterSet = new Set<string>();
+      for (const row of data as { company_name: string | null; preferred_transporter: string | null }[]) {
+        const name = (row.company_name || '').trim();
+        const transporter = (row.preferred_transporter || '').trim();
+        if (!name || !transporter) continue;
+        if (!(name in map)) { map[name] = transporter; names.push(name); }
+        transporterSet.add(transporter);
+      }
+      setPartyNameOptions([...names, 'Other']);
+      setTransporterByParty(map);
+      setTransporterOptions([...Array.from(transporterSet).sort(), 'Other']);
+    };
+    loadPartyTransporters();
+    return () => { cancelled = true; };
+  }, []);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -386,7 +441,12 @@ export function NewStockOutward() {
             <div className="grid grid-cols-4 gap-[12px]">
               <div>
                 <label className={labelCls}>Party Name</label>
-                <SearchableCombobox className={inputCls} options={PARTY_NAMES} value={form.partyName} onChange={v => setForm(f => ({ ...f, partyName: v }))} />
+                <SearchableCombobox
+                  className={inputCls}
+                  options={partyNameOptions}
+                  value={form.partyName}
+                  onChange={v => setForm(f => ({ ...f, partyName: v, transporter: transporterByParty[v] || f.transporter }))}
+                />
               </div>
               {isOtherParty && (
                 <div>
@@ -396,7 +456,7 @@ export function NewStockOutward() {
               )}
               <div>
                 <label className={labelCls}>Transporter</label>
-                <SearchableCombobox className={inputCls} options={TRANSPORTERS} value={form.transporter} onChange={v => setForm(f => ({ ...f, transporter: v }))} />
+                <SearchableCombobox className={inputCls} options={transporterOptions} value={form.transporter} onChange={v => setForm(f => ({ ...f, transporter: v }))} />
               </div>
               {isOtherTransporter && (
                 <div>
