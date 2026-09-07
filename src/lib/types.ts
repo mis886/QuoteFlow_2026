@@ -1,4 +1,9 @@
-export type EnqStatus = 'New' | 'In Review' | 'Quoted' | 'Won' | 'Lost' | 'Parked';
+// 2026-09-07: added 'Not Qualified' at the user's request, as its own
+// status/tab on the Enquiries page (like Won/Lost/Parked) — for enquiries
+// that were never a real sales opportunity, distinct from 'Lost' (which
+// implies a genuine, competed-for opportunity that didn't convert). No DB
+// migration needed — enquiries.status is a plain unconstrained text column.
+export type EnqStatus = 'New' | 'In Review' | 'Quoted' | 'Won' | 'Lost' | 'Parked' | 'Not Qualified';
 export type Urgency = 'Hot' | 'Urgent' | 'Normal' | 'Low';
 export type QuoteStatus = 'Draft' | 'Sent' | 'Won' | 'Lost' | 'Parked';
 export type OrderStatus = 'Order Confirmed' | 'Processing' | 'Delivered' | 'Order Pending for Dispatch';

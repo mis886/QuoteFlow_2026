@@ -1,3 +1,11 @@
+// 2026-09-07: added a 'Not Qualified' tab/status, matching the existing
+// Won/Lost/Parked tabs — for enquiries that were never a genuine sales
+// opportunity, at the user's request. See src/lib/types.ts's EnqStatus
+// comment and src/components/DetailPanel.tsx's status <select> (where the
+// status is actually changed) for the rest of this change. Not added to
+// Dashboard/Analytics/DoerKPI's own status breakdowns — out of scope for
+// this request, flag if the user wants those updated too.
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../store';
 import { Badge, Button, SourceIcon, DateFilterBanner } from '../components/ui';
@@ -98,6 +106,9 @@ export function Enquiries() {
     Won: data.enquiries.filter(e => e.status === 'Won').length,
     Lost: data.enquiries.filter(e => e.status === 'Lost').length,
     Parked: data.enquiries.filter(e => e.status === 'Parked').length,
+    // 2026-09-07: added at the user's request, its own tab/status like
+    // Won/Lost/Parked — see src/lib/types.ts's EnqStatus comment.
+    'Not Qualified': data.enquiries.filter(e => e.status === 'Not Qualified').length,
     All: data.enquiries.length,
     Open: data.enquiries.filter(e => e.status === 'New' || e.status === 'In Review').length,
     Sample: enqSamples.length,
@@ -164,6 +175,9 @@ export function Enquiries() {
           <TabSelect current="Won" label="Won" count={statusCounts.Won} />
           <TabSelect current="Lost" label="Lost" count={statusCounts.Lost} />
           <TabSelect current="Parked" label="Parked" count={statusCounts.Parked} />
+          {/* 2026-09-07: added at the user's request, same treatment as
+              Won/Lost/Parked above. */}
+          <TabSelect current="Not Qualified" label="Not Qualified" count={statusCounts['Not Qualified']} />
           <TabSelect current="Sample" label="Sample" count={statusCounts.Sample} />
         </div>
 

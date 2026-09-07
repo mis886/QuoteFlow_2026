@@ -12,6 +12,10 @@ export const Badge = ({ status, className }: { status: EnqStatus | QuoteStatus |
     'Won': 'bg-sW/10 text-sW',
     'Lost': 'bg-sL/10 text-sL',
     'Parked': 'bg-sP/10 text-sP',
+    // 2026-09-07: added for Enquiries' new 'Not Qualified' status — a
+    // distinct muted tone from 'Lost' (bg-sL) so the two read as different
+    // outcomes at a glance.
+    'Not Qualified': 'bg-zinc-100 text-zinc-600',
     'Draft': 'bg-sR/10 text-sR',
     'Order Confirmed': 'bg-blue-50 text-blue-700',
     'Processing': 'bg-sR/10 text-sR',
@@ -36,6 +40,7 @@ export const Badge = ({ status, className }: { status: EnqStatus | QuoteStatus |
     'Won': 'bg-sW',
     'Lost': 'bg-sL',
     'Parked': 'bg-sP',
+    'Not Qualified': 'bg-zinc-500',
     'Draft': 'bg-sR',
     'Order Confirmed': 'bg-blue-500',
     'Processing': 'bg-sR',

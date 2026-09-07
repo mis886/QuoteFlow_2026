@@ -325,6 +325,9 @@ export function DetailPanel() {
               <option value="Won">Won</option>
               <option value="Lost">Lost</option>
               <option value="Parked">Parked</option>
+              {/* 2026-09-07: 'Not Qualified' added at the user's request, as
+                  its own status alongside Won/Lost/Parked. */}
+              <option value="Not Qualified">Not Qualified</option>
             </select>
           </div>
           <div className="flex gap-2">
