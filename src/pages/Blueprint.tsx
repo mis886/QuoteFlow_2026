@@ -25,6 +25,16 @@ export function Blueprint() {
   const slaTotal = data.enquiries.filter(e => e.qRef).length;
   const slaRate = slaTotal ? Math.round((slaMet / slaTotal) * 100) : 0;
 
+  // dispatchEntries and tickets ARE both exposed in useAppStore()'s central
+  // `data` (fetched in the same initial load as enquiries/quotes/orders — see
+  // src/store/index.tsx), unlike samples/product_catalog, so these get real
+  // live counts, same convention as totalEnq/totalQt/totalOrd/totalCust above.
+  const totalDispatch = data.dispatchEntries.length;
+  const deliveryDispatch = data.dispatchEntries.filter(d => d.fulfillmentType === 'delivery').length;
+  const selfPickupDispatch = data.dispatchEntries.filter(d => d.fulfillmentType === 'self_pickup').length;
+  const totalTickets = data.tickets.length;
+  const openTickets = data.tickets.filter(t => t.status === 'Open').length;
+
   const modules = [
     { id: 'M01', name: 'Enquiry Register', icon: '📥', status: 'Live', progress: 100, desc: 'Multi-line-item enquiry logging with auto-numbering, SLA timer, urgency levels, source tracking, creator email tracking, and inline item expansion. Line items: Product Name, No of Barrels, Packing, Total QTY, Packing Type. Authorized Signatory panel (replaces Assigned To). Customer Tier badge.', entities: 'ENQUIRIES, LINE_ITEMS', records: totalEnq + ' enquiries · ' + totalLI + ' line items', color: 'text-red-mrt border-red-mrt', bg: 'bg-red-mrt' },
     { id: 'M02', name: 'Quotation Engine', icon: '📄', status: 'Live', progress: 100, desc: 'One-click ENQ→Quote conversion. Items auto-populate. Billing Name product search with HSN auto-fill. Insurance (0.15%), GST, Grand Total rounding. PDF/DOCX with hardcoded company header. Gmail integration with dynamic CC and signatory. Negotiation Rounds — per-line-item revised price/discount with full line-item detail (HSN/packing/GST), dedicated Negotiation follow-up stage, included in PDF/DOCX exports. Customer Tier badge + snapshot.', entities: 'QUOTES, QUOTE_ITEMS', records: totalQt + ' quotes · ' + formatINR(Math.round(pipeline)) + ' pipeline', color: 'text-sQ border-sQ', bg: 'bg-sQ' },
@@ -41,6 +51,14 @@ export function Blueprint() {
     // `data.samples` for Blueprint to read a live count from without adding new
     // fetch logic to this page (kept out of scope for this update).
     { id: 'M09', name: 'Sampling Module', icon: '🧪', status: 'Live', progress: 100, desc: 'Built from scratch in late June (tracker + log form); expanded through July with POD/COA/Lot No file uploads, single-status lifecycle (pending → dispatched → delivered → approved/rejected) driving tab membership, multi-product samples per record, tracking number + Sent By autocomplete, and a standardized Email Sample Dispatch template.', entities: 'SAMPLES, SAMPLE_PRODUCTS', records: 'POD/COA/Lot No uploads · full status lifecycle', color: 'text-[#0D9488] border-[#0D9488]', bg: 'bg-[#0D9488]' },
+    { id: 'M10', name: 'Dispatch Control', icon: '🚚', status: 'Live', progress: 100, desc: "Order → Dispatch stage tracking for confirmed orders, split by fulfillment path (Delivery / Self Pickup). One manually-created entry per order via a full-page '+ New Dispatch Entry' flow (moved off a modal) that auto-populates Customer & Contact, Delivery Terms, and line items from the selected order. Line items, Insurance, and Value are its own editable snapshot — independent of the order's confirmed totals, so a partial dispatch never overwrites what Orders shows. Partial dispatches automatically split the order ('Order Pending for Dispatch'), permanently hidden once fully dispatched via a one-way dispatch_finalized flag. Click-to-expand line items with a Sub-Total/GST/Grand summary. Admin-only delete. The original stage-checklist system (Progress/Next Action Due columns) was fully removed after shipping with no working 'Mark Done' ever wired up — dead weight that left every entry permanently stuck at 0% and falsely Overdue. Dispatch → Sent is parked for a later phase.", entities: 'DISPATCH_ENTRIES', records: totalDispatch + ' dispatch entries · ' + deliveryDispatch + ' delivery · ' + selfPickupDispatch + ' self pickup', color: 'text-[#4F46E5] border-[#4F46E5]', bg: 'bg-[#4F46E5]' },
+    { id: 'M11', name: 'Tickets', icon: '🎫', status: 'Live', progress: 100, desc: 'Internal issue-tracking for staff to report problems with any module (Enquiry/Quotation/Order/Dispatch/Customer/Sampling/Other). Same /tickets route for everyone: a split-panel Raise a Ticket view (form + My Tickets) for regular staff, or the full Ticket Resolver register — sortable columns, status tabs (All/Open/In Progress/Resolved/Closed), free-text search — for admins, gated by email (ADMIN_EMAILS), independent of the doer identity used for KPI attribution. Optional attachment (PDF/JPEG/PNG/WEBP) with inline image preview and download in the slide-in Detail Panel. Resolution workflow: status dropdown, resolution note, and a Mark Resolved action that stamps resolvedBy.', entities: 'TICKETS', records: totalTickets + ' tickets · ' + openTickets + ' open', color: 'text-[#DB2777] border-[#DB2777]', bg: 'bg-[#DB2777]' },
+    // records is a descriptive string, not a live count, same pattern as
+    // M06/M07/M08/M09 above: HistoryLog.tsx fetches activity_log with its own
+    // component-local useState/useEffect (paginated, server-side filtered) —
+    // never exposed via useAppStore()'s central `data`, so there's no live
+    // count for Blueprint to read without adding new fetch logic here.
+    { id: 'M12', name: 'History Log', icon: '📜', status: 'Live', progress: 100, desc: "System-wide audit trail of every insert/update/delete performed through the app, written by application code (a shared logActivity() helper) rather than DB triggers — modeled directly on the WADA / Himalaya Terpene Quality & Lab System's own activity_log table. Hard-scoped to CRM modules only (Enquiries, Quotations, Orders, Customers, Follow-Ups, Sampling, plus Signatories/Team Roster/Company Units/Bank Accounts) — the separate /production workspace is deliberately excluded, even if it starts logging activity later. Server-side paginated (50/page) with Module and Staff filters, a From/To date range, and a debounced search across Customer Name and Module No. (e.g. 'ORD-2026-476'). Expandable row shows a field-by-field Old→New diff for updates, or a full-row snapshot for inserts/deletes.", entities: 'ACTIVITY_LOG', records: 'CRM-scoped audit trail · not loaded into central store', color: 'text-[#475569] border-[#475569]', bg: 'bg-[#475569]' },
   ];
 
   const requirementsByModule = [
@@ -54,6 +72,9 @@ export function Blueprint() {
     { module: 'Search', status: '✅ Live', features: ['Topbar global search input', 'Cross-module results dropdown — Customers, Enquiries, Quotations, Orders, Sampling', 'Starts-with-ranked, case/punctuation-insensitive matching (shared nameTier/normalizeSearchText helper)', 'Click a result to jump straight to that record', 'Per-page filtering still applies within whichever module you have open'] },
     { module: 'Follow-Ups', status: '✅ Live', features: ['Split-Panel CRM Layout', 'Activity Logging Timeline', 'Follow-up Scheduling logic', 'Supabase Real-time Table', 'Negotiation stage — explicit dropdown (not auto-advanced), own quick-action chips + 7-day TAT'] },
     { module: 'Sampling', status: '✅ Live', features: ['POD/COA/Lot No file uploads (Supabase Storage)', 'Status lifecycle: pending → dispatched → delivered → approved/rejected', 'Multi-product samples per record (sample_products child table)', 'Standardized Email Sample Dispatch template', 'Sample tab on Enquiry/Quotation registers', 'Tracking number + Sent By autocomplete'] },
+    { module: 'Dispatch', status: '✅ Live', features: ['Order → Dispatch stage tracking, split into Self Pickup / Delivery tabs', 'Full-page "+ New Dispatch Entry" flow (moved off a modal), one entry per confirmed order', 'Auto-populates Customer & Contact / Delivery Terms / line items from the selected order', "Editable line items with their own Insurance + Value snapshot, independent of the order's confirmed totals", 'Automatic order splitting on partial dispatch, permanently hidden via a one-way dispatch_finalized flag once fully dispatched', "Click-to-expand line items with Sub-Total/GST/Grand summary, matching Orders Register's column richness", 'Admin-only delete', 'Dead stage-checklist system (Progress/Next Action Due, no working Mark Done) removed end-to-end'] },
+    { module: 'Tickets', status: '✅ Live', features: ['Internal issue-tracking for Enquiry/Quotation/Order/Dispatch/Customer/Sampling/Other', 'Same /tickets route for everyone — Raise a Ticket split-panel for staff, Ticket Resolver register for admins (email-based, ADMIN_EMAILS)', 'Subject, Priority (Low/Medium/High), Description, optional attachment (PDF/JPEG/PNG/WEBP)', 'Ticket Resolver: sortable columns, status tabs (All/Open/In Progress/Resolved/Closed), free-text search', 'Slide-in Detail Panel: inline image preview + download for attachments, status dropdown, resolution note, Mark Resolved action (stamps resolvedBy)'] },
+    { module: 'History Log', status: '✅ Live', features: ["Append-only activity_log table, written by application code (logActivity()), modeled on the WADA/Lab System's own audit trail", 'Hard-scoped to CRM modules only — Enquiries/Quotations/Orders/Customers/Follow-Ups/Sampling plus Signatories/Team Roster/Company Units/Bank Accounts; /production is excluded by design', 'Server-side paginated (50/page), with Module + Staff filters and a From/To date range', 'Debounced search across Customer Name and Module No. (e.g. "ORD-2026-476")', 'Expandable row: field-by-field Old→New diff for updates, full-row snapshot for inserts/deletes'] },
   ];
 
   const schema = [
@@ -65,13 +86,25 @@ export function Blueprint() {
     { table: 'ORDER_ITEMS', cols: ['orderId', 'seq', 'desc', 'mat', 'qty', 'uom', 'agreedRate', 'gst', 'total', 'remarks'], pk: 'orderId+seq', fk: 'orderId → ORDERS.id', rows: data.orders.reduce((a, o) => a + o.items.length, 0) },
     { table: 'CUSTOMERS', cols: ['code', 'name', 'seg', 'city', 'gstin', 'pan', 'contact', 'email', 'phone', 'inco', 'curr', 'pay'], pk: 'code', fk: '—', rows: totalCust },
     { table: 'FOLLOWUPS', cols: ['id', 'quote_id', 'owner', 'next_date', 'logs'], pk: 'id', fk: 'quote_id → QUOTES.id', rows: modules.find(m => m.id === 'M08')?.records ? 0 : 0 },
-    // rows: 0 for these three — same reason as M09's `records` above: none of
-    // them are fetched into useAppStore()'s central `data`, so there's no live
-    // count for Blueprint to read (samples/sample_products: Sampling.tsx fetches
-    // independently; product_catalog: useProductCatalog.ts fetches independently).
+    // DISPATCH_ENTRIES/TICKETS get real live counts (dispatchEntries/tickets
+    // ARE in useAppStore()'s central `data` — see totalDispatch/totalTickets
+    // above), unlike the rows:0 group below. Column list is the columns that
+    // actually drive Dispatch.tsx today; stages/current_stage_index/
+    // doc_link_status/doc_link_url/vehicle_number/num_units/unit/
+    // form_filled_by are real columns on the live table but dead — the
+    // stage-checklist UI they backed was fully removed (see M10's desc).
+    { table: 'DISPATCH_ENTRIES', cols: ['id', 'order_id', 'fulfillment_type', 'items', 'insurance', 'value', 'transporter', 'promised_delivery_date', 'estimated_delivery_date', 'created_by'], pk: 'id', fk: 'order_id → ORDERS.id', rows: totalDispatch },
+    { table: 'TICKETS', cols: ['id', 'raised_by_email', 'raised_by_name', 'module', 'subject', 'priority', 'status', 'attachment_path', 'resolved_by', 'resolution_note', 'created_at'], pk: 'id', fk: '—', rows: totalTickets },
+    // rows: 0 for these four — same reason as M09/M12's `records` above: none
+    // of them are fetched into useAppStore()'s central `data`, so there's no
+    // live count for Blueprint to read (samples/sample_products: Sampling.tsx
+    // fetches independently; product_catalog: useProductCatalog.ts fetches
+    // independently; activity_log: HistoryLog.tsx fetches independently,
+    // server-side paginated).
     { table: 'SAMPLES', cols: ['id', 'cust', 'quote_ref', 'enq_ref', 'products', 'quantity', 'unit', 'status', 'sent_date', 'pod_file', 'coa_file', 'lot_no', 'tracking_number', 'sent_by', 'created_by'], pk: 'id', fk: 'quote_ref → QUOTES.id / enq_ref → ENQUIRIES.id', rows: 0 },
     { table: 'SAMPLE_PRODUCTS', cols: ['id', 'sample_id', 'product_name', 'grade', 'lot_no', 'coa_url', 'quantity', 'unit', 'sort_order'], pk: 'id', fk: 'sample_id → SAMPLES.id', rows: 0 },
     { table: 'PRODUCT_CATALOG', cols: ['id', 'product_name', 'hsn_code', 'created_by', 'updated_by'], pk: 'id', fk: '—', rows: 0 },
+    { table: 'ACTIVITY_LOG', cols: ['id', 'actor_email', 'actor_name', 'module', 'record_id', 'record_label', 'action', 'changes', 'created_at'], pk: 'id', fk: '—', rows: 0 },
   ];
 
   const integrations = [
@@ -160,12 +193,64 @@ export function Blueprint() {
         ] },
       ],
     },
+    { tag: 'Phase 8', week: 'August 2026', title: 'Dispatch Control, Ticketing & Doer KPI Overhaul', progress: 100, status: 'Complete', tasks: [
+        'Dispatch Control module: Order → Dispatch tracking, split Self Pickup / Delivery, own line-item/insurance/value snapshot',
+        'Tickets module: internal issue tracking, Raise/Resolver views gated by admin email, attachments, resolution workflow',
+        'History Log module: system-wide activity_log audit trail, CRM-scoped',
+        'Doer KPI overhaul: live roster attribution, exclude mis@/shared logins, fixed double-counted and invisible-in-history bugs',
+        'Order admin-action restrictions (Payment Received/Complete gated per role) and automatic order splitting on partial dispatch',
+      ],
+      weeklyDetail: [
+        { label: 'Week 1 (Aug 1–7)', items: [
+          'Negotiation Rounds: fixed a native <select> race condition dropping priceBasis/src updates across several diagnostic + fix rounds, plus stopped in-place mutation of line-item objects in updateItem',
+          'Payment Received button added for advance-payment orders, restricted to accounts@, later extended to accounts@ + mum@',
+          'Complete button restricted to mum@ only, then to accounts@; disabled-button contrast and not-allowed cursor fixes',
+          'GSTIN added to the document letterhead (PDF/DOCX/email attachments)',
+          'Schedule tab, Delivery Date column, and Scheduled filter tab added to Orders — then fully reverted the same week',
+          'Standalone Schedule Date field added to Orders (separate from Required Delivery By), replacing the reverted Schedule tab approach',
+        ] },
+        { label: 'Week 2 (Aug 8–14)', items: [
+          'accounts@ and mum@ added to default CC on Order emails',
+          "Negotiation Rounds: baseline now uses current effective price (not original quote price), carried-forward items shown in each round's table, per-round totals now cumulative",
+          'Search: exact ref/PO/ID matches now rank above loose customer-name matches; Customer Master search narrowed to company name only, then punctuation-normalized ("ak" matches "A.K...") and extended to Enquiries/Quotes/Orders/Sampling',
+          'Sticky Actions column saga on Orders/Sampling/Enquiries — pinned right, several border-collapse/table-fixed overlap fixes, ultimately reverted to plain last-column styling',
+          "Customers: multi-email/multi-phone chips per contact; unique constraint on customer_id with auto-retry-with-fresh-ID, fixing a race condition that silently created duplicate customers",
+          'Quotations: searchable COA/GC document library wired into AttachmentModal and email attachments',
+        ] },
+        { label: 'Week 3 (Aug 15–21)', items: [
+          'COA document type finalized (GC document type removed); table-rename fix (coa_document) and debounced COA attachment search',
+          "Fixed COA attachment corruption — bare storage_path was resolving against the app's own origin instead of Supabase",
+          'sales@ shared-login hardened: flaky per-role PINs and a race condition in the PIN gate fixed, sign-out added, identity-wiped-on-page-load bug fixed',
+          'Gmail token lookup fixed for shared mailboxes; actions now stamped with the resolved sales@ identity',
+          "Doer KPI: live roster lookup for attribution, orders.doer persisted, mis@ and shared logins excluded from tracking, and a date-scope mismatch fixed (SC_1/Negotiation/Other work history vs. lifetime summary)",
+          'Customer form: CRM field + Pricing Mechanism settings placeholder added',
+        ] },
+        { label: 'Week 4 (Aug 22–28)', items: [
+          "Doer KPI: full audit across every role (PI Sender, Other) — fixed cards/deals counted in Volume/win-rate but invisible in history, PI Sender volume no longer silently duplicating DEO",
+          'Payment Terms: 10-day and 1-day options recognized/added app-wide; new Quotations/Customers default to a placeholder instead of pre-selecting 30 Days Net',
+          'Cross-module global search dropdown added (Customers/Enquiries/Quotations/Orders/Sampling)',
+          'Customer Tier: auto-derive from total order value attempted (plus a backfill script), then reverted back to the manual Tier dropdown',
+          'System Plan: month-by-week build history accordion added, later folded into the Phase 7 roadmap entry as a nested expandable',
+          'History Log module shipped: activity_log table, app-code instrumented, hard-scoped to CRM modules (Production excluded), covering Follow-Ups pipeline actions and Sampling email/dispatch updates',
+          'Customer form: CRM (Nimisha/Ruby/Shishir/Anil) and Tier (Bronze/Silver/Gold) dropdowns added, grouped with GSTIN/PAN into one row',
+          'Dispatch Control module shipped: Order → Dispatch tracking split Self Pickup/Delivery, redesigned New Dispatch Entry (auto-populated from the order, full page instead of modal), its own editable line-item/insurance/value snapshot, admin-only delete',
+          "Dispatch: automatic order splitting on partial dispatch (\"Order Pending for Dispatch\"), permanently hidden via a one-way dispatch_finalized flag once fully dispatched; dead stage-checklist system (Progress/Next Action Due — no working Mark Done ever existed) removed end-to-end",
+          '"Processing" order status renamed to "Order Pending for Payment"; Dispatch table expanded to match Orders Register\'s column richness with click-to-expand line items and a Sub-Total/GST/Grand summary; standalone dispatch-entry creation flow removed (per-order only)',
+          'Fulfillment Type and Transporter now auto-fill from the customer record on new Orders (fixed stale defaults when switching customers)',
+        ] },
+        { label: 'Week 5 (Aug 29–31)', items: [
+          'Tickets module shipped: internal issue-tracking (Enquiry/Quotation/Order/Dispatch/Customer/Sampling/Other), Raise-a-Ticket + Ticket Resolver views gated by admin email, attachment upload/preview/download, resolution workflow',
+          "Fixed Ticket Resolver's raise affordance and a missing-attachment-display bug",
+        ] },
+      ],
+    },
   ];
 
   const timeline = [
     { date: '✅ May 20, 2026', event: 'V3 Launched', desc: 'All core modules live. Supabase-backed, authenticated, deployed to Cloudflare.' },
     { date: '✅ June 2026', event: 'V3 Stabilization Sprint — All Core Modules', desc: 'Enquiry: schema alignment with Supabase, created_by tracking. Quotation: Billing Name/HSN auto-fill, Insurance row, Payment Terms/Incoterms auto-fill, PDF/DOCX letterhead overhaul with default signatory, per-user Gmail OAuth. Order: GST/Insurance calc matched to quotation, Taxes & Charges section built, full auto-populate from customer/quote. Customers: PAN auto-extract from GSTIN, dynamic segment dropdown, auto-save contact details. Sampling: module built from scratch (tracker + log form + feedback recording). Packing Types: DB-backed persistence shipped across all 3 modules. Role-restricted deletes (mis@/shishir@) added across Enquiry/Quotation/Order.' },
     { date: '✅ July 2026', event: 'Phase 7 — Sampling, Negotiation & Cross-Module Rollout', desc: 'Sampling: full status lifecycle, POD/COA/Lot No uploads, multi-product records, tracking number, email dispatch template. Quotation: Negotiation Rounds shipped end-to-end (form → register → PDF/DOCX), Authorized Signatory panel, Customer Tier badge. Enquiry: Authorized Signatory panel, Customer Tier badge. Order: Payment Terms field, Order Confirmed status, PO upload fix, Customer Tier badge. Customer Master: created_by/modified_by tracking, restricted delete, improved search. Follow-Up CRM: new Negotiation stage with quick-action chips and 7-day TAT. Packing Types finalized to a fixed 26-item list. Enquiry→Quotation→Order cascade-delete FKs added then reverted to independent per-module deletes (SET NULL) after the cascade UI got stuck. CI/CD moved to GitHub Actions + direct Wrangler deploy.' },
+    { date: '✅ August 2026', event: 'Phase 8 — Dispatch Control, Ticketing & Doer KPI Overhaul', desc: "Three new modules shipped: Dispatch Control (Order → Dispatch tracking split Self Pickup/Delivery, auto-populated New Dispatch Entry, its own line-item/insurance/value snapshot, automatic order splitting on partial dispatch via a one-way dispatch_finalized flag, dead stage-checklist system fully removed), Tickets (internal issue-tracking, Raise/Resolver views gated by admin email, attachments, resolution workflow), and History Log (system-wide activity_log audit trail, app-code instrumented, hard-scoped to CRM modules). Orders: Payment Received/Complete buttons restricted per role (accounts@/mum@), GSTIN added to the letterhead, Fulfillment Type/Transporter auto-fill from the customer record, \"Processing\" status renamed to \"Order Pending for Payment\". Quotation: Negotiation Rounds' price carry-forward and running-total math fixed across four rounds of bugs; a searchable COA/GC document library was added then narrowed to COA only. Customer Master: multi-email/multi-phone chips per contact, a unique customer_id constraint with auto-retry fixing a duplicate-customer race condition, CRM/Tier dropdowns, and search narrowed to company name then punctuation-normalized and extended to Enquiries/Quotes/Orders/Sampling. Doer KPI: a full attribution audit across every role — live roster lookup, mis@/shared logins excluded, and several roles' cards/deals no longer silently miscounted. sales@ shared-login PIN gate hardened (race condition, flaky per-role PINs, sign-out). Customer Tier auto-derivation from order value was tried and reverted back to the manual dropdown. System Plan: month-by-week build history accordion added, folded into the Phase 7 roadmap entry." },
   ];
 
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
