@@ -117,6 +117,13 @@ import { PRODUCTS } from '../lib/stockInwardProducts';
 // NewStockInward.tsx's own PRODUCT_NAME_OPTIONS).
 const PRODUCT_NAME_OPTIONS = PRODUCTS.map(p => p.name);
 
+// Single source of truth for "given a Product Name, what's its Product
+// Code" — used by both the Product Name combobox's own onChange AND the
+// Lot No auto-fill lookup below, so there's only ever one code-lookup path
+// (2026-09-08: the Lot No auto-fill feature reuses this instead of matching
+// against PRODUCTS a second time).
+const codeForProductName = (name: string): string => PRODUCTS.find(p => p.name === name)?.code ?? '';
+
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
 const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]";
@@ -254,6 +261,89 @@ export function NewStockOutward() {
   const isOtherParty = form.partyName === 'Other';
   const isOtherTransporter = form.transporter === 'Other';
 
+  // "No stock found for this lot at <Warehouse>" — set by the auto-fill
+  // lookup below when Lot No matches a real stock_lots row but that party
+  // column is 0/null, so the user knows their Warehouse/Lot No combination
+  // looks off instead of silently getting no auto-fill and no explanation.
+  const [lotWarning, setLotWarning] = useState('');
+
+  // Auto-fills the rest of the form from the matching stock_lots row once
+  // both Warehouse and Lot No are filled in, added 2026-09-08 at the user's
+  // request. Debounced 400ms after the last Lot No keystroke (and re-run on
+  // Warehouse change) so it doesn't query on every keystroke — same ilike
+  // match on wh_lot_no that save() itself uses below, so "will this
+  // auto-fill" and "will this decrement a real lot at save time" always
+  // agree. A lot that isn't found is treated as a brand-new lot (no error,
+  // no warning) — only an existing lot with zero stock at the selected
+  // Warehouse gets the inline warning; every other field is only ever
+  // filled in when currently empty, never overwriting something the user
+  // already typed.
+  useEffect(() => {
+    setLotWarning('');
+    const warehouse = form.warehouse;
+    const lotNo = form.lotNo.trim();
+    const partyCol = PARTY_COLUMN[warehouse];
+    if (!lotNo || !partyCol) return;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from('stock_lots')
+        .select('*')
+        .ilike('wh_lot_no', lotNo)
+        .limit(1);
+      if (cancelled) return;
+
+      const existing = data?.[0];
+      if (!existing) return; // no match — likely a brand-new lot, nothing to fill in
+
+      const qtyAtWarehouse = existing[partyCol];
+      if (!qtyAtWarehouse || qtyAtWarehouse <= 0) {
+        setLotWarning(`No stock found for this lot at ${warehouse}.`);
+        return;
+      }
+
+      setForm(f => {
+        // Warehouse/Lot No may have moved on while this lookup was in
+        // flight — cancelled (above) only covers a fully superseded effect
+        // run; this covers the same run's result arriving after the user
+        // already changed one of the two fields again.
+        if (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo) return f;
+
+        const next = { ...f };
+        if (!f.productName.trim()) next.productName = existing.product_name || '';
+        if (!f.productCode.trim()) next.productCode = codeForProductName(next.productName);
+        if (!f.numArticles.trim() && existing.no_of_barrels != null) {
+          next.numArticles = String(existing.no_of_barrels);
+        }
+        // Same packing/packingDetail fallback Stockbook.tsx's own Packing
+        // column uses: the legacy numeric `packing` column wins when set,
+        // otherwise fall back to the text `packing_detail` column Inward
+        // actually writes.
+        if (!f.packing.trim()) {
+          const fallbackPacking = existing.packing != null ? String(existing.packing) : (existing.packing_detail || '');
+          if (fallbackPacking) next.packing = fallbackPacking;
+        }
+        if (!f.packagingType.trim()) next.packagingType = existing.packing_type || '';
+        if (!f.weightType.trim()) next.weightType = existing.mou || '';
+
+        // Same barrels×packing auto-calc onNumArticlesChange/onPackingChange
+        // use, run once here so Total Quantity ends up populated too —
+        // never from stock_lots.quantity directly, which is the lot's
+        // total remaining stock across every party, not this transaction.
+        if (!f.totalQty.trim()) {
+          const barrels = parseNum(next.numArticles);
+          const packing = parseNum(next.packing);
+          if (barrels !== null && packing !== null) next.totalQty = String(barrels * packing);
+        }
+
+        return next;
+      });
+    }, 400);
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [form.warehouse, form.lotNo]);
+
   // 2026-09-07: Number of Articles ("No of Barrels" now) and Total Quantity
   // became required here too, matching Inward's Quantity section exactly —
   // previously both were optional (see the file-header comment's now-stale
@@ -379,6 +469,7 @@ export function NewStockOutward() {
               <div>
                 <label className={labelCls}>Lot No</label>
                 <input className={inputCls} value={form.lotNo} onChange={set('lotNo')} />
+                {lotWarning && <p className="text-amber-600 text-[11px] mt-1">{lotWarning}</p>}
               </div>
               <div>
                 <label className={labelCls}>Lot Date</label>
@@ -390,10 +481,7 @@ export function NewStockOutward() {
                   className={inputCls}
                   options={PRODUCT_NAME_OPTIONS}
                   value={form.productName}
-                  onChange={v => {
-                    const match = PRODUCTS.find(p => p.name === v);
-                    setForm(f => ({ ...f, productName: v, productCode: match ? match.code : '' }));
-                  }}
+                  onChange={v => setForm(f => ({ ...f, productName: v, productCode: codeForProductName(v) }))}
                 />
               </div>
               <div>
