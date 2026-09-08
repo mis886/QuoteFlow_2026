@@ -330,9 +330,15 @@ export function NewStockOutward() {
         if (!f.productCode.trim()) {
           next.productCode = existing.product_code || codeForProductName(next.productName);
         }
-        if (!f.numArticles.trim() && existing.no_of_barrels != null) {
-          next.numArticles = String(existing.no_of_barrels);
-        }
+        // 2026-09-08: sourced from the party qty_* column (qtyAtWarehouse,
+        // already read above to decide the "no stock" warning), NOT
+        // stock_lots.no_of_barrels — per this module's 2026-09-05 fix,
+        // no_of_barrels is a lot-wide field deliberately decoupled from the
+        // real per-warehouse barrel count and is null on plenty of real
+        // rows (e.g. lot W0686-R: qty_reliable=7, no_of_barrels=null).
+        // Stockbook.tsx stopped displaying no_of_barrels for the same
+        // reason — qty_* is the only trustworthy barrel count left.
+        if (!f.numArticles.trim()) next.numArticles = String(qtyAtWarehouse);
         // Same packing/packingDetail fallback Stockbook.tsx's own Packing
         // column uses: the legacy numeric `packing` column wins when set,
         // otherwise fall back to the text `packing_detail` column Inward
