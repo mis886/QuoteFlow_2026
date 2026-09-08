@@ -124,6 +124,11 @@ const PRODUCT_NAME_OPTIONS = PRODUCTS.map(p => p.name);
 // against PRODUCTS a second time).
 const codeForProductName = (name: string): string => PRODUCTS.find(p => p.name === name)?.code ?? '';
 
+// MOU's own fixed option pair — pulled out to a const (was inline <option>s)
+// so the component below can widen it with an out-of-list auto-filled value
+// the same way it already does for PACKAGING_TYPES.
+const MOU_OPTIONS = ['KG', 'LTR'];
+
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
 const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]";
@@ -312,7 +317,19 @@ export function NewStockOutward() {
 
         const next = { ...f };
         if (!f.productName.trim()) next.productName = existing.product_name || '';
-        if (!f.productCode.trim()) next.productCode = codeForProductName(next.productName);
+        // 2026-09-08: prefer the lot's own product_code (written directly by
+        // NewStockInward.tsx's dropdown at lot creation) over re-deriving it
+        // from product_name — legacy/sheet-imported lots' free-text names
+        // (e.g. "Alpha Pinene 95 % -ve") don't exactly match PRODUCTS'
+        // stricter entries (e.g. "Alpha Pinene 95% -ve 24"), so a name-based
+        // lookup silently came back blank for exactly the lots most likely
+        // to need it. codeForProductName is still tried as a best-effort
+        // fallback for the rarer case of an old lot with no product_code at
+        // all — exact match only, no fuzzy matching (a wrong code on a real
+        // Delivery Order is worse than a blank one the user fills in).
+        if (!f.productCode.trim()) {
+          next.productCode = existing.product_code || codeForProductName(next.productName);
+        }
         if (!f.numArticles.trim() && existing.no_of_barrels != null) {
           next.numArticles = String(existing.no_of_barrels);
         }
@@ -355,6 +372,22 @@ export function NewStockOutward() {
     form.doNumber.trim() && form.productName.trim() &&
     form.numArticles.trim() && form.totalQty.trim()
   );
+
+  // 2026-09-08: keep an out-of-list Packing Type/MOU value visible in its
+  // <select> — needed now that the Lot No auto-fill above can set either
+  // field to a legacy stock_lots value (e.g. "New Plastic", "Kg") that isn't
+  // one of this form's own fixed options. A native <select> shows nothing
+  // selected when its value doesn't match any <option>, which is exactly
+  // why auto-filled Packing Type/MOU were rendering as blank "Select..."
+  // despite the value being set in form state.
+  const packagingTypeOptions =
+    form.packagingType && !PACKAGING_TYPES.includes(form.packagingType)
+      ? [...PACKAGING_TYPES, form.packagingType]
+      : PACKAGING_TYPES;
+  const weightTypeOptions =
+    form.weightType && form.weightType !== 'KG' && form.weightType !== 'LTR'
+      ? [...MOU_OPTIONS, form.weightType]
+      : MOU_OPTIONS;
 
   const save = async () => {
     if (!isValid) { setError('Please fill in all required fields.'); return; }
@@ -510,15 +543,14 @@ export function NewStockOutward() {
                 <label className={labelCls}>Packing Type</label>
                 <select className={selectCls} value={form.packagingType} onChange={set('packagingType')}>
                   <option value="">Select...</option>
-                  {PACKAGING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {packagingTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>
                 <label className={labelCls}>MOU (Measure of Unit)</label>
                 <select className={selectCls} value={form.weightType} onChange={set('weightType')}>
                   <option value="">Select...</option>
-                  <option value="KG">KG</option>
-                  <option value="LTR">LTR</option>
+                  {weightTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
             </div>
