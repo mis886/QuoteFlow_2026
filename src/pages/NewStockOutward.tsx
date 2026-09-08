@@ -343,6 +343,11 @@ export function NewStockOutward() {
         }
         if (!f.packagingType.trim()) next.packagingType = existing.packing_type || '';
         if (!f.weightType.trim()) next.weightType = existing.mou || '';
+        // stock_lots.inward_date is a plain `date` column (not timestamptz —
+        // see 20260901060000_create_stock_lots_table.sql), so it comes back
+        // as an already-"YYYY-MM-DD" string with no time component to strip,
+        // same as NewStockInward.tsx/Stockbook.tsx's own inward_date reads.
+        if (!f.lotDate.trim()) next.lotDate = existing.inward_date || '';
 
         // Same barrels×packing auto-calc onNumArticlesChange/onPackingChange
         // use, run once here so Total Quantity ends up populated too —
