@@ -33,8 +33,21 @@
 //    ?id=-style full-page-edit convention as Orders/Quotes) instead of
 //    opening src/components/InwardEditModal.tsx as a popup — the user wanted
 //    Inward's edit to match how Orders/Quotes edit (a full page). Outward's
-//    Edit button is UNCHANGED — it still opens OutwardEditModal.tsx as a
-//    popup; only Inward was asked to become a full page.
+//    Edit button was UNCHANGED at the time — it kept opening
+//    OutwardEditModal.tsx as a popup; only Inward was asked to become a full
+//    page. (Outward caught up 2026-09-09 — see below.)
+//
+// 2026-09-09: Outward's Edit button now ALSO navigates to a full page
+// (/stock-movements/new-outward?movementId=<id>, handled by
+// src/pages/NewStockOutward.tsx), same conversion Inward went through above.
+// src/components/OutwardEditModal.tsx had gone stale — it was never updated
+// as NewStockOutward.tsx's create form gained required+auto-calc No of
+// Barrels, MOU/Packing Type selects, a trimmed Warehouse list, and live
+// customers-backed Party Name/Transporter, so editing an entry visibly
+// showed the old field set. Rather than update the modal a second time, it's
+// retired the same way InwardEditModal.tsx was: no longer imported/rendered
+// here, left on disk unused. editingMovement/modalOpen state and openEdit()
+// are removed along with it — nothing else in this file used them.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -43,7 +56,6 @@ import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockMovement } from '../lib/types';
-import { OutwardEditModal } from '../components/OutwardEditModal';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 
@@ -114,8 +126,6 @@ export function StockMovements() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'inward' | 'outward'>('inward');
-  const [editingMovement, setEditingMovement] = useState<StockMovement | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
   // Single scroll container for both axes, shared by whichever tab
   // (Inward/Outward) is currently rendered — sticky headers below need to
   // stick to the SAME element that scrolls vertically, and nesting a
@@ -137,8 +147,6 @@ export function StockMovements() {
   };
 
   useEffect(() => { load(); }, []);
-
-  const openEdit = (m: StockMovement) => { setEditingMovement(m); setModalOpen(true); };
 
   const handleDelete = async (m: StockMovement) => {
     if (!window.confirm(`Delete this ${m.type} entry for "${m.productName}" (${m.whLotNo || 'no lot no.'})? This also reverses its effect on the matching Stockbook lot, if one is found.`)) return;
@@ -331,7 +339,12 @@ export function StockMovements() {
                       <td className="px-[13px] py-[9px] align-top text-g500 whitespace-nowrap">{m.created_by || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button type="button" onClick={() => openEdit(m)} className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors" title="Edit">
+                          {/* 2026-09-09: Outward's Edit now opens the full-page
+                              NewStockOutward.tsx (same ?movementId=-style
+                              full-page-edit convention Inward's own Edit button
+                              already uses below), not a modal — see the
+                              2026-09-09 file-header note above. */}
+                          <button type="button" onClick={() => navigate(`/stock-movements/new-outward?movementId=${m.id}`)} className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors" title="Edit">
                             <Pencil size={12} />
                           </button>
                           <button type="button" onClick={() => handleDelete(m)} className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors" title="Delete">
@@ -417,15 +430,6 @@ export function StockMovements() {
           <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
           <FloatingVerticalScrollbar containerRef={tableScrollRef} horizontalContainerRef={tableScrollRef} />
         </div>
-      )}
-
-      {editingMovement && editingMovement.type === 'outward' && (
-        <OutwardEditModal
-          open={modalOpen}
-          movement={editingMovement}
-          onClose={() => setModalOpen(false)}
-          onSaved={load}
-        />
       )}
     </div>
   );

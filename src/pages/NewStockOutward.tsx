@@ -97,9 +97,41 @@
 // list. See loadPartyTransporters() below. PARTY_NAMES/TRANSPORTERS consts
 // are left in place, unused, per this module's "don't delete superseded
 // code" convention — nothing in this file references them anymore.
+//
+// 2026-09-09: this page now also handles EDITING an existing Outward entry,
+// via ?movementId=<id> in the URL — same conversion Inward went through on
+// 2026-09-05 (see NewStockInward.tsx's own comment), for the same reason:
+// src/components/OutwardEditModal.tsx (the old popup) was never updated
+// when this create form's fields changed (No of Barrels required+auto-calc,
+// MOU/Packing Type selects, trimmed Warehouse list, live customers-backed
+// Party Name/Transporter), so editing an entry showed a visibly stale form.
+// Rather than update the modal a second time, it's retired the same way
+// InwardEditModal.tsx was — left on disk unused (src/pages/StockMovements.tsx
+// no longer imports or renders it) rather than deleted, in case anything
+// still references it. When movementId is present, this page fetches that
+// one stock_movements row directly (self-contained, no store cache), pre-
+// fills every field, and save() ports OutwardEditModal.tsx's own
+// reconciliation logic: reverse the OLD entry's stock_lots decrement (add
+// its quantity/barrels back to whichever lot the OLD warehouse+lot no
+// matched), then re-apply the NEW (edited) decrement against whichever lot
+// the NEW warehouse+lot no matches — both steps via the same adjustLot()
+// helper (best-effort, update-only, never inserts), ported verbatim from
+// the modal rather than upgraded to Inward's lotId-pinning fix, since
+// Outward's decrement has no insert branch for that fix to matter to (a
+// lot that isn't found is just skipped, on both the reversal and re-apply
+// side — no way to spin off a duplicate row the way Inward's insert-or-
+// update branch could). The plain "create a new entry" path (no
+// movementId) is untouched by any of this.
+// The Lot No auto-fill effect below is skipped entirely while editing
+// (isEditing) — it exists to help populate a blank create-mode form from a
+// lot the user is drawing down, which doesn't apply once every field is
+// already populated from the movement being edited; running it anyway
+// could also show a spurious "No stock found" warning purely because THIS
+// SAME movement's own not-yet-reversed decrement is what's currently
+// keeping that party column low.
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
@@ -111,6 +143,7 @@ import { PACKAGING_TYPES } from '../lib/stockMovementOptions';
 // comment above for why the two lists couldn't stay separate once Product
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
+import { Loader2 } from 'lucide-react';
 
 // Combobox options — derived from PRODUCTS, the single source of truth also
 // used for the Product Code auto-fill lookup below (same pattern as
@@ -176,12 +209,99 @@ const emptyForm = {
   partyName: '', otherParty: '', transporter: '', otherTransporter: '', note: '',
 };
 
+// Ported verbatim from src/components/OutwardEditModal.tsx (2026-09-09) —
+// applies a best-effort +/- delta to whichever stock_lots row `whLotNo`
+// matches (via the given party column). Never throws. qtyDelta (Total
+// Quantity) and partyDelta (Number of Articles — barrel/article count) are
+// separate: the party column tracks count, not quantity, same rule as
+// Inward's no_of_barrels (see NewStockInward.tsx's 2026-09-05 comment).
+// Used only by save()'s edit-mode branch below — the plain create-mode
+// decrement further down has its own separate, unchanged inline logic.
+async function adjustLot(partyCol: string | undefined, whLotNo: string, qtyDelta: number, partyDelta: number, userEmail?: string | null) {
+  if (!partyCol || !whLotNo || (!qtyDelta && !partyDelta)) return;
+  try {
+    const { data: lots } = await supabase.from('stock_lots').select('*').ilike('wh_lot_no', whLotNo).limit(1);
+    const lot = lots?.[0];
+    if (lot) {
+      await supabase.from('stock_lots').update({
+        [partyCol]: (lot[partyCol] ?? 0) + partyDelta,
+        quantity: (lot.quantity ?? 0) + qtyDelta,
+        updated_at: new Date().toISOString(),
+        updated_by: userEmail ?? null,
+      }).eq('id', lot.id);
+    }
+  } catch (e) {
+    console.error('Outward edit stock_lots adjustment failed (movement update still proceeds):', e);
+  }
+}
+
 export function NewStockOutward() {
   const navigate = useNavigate();
   const { user } = useAppStore();
+  const [searchParams] = useSearchParams();
+  const movementId = searchParams.get('movementId');
+  const isEditing = !!movementId;
+
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [loadingMovement, setLoadingMovement] = useState(isEditing);
+  // Captured once, when loading an existing entry for editing — the values
+  // stock_lots was last decremented with, so save() can reverse that OLD
+  // effect before applying the edited one (see adjustLot() above). Raw
+  // values straight off the stock_movements row, NOT routed through the
+  // Warehouse dropdown's isOtherWarehouse fallback — unlike `form`, which
+  // may fold a legacy warehouse value (e.g. "WADA", no longer in this
+  // form's own WAREHOUSES list) into 'Other'+otherWarehouse for display.
+  const [original, setOriginal] = useState<{ warehouse: string; lotNo: string; totalQty: number; numArticles: string } | null>(null);
+
+  useEffect(() => {
+    if (!movementId) return;
+    let cancelled = false;
+    setLoadingMovement(true);
+    (async () => {
+      const { data, error: fetchErr } = await supabase.from('stock_movements').select('*').eq('id', movementId).single();
+      if (cancelled) return;
+      if (fetchErr || !data) {
+        setError(fetchErr?.message || 'Could not load this Outward entry.');
+        setLoadingMovement(false);
+        return;
+      }
+      const isKnownWarehouse = WAREHOUSES.includes(data.warehouse);
+      setForm({
+        warehouse: isKnownWarehouse ? data.warehouse : (data.warehouse ? 'Other' : ''),
+        otherWarehouse: isKnownWarehouse ? '' : (data.warehouse || ''),
+        doNumber: data.do_number || '',
+        doDate: data.do_date || '',
+        lotNo: data.wh_lot_no || '',
+        lotDate: data.inward_date || '',
+        productName: data.product_name || '',
+        // stock_movements has no product_code column of its own (see the
+        // file-header comment) — same exact-match derivation the Product
+        // Name combobox's own onChange already uses, same as
+        // OutwardEditModal.tsx did.
+        productCode: codeForProductName(data.product_name || ''),
+        numArticles: data.num_articles || '',
+        packing: data.packing?.toString() ?? '',
+        totalQty: data.total_qty?.toString() ?? '',
+        weightType: data.weight_type || '',
+        packagingType: data.packaging_type || '',
+        partyName: data.party_name || '',
+        otherParty: data.other_party || '',
+        transporter: data.transporter || '',
+        otherTransporter: data.other_transporter || '',
+        note: data.note || '',
+      });
+      setOriginal({
+        warehouse: data.warehouse || '',
+        lotNo: (data.wh_lot_no || '').trim(),
+        totalQty: data.total_qty ?? 0,
+        numArticles: data.num_articles || '',
+      });
+      setLoadingMovement(false);
+    })();
+    return () => { cancelled = true; };
+  }, [movementId]);
 
   // 2026-09-07: Party Name options + the customer->transporter lookup used
   // to auto-fill Transporter, both sourced live from `customers` — see the
@@ -283,8 +403,13 @@ export function NewStockOutward() {
   // Warehouse gets the inline warning; every other field is only ever
   // filled in when currently empty, never overwriting something the user
   // already typed.
+  // 2026-09-09: skipped entirely while editing (isEditing) — see the
+  // file-header comment for why (every field is already populated from the
+  // movement being edited, and this movement's own not-yet-reversed
+  // decrement could make the "no stock" warning fire spuriously).
   useEffect(() => {
     setLotWarning('');
+    if (isEditing) return;
     const warehouse = form.warehouse;
     const lotNo = form.lotNo.trim();
     const partyCol = PARTY_COLUMN[warehouse];
@@ -412,6 +537,47 @@ export function NewStockOutward() {
     // not Total Quantity — see the file-header comment above.
     const numArticles = num(form.numArticles);
 
+    // Editing an existing entry: ported from OutwardEditModal.tsx's own
+    // save() — reverse the OLD decrement, re-apply the NEW one, then update
+    // the stock_movements row in place instead of inserting a new one. See
+    // the file-header comment for why this is a faithful port of the old
+    // modal's logic rather than Inward's more involved lotId-pinning fix.
+    if (isEditing && movementId && original) {
+      const oldPartyCol = PARTY_COLUMN[original.warehouse];
+      const newPartyCol = PARTY_COLUMN[warehouseToSave];
+      const oldNumArticles = num(original.numArticles) ?? 0;
+
+      // 1. Reverse the OLD entry's decrement (add its quantity back).
+      await adjustLot(oldPartyCol, original.lotNo, original.totalQty, oldNumArticles, user?.email);
+      // 2. Re-apply the NEW (edited) decrement.
+      await adjustLot(newPartyCol, lotNo, -(totalQty ?? 0), -(numArticles ?? 0), user?.email);
+
+      // 3. Update the stock_movements row itself.
+      const { error: moveErr } = await supabase.from('stock_movements').update({
+        warehouse: warehouseToSave,
+        wh_lot_no: lotNo || null,
+        product_name: form.productName.trim(),
+        do_number: form.doNumber.trim(),
+        do_date: form.doDate || null,
+        inward_date: form.lotDate || null,
+        num_articles: form.numArticles.trim() || null,
+        packing: num(form.packing),
+        weight_type: form.weightType || null,
+        packaging_type: form.packagingType || null,
+        total_qty: totalQty,
+        party_name: form.partyName || null,
+        other_party: isOtherParty ? (form.otherParty.trim() || null) : null,
+        transporter: form.transporter || null,
+        other_transporter: isOtherTransporter ? (form.otherTransporter.trim() || null) : null,
+        note: form.note.trim() || null,
+      }).eq('id', movementId);
+
+      if (moveErr) { setError(moveErr.message); setSaving(false); return; }
+      navigate('/stock-movements');
+      setSaving(false);
+      return;
+    }
+
     const movementPayload = {
       type: 'outward',
       warehouse: warehouseToSave,
@@ -468,14 +634,27 @@ export function NewStockOutward() {
     setSaving(false);
   };
 
+  if (loadingMovement) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-g400">
+        <Loader2 size={28} className="animate-spin" />
+        <div className="font-mono text-[10px] font-bold tracking-[2px] uppercase">Loading Outward Entry…</div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
       <div className="pt-5 px-6">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">Stock Movements Module</div>
-            <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">Log <em className="italic text-red-mrt">New Outward</em></h1>
-            <p className="text-xs text-g500 mt-1 font-light">Record a Delivery Order stock outward — replaces the Delivery Order Sale Google Form.</p>
+            <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">
+              {isEditing ? <>Edit <em className="italic text-red-mrt">Outward Entry</em></> : <>Log <em className="italic text-red-mrt">New Outward</em></>}
+            </h1>
+            <p className="text-xs text-g500 mt-1 font-light">
+              {isEditing ? 'Update a previously logged Delivery Order stock outward.' : 'Record a Delivery Order stock outward — replaces the Delivery Order Sale Google Form.'}
+            </p>
           </div>
           <Button variant="secondary" onClick={() => navigate('/stock-movements')}>Back</Button>
         </div>
@@ -606,7 +785,7 @@ export function NewStockOutward() {
 
       <div className="flex items-center gap-2 p-[14px_20px] bg-g100 border-t border-g200 sticky bottom-0">
         <Button variant="primary" onClick={save} disabled={!isValid || saving}>
-          {saving ? 'Saving…' : 'Save Outward Entry'}
+          {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save Outward Entry'}
         </Button>
         <Button variant="secondary" onClick={() => navigate('/stock-movements')} disabled={saving}>Cancel</Button>
         <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>
