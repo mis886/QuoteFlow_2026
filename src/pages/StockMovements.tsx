@@ -301,10 +301,10 @@ export function StockMovements() {
                   <Th label="Warehouse" />
                   <Th label="Party Name" />
                   <Th label="Transporter" />
-                  <Th label="Articles" align="right" />
+                  <Th label="No of Barrels" align="right" />
                   <Th label="Packing" align="right" />
-                  <Th label="Weight Type" />
-                  <Th label="Type" />
+                  <Th label="MOU" />
+                  <Th label="Packing Type" />
                   <Th label="Total Qty" align="right" />
                   <Th label="Note" />
                   <Th label="Entered By" />
