@@ -129,6 +129,22 @@
 // could also show a spurious "No stock found" warning purely because THIS
 // SAME movement's own not-yet-reversed decrement is what's currently
 // keeping that party column low.
+//
+// 2026-09-09 (later, same day): DO Number is no longer hand-typed — it's
+// auto-generated, warehouse-prefixed (first 4 letters, uppercase — HARI/
+// RELI/SWAS/BALA), sequential per warehouse, e.g. HARI-0001, HARI-0002, ...,
+// never resetting. See DO_NUMBER_PREFIX/generateNextDoNumber below and the
+// Warehouse-select effect that calls it the moment a Warehouse is picked
+// (and regenerates on a Warehouse change, in create mode only — editing
+// never regenerates, see that effect's own comment). Existing legacy plain-
+// numeric DO Numbers (e.g. "90") are untouched and don't collide with or
+// affect the new sequence — they simply never match a "<PREFIX>-####"
+// pattern, so generateNextDoNumber ignores them entirely. A DB-level unique
+// constraint (stock_movements_do_number_unique migration) guarantees no two
+// entries ever share a DO Number even under concurrent saves for the same
+// warehouse; save()'s create-mode path uses insertOutwardWithRetry to catch
+// that constraint's 23505 violation and retry with a freshly-generated
+// number rather than surfacing a raw DB error.
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -233,6 +249,79 @@ async function adjustLot(partyCol: string | undefined, whLotNo: string, qtyDelta
   } catch (e) {
     console.error('Outward edit stock_lots adjustment failed (movement update still proceeds):', e);
   }
+}
+
+// 2026-09-09: DO Number auto-generation, replacing free-hand entry. Prefix is
+// each warehouse's first 4 letters, uppercase — a literal map (not derived
+// via .slice(0,4).toUpperCase()) so the exact prefixes stay obvious and
+// stable even if a warehouse's display name ever changes. No entry for
+// 'Other' — DO Number generation only applies to the 4 known warehouses this
+// form's own dropdown offers (isOtherWarehouse is otherwise unreachable, see
+// the WAREHOUSES comment above).
+const DO_NUMBER_PREFIX: Record<string, string> = {
+  Hariom: 'HARI',
+  Reliable: 'RELI',
+  Swastik: 'SWAS',
+  BALAJI: 'BALA',
+};
+
+// Next DO Number for `warehouse`: "<PREFIX>-0001", zero-padded to 4 digits,
+// sequential per warehouse, never resets. Fetches every do_number starting
+// with "<PREFIX>-" (cheap ilike prefix filter, scoped to Outward rows —
+// Inward has no DO Number concept and always writes null), then validates
+// each against the exact ^PREFIX-\d{4}$ shape in JS before taking the
+// highest numeric suffix — guards against a near-miss value (extra digits,
+// non-numeric suffix) being misread as part of the sequence. Existing
+// legacy plain-numeric DO Numbers (e.g. "90") never match this prefix
+// pattern at all, so they're ignored automatically — no separate filtering
+// needed for them, exactly as intended.
+async function generateNextDoNumber(warehouse: string): Promise<string> {
+  const prefix = DO_NUMBER_PREFIX[warehouse];
+  if (!prefix) return '';
+  const { data } = await supabase
+    .from('stock_movements')
+    .select('do_number')
+    .eq('type', 'outward')
+    .ilike('do_number', `${prefix}-%`);
+  const pattern = new RegExp(`^${prefix}-(\\d{4})$`);
+  let max = 0;
+  for (const row of (data ?? []) as { do_number: string | null }[]) {
+    const match = pattern.exec(row.do_number || '');
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n > max) max = n;
+    }
+  }
+  return `${prefix}-${String(max + 1).padStart(4, '0')}`;
+}
+
+// Guards the create-mode insert against a duplicate DO Number from two
+// people saving for the same warehouse at nearly the same time (both
+// generating the same "next" number before either had saved) — the DB-side
+// stock_movements_do_number_unique constraint (see that migration) rejects
+// the second insert with a 23505 unique-violation, caught here so it can be
+// retried with a freshly-regenerated number instead of surfacing a raw DB
+// error. onRetryDoNumber keeps the visible form field in sync with whatever
+// number is actually being attempted, so a final failure (retries
+// exhausted) still shows the user what was last tried rather than a stale
+// value. Never used by edit-mode's update path — an existing entry's DO
+// Number never changes, so there's nothing to conflict with there.
+async function insertOutwardWithRetry(
+  payload: Record<string, any>,
+  warehouse: string,
+  onRetryDoNumber: (doNumber: string) => void,
+  maxAttempts = 3
+): Promise<{ error: any }> {
+  let attemptPayload = payload;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const { error } = await supabase.from('stock_movements').insert(attemptPayload);
+    if (!error) return { error: null };
+    if (error.code !== '23505' || attempt === maxAttempts - 1) return { error };
+    const nextDoNumber = await generateNextDoNumber(warehouse);
+    attemptPayload = { ...attemptPayload, do_number: nextDoNumber };
+    onRetryDoNumber(nextDoNumber);
+  }
+  return { error: new Error('Could not save entry after several attempts — please try again.') };
 }
 
 export function NewStockOutward() {
@@ -385,6 +474,31 @@ export function NewStockOutward() {
   const isOtherWarehouse = form.warehouse === 'Other';
   const isOtherParty = form.partyName === 'Other';
   const isOtherTransporter = form.transporter === 'Other';
+
+  // 2026-09-09: auto-generates the DO Number the moment a Warehouse is
+  // picked, and regenerates it if the Warehouse selection changes again
+  // before saving — see generateNextDoNumber() above. Skipped entirely
+  // while editing (isEditing): an existing entry's DO Number is already
+  // saved and must never be regenerated, per the task. Clears the field
+  // back to blank if Warehouse is deselected (or set to a warehouse with no
+  // prefix mapping) rather than leaving a stale number for the wrong
+  // warehouse sitting in the field.
+  useEffect(() => {
+    if (isEditing) return;
+    const warehouse = form.warehouse;
+    if (!DO_NUMBER_PREFIX[warehouse]) {
+      setForm(f => (f.doNumber ? { ...f, doNumber: '' } : f));
+      return;
+    }
+    let cancelled = false;
+    generateNextDoNumber(warehouse).then(doNumber => {
+      if (cancelled) return;
+      // Warehouse may have moved on again while this was in flight — only
+      // apply if it still matches what this generation was for.
+      setForm(f => (f.warehouse === warehouse ? { ...f, doNumber } : f));
+    });
+    return () => { cancelled = true; };
+  }, [form.warehouse, isEditing]);
 
   // "No stock found for this lot at <Warehouse>" — set by the auto-fill
   // lookup below when Lot No matches a real stock_lots row but that party
@@ -599,8 +713,16 @@ export function NewStockOutward() {
       created_by: user?.email ?? null,
     };
 
-    const { error: moveErr } = await supabase.from('stock_movements').insert(movementPayload);
-    if (moveErr) { setError(moveErr.message); setSaving(false); return; }
+    // insertOutwardWithRetry (not a plain insert) so a DO Number collision
+    // under concurrent saves for the same warehouse gets one fresh number
+    // and a retry instead of a raw DB error — see that function's comment
+    // and the stock_movements_do_number_unique migration.
+    const { error: moveErr } = await insertOutwardWithRetry(
+      movementPayload,
+      form.warehouse,
+      doNumber => setForm(f => ({ ...f, doNumber }))
+    );
+    if (moveErr) { setError(moveErr.message || 'Failed to save entry.'); setSaving(false); return; }
 
     // Best-effort stock_lots decrement — only when there's a lot to match
     // against and the warehouse is one of the known parties. Never blocks
@@ -683,7 +805,11 @@ export function NewStockOutward() {
               )}
               <div>
                 <label className={labelCls}>DO Number <span className="text-red-mrt">*</span></label>
-                <input className={inputCls} value={form.doNumber} onChange={set('doNumber')} />
+                {/* 2026-09-09: auto-generated, never hand-typed — see the
+                    Warehouse-select effect above. Read-only in both create
+                    mode (regenerated on Warehouse change) and edit mode
+                    (loads and keeps the entry's existing saved value). */}
+                <input className={`${inputCls} bg-g100 text-g600 cursor-not-allowed`} value={form.doNumber} readOnly />
               </div>
               <div>
                 <label className={labelCls}>DO Date</label>
