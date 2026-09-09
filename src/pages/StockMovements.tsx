@@ -296,7 +296,7 @@ export function StockMovements() {
                 <tr>
                   <Th label="DO Date" />
                   <Th label="DO Number" />
-                  <Th label="WH Lot No" />
+                  <Th label="Lot No" />
                   <Th label="Product Name" />
                   <Th label="Warehouse" />
                   <Th label="Party Name" />
@@ -368,7 +368,7 @@ export function StockMovements() {
               <thead className="bg-g100">
                 <tr>
                   <Th label="Inward Date" />
-                  <Th label="WH Lot No" />
+                  <Th label="Lot No" />
                   <Th label="Factory Lot No" />
                   <Th label="Product Name" />
                   <Th label="Warehouse" />
