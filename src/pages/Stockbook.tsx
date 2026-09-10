@@ -34,6 +34,21 @@
 // showing a literal "0" instead of the usual "—" for "no stock here". See
 // NewStockInward.tsx / stock_movements_module.md for the edit-mode logic
 // that produces that 0.
+//
+// 2026-09-10: S.No. no longer displays the stored `serial_no` column —
+// that value is assigned once at row creation and never changes, so
+// deleting a row left a permanent gap below it instead of Google Sheets'
+// behavior of shifting every following row up by one. S.No. is now purely
+// `idx + 1`, the row's position in the currently-rendered `filtered` array
+// (see the .map() below) — recomputed fresh on every render, so a delete
+// anywhere in the list automatically closes the gap with no renumbering
+// logic needed, since nothing is stored. The column's own sort toggle was
+// removed for the same reason (sorting by "position in the list" is
+// meaningless once it's computed) — the underlying list still defaults to
+// serial_no-ascending order (unchanged, see the sort comparator below),
+// just no longer user-selectable via this column's header. Nothing else in
+// the codebase keys off `serial_no` (Stock Movements matches lots by
+// wh_lot_no), so the stored column itself is untouched — display-only fix.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Trash2, RefreshCw, Warehouse } from 'lucide-react';
@@ -216,7 +231,7 @@ export function Stockbook() {
           <table className="w-full border-collapse text-[12px]">
             <thead className="bg-g100">
               <tr>
-                <SortTh col="serialNo" label="S.No." />
+                <Th label="S.No." />
                 <SortTh col="whLotNo" label="Lot No" />
                 <Th label="Factory Lot Number" />
                 <Th label="Product Code" />
@@ -247,9 +262,17 @@ export function Stockbook() {
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
-                filtered.map(l => (
+                filtered.map((l, idx) => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
-                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g500 whitespace-nowrap">{l.serialNo ?? '—'}</td>
+                    {/* 2026-09-10: computed position in `filtered`, NOT the stored
+                        serial_no — Sheets-style row numbering (1..N, no gaps, no
+                        duplicates) requires this to be recalculated fresh on every
+                        render off whatever rows currently exist, since serial_no is
+                        assigned once at creation and never shifts on delete. See
+                        this file's header comment / the S.No. column header above
+                        (no longer sortable — sorting by "position in the list" is
+                        meaningless once it's computed rather than stored). */}
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g500 whitespace-nowrap">{idx + 1}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{l.whLotNo || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.factLotNo || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.productCode || '—'}</td>
