@@ -562,8 +562,11 @@ export interface StockLot {
   // independently of the qty_* party columns below and could silently
   // diverge from the real per-warehouse barrel count that Stock Movements'
   // Inward/Outward forms track. The stock_lots.no_of_barrels column still
-  // exists and is still written once at lot creation (NewStockInward.tsx),
-  // but Stockbook no longer reads or edits it.
+  // exists and is still written once at lot creation (NewStockInward.tsx).
+  // 2026-09-10: re-added below (read-only) as "Opening Stock" — a historical
+  // snapshot of what the lot started with, distinct from the live qty_*
+  // running balances, not a re-litigation of the 2026-09-05 removal.
+  noOfBarrels?: string;      // stock_lots.no_of_barrels — set once at lot creation, never edited after; read-only in the UI
   coaFile?: string;
   coaUrl?: string;             // public Supabase Storage URL for the actual COA PDF, when one has been uploaded/matched
   qtyHariom?: number;

@@ -53,6 +53,7 @@ function mapRow(r: any): StockLot {
     productName: r.product_name,
     inwardDate: r.inward_date ?? undefined,
     sampleOff: !!r.sample_off,
+    noOfBarrels: r.no_of_barrels ?? undefined,
     coaFile: r.coa_file ?? undefined,
     coaUrl: r.coa_url ?? undefined,
     qtyHariom: r.qty_hariom ?? undefined,
@@ -223,6 +224,7 @@ export function Stockbook() {
                 <SortTh col="inwardDate" label="Inward Date" />
                 <Th label="Sample Off" />
                 <Th label="COA" />
+                <Th label="Opening Stock" />
                 <Th label="Hariom" />
                 <Th label="Wada-HE" />
                 <Th label="HE" />
@@ -241,9 +243,9 @@ export function Stockbook() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={22} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
                 filtered.map(l => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -276,6 +278,12 @@ export function Stockbook() {
                         <span className="text-g600">—</span>
                       )}
                     </td>
+                    {/* Read-only historical snapshot — stock_lots.no_of_barrels is
+                        written once at lot creation (NewStockInward.tsx) and never
+                        updated after, unlike the live qty_* running-balance columns
+                        that follow. Distinct from those on purpose — see the
+                        StockLot.noOfBarrels comment in src/lib/types.ts. */}
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{l.noOfBarrels && l.noOfBarrels !== '0' ? l.noOfBarrels : '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyHariom)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyWadaHe)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyHe)}</td>
