@@ -339,9 +339,13 @@ export function generateQuotePDF(
         : { label: String(i + 1), value: stripped };
     });
   }
-  // Standing delivery term, shown on every quote regardless of what's in
-  // quote.terms — not the quote-specific "Delivery point" field above.
-  tncRows.push({ label: 'Delivery', value: 'Ex Godown Bhiwandi' });
+  // Incoterms/delivery term — quote.inco is the single source of truth
+  // (the "Incoterms" field on the Quotation form, editable there and
+  // pre-filled from the customer master's own Incoterms on Attach to
+  // Enquiry). This used to be hardcoded to "Ex Godown Bhiwandi" regardless
+  // of quote.inco, which is why the printed/emailed "Delivery" line never
+  // matched what the form actually showed.
+  if (quote.inco) tncRows.push({ label: 'Delivery', value: quote.inco });
 
   if (y > ph - 60) { doc.addPage(); y = 20; }
 
@@ -705,8 +709,14 @@ export function generatePIPDF(
     doc.text('• Payment: Balance before dispatch.', termsX, yTerms); yTerms += 4.5;
     doc.text('• Delivery as per schedule.', termsX, yTerms); yTerms += 4.5;
   }
-  // Standing delivery term, shown on every order regardless of order.terms.
-  doc.text('• Delivery: Ex Godown Bhiwandi', termsX, yTerms); yTerms += 4.5;
+  // Incoterms/delivery term — order.inco is the single source of truth
+  // (the "Incoterms" field on the Order form, pre-filled from the linked
+  // quote or the customer master), same bug/fix as generateQuotePDF's
+  // Delivery line above — this used to be hardcoded to "Ex Godown
+  // Bhiwandi" regardless of order.inco.
+  if (order.inco) {
+    doc.text('• Delivery: ' + order.inco, termsX, yTerms); yTerms += 4.5;
+  }
 
   // Draw a visible bordered rectangle around each side so banking/terms read as a structured box
   const boxTop = headingY - 4;

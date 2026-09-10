@@ -243,9 +243,11 @@ export async function downloadQuoteDOCX(
       return c > 0 ? { label: s.slice(0, c).trim(), value: s.slice(c + 1).trim() } : { label: String(i + 1), value: s };
     });
   }
-  // Standing delivery term, shown on every quote regardless of what's in
-  // quote.terms — not the quote-specific "Delivery point" field above.
-  tncRows.push({ label: 'Delivery', value: 'Ex Godown Bhiwandi' });
+  // Incoterms/delivery term — quote.inco is the single source of truth,
+  // same as generateQuotePDF (pdfGenerator.ts). This used to be hardcoded
+  // to "Ex Godown Bhiwandi" regardless of quote.inco, which is why the
+  // downloaded DOCX's "Delivery" line never matched the form.
+  if (quote.inco) tncRows.push({ label: 'Delivery', value: quote.inco });
 
   const pdfNotes = ((quote as any).notes ?? []).filter((n: string) => n.trim());
 
@@ -451,11 +453,13 @@ export async function downloadPIDOCX(
     if (settings?.bank_swift) bankLines.push({ label: 'SWIFT', value: settings.bank_swift });
   }
 
-  // Terms lines. "Delivery: Ex Godown Bhiwandi" is a standing term shown on
-  // every order regardless of order.terms.
+  // Terms lines. Delivery is order.inco — the single source of truth, same
+  // as generatePIPDF (pdfGenerator.ts). This used to be hardcoded to
+  // "Delivery: Ex Godown Bhiwandi" regardless of order.inco, which is why
+  // the downloaded DOCX's Delivery line never matched the form.
   const termsLines: string[] = [
     ...(order.terms ? order.terms.split('\n').filter(Boolean) : ['Payment: Balance before dispatch.', 'Delivery as per schedule.']),
-    'Delivery: Ex Godown Bhiwandi',
+    ...(order.inco ? [`Delivery: ${order.inco}`] : []),
   ];
 
   const poDateShort = order.poDate ? fmtShort(order.poDate) : '—';
