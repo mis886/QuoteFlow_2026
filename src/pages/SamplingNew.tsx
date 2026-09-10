@@ -16,6 +16,22 @@ import { logActivity } from '../lib/activityLog';
 const UNITS = ['g', 'ml', 'kg', 'L'];
 const SENT_BY_OPTIONS = ['Nimisha Pawar', 'Ruby B'];
 
+// 2026-09-10: single source of truth for samples.status — a plain text
+// column that can hold any of these 5 values (confirmed against live data:
+// 36+ existing rows use 'pending'/'dispatched'). The Status dropdown below
+// used to only offer delivered/approved/rejected — pending/dispatched were
+// unreachable from this form, and editing an existing pending/dispatched
+// sample silently fell back to re-deriving the status from `emailWasSent`
+// instead of showing/controlling the real stored value.
+type SampleStatus = 'pending' | 'dispatched' | 'delivered' | 'approved' | 'rejected';
+const SAMPLE_STATUS_OPTIONS: { value: SampleStatus; label: string }[] = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'dispatched', label: 'Dispatched' },
+  { value: 'delivered', label: 'Delivered' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+];
+
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
 const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]";
 const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200";
@@ -72,8 +88,10 @@ export function SamplingNew() {
     name: editId ? '' : (searchParams.get('prod') ?? ''),
   }]);
 
-  const [sampleStatus, setSampleStatus] = useState<'delivered' | 'approved' | 'rejected' | ''>('');
-  const [emailWasSent, setEmailWasSent] = useState(false);
+  // Defaults to 'pending' — matches samples.status's DB default for a
+  // brand-new row (create mode never shows this dropdown; see the "Sample
+  // Status" info box further down, which just displays this same default).
+  const [sampleStatus, setSampleStatus] = useState<SampleStatus>('pending');
 
   const [saving,     setSaving]     = useState(false);
   const [errors,     setErrors]     = useState<Record<string, string>>({});
@@ -110,10 +128,14 @@ export function SamplingNew() {
       setTrackingNumber(row.tracking_number ?? '');
       setCost(row.cost != null ? String(row.cost) : '');
       setExistingPodUrl(row.pod_file ?? null);
-      setEmailWasSent(!!row.email_sent);
-      const editableStatuses = ['delivered', 'approved', 'rejected'] as const;
-      if (editableStatuses.includes(row.status as any)) {
-        setSampleStatus(row.status as typeof sampleStatus);
+      // Pre-select the sample's real current status — was previously
+      // restricted to delivered/approved/rejected, leaving the dropdown on
+      // "— no change —" for a pending/dispatched sample even though that's
+      // exactly what the DB held. Falls back to leaving the 'pending'
+      // default in place if row.status is somehow outside the 5 known
+      // values, rather than rendering an unselected/invalid option.
+      if (SAMPLE_STATUS_OPTIONS.some(o => o.value === row.status)) {
+        setSampleStatus(row.status as SampleStatus);
       }
 
       if (productRows && productRows.length > 0) {
@@ -227,10 +249,13 @@ export function SamplingNew() {
     let error: any;
     let newRow: Record<string, any> | null = null;
     if (editId) {
-      const resolvedStatus = sampleStatus || (emailWasSent ? 'dispatched' : 'pending');
-      const statusFields: Record<string, any> = { status: resolvedStatus };
-      if (resolvedStatus === 'approved') { statusFields.outcome = 'approved'; statusFields.feedback_received = true; }
-      if (resolvedStatus === 'rejected') { statusFields.outcome = 'rejected'; statusFields.feedback_received = true; }
+      // sampleStatus is the dropdown's own value directly — the single
+      // source of truth end to end (dropdown -> save -> DB), no fallback
+      // re-derivation from emailWasSent anymore (that was only ever a
+      // workaround for pending/dispatched being unreachable from this form).
+      const statusFields: Record<string, any> = { status: sampleStatus };
+      if (sampleStatus === 'approved') { statusFields.outcome = 'approved'; statusFields.feedback_received = true; }
+      if (sampleStatus === 'rejected') { statusFields.outcome = 'rejected'; statusFields.feedback_received = true; }
       newRow = { ...commonFields, ...statusFields };
       ({ error } = await supabase.from('samples').update(newRow).eq('id', editId));
     } else {
@@ -238,7 +263,7 @@ export function SamplingNew() {
         id: sampleId,
         ...commonFields,
         source_module:     source ?? (isQt ? 'quotation' : ref ? 'enquiry' : null),
-        status:            'pending',
+        status:            sampleStatus, // 'pending' by default — see the useState above
         feedback_received: false,
         created_by:        user?.email ?? null,
         created_at:        new Date().toISOString(),
@@ -315,13 +340,10 @@ export function SamplingNew() {
                 <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
                 <select
                   value={sampleStatus}
-                  onChange={e => setSampleStatus(e.target.value as typeof sampleStatus)}
+                  onChange={e => setSampleStatus(e.target.value as SampleStatus)}
                   className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer"
                 >
-                  <option value="">— no change —</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
+                  {SAMPLE_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
             )}
