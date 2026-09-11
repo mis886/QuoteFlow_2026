@@ -652,6 +652,7 @@ export function NewEnquiry() {
                                 value={item.packingType || ''}
                                 onChange={val => updateItem(idx, 'packingType', val)}
                                 placeholder="Packing type…"
+                                freeText
                               />
                             </td>
                             <td className="px-1 py-[5px] border border-g400 align-middle">

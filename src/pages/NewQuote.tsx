@@ -1192,6 +1192,7 @@ export function NewQuote() {
                               value={item.packingType || ''}
                               onChange={val => updateItem(idx, 'packingType', val)}
                               placeholder="Packing type…"
+                              freeText
                             />
                           </td>
                           <td className="px-1 py-[3px] border border-g400 align-middle">
