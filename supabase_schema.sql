@@ -106,8 +106,8 @@ CREATE TABLE IF NOT EXISTS public.orders (
     value                NUMERIC DEFAULT 0,
     inco                 TEXT,
     items                JSONB DEFAULT '[]'::jsonb,
-    adjustments          JSONB DEFAULT '[]'::jsonb,
-    attachments          JSONB DEFAULT '[]'::jsonb,
+    adjustments          JSONB DEFAULT '[]'::jsonb,  -- added by migration 20260911120000_orders_add_adjustments_attachments.sql, not present from table creation
+    attachments          JSONB DEFAULT '[]'::jsonb,  -- added by migration 20260911120000_orders_add_adjustments_attachments.sql, not present from table creation
     authorized_person    JSONB,
     terms                TEXT,
     po_filename          TEXT,
