@@ -40,7 +40,7 @@ interface Props {
 const emptyForm = {
   whLotNo: '', factLotNo: '', productCode: '', productName: '',
   inwardDate: '', sampleOff: false, coaFile: '',
-  qtyHariom: '', qtyWadaHe: '', qtyHe: '', qtyReliable: '', qtySwastik: '', qtyBalaji: '', qtyWada: '',
+  qtyHariom: '', qtyReliable: '', qtySwastik: '', qtyBalaji: '',
   packing: '', mou: '', packingType: '', quantity: '', make: '', remark: '',
 };
 
@@ -61,12 +61,9 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
       sampleOff: !!lot.sampleOff,
       coaFile: lot.coaFile || '',
       qtyHariom: lot.qtyHariom?.toString() ?? '',
-      qtyWadaHe: lot.qtyWadaHe?.toString() ?? '',
-      qtyHe: lot.qtyHe?.toString() ?? '',
       qtyReliable: lot.qtyReliable?.toString() ?? '',
       qtySwastik: lot.qtySwastik?.toString() ?? '',
       qtyBalaji: lot.qtyBalaji?.toString() ?? '',
-      qtyWada: lot.qtyWada?.toString() ?? '',
       packing: lot.packing?.toString() ?? '',
       mou: lot.mou || '',
       packingType: lot.packingType || '',
@@ -98,12 +95,9 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
       sample_off: form.sampleOff,
       coa_file: form.coaFile.trim() || null,
       qty_hariom: num(form.qtyHariom),
-      qty_wada_he: num(form.qtyWadaHe),
-      qty_he: num(form.qtyHe),
       qty_reliable: num(form.qtyReliable),
       qty_swastik: num(form.qtySwastik),
       qty_balaji: num(form.qtyBalaji),
-      qty_wada: num(form.qtyWada),
       packing: num(form.packing),
       mou: form.mou.trim() || null,
       packing_type: form.packingType.trim() || null,
@@ -164,12 +158,9 @@ export function StockLotModal({ open, lot, onClose, onSaved }: Props) {
             <div className="text-[10px] font-mono font-bold tracking-[1.5px] uppercase text-red-mrt mb-2">Quantity by Party / Godown</div>
             <div className="grid grid-cols-4 gap-3">
               <Field label="Hariom"><input type="number" className={inp} value={form.qtyHariom} onChange={set('qtyHariom')} /></Field>
-              <Field label="Wada-HE"><input type="number" className={inp} value={form.qtyWadaHe} onChange={set('qtyWadaHe')} /></Field>
-              <Field label="HE"><input type="number" className={inp} value={form.qtyHe} onChange={set('qtyHe')} /></Field>
               <Field label="Reliable"><input type="number" className={inp} value={form.qtyReliable} onChange={set('qtyReliable')} /></Field>
               <Field label="Swastik"><input type="number" className={inp} value={form.qtySwastik} onChange={set('qtySwastik')} /></Field>
               <Field label="BALAJI"><input type="number" className={inp} value={form.qtyBalaji} onChange={set('qtyBalaji')} /></Field>
-              <Field label="Wada"><input type="number" className={inp} value={form.qtyWada} onChange={set('qtyWada')} /></Field>
             </div>
           </div>
 

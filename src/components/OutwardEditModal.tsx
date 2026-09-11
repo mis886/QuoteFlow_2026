@@ -66,12 +66,19 @@ const WAREHOUSES = ['Hariom', 'Reliable', 'Swastik', 'BALAJI', 'WADA', 'Other'];
 
 // Outward's own party map (casing matches Outward's warehouse values, e.g.
 // "BALAJI" — distinct from Inward's "Balaji"; keep this map Outward-only).
+// WADA is still a selectable option in this modal's own WAREHOUSES list
+// above (unlike NewStockOutward.tsx's create form, trimmed 2026-09-07 — see
+// this file's top comment) but has no entry here since qty_wada no longer
+// exists as a stock_lots column (dropped 2026-09-11, see
+// supabase/migrations/20260911150000_stockbook_drop_wada_columns.sql) —
+// adjustLot() below already treats a missing entry as a no-op (same as
+// "Other"), so selecting WADA here now just skips the stock_lots
+// reconciliation step instead of erroring.
 const PARTY_COLUMN: Record<string, string> = {
   Hariom: 'qty_hariom',
   Reliable: 'qty_reliable',
   Swastik: 'qty_swastik',
   BALAJI: 'qty_balaji',
-  WADA: 'qty_wada',
 };
 
 // TODO: same placeholder lists as NewStockOutward.tsx — replace with the

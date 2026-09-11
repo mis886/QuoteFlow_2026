@@ -191,11 +191,13 @@ const cardCls = "bg-white border border-g200 p-[18px_20px]";
 // now unreachable (form.warehouse can never be 'Other' again) rather than
 // torn out, in case "Other" is ever wanted back — same "leave it, don't
 // delete" convention used elsewhere in this module (StockLotModal.tsx,
-// InwardEditModal.tsx). PARTY_COLUMN's WADA entry is similarly harmless
-// dead data now, left as-is for the same reason.
+// InwardEditModal.tsx). PARTY_COLUMN's WADA entry was removed outright
+// (2026-09-11) rather than kept as dead data, since qty_wada no longer
+// exists as a stock_lots column at all — see
+// supabase/migrations/20260911150000_stockbook_drop_wada_columns.sql.
 const WAREHOUSES = ['Hariom', 'Reliable', 'Swastik', 'BALAJI'];
 
-// Party/godown → the stock_lots quantity column it feeds. Only the 5 known
+// Party/godown → the stock_lots quantity column it feeds. Only the 4 known
 // parties have an entry — "Other" (and any custom typed name) intentionally
 // has none, so the decrement step below skips it.
 const PARTY_COLUMN: Record<string, string> = {
@@ -203,7 +205,6 @@ const PARTY_COLUMN: Record<string, string> = {
   Reliable: 'qty_reliable',
   Swastik: 'qty_swastik',
   BALAJI: 'qty_balaji',
-  WADA: 'qty_wada',
 };
 
 // Superseded 2026-09-07 — Party Name/Transporter now come live from the

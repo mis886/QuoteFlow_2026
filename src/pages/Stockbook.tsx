@@ -49,6 +49,21 @@
 // just no longer user-selectable via this column's header. Nothing else in
 // the codebase keys off `serial_no` (Stock Movements matches lots by
 // wh_lot_no), so the stored column itself is untouched — display-only fix.
+//
+// 2026-09-11: Wada-HE/HE/Wada party columns removed entirely (UI, code, and
+// the stock_lots.qty_wada_he/qty_he/qty_wada DB columns themselves — see
+// 20260911150000_stockbook_drop_wada_columns.sql) — only 4 real warehouses
+// are in active use (Hariom/Reliable/Swastik/Balaji, matching
+// StockMovementWarehouse in src/lib/types.ts and the Inward/Outward forms'
+// own 4-option dropdown). qty_he was null/zero on every row (no data lost).
+// qty_wada_he/qty_wada had real values on 35 rows total — not dead data,
+// current barrel counts for lots physically at a location called "Wada"
+// that just isn't one of the 4 dropdown warehouses. A one-off UPDATE was
+// run directly against the live DB immediately before the drop migration,
+// appending a "[legacy stock, moved off system 2026-09-11] Wada: N" (or
+// "Wada-HE: N") note to each affected row's remark (existing remarks
+// preserved, appended on a new line) so that data isn't silently lost, just
+// no longer tracked as its own party column.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Trash2, RefreshCw, Warehouse } from 'lucide-react';
@@ -72,12 +87,9 @@ function mapRow(r: any): StockLot {
     coaFile: r.coa_file ?? undefined,
     coaUrl: r.coa_url ?? undefined,
     qtyHariom: r.qty_hariom ?? undefined,
-    qtyWadaHe: r.qty_wada_he ?? undefined,
-    qtyHe: r.qty_he ?? undefined,
     qtyReliable: r.qty_reliable ?? undefined,
     qtySwastik: r.qty_swastik ?? undefined,
     qtyBalaji: r.qty_balaji ?? undefined,
-    qtyWada: r.qty_wada ?? undefined,
     packing: r.packing ?? undefined,
     packingDetail: r.packing_detail ?? undefined,
     mou: r.mou ?? undefined,
@@ -241,12 +253,9 @@ export function Stockbook() {
                 <Th label="COA" />
                 <Th label="Opening Stock" />
                 <Th label="Hariom" />
-                <Th label="Wada-HE" />
-                <Th label="HE" />
                 <Th label="Reliable" />
                 <Th label="Swastik" />
                 <Th label="BALAJI" />
-                <Th label="Wada" />
                 <Th label="Packing" />
                 <Th label="MOU" />
                 <Th label="Packing Type" />
@@ -258,9 +267,9 @@ export function Stockbook() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={20} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={23} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+                <tr><td colSpan={20} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
                 filtered.map((l, idx) => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -308,12 +317,9 @@ export function Stockbook() {
                         StockLot.noOfBarrels comment in src/lib/types.ts. */}
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{l.noOfBarrels && l.noOfBarrels !== '0' ? l.noOfBarrels : '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyHariom)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyWadaHe)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyHe)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyReliable)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtySwastik)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyBalaji)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyWada)}</td>
                     {/* l.packing is the legacy numeric "pack size per unit" (set via StockLotModal's manual
                         edit); l.packingDetail is the text value the Inward form's own "Packing" field
                         writes — a lot created via New Inward only ever has packingDetail set, so fall back

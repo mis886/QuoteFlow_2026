@@ -105,7 +105,7 @@ const INWARD_PARTY_COLUMN: Record<string, string> = {
   Hariom: 'qty_hariom', Reliable: 'qty_reliable', Swastik: 'qty_swastik', Balaji: 'qty_balaji',
 };
 const OUTWARD_PARTY_COLUMN: Record<string, string> = {
-  Hariom: 'qty_hariom', Reliable: 'qty_reliable', Swastik: 'qty_swastik', BALAJI: 'qty_balaji', WADA: 'qty_wada',
+  Hariom: 'qty_hariom', Reliable: 'qty_reliable', Swastik: 'qty_swastik', BALAJI: 'qty_balaji',
 };
 
 // sticky top-0 + z-10 + an explicit (non-transparent) background pins this

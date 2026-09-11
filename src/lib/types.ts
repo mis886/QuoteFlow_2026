@@ -570,12 +570,9 @@ export interface StockLot {
   coaFile?: string;
   coaUrl?: string;             // public Supabase Storage URL for the actual COA PDF, when one has been uploaded/matched
   qtyHariom?: number;
-  qtyWadaHe?: number;
-  qtyHe?: number;
   qtyReliable?: number;
   qtySwastik?: number;
   qtyBalaji?: number;
-  qtyWada?: number;
   packing?: number;             // legacy numeric "pack size per unit" — set via StockLotModal's manual edit, NOT by Inward
   packingDetail?: string;       // packing_detail column — Inward's own "Packing" field (text); the value a lot created via
                                  // New Inward actually has, since Inward never writes the legacy numeric `packing` above

@@ -16,7 +16,7 @@
 // — NewStockOutward.tsx and StockLotModal.tsx keep using the older packing /
 // packaging_type / weight_type / unit columns unaffected. The only columns
 // still shared with Outward are the party quantity columns (qty_hariom,
-// qty_reliable, qty_swastik, qty_balaji, qty_wada) and quantity/total_qty,
+// qty_reliable, qty_swastik, qty_balaji) and quantity/total_qty,
 // matched via wh_lot_no — that's the deliberate reconciliation mechanism.
 // 2026-09-05: the party column tracks the running BARREL count for that
 // party/godown (i.e. No of Barrels), not Total Quantity — quantity/total_qty
