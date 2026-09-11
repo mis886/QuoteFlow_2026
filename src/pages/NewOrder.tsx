@@ -310,17 +310,32 @@ export function NewOrder() {
       if (site) {
         if (!editOrderId && !quoteRef) setShipAddr((site as any).dispatchAddress || site.address || (site as any).fullAddress || '');
         const contacts = site.contacts ?? [];
-        if (contactId && !contactManual) {
-          const ct = contacts.find((c: any) => c.id === contactId);
-          if (ct) { setContact(ct.name); setEmail(ct.email); setPhone(ct.phone || ''); }
-        } else if (!editOrderId && !contactId && !contactManual) {
+        // 2026-09-11: removed a "re-resolve contact by id" branch that used
+        // to live here (`if (contactId && !contactManual) { ...overwrite
+        // contact/email/phone from data.customers... }`) — a live-join, not
+        // a snapshot. It ran on every render where custName/siteId/contactId
+        // change, which includes BOTH the edit-mode hydrate effect above
+        // (setting them from the saved order's own contactId) AND the
+        // quoteRef-conversion hydrate branch (setting them from the linked
+        // quote's own contactId) — so opening an existing order for edit, or
+        // converting a quote into an order, would silently overwrite the
+        // just-hydrated contact/email/phone with whatever the CUSTOMER
+        // record currently holds instead of the quote/order's own saved
+        // snapshot. Same bug, same fix as NewQuote.tsx's cascading effect.
+        // Fully redundant for the interactive case too — the contact-picker
+        // dropdown further down already sets contact/email/phone directly on
+        // click, same as the "auto-pick primary contact" branch below
+        // already does when setting contactId for the first time.
+        if (!editOrderId && !contactId && !contactManual) {
           const pc = (contacts as any[]).find((ct: any) => ct.isPrimary) || (contacts as any[]).find((ct: any) => ct.email || ct.phone || ct.name) || contacts[0];
           if (pc && (pc.name || pc.email || pc.phone)) { setContactId(pc.id); setContact(pc.name || ''); setEmail(pc.email || ''); setPhone(pc.phone || ''); }
         }
       }
-    } else {
-      const ps = (sites as any[]).find((s: any) => s.isPrimary) ?? sites[0];
-      if (ps) setSiteId(ps.id);
+    } else if (sites.length === 1) {
+      // Only auto-fill when there is exactly one site — if multiple exist the
+      // doer must pick manually to avoid mismatched entries (mirrors
+      // NewEnquiry.tsx/NewQuote.tsx's own cascading auto-fill effects).
+      setSiteId(sites[0].id);
     }
   }, [custName, siteId, contactId, contactManual, data.customers, editOrderId, quoteRef]);
 
@@ -800,7 +815,10 @@ export function NewOrder() {
                           setCustomerTier(cust?.tier || '');
                           if (cust) {
                             const sites = (cust.sites ?? []) as any[];
-                            const ps = sites.find((s: any) => s.isPrimary) || sites[0];
+                            // Only auto-fill when there is exactly one site — if
+                            // multiple exist the doer must pick manually to avoid
+                            // mismatched entries (mirrors NewEnquiry.tsx/NewQuote.tsx).
+                            const ps = sites.length === 1 ? sites[0] : undefined;
                             if (ps) {
                               setSiteId(ps.id);
                               if (!quoteRef && !editOrderId) setShipAddr((ps as any).dispatchAddress || (ps as any).fullAddress || ps.address || '');

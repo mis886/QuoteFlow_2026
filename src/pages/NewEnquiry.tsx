@@ -215,10 +215,22 @@ export function NewEnquiry() {
       const site = sites.find(s => s.id === siteId);
       if (site) {
         const contacts = site.contacts ?? [];
-        if (contactId && !contactManual) {
-          const c = contacts.find((ct: any) => ct.id === contactId);
-          if (c) { setContact(c.name || ''); setEmail(c.email || ''); setPhone(c.phone || ''); }
-        } else if (!editId && !contactId && !contactManual) {
+        // 2026-09-11: the "re-resolve contact by id" branch that used to live
+        // here (`if (contactId && !contactManual) { ...overwrite contact/
+        // email/phone from data.customers... }`) was removed — it was a
+        // live-join, not a snapshot. It ran on every render where custName/
+        // siteId/contactId change, which includes the hydrate effect above
+        // setting them from the saved enquiry's own contactId — so reopening
+        // an existing enquiry for edit would silently overwrite the just-
+        // hydrated contact/email/phone with whatever the CUSTOMER record
+        // currently holds, clobbering the historical snapshot the moment the
+        // customer's contact details were ever edited afterward (violates
+        // the "snapshot at selection time, never rewrite saved records"
+        // rule). It was also fully redundant for the interactive case — the
+        // contact-picker dropdown below already sets contact/email/phone
+        // directly on click, same as the "auto-pick primary contact" branch
+        // below already does when setting contactId for the first time.
+        if (!editId && !contactId && !contactManual) {
           const pc = (contacts as any[]).find((ct: any) => ct.isPrimary)
             || (contacts as any[]).find((ct: any) => ct.email || ct.phone || ct.name)
             || contacts[0];

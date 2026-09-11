@@ -346,7 +346,10 @@ export function NewQuote() {
           { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); }
           setCurr(cr.curr || 'INR');
           setPay(normalizePayTerms(cr.pay) || cr.pay);
-          const ps = (cr.sites ?? []).find((s: any) => s.isPrimary) || (cr.sites ?? [])[0];
+          // Only auto-fill when there is exactly one site — if multiple exist
+          // the doer must pick manually to avoid mismatched entries.
+          const crSites = cr.sites ?? [];
+          const ps = crSites.length === 1 ? crSites[0] : undefined;
           if (ps) {
             setSiteId(ps.id);
             const pc = (ps.contacts ?? []).find((ct: any) => ct.isPrimary) || (ps.contacts ?? [])[0];
@@ -376,10 +379,25 @@ export function NewQuote() {
       const site = sites.find(s => s.id === siteId);
       if (site) {
         const contacts = site.contacts ?? [];
-        if (contactId && !contactManual) {
-          const ct = contacts.find((c: any) => c.id === contactId);
-          if (ct) { setContact(ct.name || ''); setEmail(ct.email || ''); setPhone(ct.phone || ''); }
-        } else if (!editId && !contactId && !contactManual) {
+        // 2026-09-11: removed a "re-resolve contact by id" branch that used
+        // to live here (`if (contactId && !contactManual) { ...overwrite
+        // contact/email/phone from data.customers... }`) — a live-join, not
+        // a snapshot. It ran on every render where custName/siteId/contactId
+        // change, which includes BOTH the edit-mode hydrate effect above
+        // (setting them from the saved quote's own contactId) AND the
+        // enqRef-conversion hydrate branch (setting them from the linked
+        // enquiry's own contactId) — so opening an existing quote for edit,
+        // or converting a fresh enquiry into a quote, would silently
+        // overwrite the just-hydrated contact/email/phone with whatever the
+        // CUSTOMER record currently holds, discarding the "Saved quote
+        // contact details win over re-derived ones" snapshot the hydrate
+        // effect explicitly re-applies a few lines above (see its own
+        // comment). It was also fully redundant for the interactive case —
+        // the contact-picker dropdown further down already sets contact/
+        // email/phone directly on click, same as the "auto-pick primary
+        // contact" branch below already does when setting contactId for the
+        // first time.
+        if (!editId && !contactId && !contactManual) {
           const pc = (contacts as any[]).find((ct: any) => ct.isPrimary)
             || (contacts as any[]).find((ct: any) => ct.email || ct.phone || ct.name)
             || contacts[0];
@@ -388,9 +406,11 @@ export function NewQuote() {
           }
         }
       }
-    } else {
-      const ps = (sites as any[]).find((s: any) => s.isPrimary) ?? sites[0];
-      if (ps) setSiteId(ps.id);
+    } else if (sites.length === 1) {
+      // Only auto-fill when there is exactly one site — if multiple exist the
+      // doer must pick manually to avoid mismatched entries (mirrors
+      // NewEnquiry.tsx's own cascading auto-fill effect).
+      setSiteId(sites[0].id);
     }
   }, [custName, siteId, contactId, contactManual, data.customers, editId]);
 
@@ -878,7 +898,10 @@ export function NewQuote() {
                           setCustomerTier(cust?.tier || '');
                           if (cust) {
                             const sites = (cust.sites ?? []) as any[];
-                            const ps = sites.find((s: any) => s.isPrimary) || sites[0];
+                            // Only auto-fill when there is exactly one site — if
+                            // multiple exist the doer must pick manually to avoid
+                            // mismatched entries (mirrors NewEnquiry.tsx).
+                            const ps = sites.length === 1 ? sites[0] : undefined;
                             if (ps) {
                               setSiteId(ps.id);
                               const contacts = (ps.contacts ?? []) as any[];
