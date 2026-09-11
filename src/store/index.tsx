@@ -568,6 +568,13 @@ const mapEnquiryToDB = (e: any) => {
     if ('items' in o) obj.items = o.items;
     if ('inco' in o) obj.inco = o.inco;
     if ('curr' in o) obj.curr = o.curr;
+    // 2026-09-11: orders had no column for either field until the
+    // 20260911120000_orders_add_adjustments_attachments.sql migration, so
+    // buildOrderData()'s adjustments/attachments were silently dropped on
+    // every save — mirrors mapQuoteToDB's existing attachments/negotiations
+    // handling above.
+    if ('adjustments' in o) obj.adjustments = o.adjustments ?? [];
+    if ('attachments' in o) obj.attachments = o.attachments ?? [];
 
     if ('quoteRef' in o) obj.quote_ref = o.quoteRef || null;
     else if ('quote_ref' in o) obj.quote_ref = o.quote_ref || null;
