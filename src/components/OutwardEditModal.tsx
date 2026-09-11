@@ -22,10 +22,15 @@
 // .tsx's other 2026-09-07 changes (the Warehouse dropdown trim removing
 // WADA/Other, and the Quantity-section required+auto-calc rework) were NOT
 // brought over here in this same pass — only the layout/Product Code change
-// was explicitly asked for. This modal's WAREHOUSES list still offers
-// WADA/Other, and its "Quantity & Packing" section still has the old
-// optional fields/Weight Type radio/Type select. Flag this gap again if the
-// user notices — see stock_movements_module.md for the full history.
+// was explicitly asked for.
+//
+// 2026-09-11: the Warehouse dropdown trim gap above is now closed — this
+// modal's WAREHOUSES list matches NewStockOutward.tsx's exactly (see that
+// list below). The "Quantity & Packing" section gap is still open and
+// intentionally untouched — it still has the old optional fields/Weight
+// Type radio/Type select, unlike NewStockOutward.tsx's required+auto-calc
+// rework. Flag that gap again if the user notices — see
+// stock_movements_module.md for the full history.
 
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
@@ -62,18 +67,17 @@ interface Props {
   onSaved: () => void | Promise<void>;
 }
 
-const WAREHOUSES = ['Hariom', 'Reliable', 'Swastik', 'BALAJI', 'WADA', 'Other'];
+const WAREHOUSES = ['Hariom', 'Reliable', 'Swastik', 'BALAJI'];
 
 // Outward's own party map (casing matches Outward's warehouse values, e.g.
 // "BALAJI" — distinct from Inward's "Balaji"; keep this map Outward-only).
-// WADA is still a selectable option in this modal's own WAREHOUSES list
-// above (unlike NewStockOutward.tsx's create form, trimmed 2026-09-07 — see
-// this file's top comment) but has no entry here since qty_wada no longer
-// exists as a stock_lots column (dropped 2026-09-11, see
-// supabase/migrations/20260911150000_stockbook_drop_wada_columns.sql) —
-// adjustLot() below already treats a missing entry as a no-op (same as
-// "Other"), so selecting WADA here now just skips the stock_lots
-// reconciliation step instead of erroring.
+// No WADA entry: qty_wada no longer exists as a stock_lots column (dropped
+// 2026-09-11, see supabase/migrations/20260911150000_stockbook_drop_wada_columns.sql),
+// and WADA isn't in WAREHOUSES above any more either. An old movement whose
+// saved warehouse is still 'WADA' (from before this fix) falls back to
+// isOtherWarehouse below rather than matching a PARTY_COLUMN entry, so
+// adjustLot() treats it as a no-op (same as any other unmapped/free-text
+// warehouse) instead of erroring.
 const PARTY_COLUMN: Record<string, string> = {
   Hariom: 'qty_hariom',
   Reliable: 'qty_reliable',
@@ -132,7 +136,7 @@ export function OutwardEditModal({ open, movement, onClose, onSaved }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    const isKnownWarehouse = WAREHOUSES.slice(0, -1).includes(movement.warehouse);
+    const isKnownWarehouse = WAREHOUSES.includes(movement.warehouse);
     const productMatch = PRODUCTS.find(p => p.name === movement.productName);
     setForm({
       warehouse: isKnownWarehouse ? movement.warehouse : (movement.warehouse ? 'Other' : ''),
