@@ -25,7 +25,7 @@ function last7KeysEndingAt(refKey: string): string[] {
   return out;
 }
 
-interface SampleRow { status: string; }
+interface SampleRow { status: string; updated_at: string | null; }
 
 export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquiry[]; quotes: Quote[]; orders: Order[] }) {
   const todayKey = dateKey(new Date());
@@ -36,7 +36,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
 
   const loadSamples = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('samples').select('status');
+    const { data, error } = await supabase.from('samples').select('status, updated_at');
     if (!error && data) setSamples(data as SampleRow[]);
     setLoading(false);
   };
@@ -57,14 +57,18 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
   const orderCount = countBy(orders, selectedDate);
   const orderTrend = days.map(k => countBy(orders, k));
 
-  // Sampling has no reliable per-date history — status is a manual field edit
-  // with no audit trail, so these are always the CURRENT live counts,
-  // regardless of which date is picked above.
-  const dispatchedCount = samples.filter(s => s.status === 'dispatched').length;
-  const pendingBacklog = samples.filter(s => s.status === 'pending').length;
-  const deliveredCount = samples.filter(s => s.status === 'delivered').length;
-  const approvedCount = samples.filter(s => s.status === 'approved').length;
-  const rejectedCount = samples.filter(s => s.status === 'rejected').length;
+  // Each count = samples whose status was LAST CHANGED on the selected date,
+  // using updated_at (stamped whenever someone edits the status in the
+  // Sampling module). updated_at only holds the most recent change, so a
+  // sample that flipped status more than once shows up under the date of
+  // its latest change only — there's no separate history log to look further back.
+  const byStatusOnDate = (st: string) =>
+    samples.filter(s => s.status === st && s.updated_at && dateKey(s.updated_at) === selectedDate).length;
+  const dispatchedCount = byStatusOnDate('dispatched');
+  const pendingBacklog = byStatusOnDate('pending');
+  const deliveredCount = byStatusOnDate('delivered');
+  const approvedCount = byStatusOnDate('approved');
+  const rejectedCount = byStatusOnDate('rejected');
 
   const bar = (v: number, list: number[]) => {
     const max = Math.max(1, ...list);
@@ -83,7 +87,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
       `Enquiries: ${enqCount}\n` +
       `Quotations: ${quoteCount}\n` +
       `Orders: ${orderCount}\n` +
-      `Samples (live): ${dispatchedCount} dispatched, ${deliveredCount} delivered, ${pendingBacklog} pending, ${approvedCount} approved, ${rejectedCount} rejected\n` +
+      `Samples updated on ${prettyDate}: ${dispatchedCount} dispatched, ${deliveredCount} delivered, ${pendingBacklog} pending, ${approvedCount} approved, ${rejectedCount} rejected\n` +
       `— via EnqBoss`;
     try {
       await navigator.clipboard.writeText(text);
@@ -171,7 +175,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
 
         <div className="bg-white rounded-[10px] border border-g200 p-4 flex flex-col gap-2" style={{ borderTop: '3px solid #8B5CF6' }}>
           <div className="flex items-start justify-between gap-2">
-            <div className="font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">Sampling (Live)</div>
+            <div className="font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">Sampling</div>
             <div className="w-7 h-7 rounded-[6px] flex items-center justify-center shrink-0 bg-purple-50 text-purple-500 shrink-0">
               <FlaskConical size={14} />
             </div>
@@ -198,7 +202,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
               <span className="font-extrabold text-red-600">{rejectedCount}</span>
             </div>
           </div>
-          <div className="text-[9px] text-g400 leading-snug">Live current status of all samples ({dispatchedCount + pendingBacklog + deliveredCount + approvedCount + rejectedCount} total) — not tied to the selected date</div>
+          <div className="text-[9px] text-g400 leading-snug">Status last changed on {prettyDate} · {dispatchedCount + pendingBacklog + deliveredCount + approvedCount + rejectedCount} updates that day</div>
         </div>
       </div>
 
