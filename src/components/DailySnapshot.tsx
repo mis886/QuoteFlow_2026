@@ -13,8 +13,7 @@ function dateKey(d: Date | string): string {
 }
 
 // 7 day-keys ending AT the given reference date (inclusive), oldest first —
-// the trend chart's window now follows whichever date is selected, not
-// always "today".
+// the trend chart's window follows whichever date is selected, not always "today".
 function last7KeysEndingAt(refKey: string): string[] {
   const ref = new Date(refKey + 'T00:00:00');
   const out: string[] = [];
@@ -26,7 +25,7 @@ function last7KeysEndingAt(refKey: string): string[] {
   return out;
 }
 
-interface SampleRow { status: string; sent_date: string | null; updated_at: string | null; }
+interface SampleRow { status: string; }
 
 export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquiry[]; quotes: Quote[]; orders: Order[] }) {
   const todayKey = dateKey(new Date());
@@ -37,7 +36,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
 
   const loadSamples = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('samples').select('status, sent_date, updated_at');
+    const { data, error } = await supabase.from('samples').select('status');
     if (!error && data) setSamples(data as SampleRow[]);
     setLoading(false);
   };
@@ -58,14 +57,12 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
   const orderCount = countBy(orders, selectedDate);
   const orderTrend = days.map(k => countBy(orders, k));
 
-  const dispatchedCount = samples.filter(s => s.status === 'dispatched' && s.sent_date === selectedDate).length;
-  const deliveredCount = samples.filter(s => s.status === 'delivered' && s.updated_at && dateKey(s.updated_at) === selectedDate).length;
-  // Pending is a live backlog, not a per-date figure — there's no historical
-  // status log, so "how many were pending on 5 Sep" isn't answerable from
-  // this table. Always shows the CURRENT pending count regardless of the
-  // date picked, and is labelled as such below.
+  // Sampling has no reliable per-date history — status is a manual field edit
+  // with no audit trail, so these are always the CURRENT live counts,
+  // regardless of which date is picked above.
+  const dispatchedCount = samples.filter(s => s.status === 'dispatched').length;
   const pendingBacklog = samples.filter(s => s.status === 'pending').length;
-  const dispatchedTrend = days.map(k => samples.filter(s => s.status === 'dispatched' && s.sent_date === k).length);
+  const deliveredCount = samples.filter(s => s.status === 'delivered').length;
 
   const bar = (v: number, list: number[]) => {
     const max = Math.max(1, ...list);
@@ -84,7 +81,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
       `Enquiries: ${enqCount}\n` +
       `Quotations: ${quoteCount}\n` +
       `Orders: ${orderCount}\n` +
-      `Samples: ${dispatchedCount} dispatched, ${deliveredCount} delivered · ${pendingBacklog} pending (current backlog)\n` +
+      `Samples (live): ${dispatchedCount} dispatched, ${deliveredCount} delivered, ${pendingBacklog} pending\n` +
       `— via EnqBoss`;
     try {
       await navigator.clipboard.writeText(text);
@@ -172,7 +169,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
 
         <div className="bg-white rounded-[10px] border border-g200 p-4 flex flex-col gap-2" style={{ borderTop: '3px solid #8B5CF6' }}>
           <div className="flex items-start justify-between gap-2">
-            <div className="font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">Sampling</div>
+            <div className="font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">Sampling (Live)</div>
             <div className="w-7 h-7 rounded-[6px] flex items-center justify-center shrink-0 bg-purple-50 text-purple-500 shrink-0">
               <FlaskConical size={14} />
             </div>
@@ -191,15 +188,14 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
               <span className="font-extrabold text-blue-600">{deliveredCount}</span>
             </div>
           </div>
-          <div className="text-[9px] text-g400 leading-snug">Dispatched/Delivered = on selected date · Pending = current backlog (not date-specific)</div>
+          <div className="text-[9px] text-g400 leading-snug">Live current status of all samples — not tied to the selected date</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-5 pb-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-5 pb-5">
         <Trend label="Enquiries" values={enqTrend} color="#3B82F6" />
         <Trend label="Quotations" values={quoteTrend} color="#F97316" />
         <Trend label="Orders" values={orderTrend} color="#10B981" />
-        <Trend label="Samples Dispatched" values={dispatchedTrend} color="#8B5CF6" />
       </div>
     </div>
   );
