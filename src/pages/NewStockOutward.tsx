@@ -420,29 +420,37 @@ export function NewStockOutward() {
   const [partyNameOptions, setPartyNameOptions] = useState<string[]>([]);
   const [transporterOptions, setTransporterOptions] = useState<string[]>([]);
   const [transporterByParty, setTransporterByParty] = useState<Record<string, string>>({});
+  const [fulfilmentTypeByParty, setFulfilmentTypeByParty] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
     const loadPartyTransporters = async () => {
       const { data, error: fetchErr } = await supabase
         .from('customers')
-        .select('company_name, preferred_transporter')
+        .select('company_name, preferred_transporter, fulfilment_type')
         .not('preferred_transporter', 'is', null)
         .neq('preferred_transporter', '')
         .order('company_name', { ascending: true });
       if (fetchErr || !data || cancelled) return;
       const names: string[] = [];
       const map: Record<string, string> = {};
+      const fulfilmentMap: Record<string, string> = {};
       const transporterSet = new Set<string>();
-      for (const row of data as { company_name: string | null; preferred_transporter: string | null }[]) {
+      for (const row of data as { company_name: string | null; preferred_transporter: string | null; fulfilment_type: string | null }[]) {
         const name = (row.company_name || '').trim();
         const transporter = (row.preferred_transporter || '').trim();
+        // Independent of the transporter `continue` guard below — a customer
+        // might have a fulfilment_type on file even without a
+        // preferred_transporter, so this is checked before that guard runs.
+        const fulfilmentType = (row.fulfilment_type || '').trim();
+        if (name && fulfilmentType) fulfilmentMap[name] = fulfilmentType;
         if (!name || !transporter) continue;
         if (!(name in map)) { map[name] = transporter; names.push(name); }
         transporterSet.add(transporter);
       }
       setPartyNameOptions([...names, 'Other']);
       setTransporterByParty(map);
+      setFulfilmentTypeByParty(fulfilmentMap);
       setTransporterOptions([...Array.from(transporterSet).sort(), 'Other']);
     };
     loadPartyTransporters();
@@ -954,7 +962,7 @@ export function NewStockOutward() {
                   className={inputCls}
                   options={partyNameOptions}
                   value={form.partyName}
-                  onChange={v => setForm(f => ({ ...f, partyName: v, transporter: transporterByParty[v] || f.transporter }))}
+                  onChange={v => setForm(f => ({ ...f, partyName: v, transporter: transporterByParty[v] || f.transporter, fulfilmentType: fulfilmentTypeByParty[v] || f.fulfilmentType }))}
                 />
               </div>
               {isOtherParty && (
