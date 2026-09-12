@@ -664,12 +664,18 @@ export function NewStockOutward() {
   // editing an existing entry, or '' for a brand-new one — PDF/DOCX/Email
   // never key off `.id` for Outward anyway (see SendEmailModal.tsx's
   // docId gotcha), they use `.doNumber` instead.
-  const buildOutwardData = (): StockMovement => ({
+  // productCode is UI-only (see the file-header comment — it's derived
+  // locally, never written to stock_movements/stock_lots), so it isn't part
+  // of the shared StockMovement interface. generateOutwardPDF/
+  // downloadOutwardDOCX both read it via `(movement as any).productCode`,
+  // so it's widened on here rather than added to StockMovement itself.
+  const buildOutwardData = (): StockMovement & { productCode?: string } => ({
     id: movementId || '',
     type: 'outward',
     warehouse: isOtherWarehouse ? form.otherWarehouse.trim() : form.warehouse,
     whLotNo: form.lotNo.trim() || undefined,
     productName: form.productName.trim(),
+    productCode: form.productCode || undefined,
     doNumber: form.doNumber.trim() || undefined,
     doDate: form.doDate || undefined,
     inwardDate: form.lotDate || undefined,
