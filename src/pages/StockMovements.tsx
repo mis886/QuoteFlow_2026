@@ -48,6 +48,17 @@
 // retired the same way InwardEditModal.tsx was: no longer imported/rendered
 // here, left on disk unused. editingMovement/modalOpen state and openEdit()
 // are removed along with it — nothing else in this file used them.
+//
+// 2026-09-12: added a third "Finished Lots" tab alongside Inward/Outward.
+// It renders src/components/FinishedLotsTable.tsx, a self-contained,
+// UI-only component that visually mirrors Stockbook.tsx's table (own
+// search bar, own state) — it does NOT share `movements`/`search`/`load()`
+// above, since those are Inward/Outward-specific (stock_movements rows,
+// warehouse/DO-number search fields) and don't apply to finished-goods
+// lots. The shared search box / New Inward/Outward button / entry count in
+// the toolbar below are hidden while this tab is active for the same
+// reason — there is no live Finished Lots data source yet (see that
+// component's own header comment), so nothing there is real either.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -58,6 +69,7 @@ import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockMovement } from '../lib/types';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
+import { FinishedLotsTable } from '../components/FinishedLotsTable';
 
 function mapRow(r: any): StockMovement {
   return {
@@ -125,7 +137,7 @@ export function StockMovements() {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'inward' | 'outward'>('inward');
+  const [tab, setTab] = useState<'inward' | 'outward' | 'finished'>('inward');
   // Single scroll container for both axes, shared by whichever tab
   // (Inward/Outward) is currently rendered — sticky headers below need to
   // stick to the SAME element that scrolls vertically, and nesting a
@@ -241,54 +253,66 @@ export function StockMovements() {
           >
             Outward ({outwardCount})
           </div>
+          <div
+            onClick={() => setTab('finished')}
+            className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${tab === 'finished' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
+          >
+            Finished Lots
+          </div>
         </div>
 
-        <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
+        {tab !== 'finished' && (
+          <>
+            <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
 
-        <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[240px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
-          <Search size={11} className="text-g400 shrink-0" />
-          <input
-            type="text"
-            placeholder="Lot no., product, warehouse..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
-          />
-        </div>
+            <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[240px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
+              <Search size={11} className="text-g400 shrink-0" />
+              <input
+                type="text"
+                placeholder="Lot no., product, warehouse..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
+              />
+            </div>
 
-        {tab === 'inward' && (
-          <button
-            type="button"
-            onClick={() => navigate('/stock-movements/new')}
-            className="inline-flex items-center gap-1.5 h-7 px-3 rounded-[3px] bg-red-mrt text-white text-[11px] font-bold hover:bg-red-h transition-colors"
-          >
-            <Plus size={12} /> New Inward
-          </button>
+            {tab === 'inward' && (
+              <button
+                type="button"
+                onClick={() => navigate('/stock-movements/new')}
+                className="inline-flex items-center gap-1.5 h-7 px-3 rounded-[3px] bg-red-mrt text-white text-[11px] font-bold hover:bg-red-h transition-colors"
+              >
+                <Plus size={12} /> New Inward
+              </button>
+            )}
+
+            {tab === 'outward' && (
+              <button
+                type="button"
+                onClick={() => navigate('/stock-movements/new-outward')}
+                className="inline-flex items-center gap-1.5 h-7 px-3 rounded-[3px] bg-red-mrt text-white text-[11px] font-bold hover:bg-red-h transition-colors"
+              >
+                <Plus size={12} /> New Outward
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={load}
+              title="Refresh"
+              className="inline-flex items-center justify-center h-7 w-7 rounded-[3px] text-g500 hover:bg-g100 hover:text-blk transition-colors"
+            >
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            </button>
+
+            <div className="ml-auto font-mono text-[10px] text-g500">{filtered.length} entr{filtered.length === 1 ? 'y' : 'ies'}</div>
+          </>
         )}
-
-        {tab === 'outward' && (
-          <button
-            type="button"
-            onClick={() => navigate('/stock-movements/new-outward')}
-            className="inline-flex items-center gap-1.5 h-7 px-3 rounded-[3px] bg-red-mrt text-white text-[11px] font-bold hover:bg-red-h transition-colors"
-          >
-            <Plus size={12} /> New Outward
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={load}
-          title="Refresh"
-          className="inline-flex items-center justify-center h-7 w-7 rounded-[3px] text-g500 hover:bg-g100 hover:text-blk transition-colors"
-        >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
-        </button>
-
-        <div className="ml-auto font-mono text-[10px] text-g500">{filtered.length} entr{filtered.length === 1 ? 'y' : 'ies'}</div>
       </div>
 
-      {tab === 'outward' ? (
+      {tab === 'finished' ? (
+        <FinishedLotsTable />
+      ) : tab === 'outward' ? (
         <div className="px-6 pb-7 pt-[14px] flex-1 min-h-0">
           <div ref={tableScrollRef} className="table-scroll-hide-native-bar h-full bg-white border border-g200 overflow-auto m-0">
             <table className="w-full border-collapse text-[12px]">
