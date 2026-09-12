@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { formatINR, cn, getThisWeekRange, localDateStr, siteLabel, fmtIST } from '../lib/utils';
 import { Badge, Button } from '../components/ui';
+import { DailySnapshot } from '../components/DailySnapshot';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Clock, IndianRupee, FileSignature, Trophy, Activity, Phone, Mail, MessageSquare, Users, FileText, ShoppingBag, AlertCircle, CalendarClock, TrendingUp, ChevronDown, ChevronRight, Calendar, ChevronLeft } from 'lucide-react';
 
@@ -1009,6 +1010,7 @@ export function Dashboard() {
 
       {activeTab === 'overview' && (
       <div className="px-[30px] pb-6">
+        <DailySnapshot enquiries={data.enquiries} quotes={data.quotes} orders={data.orders} />
         {/* KPI Cards */}
         <div className="grid grid-cols-5 gap-3 mb-3">
           <StatCard
