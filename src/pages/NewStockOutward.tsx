@@ -145,6 +145,18 @@
 // warehouse; save()'s create-mode path uses insertOutwardWithRetry to catch
 // that constraint's 23505 violation and retry with a freshly-generated
 // number rather than surfacing a raw DB error.
+//
+// 2026-09-12: added PDF/DOCX/Email to Client buttons, matching how
+// NewQuote.tsx/NewOrder.tsx already do this. Outward entries carry no
+// price/GST/bank data, so the generated document is a plain "Delivery
+// Challan" (see generateOutwardPDF/downloadOutwardDOCX in
+// src/lib/pdfGenerator.ts / src/lib/outwardDocx.ts), not a Proforma
+// Invoice — no pricing table anywhere. buildOutwardData() assembles a
+// StockMovement straight from current form state (mirroring
+// movementPayload's own field mapping below) so all three work even
+// before Save is clicked. Customer is resolved for the Email modal by
+// matching Party Name against data.customers — a non-match (e.g. "Other")
+// just leaves the To field blank, an expected fallback.
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -160,6 +172,10 @@ import { PACKAGING_TYPES } from '../lib/stockMovementOptions';
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { Loader2 } from 'lucide-react';
+import { StockMovement } from '../lib/types';
+import { generateOutwardPDF } from '../lib/pdfGenerator';
+import { downloadOutwardDOCX } from '../lib/outwardDocx';
+import { SendEmailModal } from '../components/SendEmailModal';
 
 // Combobox options — derived from PRODUCTS, the single source of truth also
 // used for the Product Code auto-fill lookup below (same pattern as
@@ -327,7 +343,7 @@ async function insertOutwardWithRetry(
 
 export function NewStockOutward() {
   const navigate = useNavigate();
-  const { user } = useAppStore();
+  const { user, data } = useAppStore();
   const [searchParams] = useSearchParams();
   const movementId = searchParams.get('movementId');
   const isEditing = !!movementId;
@@ -335,6 +351,7 @@ export function NewStockOutward() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const [loadingMovement, setLoadingMovement] = useState(isEditing);
   // Captured once, when loading an existing entry for editing — the values
   // stock_lots was last decremented with, so save() can reverse that OLD
@@ -640,6 +657,51 @@ export function NewStockOutward() {
       ? [...MOU_OPTIONS, form.weightType]
       : MOU_OPTIONS;
 
+  // Assembles a StockMovement-shaped object straight from the current form
+  // state — mirrors the exact field mapping save()'s own movementPayload
+  // below uses, so PDF/DOCX/Email always reflect whatever is currently
+  // filled in, even before Save is clicked. `id` is the DB row id when
+  // editing an existing entry, or '' for a brand-new one — PDF/DOCX/Email
+  // never key off `.id` for Outward anyway (see SendEmailModal.tsx's
+  // docId gotcha), they use `.doNumber` instead.
+  const buildOutwardData = (): StockMovement => ({
+    id: movementId || '',
+    type: 'outward',
+    warehouse: isOtherWarehouse ? form.otherWarehouse.trim() : form.warehouse,
+    whLotNo: form.lotNo.trim() || undefined,
+    productName: form.productName.trim(),
+    doNumber: form.doNumber.trim() || undefined,
+    doDate: form.doDate || undefined,
+    inwardDate: form.lotDate || undefined,
+    numArticles: form.numArticles.trim() || undefined,
+    packing: num(form.packing) ?? undefined,
+    weightType: form.weightType || undefined,
+    packagingType: form.packagingType || undefined,
+    totalQty: num(form.totalQty) ?? undefined,
+    partyName: form.partyName || undefined,
+    otherParty: isOtherParty ? (form.otherParty.trim() || undefined) : undefined,
+    transporter: form.transporter || undefined,
+    otherTransporter: isOtherTransporter ? (form.otherTransporter.trim() || undefined) : undefined,
+    note: form.note.trim() || undefined,
+    created_by: user?.email ?? undefined,
+  });
+
+  // Cheap customer resolution for the Email modal — same approach
+  // NewOrder.tsx uses. If Party Name is "Other" or doesn't match any
+  // customer record, `customer` is simply undefined and the modal's To
+  // field starts blank — an expected fallback, not a bug.
+  const customer = data.customers.find(c => c.name === form.partyName);
+
+  const handleGeneratePDF = () => {
+    const unit = data.units.find(u => u.is_default);
+    generateOutwardPDF(buildOutwardData(), customer, data.settings, data.signatories.find(s => s.is_default), unit, true);
+  };
+
+  const handleGenerateDOCX = async () => {
+    const unit = data.units.find(u => u.is_default);
+    await downloadOutwardDOCX(buildOutwardData(), customer, data.settings, data.signatories.find(s => s.is_default), unit);
+  };
+
   const save = async () => {
     if (!isValid) { setError('Please fill in all required fields.'); return; }
     setSaving(true);
@@ -914,10 +976,37 @@ export function NewStockOutward() {
         <Button variant="primary" onClick={save} disabled={!isValid || saving}>
           {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save Outward Entry'}
         </Button>
+        <button type="button" onClick={handleGeneratePDF} disabled={saving}
+          className="bg-g700 text-white font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-blk disabled:opacity-50 flex items-center gap-2">
+          <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M4 2v12h8V6l-4-4H4zm1 1h2v3h2V3h1.172L11 3.828V13H5V3zm2 6v3h2v-3H7z" /></svg>
+          PDF
+        </button>
+        <button type="button" onClick={handleGenerateDOCX} disabled={saving}
+          className="bg-blue-600 text-white font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
+          <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M4 2v12h8V6l-4-4H4zm1 1h2v3h2V3h1.172L11 3.828V13H5V3zm2 6v3h2v-3H7z" /></svg>
+          DOCX
+        </button>
+        <button type="button" onClick={() => setShowEmailModal(true)} disabled={saving}
+          className="bg-blk text-white font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-g700 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 flex items-center gap-2">
+          <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M2 4h12v8H2zM3 5l5 3.5L13 5v-.5L8 8 3 4.5V5z" /></svg>
+          Email to Client
+        </button>
         <Button variant="secondary" onClick={() => navigate('/stock-movements')} disabled={saving}>Cancel</Button>
         <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>
         {error && <div className="ml-4 text-red-mrt text-[11px] font-bold">{error}</div>}
       </div>
+
+      {showEmailModal && (
+        <SendEmailModal
+          mode="outward"
+          doc={buildOutwardData()}
+          customer={customer}
+          settings={data.settings}
+          defaultSignatory={data.signatories.find(s => s.is_default)}
+          onClose={() => setShowEmailModal(false)}
+          onSent={() => setShowEmailModal(false)}
+        />
+      )}
     </div>
   );
 }

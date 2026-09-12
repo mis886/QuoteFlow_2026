@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Customer, Quote, Order, AppSettings, CompanyUnit, BankAccount } from './types';
+import { Customer, Quote, Order, AppSettings, CompanyUnit, BankAccount, StockMovement } from './types';
 import { formatINR, resolveAdjustments, maxItemGstRate, fmtDate, getNegotiationExportTables, type ResolvedAdjustment } from './utils';
 import { supabase } from './supabase';
 
@@ -789,4 +789,147 @@ export async function generateOrderPDF(
     .eq('is_default', true)
     .single();
   return generatePIPDF(order, quote, customer, settings, defaultSignatory, download, unit, bankAccount ?? undefined);
+}
+
+/**
+ * Outward "Delivery Challan" — a plain goods-movement document, no
+ * price/GST/bank data (Outward entries carry none). Letterhead block is
+ * copied verbatim from generatePIPDF above so every generated document in
+ * this app shares the same look; body is a details table instead of a
+ * pricing table.
+ */
+export function generateOutwardPDF(
+  movement: StockMovement,
+  customer: Customer | undefined,
+  settings: AppSettings | null,
+  defaultSignatory: SigPerson | undefined,
+  unit: CompanyUnit | undefined,
+  download: boolean,
+): jsPDF {
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pw = 210, ph = 297;
+  const mx = 15.4;
+  const rx = pw - 15.4;
+  const cw = rx - mx;
+  const sigImg = unit?.sig_url || settings?.sig_url || localStorage.getItem('mrt_sig_img');
+
+  // ── Header (hardcoded text — no letterhead image) — copied verbatim from
+  // generatePIPDF above.
+  const headerH = 37;
+  let y: number;
+  doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
+  doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, 10, { align: 'center' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
+  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', pw / 2, 16, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
+  doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, 22, { align: 'center' });
+  doc.text('GSTIN: 27AAACH6788H1Z6', pw / 2, 26, { align: 'center' });
+  doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, 32, { align: 'center' });
+  y = headerH;
+
+  // ── Ref | Date ───────────────────────────────────────────────────────────
+  y += 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+  doc.text('Ref: ' + (movement.doNumber || '—'), mx, y);
+  const dateStr = movement.doDate
+    ? new Date(movement.doDate + 'T00:00:00').toLocaleDateString('en-US', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+      })
+    : '';
+  doc.text(dateStr, rx, y, { align: 'right' });
+
+  // ── DELIVERY CHALLAN heading ─────────────────────────────────────────────
+  y += 9;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
+  doc.text('DELIVERY CHALLAN', pw / 2, y, { align: 'center' });
+  const dcw = doc.getTextWidth('DELIVERY CHALLAN');
+  doc.setLineWidth(0.4);
+  doc.line(pw / 2 - dcw / 2, y + 0.8, pw / 2 + dcw / 2, y + 0.8);
+
+  // ── Consignee (customer resolved from Party Name, if it matched one) ────
+  if (customer) {
+    y += 8;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    doc.text('Consignee:', mx, y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    y += 5; doc.text(customer.name, mx, y);
+    const primarySite = (customer.sites ?? []).find(s => s.isPrimary) || (customer.sites ?? [])[0];
+    if (primarySite?.city) { y += 5; doc.text(primarySite.city + (primarySite.state ? ', ' + primarySite.state : ''), mx, y); }
+  }
+
+  y += 9;
+
+  // ── Details table — no pricing anywhere, Outward entries carry none ─────
+  const partyDisplay = movement.partyName === 'Other' ? (movement.otherParty || 'Other') : (movement.partyName || '—');
+  const transporterDisplay = movement.transporter === 'Other' ? (movement.otherTransporter || 'Other') : (movement.transporter || '—');
+  const detailRows: [string, string][] = [
+    ['Lot No', movement.whLotNo || '—'],
+    ['Lot Date', movement.inwardDate ? fmtDate(movement.inwardDate) : '—'],
+    ['Product Name', movement.productName || '—'],
+    ['Product Code', (movement as any).productCode || '—'],
+    ['Warehouse', movement.warehouse || '—'],
+    ['Party Name', partyDisplay],
+    ['Transporter', transporterDisplay],
+    ['No of Barrels', movement.numArticles || '—'],
+    ['Packing', movement.packing != null ? String(movement.packing) : '—'],
+    ['MOU', movement.weightType || '—'],
+    ['Packing Type', movement.packagingType || '—'],
+    ['Total Quantity', movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—'],
+    ['Note', movement.note || '—'],
+  ];
+
+  autoTable(doc, {
+    startY: y,
+    body: detailRows.map(([label, value]) => [
+      { content: label, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] as [number, number, number], textColor: [0, 0, 0] } },
+      { content: value },
+    ]),
+    theme: 'grid',
+    styles: { fontSize: 9.5, cellPadding: 2.5, textColor: [30, 30, 30], lineColor: [120, 120, 120], lineWidth: 0.35 },
+    columnStyles: { 0: { cellWidth: 45 }, 1: { cellWidth: cw - 45 } },
+    margin: { left: mx, right: mx },
+  });
+
+  y = (doc as any).lastAutoTable.finalY + 10;
+
+  // ── Sign-off ─────────────────────────────────────────────────────────────
+  if (y > ph - 35) { doc.addPage(); y = 20; }
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+  doc.text('Thanks & Kind Regards,', mx, y);
+  y += 7;
+
+  if (sigImg) {
+    try {
+      const fmt = sigImg.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(sigImg, fmt, mx, y, 40, 15);
+      y += 17;
+    } catch (e) { console.warn('Signature image failed', e); }
+  }
+
+  const settingsSig: SigPerson | undefined = settings?.signatory_name
+    ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
+    : undefined;
+  // Outward movements have no per-record authorizedPerson (unlike
+  // Quote/Order) — priority: app_settings → passed defaultSignatory → hardcoded fallback.
+  const person: SigPerson = settingsSig
+    || defaultSignatory
+    || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+  const boldPart = 'HIMALAYA TERPENES PVT. LTD.';
+  doc.text(boldPart, mx, y);
+  const boldW = doc.getTextWidth(boldPart);
+  doc.setFont('helvetica', 'normal');
+  doc.text(' | ' + person.name + ' | ' + person.designation + (person.phone ? ' | Tel.: ' + person.phone : ''), mx + boldW, y);
+
+  // ── Page numbers — stamp "Page X of N" on every page ─────────────────────
+  const pageCount = doc.getNumberOfPages();
+  for (let p = 1; p <= pageCount; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(100, 100, 100);
+    doc.text(`Page ${p} of ${pageCount}`, rx, ph - 8, { align: 'right' });
+  }
+
+  if (download) doc.save((movement.doNumber || 'delivery_challan') + '_DC.pdf');
+  return doc;
 }

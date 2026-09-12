@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { X, Send, Paperclip, Mail, Loader2 } from 'lucide-react';
-import { Quote, Order, Customer, AppSettings, AuthorizedSignatory } from '../lib/types';
+import { Quote, Order, StockMovement, Customer, AppSettings, AuthorizedSignatory } from '../lib/types';
 import { Button } from './ui';
-import { generateQuotePDF, generateOrderPDF } from '../lib/pdfGenerator';
+import { generateQuotePDF, generateOrderPDF, generateOutwardPDF } from '../lib/pdfGenerator';
 import { sendViaGmailAsUser } from '../lib/gmail';
 import { resolveCoaStorageUrl } from '../lib/supabase';
 import { useAppStore } from '../store';
@@ -76,7 +76,8 @@ interface BaseProps {
 }
 interface QuoteProps extends BaseProps { mode: 'quote'; doc: Quote; }
 interface OrderProps extends BaseProps { mode: 'order'; doc: Order; relatedQuote?: Quote; }
-type Props = QuoteProps | OrderProps;
+interface OutwardProps extends BaseProps { mode: 'outward'; doc: StockMovement; }
+type Props = QuoteProps | OrderProps | OutwardProps;
 
 const OAUTH_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -96,16 +97,23 @@ export function SendEmailModal(props: Props) {
   const primaryContact = getPrimaryContact(customer, siteId);
   const primaryEmail = primaryContact?.email ?? '';
 
-  const docId   = props.doc.id;
-  const isQuote = props.mode === 'quote';
-  const pdfName = isQuote ? `${docId}.pdf` : `${docId}_PI.pdf`;
+  const isQuote   = props.mode === 'quote';
+  const isOutward = props.mode === 'outward';
+  // For Quote/Order, `.id` IS the human-readable reference (HTP-2026-685,
+  // ORD-2026-035). For StockMovement, `.id` is a database UUID — completely
+  // different thing, so the display id there must come from `.doNumber`
+  // instead, or every emailed file/subject/Ref would show a UUID.
+  const docId = isOutward ? ((props.doc as StockMovement).doNumber || '') : props.doc.id;
+  const pdfName = isQuote ? `${docId}.pdf` : isOutward ? `${docId}_DC.pdf` : `${docId}_PI.pdf`;
 
-  // Orders don't have a DB `attachments` column yet, so this is quote-only —
-  // (props.doc as any).attachments is simply undefined for orders.
+  // Orders/Outward don't have a DB `attachments` column, so this is
+  // quote-only — (props.doc as any).attachments is simply undefined otherwise.
   const coaGcDocs = isQuote ? ((props.doc as any).attachments ?? []).filter((a: any) => a.docType === 'COA') : [];
 
   const defaultSubject = isQuote
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
+    : isOutward
+    ? `Delivery Challan ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : `Proforma Invoice ${docId} — HIMALAYA TERPENES PVT. LTD.`;
 
   // Signatory: prefer doc's saved authorizedPerson → app_settings → passed defaultSignatory
@@ -131,6 +139,8 @@ export function SendEmailModal(props: Props) {
 
   const defaultBody = isQuote
     ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
+    : isOutward
+    ? `${greeting}\n\nPlease find attached the Delivery Challan ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
     : `${greeting}\n\nPlease find attached our Proforma Invoice ${docId} for the requirements discussed.\n\nKindly arrange for the Purchase Order at your earliest convenience.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`;
 
   const [to, setTo]           = useState(primaryEmail);
@@ -188,6 +198,13 @@ export function SendEmailModal(props: Props) {
       let doc: any;
       if (isQuote) {
         doc = generateQuotePDF(props.doc as Quote, customer, props.settings, props.defaultSignatory, false);
+      } else if (isOutward) {
+        // Outward has no unitId/company-unit concept on the form — always
+        // falls back to whichever unit is marked default, same as Quote/
+        // Order's own fallback when their unitId is unset. Synchronous, no
+        // async bank_accounts lookup needed (Outward carries no bank data).
+        const unit = data.units.find(u => u.is_default);
+        doc = generateOutwardPDF(props.doc as StockMovement, customer, props.settings, props.defaultSignatory, unit, false);
       } else {
         const op = props as OrderProps;
         const orderDoc = props.doc as Order;
@@ -236,9 +253,9 @@ export function SendEmailModal(props: Props) {
             <Mail size={15} className="text-red-mrt" />
             <div>
               <h2 className="font-serif text-[16px] text-blk tracking-tight leading-tight">
-                Email <em className="italic text-red-mrt">{isQuote ? 'Quotation' : 'Proforma Invoice'}</em>
+                Email <em className="italic text-red-mrt">{isQuote ? 'Quotation' : isOutward ? 'Delivery Challan' : 'Proforma Invoice'}</em>
               </h2>
-              <p className="text-[10.5px] text-g400 mt-[1px]">Generates PDF · Sends via Gmail · {isQuote ? 'Marks quote Sent' : 'Confirms delivery'}</p>
+              <p className="text-[10.5px] text-g400 mt-[1px]">Generates PDF · Sends via Gmail · {isQuote ? 'Marks quote Sent' : isOutward ? 'Confirms dispatch' : 'Confirms delivery'}</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-g400 hover:text-blk transition-colors p-1 rounded">
