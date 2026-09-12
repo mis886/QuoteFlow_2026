@@ -164,6 +164,11 @@ function FeedbackModal({ sample, onClose, onSaved }: {
       .eq('id', sample.id);
     setSaving(false);
     if (err) { setError(err.message); return; }
+    await supabase.from('sample_status_history').insert({
+      sample_id: sample.id,
+      status: newStatus,
+      changed_at: patch.updated_at,
+    });
     logActivity({ module: 'samples', recordId: sample.id, recordLabel: sample.cust, action: 'update', before: sample, after: { ...sample, ...patch } });
     onSaved();
   };

@@ -273,6 +273,16 @@ export function SamplingNew() {
 
     if (error) { setSaving(false); setErrors({ global: error.message }); return null; }
 
+    // Log this status to the history table — always on create, and on edit
+    // only if the status actually changed (avoid noise from unrelated edits).
+    if (!editId || !originalRow || originalRow.status !== sampleStatus) {
+      await supabase.from('sample_status_history').insert({
+        sample_id: sampleId,
+        status: sampleStatus,
+        changed_at: new Date().toISOString(),
+      });
+    }
+
     // Save sample_products: delete-then-insert (handles both create and edit cleanly)
     await supabase.from('sample_products').delete().eq('sample_id', sampleId);
     const { error: prodError } = await supabase.from('sample_products').insert(savedProductRows);

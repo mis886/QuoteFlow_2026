@@ -25,23 +25,26 @@ function last7KeysEndingAt(refKey: string): string[] {
   return out;
 }
 
-interface SampleRow { status: string; updated_at: string | null; }
+interface HistoryRow { sample_id: string; status: string; changed_at: string; }
 
 export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquiry[]; quotes: Quote[]; orders: Order[] }) {
   const todayKey = dateKey(new Date());
   const [selectedDate, setSelectedDate] = useState<string>(todayKey);
-  const [samples, setSamples] = useState<SampleRow[]>([]);
+  const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  const loadSamples = async () => {
+  const loadHistory = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('samples').select('status, updated_at');
-    if (!error && data) setSamples(data as SampleRow[]);
+    const { data, error } = await supabase
+      .from('sample_status_history')
+      .select('sample_id, status, changed_at')
+      .order('changed_at', { ascending: true });
+    if (!error && data) setHistory(data as HistoryRow[]);
     setLoading(false);
   };
 
-  useEffect(() => { loadSamples(); }, []);
+  useEffect(() => { loadHistory(); }, []);
 
   const days = last7KeysEndingAt(selectedDate);
 
@@ -57,18 +60,32 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
   const orderCount = countBy(orders, selectedDate);
   const orderTrend = days.map(k => countBy(orders, k));
 
-  // Each count = samples whose status was LAST CHANGED on the selected date,
-  // using updated_at (stamped whenever someone edits the status in the
-  // Sampling module). updated_at only holds the most recent change, so a
-  // sample that flipped status more than once shows up under the date of
-  // its latest change only — there's no separate history log to look further back.
-  const byStatusOnDate = (st: string) =>
-    samples.filter(s => s.status === st && s.updated_at && dateKey(s.updated_at) === selectedDate).length;
-  const dispatchedCount = byStatusOnDate('dispatched');
-  const pendingBacklog = byStatusOnDate('pending');
-  const deliveredCount = byStatusOnDate('delivered');
-  const approvedCount = byStatusOnDate('approved');
-  const rejectedCount = byStatusOnDate('rejected');
+  // Reconstruct each sample's status AS OF the selected date: take the most
+  // recent history entry at or before that date, per sample. This gives a
+  // true point-in-time snapshot ("how many were pending as of yesterday"),
+  // not just "what changed on that exact day" — and a sample created after
+  // the selected date naturally has no entry yet, so it's correctly excluded.
+  const statusCountsAsOf = (asOfKey: string) => {
+    const latest = new Map<string, { status: string; changed_at: string }>();
+    for (const h of history) {
+      if (dateKey(h.changed_at) > asOfKey) continue;
+      const existing = latest.get(h.sample_id);
+      if (!existing || h.changed_at > existing.changed_at) {
+        latest.set(h.sample_id, { status: h.status, changed_at: h.changed_at });
+      }
+    }
+    const counts: Record<string, number> = { pending: 0, dispatched: 0, delivered: 0, approved: 0, rejected: 0 };
+    latest.forEach(v => { counts[v.status] = (counts[v.status] ?? 0) + 1; });
+    return counts;
+  };
+
+  const sampleCounts = statusCountsAsOf(selectedDate);
+  const dispatchedCount = sampleCounts.dispatched;
+  const pendingBacklog = sampleCounts.pending;
+  const deliveredCount = sampleCounts.delivered;
+  const approvedCount = sampleCounts.approved;
+  const rejectedCount = sampleCounts.rejected;
+  const totalTracked = dispatchedCount + pendingBacklog + deliveredCount + approvedCount + rejectedCount;
 
   const bar = (v: number, list: number[]) => {
     const max = Math.max(1, ...list);
@@ -87,7 +104,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
       `Enquiries: ${enqCount}\n` +
       `Quotations: ${quoteCount}\n` +
       `Orders: ${orderCount}\n` +
-      `Samples updated on ${prettyDate}: ${dispatchedCount} dispatched, ${deliveredCount} delivered, ${pendingBacklog} pending, ${approvedCount} approved, ${rejectedCount} rejected\n` +
+      `Samples as of ${prettyDate}: ${dispatchedCount} dispatched, ${deliveredCount} delivered, ${pendingBacklog} pending, ${approvedCount} approved, ${rejectedCount} rejected\n` +
       `— via EnqBoss`;
     try {
       await navigator.clipboard.writeText(text);
@@ -155,7 +172,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
               Today
             </button>
           )}
-          <button type="button" onClick={loadSamples} title="Refresh" className="inline-flex items-center justify-center h-8 w-8 rounded-[5px] text-g500 hover:bg-g100 hover:text-blk transition-colors">
+          <button type="button" onClick={loadHistory} title="Refresh" className="inline-flex items-center justify-center h-8 w-8 rounded-[5px] text-g500 hover:bg-g100 hover:text-blk transition-colors">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           </button>
           <button
@@ -202,7 +219,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
               <span className="font-extrabold text-red-600">{rejectedCount}</span>
             </div>
           </div>
-          <div className="text-[9px] text-g400 leading-snug">Status last changed on {prettyDate} · {dispatchedCount + pendingBacklog + deliveredCount + approvedCount + rejectedCount} updates that day</div>
+          <div className="text-[9px] text-g400 leading-snug">As of {prettyDate} · {totalTracked} samples tracked</div>
         </div>
       </div>
 
