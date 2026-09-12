@@ -2,11 +2,12 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { formatINR, cn, getThisWeekRange, localDateStr, siteLabel, fmtIST } from '../lib/utils';
 import { Badge, Button } from '../components/ui';
+import { DailySnapshot } from '../components/DailySnapshot';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Clock, IndianRupee, FileSignature, Trophy, Activity, Phone, Mail, MessageSquare, Users, FileText, ShoppingBag, AlertCircle, CalendarClock, TrendingUp, ChevronDown, ChevronRight, Calendar, ChevronLeft } from 'lucide-react';
 
 type Period = '30d' | 'quarter' | 'year';
-type DashTab = 'overview' | 'this-week' | 'calendar';
+type DashTab = 'overview' | 'this-week' | 'calendar' | 'today';
 
 type CalendarEventType = 'followup' | 'overdue-enq' | 'order-dlv' | 'quote-pending';
 
@@ -697,6 +698,19 @@ export function Dashboard() {
             <Calendar size={12} />
             Calendar
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('today')}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2 font-mono text-[10px] font-bold tracking-[1.5px] uppercase border-b-2 -mb-px transition-colors focus:outline-none',
+              activeTab === 'today'
+                ? 'border-red-mrt text-red-mrt'
+                : 'border-transparent text-g400 hover:text-g600'
+            )}
+          >
+            <CalendarClock size={12} />
+            Today
+          </button>
         </div>
       </div>
 
@@ -1004,6 +1018,12 @@ export function Dashboard() {
             })}
           </div>
 
+        </div>
+      )}
+
+      {activeTab === 'today' && (
+        <div className="px-[30px] pb-6">
+          <DailySnapshot enquiries={data.enquiries} quotes={data.quotes} orders={data.orders} />
         </div>
       )}
 
