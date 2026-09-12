@@ -64,9 +64,14 @@
 // "Wada-HE: N") note to each affected row's remark (existing remarks
 // preserved, appended on a new line) so that data isn't silently lost, just
 // no longer tracked as its own party column.
+//
+// 2026-09-12: Delete removed again — users should no longer be able to
+// delete a stock lot row directly from Stockbook. Lots now leave the
+// ledger only via the Finished Lot flow (see `isDepleted`/handleFinish
+// above) or by getting corrected through Stock Movements.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Trash2, RefreshCw, Warehouse, PackageCheck } from 'lucide-react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, Warehouse, PackageCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
@@ -144,12 +149,6 @@ export function Stockbook() {
   };
 
   useEffect(() => { load(); }, []);
-
-  const handleDelete = async (lot: StockLot) => {
-    if (!window.confirm(`Delete stock lot "${lot.productName}" (${lot.whLotNo || lot.factLotNo || 'no lot no.'})? This only removes it from Stockbook — it does not touch any Stock Movements entries.`)) return;
-    const { error } = await supabase.from('stock_lots').delete().eq('id', lot.id);
-    if (!error) setLots(prev => prev.filter(l => l.id !== lot.id));
-  };
 
   const handleFinish = async (lot: StockLot) => {
     if (!window.confirm(`Mark stock lot "${lot.productName}" (${lot.whLotNo || lot.factLotNo || 'no lot no.'}) as finished? It will move out of Stockbook into the Finished Lots tab in Stock Movements.`)) return;
@@ -365,16 +364,6 @@ export function Stockbook() {
                             <PackageCheck size={11} /> Finished Lot
                           </button>
                         )}
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(l)}
-                            className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
                       </div>
                     </td>
                   </tr>
