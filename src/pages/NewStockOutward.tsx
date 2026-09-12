@@ -239,7 +239,7 @@ const emptyForm = {
   warehouse: '', otherWarehouse: '',
   doNumber: '', doDate: '', lotNo: '', lotDate: '', productName: '', productCode: '',
   numArticles: '', packing: '', totalQty: '', weightType: '', packagingType: '',
-  partyName: '', otherParty: '', transporter: '', otherTransporter: '', note: '',
+  partyName: '', otherParty: '', transporter: '', otherTransporter: '', fulfilmentType: '', note: '',
 };
 
 // Ported verbatim from src/components/OutwardEditModal.tsx (2026-09-09) —
@@ -397,6 +397,7 @@ export function NewStockOutward() {
         otherParty: data.other_party || '',
         transporter: data.transporter || '',
         otherTransporter: data.other_transporter || '',
+        fulfilmentType: data.fulfilment_type || '',
         note: data.note || '',
       });
       setOriginal({
@@ -688,6 +689,7 @@ export function NewStockOutward() {
     otherParty: isOtherParty ? (form.otherParty.trim() || undefined) : undefined,
     transporter: form.transporter || undefined,
     otherTransporter: isOtherTransporter ? (form.otherTransporter.trim() || undefined) : undefined,
+    fulfilmentType: form.fulfilmentType || undefined,
     note: form.note.trim() || undefined,
     created_by: user?.email ?? undefined,
   });
@@ -752,6 +754,7 @@ export function NewStockOutward() {
         other_party: isOtherParty ? (form.otherParty.trim() || null) : null,
         transporter: form.transporter || null,
         other_transporter: isOtherTransporter ? (form.otherTransporter.trim() || null) : null,
+        fulfilment_type: form.fulfilmentType || null,
         note: form.note.trim() || null,
       }).eq('id', movementId);
 
@@ -778,6 +781,7 @@ export function NewStockOutward() {
       other_party: isOtherParty ? (form.otherParty.trim() || null) : null,
       transporter: form.transporter || null,
       other_transporter: isOtherTransporter ? (form.otherTransporter.trim() || null) : null,
+      fulfilment_type: form.fulfilmentType || null,
       note: form.note.trim() || null,
       created_by: user?.email ?? null,
     };
@@ -969,6 +973,15 @@ export function NewStockOutward() {
                   <input className={inputCls} value={form.otherTransporter} onChange={set('otherTransporter')} />
                 </div>
               )}
+              <div>
+                <label className={labelCls}>Fulfilment Type</label>
+                <select className={selectCls} value={form.fulfilmentType} onChange={set('fulfilmentType')}>
+                  <option value="">Select...</option>
+                  <option value="Delivery">Delivery</option>
+                  <option value="Self Pickup">Self Pickup</option>
+                  <option value="Both">Both</option>
+                </select>
+              </div>
             </div>
             <div className="mt-3">
               <label className={labelCls}>Note</label>

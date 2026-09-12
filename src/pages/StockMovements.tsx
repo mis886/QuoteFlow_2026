@@ -99,6 +99,7 @@ function mapRow(r: any): StockMovement {
     otherParty: r.other_party ?? undefined,
     transporter: r.transporter ?? undefined,
     otherTransporter: r.other_transporter ?? undefined,
+    fulfilmentType: r.fulfilment_type ?? undefined,
     note: r.note ?? undefined,
     noOfBarrels: r.no_of_barrels ?? undefined,
     mou: r.mou ?? undefined,
@@ -339,6 +340,7 @@ export function StockMovements() {
                   <Th label="Warehouse" />
                   <Th label="Party Name" />
                   <Th label="Transporter" />
+                  <Th label="Fulfilment Type" />
                   <Th label="No of Barrels" align="right" />
                   <Th label="Packing" align="right" />
                   <Th label="MOU" />
@@ -351,9 +353,9 @@ export function StockMovements() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={15} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                  <tr><td colSpan={16} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={15} className="text-center p-8 text-g400 text-[13px]">No outward entries match this filter</td></tr>
+                  <tr><td colSpan={16} className="text-center p-8 text-g400 text-[13px]">No outward entries match this filter</td></tr>
                 ) : (
                   filtered.map(m => (
                     <tr key={m.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -368,6 +370,7 @@ export function StockMovements() {
                       <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap max-w-[160px] truncate" title={m.transporter === 'Other' ? m.otherTransporter : m.transporter}>
                         {m.transporter === 'Other' ? (m.otherTransporter || 'Other') : (m.transporter || '—')}
                       </td>
+                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.fulfilmentType || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{m.numArticles || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(m.packing)}</td>
                       <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.weightType || '—'}</td>

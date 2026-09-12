@@ -637,6 +637,7 @@ export interface StockMovement {
   otherParty?: string;
   transporter?: string;
   otherTransporter?: string;
+  fulfilmentType?: string;
   note?: string;
   created_by?: string;
   created_at?: string;
