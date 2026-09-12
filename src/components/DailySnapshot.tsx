@@ -63,6 +63,8 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
   const dispatchedCount = samples.filter(s => s.status === 'dispatched').length;
   const pendingBacklog = samples.filter(s => s.status === 'pending').length;
   const deliveredCount = samples.filter(s => s.status === 'delivered').length;
+  const approvedCount = samples.filter(s => s.status === 'approved').length;
+  const rejectedCount = samples.filter(s => s.status === 'rejected').length;
 
   const bar = (v: number, list: number[]) => {
     const max = Math.max(1, ...list);
@@ -81,7 +83,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
       `Enquiries: ${enqCount}\n` +
       `Quotations: ${quoteCount}\n` +
       `Orders: ${orderCount}\n` +
-      `Samples (live): ${dispatchedCount} dispatched, ${deliveredCount} delivered, ${pendingBacklog} pending\n` +
+      `Samples (live): ${dispatchedCount} dispatched, ${deliveredCount} delivered, ${pendingBacklog} pending, ${approvedCount} approved, ${rejectedCount} rejected\n` +
       `— via EnqBoss`;
     try {
       await navigator.clipboard.writeText(text);
@@ -187,8 +189,16 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
               <span className="flex items-center gap-1.5 text-g600"><span className="w-1.5 h-1.5 rounded-full bg-blue-500" />Delivered</span>
               <span className="font-extrabold text-blue-600">{deliveredCount}</span>
             </div>
+            <div className="flex items-center justify-between text-[12px]">
+              <span className="flex items-center gap-1.5 text-g600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Approved</span>
+              <span className="font-extrabold text-emerald-600">{approvedCount}</span>
+            </div>
+            <div className="flex items-center justify-between text-[12px]">
+              <span className="flex items-center gap-1.5 text-g600"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Rejected</span>
+              <span className="font-extrabold text-red-600">{rejectedCount}</span>
+            </div>
           </div>
-          <div className="text-[9px] text-g400 leading-snug">Live current status of all samples — not tied to the selected date</div>
+          <div className="text-[9px] text-g400 leading-snug">Live current status of all samples ({dispatchedCount + pendingBacklog + deliveredCount + approvedCount + rejectedCount} total) — not tied to the selected date</div>
         </div>
       </div>
 
