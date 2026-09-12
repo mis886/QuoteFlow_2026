@@ -66,8 +66,9 @@
 // no longer tracked as its own party column.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Trash2, RefreshCw, Warehouse } from 'lucide-react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, Trash2, RefreshCw, Warehouse, PackageCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAppStore } from '../store';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockLot } from '../lib/types';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
@@ -101,6 +102,8 @@ function mapRow(r: any): StockLot {
     updated_by: r.updated_by ?? undefined,
     created_at: r.created_at ?? undefined,
     updated_at: r.updated_at ?? undefined,
+    isFinished: !!r.is_finished,
+    finishedAt: r.finished_at ?? undefined,
   };
 }
 
@@ -113,6 +116,7 @@ function mapRow(r: any): StockLot {
 const num = (v?: number) => (v === undefined || v === null || v === 0 ? '—' : v.toLocaleString('en-IN'));
 
 export function Stockbook() {
+  const { user } = useAppStore();
   const [lots, setLots] = useState<StockLot[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -133,6 +137,7 @@ export function Stockbook() {
     const { data, error } = await supabase
       .from('stock_lots')
       .select('*')
+      .eq('is_finished', false)
       .order('serial_no', { ascending: true, nullsFirst: false });
     if (!error && data) setLots(data.map(mapRow));
     setLoading(false);
@@ -143,6 +148,17 @@ export function Stockbook() {
   const handleDelete = async (lot: StockLot) => {
     if (!window.confirm(`Delete stock lot "${lot.productName}" (${lot.whLotNo || lot.factLotNo || 'no lot no.'})? This only removes it from Stockbook — it does not touch any Stock Movements entries.`)) return;
     const { error } = await supabase.from('stock_lots').delete().eq('id', lot.id);
+    if (!error) setLots(prev => prev.filter(l => l.id !== lot.id));
+  };
+
+  const handleFinish = async (lot: StockLot) => {
+    if (!window.confirm(`Mark stock lot "${lot.productName}" (${lot.whLotNo || lot.factLotNo || 'no lot no.'}) as finished? It will move out of Stockbook into the Finished Lots tab in Stock Movements.`)) return;
+    const { error } = await supabase.from('stock_lots').update({
+      is_finished: true,
+      finished_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      updated_by: user?.email ?? null,
+    }).eq('id', lot.id);
     if (!error) setLots(prev => prev.filter(l => l.id !== lot.id));
   };
 
@@ -262,7 +278,7 @@ export function Stockbook() {
                 <SortTh col="quantity" label="Total Quantity" />
                 <SortTh col="make" label="Make" />
                 <Th label="Remark" />
-                <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[50px]" />
+                <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[130px]" />
               </tr>
             </thead>
             <tbody>
@@ -271,7 +287,9 @@ export function Stockbook() {
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={20} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
-                filtered.map((l, idx) => (
+                filtered.map((l, idx) => {
+                const isDepleted = l.quantity === 0;
+                return (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
                     {/* 2026-09-10: computed position in `filtered`, NOT the stored
                         serial_no — Sheets-style row numbering (1..N, no gaps, no
@@ -336,19 +354,32 @@ export function Stockbook() {
                     </td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g500 max-w-[220px] truncate" title={l.remark}>{l.remark || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top">
-                      <div className="flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(l)}
-                          className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                      <div className="flex items-center justify-center gap-1">
+                        {isDepleted && (
+                          <button
+                            type="button"
+                            onClick={() => handleFinish(l)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-[3px] bg-blk text-white text-[10px] font-bold hover:bg-g700 transition-colors whitespace-nowrap"
+                            title="Move this fully depleted lot to Finished Lots"
+                          >
+                            <PackageCheck size={11} /> Finished Lot
+                          </button>
+                        )}
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(l)}
+                            className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>
-                ))
+                );
+                })
               )}
             </tbody>
           </table>

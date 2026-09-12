@@ -50,15 +50,19 @@
 // are removed along with it — nothing else in this file used them.
 //
 // 2026-09-12: added a third "Finished Lots" tab alongside Inward/Outward.
-// It renders src/components/FinishedLotsTable.tsx, a self-contained,
-// UI-only component that visually mirrors Stockbook.tsx's table (own
-// search bar, own state) — it does NOT share `movements`/`search`/`load()`
+// It renders src/components/FinishedLotsTable.tsx, a self-contained
+// component (own Supabase query, own state) that visually mirrors
+// Stockbook.tsx's table — it does NOT share `movements`/`search`/`load()`
 // above, since those are Inward/Outward-specific (stock_movements rows,
 // warehouse/DO-number search fields) and don't apply to finished-goods
-// lots. The shared search box / New Inward/Outward button / entry count in
-// the toolbar below are hidden while this tab is active for the same
-// reason — there is no live Finished Lots data source yet (see that
-// component's own header comment), so nothing there is real either.
+// lots. It reads public.stock_lots filtered to is_finished = true: rows
+// land there via Stockbook's "Finished Lot" button (shown once a lot's
+// Total Quantity hits 0), which sets is_finished/finished_at on that row
+// (see Stockbook.tsx's handleFinish()) so it drops out of the active
+// Stockbook ledger and appears here instead. The shared search box / New
+// Inward/Outward button / entry count in the toolbar below are hidden
+// while this tab is active, same as before — they're Inward/Outward-only
+// concepts and don't apply to this tab's own self-contained toolbar.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -138,6 +142,7 @@ export function StockMovements() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'inward' | 'outward' | 'finished'>('inward');
+  const [finishedCount, setFinishedCount] = useState(0);
   // Single scroll container for both axes, shared by whichever tab
   // (Inward/Outward) is currently rendered — sticky headers below need to
   // stick to the SAME element that scrolls vertically, and nesting a
@@ -159,6 +164,15 @@ export function StockMovements() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Separate lightweight count query (head: true, no rows fetched) for the
+  // "Finished Lots" tab label, matching the Inward/Outward count style —
+  // stock_lots is a different table from `movements` above so this can't
+  // be derived from that state.
+  useEffect(() => {
+    supabase.from('stock_lots').select('id', { count: 'exact', head: true }).eq('is_finished', true)
+      .then(({ count }) => setFinishedCount(count ?? 0));
+  }, []);
 
   const handleDelete = async (m: StockMovement) => {
     if (!window.confirm(`Delete this ${m.type} entry for "${m.productName}" (${m.whLotNo || 'no lot no.'})? This also reverses its effect on the matching Stockbook lot, if one is found.`)) return;
@@ -257,7 +271,7 @@ export function StockMovements() {
             onClick={() => setTab('finished')}
             className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${tab === 'finished' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
           >
-            Finished Lots
+            Finished Lots ({finishedCount})
           </div>
         </div>
 

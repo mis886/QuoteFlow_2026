@@ -1,29 +1,62 @@
 // Finished Lots — the "Finished Lots" tab of Stock Movements
 // (src/pages/StockMovements.tsx). Visually mirrors Stockbook.tsx's table
 // (src/pages/Stockbook.tsx) — same column set/order, same search bar
-// treatment, same fonts/spacing/borders/sticky-header styling — but this is
-// UI-only for now. There is no stock_finished_lots table yet: no Supabase
-// query, no shared data or component state with Stockbook.tsx. FINISHED_LOTS
-// below is a hardcoded empty array; the table always renders its "no rows"
-// state until the real Finished Lots schema/logic is built in a later pass.
-// See FinishedLot in src/lib/types.ts for the placeholder row shape.
+// treatment, same fonts/spacing/borders/sticky-header styling. Reads
+// public.stock_lots filtered to is_finished = true — rows land here when
+// Stockbook's "Finished Lot" button (shown once a lot's Total Quantity
+// hits 0) is clicked, which sets is_finished/finished_at on that same
+// stock_lots row (see Stockbook.tsx's handleFinish()) rather than moving
+// the data to a separate table. Self-contained (own Supabase query, own
+// state) — no shared state with Stockbook.tsx, same convention
+// StockMovements.tsx uses for its own separate mapRow().
 
-import React, { useMemo, useRef, useState } from 'react';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
-import { FinishedLot } from '../lib/types';
+import { StockLot } from '../lib/types';
 import FloatingHorizontalScrollbar from './FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from './FloatingVerticalScrollbar';
 
-// No data source yet — see this file's header comment. Always empty until
-// the real Finished Lots table/schema exists.
-const FINISHED_LOTS: FinishedLot[] = [];
+function mapRow(r: any): StockLot {
+  return {
+    id: r.id,
+    serialNo: r.serial_no ?? undefined,
+    whLotNo: r.wh_lot_no ?? undefined,
+    factLotNo: r.fact_lot_no ?? undefined,
+    productCode: r.product_code ?? undefined,
+    productName: r.product_name,
+    inwardDate: r.inward_date ?? undefined,
+    sampleOff: !!r.sample_off,
+    noOfBarrels: r.no_of_barrels ?? undefined,
+    coaFile: r.coa_file ?? undefined,
+    coaUrl: r.coa_url ?? undefined,
+    qtyHariom: r.qty_hariom ?? undefined,
+    qtyReliable: r.qty_reliable ?? undefined,
+    qtySwastik: r.qty_swastik ?? undefined,
+    qtyBalaji: r.qty_balaji ?? undefined,
+    packing: r.packing ?? undefined,
+    packingDetail: r.packing_detail ?? undefined,
+    mou: r.mou ?? undefined,
+    packingType: r.packing_type ?? undefined,
+    quantity: r.quantity ?? undefined,
+    make: r.make ?? undefined,
+    remark: r.remark ?? undefined,
+    created_by: r.created_by ?? undefined,
+    updated_by: r.updated_by ?? undefined,
+    created_at: r.created_at ?? undefined,
+    updated_at: r.updated_at ?? undefined,
+    isFinished: !!r.is_finished,
+    finishedAt: r.finished_at ?? undefined,
+  };
+}
 
-// Same "0 reads as —" rule as Stockbook.tsx's own num() — kept identical so
-// a real data source can be wired in later without a styling mismatch.
+// Same "0 reads as —" rule as Stockbook.tsx's own num().
 const num = (v?: number) => (v === undefined || v === null || v === 0 ? '—' : v.toLocaleString('en-IN'));
 
 export function FinishedLotsTable() {
+  const [lots, setLots] = useState<StockLot[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string>('whLotNo');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -32,6 +65,19 @@ export function FinishedLotsTable() {
   // (and the same nested-overflow gotcha) as Stockbook.tsx's own tableScrollRef.
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
+  const load = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('stock_lots')
+      .select('*')
+      .eq('is_finished', true)
+      .order('finished_at', { ascending: false });
+    if (!error && data) setLots(data.map(mapRow));
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
   const toggleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortCol(col); setSortDir('asc'); }
@@ -39,7 +85,7 @@ export function FinishedLotsTable() {
 
   const filtered = useMemo(() => {
     const q = normalizeSearchText(search.trim());
-    let list = FINISHED_LOTS.filter(l => {
+    let list = lots.filter(l => {
       if (!q) return true;
       const hay = normalizeSearchText([
         l.whLotNo, l.factLotNo, l.productCode, l.productName,
@@ -57,7 +103,7 @@ export function FinishedLotsTable() {
       return 0;
     });
     return list;
-  }, [search, sortCol, sortDir]);
+  }, [lots, search, sortCol, sortDir]);
 
   const SortTh = ({ col, label }: { col: string; label: string }) => (
     <th
@@ -91,6 +137,15 @@ export function FinishedLotsTable() {
           />
         </div>
 
+        <button
+          type="button"
+          onClick={load}
+          title="Refresh"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-[3px] text-g500 hover:bg-g100 hover:text-blk transition-colors"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+        </button>
+
         <div className="ml-auto font-mono text-[10px] text-g500">{filtered.length} lots</div>
       </div>
 
@@ -116,11 +171,14 @@ export function FinishedLotsTable() {
                 <Th label="MOU" />
                 <Th label="Packing Type" />
                 <SortTh col="quantity" label="Total Quantity" />
+                <Th label="Finished On" />
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
-                <tr><td colSpan={17} className="text-center p-8 text-g400 text-[13px]">No finished lots yet — this module is coming soon.</td></tr>
+              {loading ? (
+                <tr><td colSpan={18} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={18} className="text-center p-8 text-g400 text-[13px]">No finished lots yet.</td></tr>
               ) : (
                 filtered.map((l, idx) => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -153,15 +211,16 @@ export function FinishedLotsTable() {
                         <span className="text-g600">—</span>
                       )}
                     </td>
-                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{l.openingStock || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{l.noOfBarrels && l.noOfBarrels !== '0' ? l.noOfBarrels : '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyHariom)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyReliable)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtySwastik)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.qtyBalaji)}</td>
-                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(l.packing)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{l.packing != null ? num(l.packing) : (l.packingDetail || '—')}</td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.mou || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.packingType || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(l.quantity)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.finishedAt ? new Date(l.finishedAt).toLocaleDateString('en-IN') : '—'}</td>
                   </tr>
                 ))
               )}

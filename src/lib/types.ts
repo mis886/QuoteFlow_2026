@@ -585,37 +585,8 @@ export interface StockLot {
   updated_by?: string;
   created_at?: string;
   updated_at?: string;
-}
-
-// 2026-09-12: Finished Lots — placeholder shape for a future Stock Movements
-// tab (src/components/FinishedLotsTable.tsx) that will track finished-goods
-// lots the same way StockLot above tracks raw-material lots. UI-only for
-// now: no stock_finished_lots table exists yet, nothing writes to or reads
-// from Supabase for this — the tab renders with zero rows until the real
-// schema/logic is built in a later pass. Field names mirror StockLot's own
-// naming so that later pass can stay consistent; trimmed to just the
-// columns the placeholder table actually renders (no make/remark — add back
-// then if the real feature needs them).
-export interface FinishedLot {
-  id: string;
-  serialNo?: number;
-  whLotNo?: string;
-  factLotNo?: string;
-  productCode?: string;
-  productName: string;
-  inwardDate?: string;
-  sampleOff: boolean;
-  openingStock?: string;
-  coaFile?: string;
-  coaUrl?: string;
-  qtyHariom?: number;
-  qtyReliable?: number;
-  qtySwastik?: number;
-  qtyBalaji?: number;
-  packing?: number;
-  mou?: string;
-  packingType?: string;
-  quantity?: number;
+  isFinished?: boolean;   // stock_lots.is_finished — true once the lot is fully depleted and moved to the Finished Lots tab
+  finishedAt?: string;    // stock_lots.finished_at — when "Finished Lot" was clicked
 }
 
 // Stock Movements module — append-only inward/outward ledger, replacing the
