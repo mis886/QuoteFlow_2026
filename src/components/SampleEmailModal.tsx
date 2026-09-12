@@ -159,6 +159,8 @@ export function SampleEmailModal(props: SampleEmailModalProps) {
       // Advance to dispatched only if still pending — never downgrade a later-stage sample
       supabase.from('samples').update({ status: 'dispatched' }).eq('id', props.sampleId).eq('status', 'pending').select('id').then(({ data, error }) => {
         if (!error && data && data.length > 0) {
+          const changedAt = new Date().toISOString();
+          supabase.from('sample_status_history').insert({ sample_id: props.sampleId, status: 'dispatched', changed_at: changedAt });
           logActivity({
             module: 'samples', recordId: props.sampleId, recordLabel: props.customerName, action: 'update',
             before: { status: 'pending' },
