@@ -174,30 +174,39 @@ export async function downloadOutwardDOCX(
         para([r('V. N. Purav Marg, Sion-Chunabhatti, Mumbai - 400 022. INDIA', { size: 15, color: C_GRAY })], AlignmentType.CENTER, 40),
         hrPara(),
 
-        // ── Delivery Order No. | Date — underline:true on just the value
-        // runs gives the same fillable-field look as the PDF's underline
-        // rules, without needing its manual line-drawing.
+        // ── Delivery Order No. | Date
         new Paragraph({
           spacing: { after: 20 },
           children: [
             r('Delivery Order No.: ', { size: 17 }),
-            r(movement.doNumber || '—', { size: 17, underline: true }),
+            r(movement.doNumber || '—', { size: 17 }),
             r('     ', { size: 17 }),
             r('Date : ', { size: 17 }),
-            r(dateStr, { size: 17, color: C_GRAY, underline: true }),
+            r(dateStr, { size: 17, color: C_GRAY }),
           ],
         }),
 
-        // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES)
+        // ── Godown address (who this DO is addressed to — see
+        // GODOWN_ADDRESSES), boxed at full width in a single-cell bordered
+        // Table — same ALL_THIN border style as the line-items table below,
+        // no shading, for visual consistency.
         ...(godownAddress ? [
-          new Paragraph({
-            spacing: { after: 0 },
-            children: [
-              r('M/s. ', { size: 17 }),
-              r(godownAddress[0], { bold: true, size: 17, underline: true }),
-            ],
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [new TableRow({
+              children: [new TableCell({
+                borders: ALL_THIN,
+                margins: { top: 100, bottom: 100, left: 120, right: 120 },
+                children: [
+                  para([
+                    r('M/s. ', { size: 17 }),
+                    r(godownAddress[0], { bold: true, size: 17 }),
+                  ], AlignmentType.LEFT, 0),
+                  ...godownAddress.slice(1).map(line => para([r(line, { size: 17 })], AlignmentType.LEFT, 0)),
+                ],
+              })],
+            })],
           }),
-          ...godownAddress.slice(1).map(line => para([r(line, { size: 17 })], AlignmentType.LEFT, 0)),
           para([], AlignmentType.LEFT, 80),
         ] : []),
 
@@ -208,15 +217,15 @@ export async function downloadOutwardDOCX(
           { size: 17 },
         )], AlignmentType.LEFT, 40),
 
-        // ── Lot No. | Dated — same fillable-field style as Delivery Order No./Date
+        // ── Lot No. | Dated — same field style as Delivery Order No./Date above
         new Paragraph({
           spacing: { after: 120 },
           children: [
             r('Lot No.: ', { size: 17 }),
-            r(movement.whLotNo || '—', { size: 17, underline: true }),
+            r(movement.whLotNo || '—', { size: 17 }),
             r('     ', { size: 17 }),
             r('Dated: ', { size: 17 }),
-            r(lotDateText, { size: 17, underline: true }),
+            r(lotDateText, { size: 17 }),
           ],
         }),
 

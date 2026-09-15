@@ -868,10 +868,9 @@ export async function generateOutwardPDF(
   doc.text('V. N. Purav Marg, Sion-Chunabhatti, Mumbai - 400 022. INDIA', pw / 2, 27, { align: 'center' });
   y = 34;
 
-  // Draws "label" + "value" as plain text, then a thin rule under just the
-  // value (a fillable-field look) — same getTextWidth()+line() technique the
-  // old centered heading used for its underline. align 'right' anchors the
-  // whole label+value pair to x instead of starting from it.
+  // Draws "label" + "value" as plain text, positioning the value right after
+  // the label (or, for align 'right', anchoring the whole label+value pair
+  // to x instead of starting from it).
   const drawField = (
     x: number, yPos: number, label: string, value: string,
     opts: { align?: 'left' | 'right'; bold?: boolean } = {},
@@ -887,11 +886,9 @@ export async function generateOutwardPDF(
     doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
     doc.text(value, valueX, yPos);
     doc.setFont('helvetica', 'normal');
-    doc.setLineWidth(0.3);
-    doc.line(valueX, yPos + 0.8, valueX + valueW, yPos + 0.8);
   };
 
-  // ── Delivery Order No. | Date — each a fillable underlined field ────────
+  // ── Delivery Order No. | Date ────────────────────────────────────────────
   y += 6;
   doc.setFontSize(9); doc.setTextColor(30, 30, 30);
   const dateStr = movement.doDate
@@ -902,14 +899,24 @@ export async function generateOutwardPDF(
   drawField(mx, y, 'Delivery Order No.: ', movement.doNumber || '—');
   drawField(rx, y, 'Date : ', dateStr, { align: 'right' });
 
-  // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES) ─
+  // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES),
+  // boxed at full content width like the line-items table below — same
+  // border weight/color as that table's bodyStyles (lineWidth 0.35,
+  // lineColor [80, 80, 80]) for visual consistency. Box height flexes with
+  // however many address lines this warehouse has (Swastik has 3, others 5).
   const godownAddress = GODOWN_ADDRESSES[movement.warehouse];
   if (godownAddress) {
     y += 9;
+    const boxTop = y - 4;
+    const textX = mx + 3;
     doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-    drawField(mx, y, 'M/s. ', godownAddress[0], { bold: true });
+    drawField(textX, y, 'M/s. ', godownAddress[0], { bold: true });
     doc.setFont('helvetica', 'normal');
-    godownAddress.slice(1).forEach((line) => { y += 5; doc.text(line, mx, y); });
+    godownAddress.slice(1).forEach((line) => { y += 5; doc.text(line, textX, y); });
+    const boxBottom = y + 2.5;
+    doc.setLineWidth(0.35); doc.setDrawColor(80, 80, 80);
+    doc.rect(mx, boxTop, cw, boxBottom - boxTop);
+    doc.setDrawColor(0, 0, 0);
   }
 
   // ── Delivery instruction — Lot No./Dated now split out into their own
@@ -922,7 +929,7 @@ export async function generateOutwardPDF(
   ) as string[];
   instrLines.forEach((line) => { doc.text(line, mx, y); y += 5; });
 
-  // ── Lot No. | Dated — same fillable-field style as Delivery Order No./Date
+  // ── Lot No. | Dated — same field style as Delivery Order No./Date above
   y += 3;
   doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
   const lotDateText = movement.inwardDate ? fmtDate(movement.inwardDate) : '—';
