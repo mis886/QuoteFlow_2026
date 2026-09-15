@@ -157,42 +157,68 @@ export async function downloadOutwardDOCX(
 
   const godownAddress = GODOWN_ADDRESSES[movement.warehouse];
 
+  const dateStr = movement.doDate ? fmtDate(movement.doDate) : '—';
+  const lotDateText = movement.inwardDate ? fmtShort(movement.inwardDate) : '—';
+
   const doc = new Document({
     sections: [{
       properties: { page: { margin: PAGE_MARGIN } },
       children: [
-        // ── Company header (copied from quoteDocx.ts, same as the PDF's letterhead)
-        para([r('HIMALAYA TERPENES PVT. LTD.', { bold: true, size: 26 })], AlignmentType.LEFT, 10),
-        para([r('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', { size: 16, color: C_GRAY })], AlignmentType.LEFT, 10),
-        para([r('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 6),
-        para([r('GSTIN: 27AAACH6788H1Z6', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 6),
-        para([r('Tel.: 91-22-35397800/01 | E Mail: mum@himalayaterpene.com | Web.: www.himalayaterpene.com', { size: 14, color: C_GRAY })], AlignmentType.LEFT, 40),
+        // ── Header — four centered lines matching the pre-printed Delivery
+        // Order pad (no tagline/CIN/GSTIN/contact line — those don't appear
+        // on it). Must stay in sync with the equivalent block in
+        // generateOutwardPDF, pdfGenerator.ts.
+        para([r('Delivery Order', { size: 18, color: C_GRAY })], AlignmentType.CENTER, 6),
+        para([r('Himalaya Terpenes Pvt. Ltd.', { bold: true, size: 26 })], AlignmentType.CENTER, 6),
+        para([r('Unit No. 201, Building No. 5, Jogani Industrial Complex,', { size: 15, color: C_GRAY })], AlignmentType.CENTER, 2),
+        para([r('V. N. Purav Marg, Sion-Chunabhatti, Mumbai - 400 022. INDIA', { size: 15, color: C_GRAY })], AlignmentType.CENTER, 40),
         hrPara(),
 
-        // ── Delivery Order Number + Date
+        // ── Delivery Order No. | Date — underline:true on just the value
+        // runs gives the same fillable-field look as the PDF's underline
+        // rules, without needing its manual line-drawing.
         new Paragraph({
           spacing: { after: 20 },
           children: [
-            r('Delivery Order Number : ' + (movement.doNumber || '—'), { bold: true, size: 17 }),
-            r('   ' + (movement.doDate ? fmtDate(movement.doDate) : ''), { size: 17, color: C_GRAY }),
+            r('Delivery Order No.: ', { size: 17 }),
+            r(movement.doNumber || '—', { size: 17, underline: true }),
+            r('     ', { size: 17 }),
+            r('Date : ', { size: 17 }),
+            r(dateStr, { size: 17, color: C_GRAY, underline: true }),
           ],
         }),
 
-        para([r('Delivery Order', { bold: true, size: 22, underline: true })], AlignmentType.CENTER, 60),
-
         // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES)
         ...(godownAddress ? [
-          para([r(godownAddress[0], { bold: true, size: 17 })], AlignmentType.LEFT, 0),
+          new Paragraph({
+            spacing: { after: 0 },
+            children: [
+              r('M/s. ', { size: 17 }),
+              r(godownAddress[0], { bold: true, size: 17, underline: true }),
+            ],
+          }),
           ...godownAddress.slice(1).map(line => para([r(line, { size: 17 })], AlignmentType.LEFT, 0)),
           para([], AlignmentType.LEFT, 80),
         ] : []),
 
-        // ── Delivery instruction — carries the lot no/date that used to be
-        // shown in the details table below (now folded into this sentence)
+        // ── Delivery instruction — Lot No./Dated now split out into their
+        // own field line below instead of being folded into this sentence
         para([r(
-          `Please Deliver the following material to the bearer from our stock stored at your ware house vide your lot no: ${movement.whLotNo || '—'} dated ${movement.inwardDate ? fmtShort(movement.inwardDate) : '—'}`,
+          'Please Deliver the following material to the bearer from our stock stored at your warehouse vide your',
           { size: 17 },
-        )], AlignmentType.LEFT, 120),
+        )], AlignmentType.LEFT, 40),
+
+        // ── Lot No. | Dated — same fillable-field style as Delivery Order No./Date
+        new Paragraph({
+          spacing: { after: 120 },
+          children: [
+            r('Lot No.: ', { size: 17 }),
+            r(movement.whLotNo || '—', { size: 17, underline: true }),
+            r('     ', { size: 17 }),
+            r('Dated: ', { size: 17 }),
+            r(lotDateText, { size: 17, underline: true }),
+          ],
+        }),
 
         // ── Line-items table — single row, Outward only ever carries one item
         new Table({

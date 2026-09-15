@@ -826,12 +826,13 @@ const GODOWN_ADDRESSES: Record<string, string[]> = {
 
 /**
  * Outward "Delivery Order" — a plain goods-movement document, no
- * price/GST/bank data (Outward entries carry none). Letterhead block is
- * copied verbatim from generatePIPDF above so every generated document in
- * this app shares the same look. Addressed to the godown holding the stock
- * (see GODOWN_ADDRESSES above) rather than the customer, with a single
- * line-items row (Outward only ever carries one) instead of a pricing table.
- * Async because it looks up the product's HSN code from product_catalog.
+ * price/GST/bank data (Outward entries carry none). Header/field layout
+ * mirrors a physical pre-printed Delivery Order pad (unlike every other
+ * generated doc in this app, which shares generatePIPDF's letterhead).
+ * Addressed to the godown holding the stock (see GODOWN_ADDRESSES above)
+ * rather than the customer, with a single line-items row (Outward only ever
+ * carries one) instead of a pricing table. Async because it looks up the
+ * product's HSN code from product_catalog.
  */
 export async function generateOutwardPDF(
   movement: StockMovement,
@@ -855,59 +856,78 @@ export async function generateOutwardPDF(
   const cw = rx - mx;
   const sigImg = unit?.sig_url || settings?.sig_url || localStorage.getItem('mrt_sig_img');
 
-  // ── Header (hardcoded text — no letterhead image) — copied verbatim from
-  // generatePIPDF above.
-  const headerH = 37;
+  // ── Header — four centered lines matching the pre-printed Delivery Order
+  // pad (no tagline/CIN/GSTIN/contact line — those don't appear on it) ────
   let y: number;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40, 40, 40);
+  doc.text('Delivery Order', pw / 2, 9, { align: 'center' });
   doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
-  doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, 10, { align: 'center' });
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
-  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', pw / 2, 16, { align: 'center' });
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(40, 40, 40);
-  doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, 22, { align: 'center' });
-  doc.text('GSTIN: 27AAACH6788H1Z6', pw / 2, 26, { align: 'center' });
-  doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, 32, { align: 'center' });
-  y = headerH;
+  doc.text('Himalaya Terpenes Pvt. Ltd.', pw / 2, 17, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(40, 40, 40);
+  doc.text('Unit No. 201, Building No. 5, Jogani Industrial Complex,', pw / 2, 23, { align: 'center' });
+  doc.text('V. N. Purav Marg, Sion-Chunabhatti, Mumbai - 400 022. INDIA', pw / 2, 27, { align: 'center' });
+  y = 34;
 
-  // ── Delivery Order Number | Date ─────────────────────────────────────────
+  // Draws "label" + "value" as plain text, then a thin rule under just the
+  // value (a fillable-field look) — same getTextWidth()+line() technique the
+  // old centered heading used for its underline. align 'right' anchors the
+  // whole label+value pair to x instead of starting from it.
+  const drawField = (
+    x: number, yPos: number, label: string, value: string,
+    opts: { align?: 'left' | 'right'; bold?: boolean } = {},
+  ) => {
+    doc.setFont('helvetica', 'normal');
+    const labelW = doc.getTextWidth(label);
+    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+    const valueW = doc.getTextWidth(value);
+    const valueX = opts.align === 'right' ? x - valueW : x + labelW;
+    const labelX = opts.align === 'right' ? valueX - labelW : x;
+    doc.setFont('helvetica', 'normal');
+    doc.text(label, labelX, yPos);
+    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+    doc.text(value, valueX, yPos);
+    doc.setFont('helvetica', 'normal');
+    doc.setLineWidth(0.3);
+    doc.line(valueX, yPos + 0.8, valueX + valueW, yPos + 0.8);
+  };
+
+  // ── Delivery Order No. | Date — each a fillable underlined field ────────
   y += 6;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-  doc.text('Delivery Order Number : ' + (movement.doNumber || '—'), mx, y);
+  doc.setFontSize(9); doc.setTextColor(30, 30, 30);
   const dateStr = movement.doDate
     ? new Date(movement.doDate + 'T00:00:00').toLocaleDateString('en-US', {
         weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
       })
-    : '';
-  doc.text(dateStr, rx, y, { align: 'right' });
-
-  // ── Delivery Order heading ───────────────────────────────────────────────
-  y += 9;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
-  doc.text('Delivery Order', pw / 2, y, { align: 'center' });
-  const dcw = doc.getTextWidth('Delivery Order');
-  doc.setLineWidth(0.4);
-  doc.line(pw / 2 - dcw / 2, y + 0.8, pw / 2 + dcw / 2, y + 0.8);
+    : '—';
+  drawField(mx, y, 'Delivery Order No.: ', movement.doNumber || '—');
+  drawField(rx, y, 'Date : ', dateStr, { align: 'right' });
 
   // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES) ─
   const godownAddress = GODOWN_ADDRESSES[movement.warehouse];
   if (godownAddress) {
-    y += 8;
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-    doc.text(godownAddress[0], mx, y);
+    y += 9;
+    doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    drawField(mx, y, 'M/s. ', godownAddress[0], { bold: true });
     doc.setFont('helvetica', 'normal');
     godownAddress.slice(1).forEach((line) => { y += 5; doc.text(line, mx, y); });
   }
 
-  // ── Delivery instruction — carries the lot no/date that used to be shown
-  // in the details table below (now folded into this sentence instead) ────
+  // ── Delivery instruction — Lot No./Dated now split out into their own
+  // field line below instead of being folded into this sentence ──────────
   y += 8;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  const lotDateText = movement.inwardDate ? fmtDate(movement.inwardDate) : '—';
   const instrLines = doc.splitTextToSize(
-    `Please Deliver the following material to the bearer from our stock stored at your ware house vide your lot no: ${movement.whLotNo || '—'} dated ${lotDateText}`,
+    'Please Deliver the following material to the bearer from our stock stored at your warehouse vide your',
     cw,
   ) as string[];
   instrLines.forEach((line) => { doc.text(line, mx, y); y += 5; });
+
+  // ── Lot No. | Dated — same fillable-field style as Delivery Order No./Date
+  y += 3;
+  doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+  const lotDateText = movement.inwardDate ? fmtDate(movement.inwardDate) : '—';
+  drawField(mx, y, 'Lot No.: ', movement.whLotNo || '—');
+  drawField(rx, y, 'Dated: ', lotDateText, { align: 'right' });
 
   y += 4;
 
