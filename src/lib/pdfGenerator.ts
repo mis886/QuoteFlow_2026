@@ -899,24 +899,20 @@ export async function generateOutwardPDF(
   drawField(mx, y, 'Delivery Order No.: ', movement.doNumber || '—');
   drawField(rx, y, 'Date : ', dateStr, { align: 'right' });
 
-  // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES),
-  // boxed at full content width like the line-items table below — same
-  // border weight/color as that table's bodyStyles (lineWidth 0.35,
-  // lineColor [80, 80, 80]) for visual consistency. Box height flexes with
-  // however many address lines this warehouse has (Swastik has 3, others 5).
+  // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES).
+  // The address lines (everything after the bold entity name) are stored as
+  // manually pre-broken array entries that don't line-wrap at the actual
+  // page width, so they're joined back into one string and re-wrapped with
+  // splitTextToSize — same technique the "Please Deliver..." sentence below
+  // uses — instead of printing each array entry as its own fixed line.
   const godownAddress = GODOWN_ADDRESSES[movement.warehouse];
   if (godownAddress) {
     y += 9;
-    const boxTop = y - 4;
-    const textX = mx + 3;
     doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-    drawField(textX, y, 'M/s. ', godownAddress[0], { bold: true });
+    drawField(mx, y, 'M/s. ', godownAddress[0], { bold: true });
     doc.setFont('helvetica', 'normal');
-    godownAddress.slice(1).forEach((line) => { y += 5; doc.text(line, textX, y); });
-    const boxBottom = y + 2.5;
-    doc.setLineWidth(0.35); doc.setDrawColor(80, 80, 80);
-    doc.rect(mx, boxTop, cw, boxBottom - boxTop);
-    doc.setDrawColor(0, 0, 0);
+    const addressLines = doc.splitTextToSize(godownAddress.slice(1).join(' '), cw) as string[];
+    addressLines.forEach((line) => { y += 5; doc.text(line, mx, y); });
   }
 
   // ── Delivery instruction — Lot No./Dated now split out into their own

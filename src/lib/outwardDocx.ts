@@ -187,26 +187,18 @@ export async function downloadOutwardDOCX(
         }),
 
         // ── Godown address (who this DO is addressed to — see
-        // GODOWN_ADDRESSES), boxed at full width in a single-cell bordered
-        // Table — same ALL_THIN border style as the line-items table below,
-        // no shading, for visual consistency.
+        // GODOWN_ADDRESSES). The address lines (everything after the bold
+        // entity name) are stored as manually pre-broken array entries that
+        // don't line-wrap at the actual page width, so they're joined back
+        // into one string and printed as a single paragraph — Word wraps
+        // that to the full page width on its own, unlike printing each
+        // array entry as its own fixed-line Paragraph.
         ...(godownAddress ? [
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: [new TableRow({
-              children: [new TableCell({
-                borders: ALL_THIN,
-                margins: { top: 100, bottom: 100, left: 120, right: 120 },
-                children: [
-                  para([
-                    r('M/s. ', { size: 17 }),
-                    r(godownAddress[0], { bold: true, size: 17 }),
-                  ], AlignmentType.LEFT, 0),
-                  ...godownAddress.slice(1).map(line => para([r(line, { size: 17 })], AlignmentType.LEFT, 0)),
-                ],
-              })],
-            })],
-          }),
+          para([
+            r('M/s. ', { size: 17 }),
+            r(godownAddress[0], { bold: true, size: 17 }),
+          ], AlignmentType.LEFT, 0),
+          para([r(godownAddress.slice(1).join(' '), { size: 17 })], AlignmentType.LEFT, 0),
           para([], AlignmentType.LEFT, 80),
         ] : []),
 
