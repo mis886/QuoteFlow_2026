@@ -795,33 +795,27 @@ export async function generateOrderPDF(
 // movement.warehouse (see WAREHOUSES in NewStockOutward.tsx — these four
 // strings, case-sensitive, are the only values that occur). Must be kept in
 // sync with the identical table in src/lib/outwardDocx.ts.
-const GODOWN_ADDRESSES: Record<string, string[]> = {
-  Hariom: [
-    'M/S. HARIOM LOGISTICS',
-    'Godown No. G-9, G-10, Survey No.11/6,',
-    'Ganesh Compound, Khandagale estate 3rd lane,',
-    'Purna Village, Tal-Bhiwandi',
-    'Dist. Thane - 421 302, Mob: 89285 91319',
-  ],
-  Reliable: [
-    'Reliable Storage,',
-    'Industrial Godown Shed No.86,87,88,89',
-    'GUT NO 243 PART, BHIWANDI WADA ROAD,',
-    'HOTEL MURLI MANOHAR, FOREST ROAD,',
-    'KHUPARI, WADA - 421312',
-  ],
-  Swastik: [
-    'SWASTIK ROADWAYS CO. G.NO. 08, GANA NO. 08,',
-    '3RD LINE, NEAR ANAND WAREHOUSE, KHANDAGALE ESTATE,',
-    'PURNA VILLAGE, BHIWANDI - 421302, Mob: 84466 69849',
-  ],
-  BALAJI: [
-    'C/o Shri Balaji Warehouse',
-    'Godown No 1240/3-4, 1020/3, Gr Floor,',
-    'Dropati Chaya Compound, Old Agra Road,',
-    'Purna Village, Tal. Bhiwandi,',
-    'Thane - 421302, Mob: 91254 30464',
-  ],
+const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: string }> = {
+  Hariom: {
+    name: 'HARIOM LOGISTICS',
+    address: 'Godown No. G-9, G-10, Survey No.11/6, Ganesh Compound, Khandagale estate 3rd lane, Purna Village, Tal-Bhiwandi, Dist. Thane - 421 302',
+    mobile: '82918 87543, 78753 29222',
+  },
+  Reliable: {
+    name: 'Reliable Storage',
+    address: 'Industrial Godown Shed No.86,87,88,89, GUT NO 243 PART, BHIWANDI WADA ROAD, HOTEL MURLI MANOHAR, FOREST ROAD, KHUPARI, WADA - 421312',
+    mobile: '',
+  },
+  Swastik: {
+    name: 'SWASTIK ROADWAYS CORPORATION',
+    address: '2nd Lane, Khandagle Estate, Purna Village, Bhiwandi - 421302',
+    mobile: '82918 87543, 78753 29222',
+  },
+  BALAJI: {
+    name: 'C/o Shri Balaji Warehouse',
+    address: 'Godown No 1240/3-4, 1020/3, Gr Floor, Dropati Chaya Compound, Old Agra Road, Purna Village, Tal. Bhiwandi, Thane - 421302',
+    mobile: '82918 87543, 78753 29222',
+  },
 };
 
 /**
@@ -897,20 +891,24 @@ export async function generateOutwardPDF(
   drawField(mx, y, 'Delivery Order No.: ', movement.doNumber || '—');
   drawField(rx, y, 'Date : ', dateStr, { align: 'right' });
 
-  // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES).
-  // The address lines (everything after the bold entity name) are stored as
-  // manually pre-broken array entries that don't line-wrap at the actual
-  // page width, so they're joined back into one string and re-wrapped with
-  // splitTextToSize — same technique the "Please Deliver..." sentence below
-  // uses — instead of printing each array entry as its own fixed line.
-  const godownAddress = GODOWN_ADDRESSES[movement.warehouse];
-  if (godownAddress) {
+  // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES),
+  // centered like the header block at the top of this function — bold name,
+  // then the address (re-wrapped with splitTextToSize since it may run
+  // longer than one line), then mobile (only when non-empty — Reliable has
+  // none on file).
+  const godown = GODOWN_ADDRESSES[movement.warehouse];
+  if (godown) {
     y += 9;
-    doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-    drawField(mx, y, 'M/s. ', godownAddress[0], { bold: true });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    doc.text('M/s. ' + godown.name, pw / 2, y, { align: 'center' });
+    y += 5;
     doc.setFont('helvetica', 'normal');
-    const addressLines = doc.splitTextToSize(godownAddress.slice(1).join(' '), cw) as string[];
-    addressLines.forEach((line, i) => { y += i === 0 ? 4 : 5; doc.text(line, mx, y); });
+    const addrLines = doc.splitTextToSize(godown.address, cw) as string[];
+    addrLines.forEach((line) => { doc.text(line, pw / 2, y, { align: 'center' }); y += 5; });
+    if (godown.mobile) {
+      doc.text('Mobile : ' + godown.mobile, pw / 2, y, { align: 'center' });
+      y += 5;
+    }
   }
 
   // ── Delivery instruction — Lot No./Dated now split out into their own

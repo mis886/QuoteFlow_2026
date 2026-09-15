@@ -38,33 +38,27 @@ const ALL_NONE    = { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right:
 // movement.warehouse (see WAREHOUSES in NewStockOutward.tsx — these four
 // strings, case-sensitive, are the only values that occur). Must be kept in
 // sync with the identical table in src/lib/pdfGenerator.ts.
-const GODOWN_ADDRESSES: Record<string, string[]> = {
-  Hariom: [
-    'M/S. HARIOM LOGISTICS',
-    'Godown No. G-9, G-10, Survey No.11/6,',
-    'Ganesh Compound, Khandagale estate 3rd lane,',
-    'Purna Village, Tal-Bhiwandi',
-    'Dist. Thane - 421 302, Mob: 89285 91319',
-  ],
-  Reliable: [
-    'Reliable Storage,',
-    'Industrial Godown Shed No.86,87,88,89',
-    'GUT NO 243 PART, BHIWANDI WADA ROAD,',
-    'HOTEL MURLI MANOHAR, FOREST ROAD,',
-    'KHUPARI, WADA - 421312',
-  ],
-  Swastik: [
-    'SWASTIK ROADWAYS CO. G.NO. 08, GANA NO. 08,',
-    '3RD LINE, NEAR ANAND WAREHOUSE, KHANDAGALE ESTATE,',
-    'PURNA VILLAGE, BHIWANDI - 421302, Mob: 84466 69849',
-  ],
-  BALAJI: [
-    'C/o Shri Balaji Warehouse',
-    'Godown No 1240/3-4, 1020/3, Gr Floor,',
-    'Dropati Chaya Compound, Old Agra Road,',
-    'Purna Village, Tal. Bhiwandi,',
-    'Thane - 421302, Mob: 91254 30464',
-  ],
+const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: string }> = {
+  Hariom: {
+    name: 'HARIOM LOGISTICS',
+    address: 'Godown No. G-9, G-10, Survey No.11/6, Ganesh Compound, Khandagale estate 3rd lane, Purna Village, Tal-Bhiwandi, Dist. Thane - 421 302',
+    mobile: '82918 87543, 78753 29222',
+  },
+  Reliable: {
+    name: 'Reliable Storage',
+    address: 'Industrial Godown Shed No.86,87,88,89, GUT NO 243 PART, BHIWANDI WADA ROAD, HOTEL MURLI MANOHAR, FOREST ROAD, KHUPARI, WADA - 421312',
+    mobile: '',
+  },
+  Swastik: {
+    name: 'SWASTIK ROADWAYS CORPORATION',
+    address: '2nd Lane, Khandagle Estate, Purna Village, Bhiwandi - 421302',
+    mobile: '82918 87543, 78753 29222',
+  },
+  BALAJI: {
+    name: 'C/o Shri Balaji Warehouse',
+    address: 'Godown No 1240/3-4, 1020/3, Gr Floor, Dropati Chaya Compound, Old Agra Road, Purna Village, Tal. Bhiwandi, Thane - 421302',
+    mobile: '82918 87543, 78753 29222',
+  },
 };
 
 function r(text: string, opts: { bold?: boolean; size?: number; color?: string; italics?: boolean; underline?: boolean } = {}) {
@@ -155,7 +149,7 @@ export async function downloadOutwardDOCX(
   const wHsn = 1200, wBarrels = 1200, wPacking = 900, wTotalQty = 1000, wPackType = 1300, wMou = 900;
   const wProdName = PAGE_W - wHsn - wBarrels - wPacking - wTotalQty - wPackType - wMou;
 
-  const godownAddress = GODOWN_ADDRESSES[movement.warehouse];
+  const godown = GODOWN_ADDRESSES[movement.warehouse];
 
   const dateStr = movement.doDate ? fmtDate(movement.doDate) : '—';
   const lotDateText = movement.inwardDate
@@ -189,18 +183,12 @@ export async function downloadOutwardDOCX(
         }),
 
         // ── Godown address (who this DO is addressed to — see
-        // GODOWN_ADDRESSES). The address lines (everything after the bold
-        // entity name) are stored as manually pre-broken array entries that
-        // don't line-wrap at the actual page width, so they're joined back
-        // into one string and printed as a single paragraph — Word wraps
-        // that to the full page width on its own, unlike printing each
-        // array entry as its own fixed-line Paragraph.
-        ...(godownAddress ? [
-          para([
-            r('M/s. ', { size: 17 }),
-            r(godownAddress[0], { bold: true, size: 17 }),
-          ], AlignmentType.LEFT, 0),
-          para([r(godownAddress.slice(1).join(' '), { size: 17 })], AlignmentType.LEFT, 0),
+        // GODOWN_ADDRESSES), centered — bold name, address, then mobile
+        // (only when non-empty — Reliable has none on file).
+        ...(godown ? [
+          para([r('M/s. ' + godown.name, { bold: true, size: 17 })], AlignmentType.CENTER, 0),
+          para([r(godown.address, { size: 17 })], AlignmentType.CENTER, 0),
+          ...(godown.mobile ? [para([r('Mobile : ' + godown.mobile, { size: 17 })], AlignmentType.CENTER, 0)] : []),
           para([], AlignmentType.LEFT, 80),
         ] : []),
 
