@@ -33,6 +33,8 @@ const PAGE_MARGIN = { top: convertInchesToTwip(0.5), bottom: convertInchesToTwip
 const THIN_BORDER = { style: BorderStyle.SINGLE, size: 4, color: '808080' };
 const HEAD_FILL   = { type: ShadingType.SOLID, color: C_BLUE_H };
 const ALL_THIN    = { top: THIN_BORDER, bottom: THIN_BORDER, left: THIN_BORDER, right: THIN_BORDER };
+const NO_BORDER   = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+const ALL_NONE    = { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER };
 
 // Godown addresses this Delivery Order can be issued against, keyed off
 // movement.warehouse (see WAREHOUSES in NewStockOutward.tsx — these four
@@ -253,12 +255,41 @@ export async function downloadOutwardDOCX(
 
         para([], AlignmentType.LEFT, 120),
 
-        // ── Sign-off
-        para([r('Thanks & Kind Regards,', { size: 18 })], AlignmentType.LEFT, 120),
-        para([
-          r('HIMALAYA TERPENES PVT. LTD.', { bold: true, size: 18 }),
-          r(` | ${person.name} | ${person.designation}${person.phone ? ' | Tel.: ' + person.phone : ''}`, { size: 18 }),
-        ], AlignmentType.LEFT, 0),
+        // ── Sign-off — rubber-stamp rule, then a two-column "Thanking
+        // You." + fine-print terms (left) vs signature block (right),
+        // matching the pre-printed pad's own footer. No signature image
+        // here — this generator has never wired one in, unlike the PDF.
+        para([r('● PLEASE PUT YOUR RUBBER STAMP & SIGN', { bold: true, size: 17 })], AlignmentType.LEFT, 0),
+        hrPara(),
+
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: [new TableRow({
+            children: [
+              new TableCell({
+                width: { size: Math.floor(PAGE_W / 2), type: WidthType.DXA },
+                borders: ALL_NONE,
+                margins: { top: 0, bottom: 0, left: 0, right: 120 },
+                children: [
+                  para([r('Thanking You.', { size: 17 })], AlignmentType.LEFT, 60),
+                  para([r('1) This D.O. is valid for 4 days only', { size: 14 })], AlignmentType.LEFT, 20),
+                  para([r('2) Please weight the material before taking the delivery.', { size: 14 })], AlignmentType.LEFT, 20),
+                  para([r('3) No responsibility of leakages/shortage after leaving the material from our godown.', { size: 14 })], AlignmentType.LEFT, 0),
+                ],
+              }),
+              new TableCell({
+                width: { size: Math.floor(PAGE_W / 2), type: WidthType.DXA },
+                borders: ALL_NONE,
+                margins: { top: 0, bottom: 0, left: 120, right: 0 },
+                children: [
+                  para([r('For Himalaya Terpenes Pvt. Ltd.', { size: 17 })], AlignmentType.RIGHT, 300),
+                  para([r('Authorised Signatory', { size: 17 })], AlignmentType.RIGHT, 40),
+                  para([r(`${person.name} | ${person.designation}${person.phone ? ' | Tel.: ' + person.phone : ''}`, { size: 14, color: C_GRAY })], AlignmentType.RIGHT, 0),
+                ],
+              }),
+            ],
+          })],
+        }),
       ],
     }],
   });

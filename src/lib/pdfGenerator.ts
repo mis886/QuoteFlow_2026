@@ -977,19 +977,19 @@ export async function generateOutwardPDF(
 
   y = (doc as any).lastAutoTable.finalY + 10;
 
-  // ── Sign-off ─────────────────────────────────────────────────────────────
-  if (y > ph - 35) { doc.addPage(); y = 20; }
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  doc.text('Thanks & Kind Regards,', mx, y);
-  y += 7;
+  // ── Sign-off — matches the pre-printed pad's own footer: a rubber-stamp
+  // rule, then "Thanking You." + fine-print terms on the left against a
+  // signature block on the right, instead of the old one-line "Thanks &
+  // Kind Regards," + company/signatory line. Noticeably taller than that
+  // old sign-off, hence the bigger page-break threshold below.
+  if (y > ph - 65) { doc.addPage(); y = 20; }
 
-  if (sigImg) {
-    try {
-      const fmt = sigImg.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(sigImg, fmt, mx, y, 40, 15);
-      y += 17;
-    } catch (e) { console.warn('Signature image failed', e); }
-  }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+  doc.text('● PLEASE PUT YOUR RUBBER STAMP & SIGN', mx, y);
+  y += 3;
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.3);
+  doc.line(mx, y, rx, y);
+  y += 7;
 
   const settingsSig: SigPerson | undefined = settings?.signatory_name
     ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
@@ -1000,12 +1000,49 @@ export async function generateOutwardPDF(
     || defaultSignatory
     || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
 
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
-  const boldPart = 'HIMALAYA TERPENES PVT. LTD.';
-  doc.text(boldPart, mx, y);
-  const boldW = doc.getTextWidth(boldPart);
-  doc.setFont('helvetica', 'normal');
-  doc.text(' | ' + person.name + ' | ' + person.designation + (person.phone ? ' | Tel.: ' + person.phone : ''), mx + boldW, y);
+  const colTopY = y;
+
+  // Left column — "Thanking You." + the pad's numbered fine-print terms.
+  let yLeft = colTopY;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+  doc.text('Thanking You.', mx, yLeft);
+  yLeft += 6;
+  doc.setFontSize(7.5); doc.setTextColor(30, 30, 30);
+  const termLines = [
+    '1) This D.O. is valid for 4 days only',
+    '2) Please weight the material before taking the delivery.',
+    '3) No responsibility of leakages/shortage after leaving the material from our godown.',
+  ];
+  termLines.forEach((t) => {
+    (doc.splitTextToSize(t, cw / 2 - 6) as string[]).forEach((l) => { doc.text(l, mx, yLeft); yLeft += 4; });
+  });
+
+  // Right column — signature block, right-aligned to rx. Same sigImg
+  // source/try-catch as before, just relocated here; the resolved
+  // person (name/designation/phone) moves to a small gray line under
+  // "Authorised Signatory" instead of sharing the main sign-off line.
+  let yRight = colTopY;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+  doc.text('For Himalaya Terpenes Pvt. Ltd.', rx, yRight, { align: 'right' });
+  yRight += 7;
+
+  if (sigImg) {
+    try {
+      const fmt = sigImg.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(sigImg, fmt, rx - 40, yRight, 40, 15);
+      yRight += 17;
+    } catch (e) { console.warn('Signature image failed', e); }
+  }
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+  doc.text('Authorised Signatory', rx, yRight, { align: 'right' });
+  yRight += 5;
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(110, 110, 110);
+  doc.text(person.name + ' | ' + person.designation + (person.phone ? ' | Tel.: ' + person.phone : ''), rx, yRight, { align: 'right' });
+  yRight += 4;
+
+  y = Math.max(yLeft, yRight);
 
   // ── Page numbers — stamp "Page X of N" on every page ─────────────────────
   const pageCount = doc.getNumberOfPages();
