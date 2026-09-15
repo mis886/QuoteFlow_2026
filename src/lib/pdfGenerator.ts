@@ -892,9 +892,7 @@ export async function generateOutwardPDF(
   y += 6;
   doc.setFontSize(9); doc.setTextColor(30, 30, 30);
   const dateStr = movement.doDate
-    ? new Date(movement.doDate + 'T00:00:00').toLocaleDateString('en-US', {
-        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-      })
+    ? new Date(movement.doDate + 'T00:00:00').toLocaleDateString('en-GB')
     : '—';
   drawField(mx, y, 'Delivery Order No.: ', movement.doNumber || '—');
   drawField(rx, y, 'Date : ', dateStr, { align: 'right' });

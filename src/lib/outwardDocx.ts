@@ -21,9 +21,7 @@ const C_GRAY   = '505050';
 const C_BLUE_H = '6495C8';
 
 function fmtDate(iso: string) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB');
 }
 function fmtShort(iso: string) {
   return utilFmtDate(iso);
