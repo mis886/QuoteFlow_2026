@@ -975,7 +975,7 @@ export async function generateOutwardPDF(
     margin: { left: mx, right: mx },
   });
 
-  y = (doc as any).lastAutoTable.finalY + 10;
+  y = (doc as any).lastAutoTable.finalY + 14;
 
   // ── Sign-off — matches the pre-printed pad's own footer: a rubber-stamp
   // rule, then "Thanking You." + fine-print terms on the left against a
@@ -985,11 +985,17 @@ export async function generateOutwardPDF(
   if (y > ph - 65) { doc.addPage(); y = 20; }
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  doc.text('● PLEASE PUT YOUR RUBBER STAMP & SIGN', mx, y);
+  // A literal "●" (U+25CF) isn't in the WinAnsi encoding jsPDF's built-in
+  // "helvetica" font uses, so doc.text() would render it as corrupted
+  // characters instead of a dot — draw an actual filled circle shape
+  // instead, which renders regardless of font/encoding support.
+  doc.setFillColor(0, 0, 0);
+  doc.circle(mx + 1, y - 1, 1, 'F');
+  doc.text('PLEASE PUT YOUR RUBBER STAMP & SIGN', mx + 4, y);
   y += 3;
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.3);
   doc.line(mx, y, rx, y);
-  y += 7;
+  y += 10;
 
   const settingsSig: SigPerson | undefined = settings?.signatory_name
     ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
@@ -1006,15 +1012,15 @@ export async function generateOutwardPDF(
   let yLeft = colTopY;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
   doc.text('Thanking You.', mx, yLeft);
-  yLeft += 6;
-  doc.setFontSize(7.5); doc.setTextColor(30, 30, 30);
+  yLeft += 8;
+  doc.setFontSize(8.5); doc.setTextColor(30, 30, 30);
   const termLines = [
     '1) This D.O. is valid for 4 days only',
     '2) Please weight the material before taking the delivery.',
     '3) No responsibility of leakages/shortage after leaving the material from our godown.',
   ];
   termLines.forEach((t) => {
-    (doc.splitTextToSize(t, cw / 2 - 6) as string[]).forEach((l) => { doc.text(l, mx, yLeft); yLeft += 4; });
+    (doc.splitTextToSize(t, cw / 2 - 6) as string[]).forEach((l) => { doc.text(l, mx, yLeft); yLeft += 4.8; });
   });
 
   // Right column — signature block, right-aligned to rx. Same sigImg
@@ -1024,19 +1030,19 @@ export async function generateOutwardPDF(
   let yRight = colTopY;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
   doc.text('For Himalaya Terpenes Pvt. Ltd.', rx, yRight, { align: 'right' });
-  yRight += 7;
+  yRight += 8;
 
   if (sigImg) {
     try {
       const fmt = sigImg.startsWith('data:image/png') ? 'PNG' : 'JPEG';
       doc.addImage(sigImg, fmt, rx - 40, yRight, 40, 15);
-      yRight += 17;
+      yRight += 18;
     } catch (e) { console.warn('Signature image failed', e); }
   }
 
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
   doc.text('Authorised Signatory', rx, yRight, { align: 'right' });
-  yRight += 5;
+  yRight += 6;
 
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(110, 110, 110);
   doc.text(person.name + ' | ' + person.designation + (person.phone ? ' | Tel.: ' + person.phone : ''), rx, yRight, { align: 'right' });
