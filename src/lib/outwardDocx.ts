@@ -41,7 +41,7 @@ const ALL_NONE    = { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right:
 const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: string }> = {
   Hariom: {
     name: 'HARIOM LOGISTICS',
-    address: 'Godown No. G-9, G-10, Survey No.11/6, Ganesh Compound, Khandagale estate 3rd lane, Purna Village, Tal-Bhiwandi, Dist. Thane - 421 302',
+    address: 'Godown No. G-9, G-10, Survey No.11/6, Ganesh Compound, Khandagale\nestate 3rd lane, Purna Village, Tal-Bhiwandi, Dist. Thane - 421 302',
     mobile: '82918 87543, 78753 29222',
   },
   Reliable: {
@@ -187,7 +187,7 @@ export async function downloadOutwardDOCX(
         // (only when non-empty — Reliable has none on file).
         ...(godown ? [
           para([r('M/s. ' + godown.name, { bold: true, size: 17 })], AlignmentType.CENTER, 0),
-          para([r(godown.address, { size: 17 })], AlignmentType.CENTER, 0),
+          ...godown.address.split('\n').map(line => para([r(line, { size: 17 })], AlignmentType.CENTER, 0)),
           ...(godown.mobile ? [para([r('Mobile : ' + godown.mobile, { size: 17 })], AlignmentType.CENTER, 0)] : []),
           para([], AlignmentType.LEFT, 80),
         ] : []),

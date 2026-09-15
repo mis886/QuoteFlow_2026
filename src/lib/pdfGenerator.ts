@@ -798,7 +798,7 @@ export async function generateOrderPDF(
 const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: string }> = {
   Hariom: {
     name: 'HARIOM LOGISTICS',
-    address: 'Godown No. G-9, G-10, Survey No.11/6, Ganesh Compound, Khandagale estate 3rd lane, Purna Village, Tal-Bhiwandi, Dist. Thane - 421 302',
+    address: 'Godown No. G-9, G-10, Survey No.11/6, Ganesh Compound, Khandagale\nestate 3rd lane, Purna Village, Tal-Bhiwandi, Dist. Thane - 421 302',
     mobile: '82918 87543, 78753 29222',
   },
   Reliable: {
