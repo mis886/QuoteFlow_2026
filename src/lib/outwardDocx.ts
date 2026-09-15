@@ -158,7 +158,9 @@ export async function downloadOutwardDOCX(
   const godownAddress = GODOWN_ADDRESSES[movement.warehouse];
 
   const dateStr = movement.doDate ? fmtDate(movement.doDate) : '—';
-  const lotDateText = movement.inwardDate ? fmtShort(movement.inwardDate) : '—';
+  const lotDateText = movement.inwardDate
+    ? new Date(movement.inwardDate + 'T00:00:00').toLocaleDateString('en-GB').replace(/\//g, '-')
+    : '—';
 
   const doc = new Document({
     sections: [{

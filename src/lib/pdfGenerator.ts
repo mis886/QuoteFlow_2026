@@ -926,7 +926,9 @@ export async function generateOutwardPDF(
   // ── Lot No. | Dated — same field style as Delivery Order No./Date above
   y += 3;
   doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  const lotDateText = movement.inwardDate ? fmtDate(movement.inwardDate) : '—';
+  const lotDateText = movement.inwardDate
+    ? new Date(movement.inwardDate + 'T00:00:00').toLocaleDateString('en-GB').replace(/\//g, '-')
+    : '—';
   drawField(mx, y, 'Lot No.: ', movement.whLotNo || '—');
   drawField(rx, y, 'Dated: ', lotDateText, { align: 'right' });
 
