@@ -912,7 +912,7 @@ export async function generateOutwardPDF(
     drawField(mx, y, 'M/s. ', godownAddress[0], { bold: true });
     doc.setFont('helvetica', 'normal');
     const addressLines = doc.splitTextToSize(godownAddress.slice(1).join(' '), cw) as string[];
-    addressLines.forEach((line) => { y += 5; doc.text(line, mx, y); });
+    addressLines.forEach((line, i) => { y += i === 0 ? 4 : 5; doc.text(line, mx, y); });
   }
 
   // ── Delivery instruction — Lot No./Dated now split out into their own
