@@ -113,7 +113,7 @@ export function SendEmailModal(props: Props) {
   const defaultSubject = isQuote
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : isOutward
-    ? `Delivery Challan ${docId} — HIMALAYA TERPENES PVT. LTD.`
+    ? `Delivery Order ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : `Proforma Invoice ${docId} — HIMALAYA TERPENES PVT. LTD.`;
 
   // Signatory: prefer doc's saved authorizedPerson → app_settings → passed defaultSignatory
@@ -140,7 +140,7 @@ export function SendEmailModal(props: Props) {
   const defaultBody = isQuote
     ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
     : isOutward
-    ? `${greeting}\n\nPlease find attached the Delivery Challan ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
+    ? `${greeting}\n\nPlease find attached the Delivery Order ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
     : `${greeting}\n\nPlease find attached our Proforma Invoice ${docId} for the requirements discussed.\n\nKindly arrange for the Purchase Order at your earliest convenience.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`;
 
   const [to, setTo]           = useState(primaryEmail);
@@ -201,10 +201,11 @@ export function SendEmailModal(props: Props) {
       } else if (isOutward) {
         // Outward has no unitId/company-unit concept on the form — always
         // falls back to whichever unit is marked default, same as Quote/
-        // Order's own fallback when their unitId is unset. Synchronous, no
-        // async bank_accounts lookup needed (Outward carries no bank data).
+        // Order's own fallback when their unitId is unset. generateOutwardPDF
+        // is async (it looks up the product's HSN code from product_catalog),
+        // not because Outward carries any bank data — it carries none.
         const unit = data.units.find(u => u.is_default);
-        doc = generateOutwardPDF(props.doc as StockMovement, customer, props.settings, props.defaultSignatory, unit, false);
+        doc = await generateOutwardPDF(props.doc as StockMovement, customer, props.settings, props.defaultSignatory, unit, false);
       } else {
         const op = props as OrderProps;
         const orderDoc = props.doc as Order;
@@ -253,7 +254,7 @@ export function SendEmailModal(props: Props) {
             <Mail size={15} className="text-red-mrt" />
             <div>
               <h2 className="font-serif text-[16px] text-blk tracking-tight leading-tight">
-                Email <em className="italic text-red-mrt">{isQuote ? 'Quotation' : isOutward ? 'Delivery Challan' : 'Proforma Invoice'}</em>
+                Email <em className="italic text-red-mrt">{isQuote ? 'Quotation' : isOutward ? 'Delivery Order' : 'Proforma Invoice'}</em>
               </h2>
               <p className="text-[10.5px] text-g400 mt-[1px]">Generates PDF · Sends via Gmail · {isQuote ? 'Marks quote Sent' : isOutward ? 'Confirms dispatch' : 'Confirms delivery'}</p>
             </div>

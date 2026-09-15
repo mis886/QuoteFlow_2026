@@ -791,21 +791,63 @@ export async function generateOrderPDF(
   return generatePIPDF(order, quote, customer, settings, defaultSignatory, download, unit, bankAccount ?? undefined);
 }
 
+// Godown addresses this Delivery Order can be issued against, keyed off
+// movement.warehouse (see WAREHOUSES in NewStockOutward.tsx — these four
+// strings, case-sensitive, are the only values that occur). Must be kept in
+// sync with the identical table in src/lib/outwardDocx.ts.
+const GODOWN_ADDRESSES: Record<string, string[]> = {
+  Hariom: [
+    'M/S. HARIOM LOGISTICS',
+    'Godown No. G-9, G-10, Survey No.11/6,',
+    'Ganesh Compound, Khandagale estate 3rd lane,',
+    'Purna Village, Tal-Bhiwandi',
+    'Dist. Thane - 421 302, Mob: 89285 91319',
+  ],
+  Reliable: [
+    'Reliable Storage,',
+    'Industrial Godown Shed No.86,87,88,89',
+    'GUT NO 243 PART, BHIWANDI WADA ROAD,',
+    'HOTEL MURLI MANOHAR, FOREST ROAD,',
+    'KHUPARI, WADA - 421312',
+  ],
+  Swastik: [
+    'SWASTIK ROADWAYS CO. G.NO. 08, GANA NO. 08,',
+    '3RD LINE, NEAR ANAND WAREHOUSE, KHANDAGALE ESTATE,',
+    'PURNA VILLAGE, BHIWANDI - 421302, Mob: 84466 69849',
+  ],
+  BALAJI: [
+    'C/o Shri Balaji Warehouse',
+    'Godown No 1240/3-4, 1020/3, Gr Floor,',
+    'Dropati Chaya Compound, Old Agra Road,',
+    'Purna Village, Tal. Bhiwandi,',
+    'Thane - 421302, Mob: 91254 30464',
+  ],
+};
+
 /**
- * Outward "Delivery Challan" — a plain goods-movement document, no
+ * Outward "Delivery Order" — a plain goods-movement document, no
  * price/GST/bank data (Outward entries carry none). Letterhead block is
  * copied verbatim from generatePIPDF above so every generated document in
- * this app shares the same look; body is a details table instead of a
- * pricing table.
+ * this app shares the same look. Addressed to the godown holding the stock
+ * (see GODOWN_ADDRESSES above) rather than the customer, with a single
+ * line-items row (Outward only ever carries one) instead of a pricing table.
+ * Async because it looks up the product's HSN code from product_catalog.
  */
-export function generateOutwardPDF(
+export async function generateOutwardPDF(
   movement: StockMovement,
   customer: Customer | undefined,
   settings: AppSettings | null,
   defaultSignatory: SigPerson | undefined,
   unit: CompanyUnit | undefined,
   download: boolean,
-): jsPDF {
+): Promise<jsPDF> {
+  const { data: catalogEntry } = await supabase
+    .from('product_catalog')
+    .select('hsn_code')
+    .eq('product_name', movement.productName)
+    .maybeSingle();
+  const hsnCode = catalogEntry?.hsn_code || '—';
+
   const doc = new jsPDF('p', 'mm', 'a4');
   const pw = 210, ph = 297;
   const mx = 15.4;
@@ -827,10 +869,10 @@ export function generateOutwardPDF(
   doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, 32, { align: 'center' });
   y = headerH;
 
-  // ── Ref | Date ───────────────────────────────────────────────────────────
+  // ── Delivery Order Number | Date ─────────────────────────────────────────
   y += 6;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-  doc.text('Ref: ' + (movement.doNumber || '—'), mx, y);
+  doc.text('Delivery Order Number : ' + (movement.doNumber || '—'), mx, y);
   const dateStr = movement.doDate
     ? new Date(movement.doDate + 'T00:00:00').toLocaleDateString('en-US', {
         weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -838,55 +880,75 @@ export function generateOutwardPDF(
     : '';
   doc.text(dateStr, rx, y, { align: 'right' });
 
-  // ── DELIVERY CHALLAN heading ─────────────────────────────────────────────
+  // ── Delivery Order heading ───────────────────────────────────────────────
   y += 9;
   doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
-  doc.text('DELIVERY CHALLAN', pw / 2, y, { align: 'center' });
-  const dcw = doc.getTextWidth('DELIVERY CHALLAN');
+  doc.text('Delivery Order', pw / 2, y, { align: 'center' });
+  const dcw = doc.getTextWidth('Delivery Order');
   doc.setLineWidth(0.4);
   doc.line(pw / 2 - dcw / 2, y + 0.8, pw / 2 + dcw / 2, y + 0.8);
 
-  // ── Consignee (customer resolved from Party Name, if it matched one) ────
-  if (customer) {
+  // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES) ─
+  const godownAddress = GODOWN_ADDRESSES[movement.warehouse];
+  if (godownAddress) {
     y += 8;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-    doc.text('Consignee:', mx, y);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-    y += 5; doc.text(customer.name, mx, y);
-    const primarySite = (customer.sites ?? []).find(s => s.isPrimary) || (customer.sites ?? [])[0];
-    if (primarySite?.city) { y += 5; doc.text(primarySite.city + (primarySite.state ? ', ' + primarySite.state : ''), mx, y); }
+    doc.text(godownAddress[0], mx, y);
+    doc.setFont('helvetica', 'normal');
+    godownAddress.slice(1).forEach((line) => { y += 5; doc.text(line, mx, y); });
   }
 
-  y += 9;
+  // ── Delivery instruction — carries the lot no/date that used to be shown
+  // in the details table below (now folded into this sentence instead) ────
+  y += 8;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+  const lotDateText = movement.inwardDate ? fmtDate(movement.inwardDate) : '—';
+  const instrLines = doc.splitTextToSize(
+    `Please Deliver the following material to the bearer from our stock stored at your ware house vide your lot no: ${movement.whLotNo || '—'} dated ${lotDateText}`,
+    cw,
+  ) as string[];
+  instrLines.forEach((line) => { doc.text(line, mx, y); y += 5; });
 
-  // ── Details table — no pricing anywhere, Outward entries carry none ─────
-  const partyDisplay = movement.partyName === 'Other' ? (movement.otherParty || 'Other') : (movement.partyName || '—');
-  const transporterDisplay = movement.transporter === 'Other' ? (movement.otherTransporter || 'Other') : (movement.transporter || '—');
-  const detailRows: [string, string][] = [
-    ['Lot No', movement.whLotNo || '—'],
-    ['Lot Date', movement.inwardDate ? fmtDate(movement.inwardDate) : '—'],
-    ['Product Name', movement.productName || '—'],
-    ['Product Code', (movement as any).productCode || '—'],
-    ['Warehouse', movement.warehouse || '—'],
-    ['Party Name', partyDisplay],
-    ['Transporter', transporterDisplay],
-    ['No of Barrels', movement.numArticles || '—'],
-    ['Packing', movement.packing != null ? String(movement.packing) : '—'],
-    ['MOU', movement.weightType || '—'],
-    ['Packing Type', movement.packagingType || '—'],
-    ['Total Quantity', movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—'],
-    ['Note', movement.note || '—'],
-  ];
+  y += 4;
+
+  // ── Line-items table — single row, Outward only ever carries one item.
+  // Same head/body/fillColor/grid styling as the item table in
+  // generateQuotePDF above, for visual consistency across generated docs.
+  const tableHead = [['Product Name', 'HSN Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']];
+  const tableBody = [[
+    movement.productName || '—',
+    hsnCode,
+    movement.numArticles || '—',
+    movement.packing != null ? String(movement.packing) : '—',
+    movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—',
+    movement.packagingType || '—',
+    movement.weightType || '—',
+  ]];
 
   autoTable(doc, {
     startY: y,
-    body: detailRows.map(([label, value]) => [
-      { content: label, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] as [number, number, number], textColor: [0, 0, 0] } },
-      { content: value },
-    ]),
+    head: tableHead,
+    body: tableBody,
     theme: 'grid',
-    styles: { fontSize: 9.5, cellPadding: 2.5, textColor: [30, 30, 30], lineColor: [120, 120, 120], lineWidth: 0.35 },
-    columnStyles: { 0: { cellWidth: 45 }, 1: { cellWidth: cw - 45 } },
+    headStyles: {
+      fillColor: TRUST_BLUE,
+      textColor: [0, 0, 0],
+      fontStyle: 'bold',
+      fontSize: 8,
+      cellPadding: 1,
+      lineColor: HEAD_BORDER,
+      lineWidth: 0.5,
+      halign: 'center',
+    },
+    bodyStyles: {
+      fontSize: 9,
+      cellPadding: 1.5,
+      textColor: [30, 30, 30],
+      lineColor: [80, 80, 80],
+      lineWidth: 0.35,
+      halign: 'center',
+    },
+    columnStyles: { 0: { halign: 'left' } },
     margin: { left: mx, right: mx },
   });
 

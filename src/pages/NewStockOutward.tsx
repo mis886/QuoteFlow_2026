@@ -149,7 +149,7 @@
 // 2026-09-12: added PDF/DOCX/Email to Client buttons, matching how
 // NewQuote.tsx/NewOrder.tsx already do this. Outward entries carry no
 // price/GST/bank data, so the generated document is a plain "Delivery
-// Challan" (see generateOutwardPDF/downloadOutwardDOCX in
+// Order" (see generateOutwardPDF/downloadOutwardDOCX in
 // src/lib/pdfGenerator.ts / src/lib/outwardDocx.ts), not a Proforma
 // Invoice — no pricing table anywhere. buildOutwardData() assembles a
 // StockMovement straight from current form state (mirroring
@@ -708,9 +708,9 @@ export function NewStockOutward() {
   // field starts blank — an expected fallback, not a bug.
   const customer = data.customers.find(c => c.name === form.partyName);
 
-  const handleGeneratePDF = () => {
+  const handleGeneratePDF = async () => {
     const unit = data.units.find(u => u.is_default);
-    generateOutwardPDF(buildOutwardData(), customer, data.settings, data.signatories.find(s => s.is_default), unit, true);
+    await generateOutwardPDF(buildOutwardData(), customer, data.settings, data.signatories.find(s => s.is_default), unit, true);
   };
 
   const handleGenerateDOCX = async () => {
