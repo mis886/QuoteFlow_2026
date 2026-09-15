@@ -8,7 +8,8 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../store';
-import { Badge, Button, SourceIcon, DateFilterBanner } from '../components/ui';
+import { Badge, Button, SourceIcon } from '../components/ui';
+import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
@@ -21,10 +22,11 @@ import { friendlyDeleteError } from '../lib/cascadeDelete';
 export function Enquiries() {
   const store = useAppStore();
   const { data, user, openDetailPanel, openAttachmentModal, deleteEnquiry } = store;
-  const { globalDateRange, setGlobalDateRange, globalSearchQuery } = store as any;
+  const { globalSearchQuery } = store as any;
   const canDelete = canDeleteRecords(user?.email);
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
+  const [entryDate, setEntryDate] = useState<string | null>(null);
   const [tab, setTab] = useState<'All' | 'Open' | EnqStatus | 'Sample'>('All');
   const [srcFilter, setSrcFilter] = useState('');
   const [urgFilter, setUrgFilter] = useState('');
@@ -69,7 +71,7 @@ export function Enquiries() {
       if (lq && !matchEnq(e, lq)) return false;
       if (srcFilter && e.src !== srcFilter) return false;
       if (urgFilter && e.urg !== urgFilter) return false;
-      if (!isInDateRange(e.recv, globalDateRange)) return false;
+      if (!isInDateRange(e.created_at, entryDate ? { startDate: entryDate, endDate: entryDate } : null)) return false;
       if (sq) {
         const sl = siteLabel(data.customers.find(c => c.name === e.cust), e.siteId) || '';
         const cust = data.customers.find(c => c.name === e.cust);
@@ -95,7 +97,7 @@ export function Enquiries() {
     });
     if (lq) list.sort((a, b) => nameTier(a.cust, lq, [a.id]) - nameTier(b.cust, lq, [b.id]));
     return list;
-  }, [data.enquiries, data.customers, localSearch, siteDebounced, tab, srcFilter, urgFilter, globalDateRange, sortCol, sortDir]);
+  }, [data.enquiries, data.customers, localSearch, siteDebounced, tab, srcFilter, urgFilter, entryDate, sortCol, sortDir]);
 
   const totalItems = filteredEnqs.reduce((acc, e) => acc + e.items.length, 0);
 
@@ -163,8 +165,6 @@ export function Enquiries() {
           </div>
         </div>
       </div>
-
-      <DateFilterBanner globalDateRange={globalDateRange} onClear={() => setGlobalDateRange(null)} />
 
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-0">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
@@ -236,6 +236,8 @@ export function Enquiries() {
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
           />
         </div>
+
+        <EntryDateFilter value={entryDate} onChange={setEntryDate} />
 
         <div className="ml-auto font-mono text-[10px] text-g500">
           {tab === 'Sample'

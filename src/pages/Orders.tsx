@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../store';
-import { Badge, Button, DateFilterBanner } from '../components/ui';
+import { Badge, Button } from '../components/ui';
+import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
@@ -40,9 +41,10 @@ export function Orders() {
   const canDelete = canDeleteRecords(user?.email);
   const canConfirmPmt = canConfirmPayment(user?.email);
   const canComplete = canCompleteOrder(user?.email);
-  const { globalDateRange, setGlobalDateRange, globalSearchQuery } = store as any;
+  const { globalSearchQuery } = store as any;
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
+  const [entryDate, setEntryDate] = useState<string | null>(null);
   const [tab, setTab] = useState<'All' | 'Order Confirmed' | 'Processing' | 'Delivered' | 'Order Pending for Dispatch'>('All');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [downloadingPOId, setDownloadingPOId] = useState<string | null>(null);
@@ -138,7 +140,7 @@ export function Orders() {
           o.items.some(i => i.desc.toLowerCase().includes(qs));
         if (!match) return false;
       }
-      if (!isInDateRange(o.poDate, globalDateRange)) return false;
+      if (!isInDateRange(o.created_at, entryDate ? { startDate: entryDate, endDate: entryDate } : null)) return false;
       if (sq) {
         const cust = data.customers.find(c => c.name === o.cust);
         const sl = siteLabel(cust, (o as any).siteId) || '';
@@ -165,7 +167,7 @@ export function Orders() {
     });
     if (qs) list.sort((a, b) => nameTier(a.cust, qs, [a.id, a.poNo]) - nameTier(b.cust, qs, [b.id, b.poNo]));
     return list;
-  }, [visibleOrders, data.customers, localSearch, siteDebounced, tab, globalDateRange, sortCol, sortDir]);
+  }, [visibleOrders, data.customers, localSearch, siteDebounced, tab, entryDate, sortCol, sortDir]);
 
   const TabSelect = ({ current, label, count }: { current: string, label: string, count?: number }) => {
     const isActive = tab === current;
@@ -235,8 +237,6 @@ export function Orders() {
         </div>
       </div>
 
-      <DateFilterBanner globalDateRange={globalDateRange} onClear={() => setGlobalDateRange(null)} />
-
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-0">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <TabSelect current="All" label="All" count={statusCounts.All} />
@@ -269,6 +269,8 @@ export function Orders() {
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
           />
         </div>
+
+        <EntryDateFilter value={entryDate} onChange={setEntryDate} />
 
         <div className="ml-auto font-mono text-[10px] text-g500">
           {filteredOrders.length} order(s)

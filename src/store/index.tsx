@@ -74,12 +74,6 @@ function resolveSignatoryByName(
   return { name, designation: match?.designation ?? '', phone: match?.phone ?? '' };
 }
 
-export interface GlobalDateRange {
-  startDate: string;
-  endDate: string;
-  preset: 'today' | 'yesterday' | 'last-7-days' | 'this-week' | 'this-month' | 'this-quarter' | 'this-year' | 'custom';
-}
-
 // The person identified after login (one Google login may be shared by several
 // doers). Their display_name is what gets stamped on records this session.
 export interface ActiveDoer {
@@ -148,8 +142,6 @@ interface AppContextType {
   setSalesIdentity: (name: SalesSignatoryName | null) => void;
   globalSearchQuery: string;
   setGlobalSearchQuery: (query: string) => void;
-  globalDateRange: GlobalDateRange | null;
-  setGlobalDateRange: (range: GlobalDateRange | null) => void;
   detailPanel: { type: 'enquiry' | 'quote' | 'order' | 'ticket' | null, id: string | null };
   openDetailPanel: (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string) => void;
   closeDetailPanel: () => void;
@@ -232,10 +224,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [detailPanel, setDetailPanel] = useState<{ type: 'enquiry' | 'quote' | 'order' | 'ticket' | null, id: string | null }>({ type: null, id: null });
   const [attachmentModal, setAttachmentModal] = useState<{ type: 'enquiry' | 'quote' | 'order' | null, id: string | null }>({ type: null, id: null });
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [globalDateRange, setGlobalDateRange] = useState<GlobalDateRange | null>(() => {
-    const stored = localStorage.getItem('globalDateRange');
-    return stored ? JSON.parse(stored) : null;
-  });
 
   const openDetailPanel = (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string) => setDetailPanel({ type, id });
   const closeDetailPanel = () => setDetailPanel({ type: null, id: null });
@@ -362,11 +350,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       else localStorage.removeItem('sales_signatory_identity');
     } catch { /* localStorage unavailable — keep in-memory only */ }
   };
-
-  // Persist global date range to localStorage — survives SPA navigation, resets on hard page reload
-  useEffect(() => {
-    localStorage.setItem('globalDateRange', JSON.stringify(globalDateRange));
-  }, [globalDateRange]);
 
   const mapEnquiryFromDB = (e: any): Enquiry => {
     const obj: any = { ...e };
@@ -1877,8 +1860,6 @@ const mapEnquiryToDB = (e: any) => {
         deleteBankAccount,
         globalSearchQuery,
         setGlobalSearchQuery,
-        globalDateRange,
-        setGlobalDateRange,
         detailPanel,
         openDetailPanel,
         closeDetailPanel,

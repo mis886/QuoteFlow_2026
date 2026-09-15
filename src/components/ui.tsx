@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../lib/utils';
 import { EnqStatus, OrderStatus, QuoteStatus, Urgency, TicketStatus } from '../lib/types';
-import { Mail, Phone, MessageCircle, Home, Globe, LayoutDashboard, Plus, Calendar, X } from 'lucide-react';
+import { Mail, Phone, MessageCircle, Home, Globe, LayoutDashboard, Plus } from 'lucide-react';
 
 export const Badge = ({ status, className }: { status: EnqStatus | QuoteStatus | OrderStatus | Urgency | TicketStatus, className?: string }) => {
   const badgeColors: Record<string, string> = {
@@ -116,48 +116,3 @@ export const Button = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttrib
 );
 Button.displayName = "Button";
 
-function fmtDateShort(iso: string) {
-  if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${parseInt(d, 10)} ${months[parseInt(m, 10) - 1]} ${y}`;
-}
-
-export function DateFilterBanner({
-  globalDateRange,
-  onClear,
-}: {
-  globalDateRange: { startDate: string; endDate: string; preset: string } | null;
-  onClear: () => void;
-}) {
-  if (!globalDateRange) return null;
-
-  const presetLabels: Record<string, string> = {
-    today: 'Today', yesterday: 'Yesterday', 'this-week': 'This Week',
-    'this-month': 'This Month', 'this-quarter': 'This Quarter', 'this-year': 'This Year',
-    custom: 'Custom Range',
-  };
-
-  const label = presetLabels[globalDateRange.preset] ?? 'Filtered';
-  const range = [
-    globalDateRange.startDate && fmtDateShort(globalDateRange.startDate),
-    globalDateRange.endDate && fmtDateShort(globalDateRange.endDate),
-  ].filter(Boolean).join(' – ');
-
-  return (
-    <div className="flex items-center gap-2 px-6 py-1.5 bg-red-50 border-b border-red-100 text-red-mrt text-[11.5px] font-medium">
-      <Calendar size={12} className="shrink-0" />
-      <span>
-        Showing: <strong>{label}</strong>
-        {range && <span className="text-red-mrt/70 ml-1">({range})</span>}
-      </span>
-      <button
-        type="button"
-        onClick={onClear}
-        className="ml-auto flex items-center gap-1 text-[10.5px] font-mono font-bold tracking-[1px] uppercase text-red-mrt/60 hover:text-red-mrt transition-colors focus:outline-none"
-      >
-        <X size={10} /> Clear
-      </button>
-    </div>
-  );
-}

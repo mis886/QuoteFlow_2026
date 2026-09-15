@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
+import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
-import { localDateStr, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
+import { localDateStr, canDeleteRecords, nameTier, normalizeSearchText, isInDateRange } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -276,6 +277,7 @@ export function Sampling() {
   const navigate = useNavigate();
   const { user, globalSearchQuery } = useAppStore() as any;
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
+  const [entryDate, setEntryDate] = useState<string | null>(null);
   const canDelete = canDeleteRecords(user?.email);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [loading, setLoading] = useState(true);
@@ -325,6 +327,7 @@ export function Sampling() {
       else if (tabFilter === 'delivered') list = list.filter(s => s.status === 'delivered' || s.status === 'approved' || s.status === 'rejected');
       else if (tabFilter !== 'all') list = list.filter(s => s.status === tabFilter);
     }
+    list = list.filter(s => isInDateRange(s.created_at, entryDate ? { startDate: entryDate, endDate: entryDate } : null));
     if (search.trim()) {
       const q = search.toLowerCase();
       const qNorm = normalizeSearchText(q);
@@ -338,7 +341,7 @@ export function Sampling() {
       list.sort((a, b) => nameTier(a.cust, q, [a.id, a.quote_ref, a.enq_ref]) - nameTier(b.cust, q, [b.id, b.quote_ref, b.enq_ref]));
     }
     return list;
-  }, [samples, tabFilter, search]);
+  }, [samples, tabFilter, search, entryDate]);
 
   const tabCounts = useMemo(() => ({
     all:        samples.length,
@@ -415,6 +418,8 @@ export function Sampling() {
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
           />
         </div>
+
+        <EntryDateFilter value={entryDate} onChange={setEntryDate} />
 
         <div className="ml-auto font-mono text-[10px] text-g500">
           {filtered.length} sample{filtered.length !== 1 ? 's' : ''}

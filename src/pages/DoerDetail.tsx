@@ -43,12 +43,10 @@ function fmtHours(v: number | null): string {
 export function DoerDetail() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
-  const { data, globalDateRange } = useAppStore();
+  const { data } = useAppStore();
   const decodedKey = decodeURIComponent(key);
 
-  const range: GlobalDateRangeLike = globalDateRange
-    ? { startDate: globalDateRange.startDate, endDate: globalDateRange.endDate }
-    : defaultRange();
+  const range: GlobalDateRangeLike = defaultRange();
 
   const roster = useMemo(() => data.roster.filter(m => m.active && !KPI_EXCLUDED_EMAILS.includes(m.email.toLowerCase())), [data.roster]);
   const metrics = useMemo(() => computeDoerMetrics(data, roster, range),

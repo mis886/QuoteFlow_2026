@@ -122,13 +122,11 @@ const ROLE_CONFIG: Record<DoerRole, {
 const roleConfig = (role: DoerRole) => ROLE_CONFIG[role] ?? ROLE_CONFIG['Other'];
 
 export function DoerKPI() {
-  const { data, globalDateRange } = useAppStore();
+  const { data } = useAppStore();
   const navigate = useNavigate();
   const roster = data.roster.filter(m => m.active && !KPI_EXCLUDED_EMAILS.includes(m.email.toLowerCase()));
 
-  const range: GlobalDateRangeLike = globalDateRange
-    ? { startDate: globalDateRange.startDate, endDate: globalDateRange.endDate }
-    : defaultRange();
+  const range: GlobalDateRangeLike = defaultRange();
 
   const current = useMemo(() => computeDoerMetrics(data, roster, range),
     // eslint-disable-next-line react-hooks/exhaustive-deps

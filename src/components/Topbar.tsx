@@ -5,7 +5,6 @@ import { GlobalSearchResults } from './GlobalSearchResults';
 import { useLocation } from 'react-router-dom';
 import { useAppStore, SALES_EMAIL } from '../store';
 import { hasActiveToken } from '../lib/gmail';
-import { GlobalDateRangePicker } from './GlobalDateRangePicker';
 import { WorkspaceSwitcher } from '../production/components/WorkspaceSwitcher';
 
 const PATH_TITLES: Record<string, string> = {
@@ -130,8 +129,6 @@ export function Topbar() {
       )}
 
       <WorkspaceSwitcher />
-
-      <GlobalDateRangePicker />
 
       <SlaNotificationBell />
     </header>

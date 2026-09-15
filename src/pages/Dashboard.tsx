@@ -58,8 +58,7 @@ function dateKey(d: Date | string): string {
 }
 
 export function Dashboard() {
-  // @ts-ignore - Assuming globalDateRange is added to the store
-  const { data, openDetailPanel, user, globalDateRange, activeDoer } = useAppStore();
+  const { data, openDetailPanel, user, activeDoer } = useAppStore();
   const navigate = useNavigate();
   const [period, setPeriod] = useState<Period>('30d');
   const [activeTab, setActiveTab] = useState<DashTab>('overview');
@@ -118,10 +117,7 @@ export function Dashboard() {
   const isWithinCurrentPeriod = (dateString?: string | null) => {
     if (!dateString) return false;
     const d = new Date(dateString).getTime();
-    if (globalDateRange?.startDate && d < new Date(globalDateRange.startDate).getTime()) return false;
-    if (globalDateRange?.endDate && d > new Date(globalDateRange.endDate).getTime() + 86400000) return false;
-    if (!globalDateRange?.startDate && !globalDateRange?.endDate) return (now - d) <= periodMs;
-    return true;
+    return (now - d) <= periodMs;
   };
 
   // A quote counts as "sent" once it has left Draft — i.e. it reached the
@@ -633,7 +629,7 @@ export function Dashboard() {
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-2">
-            {/* {activeTab === 'overview' && !globalDateRange?.startDate && !globalDateRange?.endDate && (
+            {/* {activeTab === 'overview' && (
               <select
                 title="Dashboard period"
                 value={period}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../store';
-import { Badge, Button, DateFilterBanner } from '../components/ui';
+import { Badge, Button } from '../components/ui';
+import { EntryDateFilter } from '../components/EntryDateFilter';
 import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus } from '../lib/types';
@@ -13,9 +14,10 @@ export function Quotes() {
   const store = useAppStore();
   const { data, user, openDetailPanel, openAttachmentModal, updateQuote, deleteQuote, addFollowUpLog } = store;
   const canDelete = canDeleteRecords(user?.email);
-  const { globalDateRange, setGlobalDateRange, globalSearchQuery } = store as any;
+  const { globalSearchQuery } = store as any;
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
+  const [entryDate, setEntryDate] = useState<string | null>(null);
   const [tab, setTab] = useState<'All' | QuoteStatus | 'Sample'>('All');
   const [custFilter, setCustFilter] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -62,7 +64,7 @@ export function Quotes() {
         if (!match) return false;
       }
       if (custFilter && q.cust !== custFilter) return false;
-      if (!isInDateRange(q.date, globalDateRange)) return false;
+      if (!isInDateRange(q.date, entryDate ? { startDate: entryDate, endDate: entryDate } : null)) return false;
       if (sq) {
         const sl = siteLabel(data.customers.find(c => c.name === q.cust), (q as any).siteId) || '';
         const cust = data.customers.find(c => c.name === q.cust);
@@ -87,7 +89,7 @@ export function Quotes() {
     });
     if (qs) list.sort((a, b) => nameTier(a.cust, qs, [a.id]) - nameTier(b.cust, qs, [b.id]));
     return list;
-  }, [data.quotes, data.customers, localSearch, siteDebounced, tab, custFilter, globalDateRange, sortCol, sortDir]);
+  }, [data.quotes, data.customers, localSearch, siteDebounced, tab, custFilter, entryDate, sortCol, sortDir]);
 
   const statusCounts = {
     Draft: data.quotes.filter(q => q.status === 'Draft').length,
@@ -155,8 +157,6 @@ export function Quotes() {
         </div>
       </div>
 
-      <DateFilterBanner globalDateRange={globalDateRange} onClear={() => setGlobalDateRange(null)} />
-
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-0">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <TabSelect current="All" label="All" count={statusCounts.All} />
@@ -190,6 +190,8 @@ export function Quotes() {
           <option value="">All Customers</option>
           {customers.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
+
+        <EntryDateFilter value={entryDate} onChange={setEntryDate} />
 
         <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[140px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
           <Search size={11} className="text-g400 shrink-0" />

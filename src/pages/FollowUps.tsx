@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn, fmtIST, isInDateRange, getThisWeekRange } from '../lib/utils';
-import { DateFilterBanner } from '../components/ui';
+import { EntryDateFilter } from '../components/EntryDateFilter';
 import type { Quote, FollowUp, FollowUpLog } from '../lib/types';
 import { DEFAULT_STAGE_TAT_H } from '../lib/types';
 import {
@@ -226,7 +226,8 @@ export default function FollowUps() {
   const navigate = useNavigate();
   const store = useAppStore();
   const { data, addFollowUpLog, closeFollowUp, reopenFollowUp, openAttachmentModal, user, activeDoer } = store;
-  const { globalDateRange, setGlobalDateRange } = store as any;
+  const [entryDate, setEntryDate] = useState<string | null>(null);
+  const entryDateRange = entryDate ? { startDate: entryDate, endDate: entryDate } : null;
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   // Default to the active doer's name so they only see their own queue on login.
   const [filterOwner, setFilterOwner] = useState<string>(
@@ -334,8 +335,8 @@ export default function FollowUps() {
       const owner = item.followUp?.owner || 'Unassigned';
       const matchesOwner = filterOwner === 'All Owners' || owner === filterOwner;
 
-      // Global date range filter by quote date — consistent with Quotes/Orders/Enquiries.
-      if (globalDateRange && !isInDateRange(item.quote.date, globalDateRange)) return false;
+      // Entry date filter by quote date — consistent with Quotes/Orders/Enquiries.
+      if (entryDateRange && !isInDateRange(item.quote.date, entryDateRange)) return false;
 
       return matchesSearch && matchesOwner;
     }).sort((a, b) => {
@@ -352,7 +353,7 @@ export default function FollowUps() {
       }
       return 0;
     });
-  }, [data.quotes, data.followups, searchQuery, filterOwner, queueTab, quickFilter, globalDateRange]);
+  }, [data.quotes, data.followups, searchQuery, filterOwner, queueTab, quickFilter, entryDate]);
 
   const allOpen = useMemo(() =>
     data.quotes.filter(q => {
@@ -360,10 +361,10 @@ export default function FollowUps() {
       const f = data.followups.find(fu => fu.quote_id === q.id);
       if ((f?.status ?? 'open') !== 'open') return false;
       if (f?.outcome === 'Won' || f?.outcome === 'Lost' || f?.outcome === 'Rejected') return false;
-      if (globalDateRange && !isInDateRange(q.date, globalDateRange)) return false;
+      if (entryDateRange && !isInDateRange(q.date, entryDateRange)) return false;
       return true;
     }),
-    [data.quotes, data.followups, globalDateRange]
+    [data.quotes, data.followups, entryDate]
   );
 
   const { days: calDays } = useMemo(() => getOffsetWeekRange(calWeekOffset), [calWeekOffset]);
@@ -379,7 +380,7 @@ export default function FollowUps() {
       return { quote, followUp };
     }).filter(item =>
       (item.followUp?.status ?? 'open') === 'open' &&
-      (!globalDateRange || isInDateRange(item.quote.date, globalDateRange))
+      (!entryDateRange || isInDateRange(item.quote.date, entryDateRange))
     );
     const map: Record<string, typeof allItems> = {};
     for (const item of allItems) {
@@ -390,7 +391,7 @@ export default function FollowUps() {
       map[key].push(item);
     }
     return map;
-  }, [data.quotes, data.followups, globalDateRange]);
+  }, [data.quotes, data.followups, entryDate]);
 
   const todayKey = dateKey(new Date());
 
@@ -564,7 +565,7 @@ export default function FollowUps() {
         const fu = data.followups.find(f => f.quote_id === q.id);
         return !(fu?.outcome === 'Won' || fu?.outcome === 'Lost' || fu?.outcome === 'Rejected');
       })
-      .filter(q => !globalDateRange || isInDateRange(q.date, globalDateRange))
+      .filter(q => !entryDateRange || isInDateRange(q.date, entryDateRange))
       .forEach(q => {
         const fu = data.followups.find(f => f.quote_id === q.id);
         const chain = buildFullChain(q, fu);
@@ -575,12 +576,10 @@ export default function FollowUps() {
       });
     return tot > 0 ? Math.round(onT / tot * 100) : null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.quotes, data.followups, globalDateRange]);
+  }, [data.quotes, data.followups, entryDate]);
 
   return (
     <div className="flex flex-col h-full bg-cream overflow-hidden">
-      <DateFilterBanner globalDateRange={globalDateRange} onClear={() => setGlobalDateRange(null)} />
-
       {/* ── SCORE BAR ── */}
       <div className="bg-white border-b border-g200 flex items-stretch shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
         {/* Overdue + No Next Step merged */}
@@ -688,7 +687,7 @@ export default function FollowUps() {
 
       {/* Board view — full width, no left panel */}
       {viewTab === 'board' && (
-        <PipelineBoard ownerFilter={filterOwner} search={searchQuery} dateRange={globalDateRange} />
+        <PipelineBoard ownerFilter={filterOwner} search={searchQuery} dateRange={entryDateRange} />
       )}
 
       {/* Left Panel: Queue / Calendar */}
@@ -756,7 +755,7 @@ export default function FollowUps() {
           )}
 
           {/* Search + Owner */}
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 flex-wrap">
             <div className="relative flex-1">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-g400" size={13} />
               <input
@@ -767,6 +766,7 @@ export default function FollowUps() {
                 onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
+            <EntryDateFilter value={entryDate} onChange={setEntryDate} />
             <div className="flex items-center gap-1">
               {/* "My Tasks" is the first option (maps to the active doer's name);
                   no separate toggle button needed. */}
