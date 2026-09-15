@@ -802,9 +802,9 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
     mobile: '82918 87543, 78753 29222',
   },
   Reliable: {
-    name: 'Reliable Storage',
-    address: 'Industrial Godown Shed No.86,87,88,89, GUT NO 243 PART, BHIWANDI WADA ROAD, HOTEL MURLI MANOHAR, FOREST ROAD, KHUPARI, WADA - 421312',
-    mobile: '',
+    name: 'Reliable Warehouse',
+    address: 'Industrial Godown Shed No.86,87,88,89, GUT NO 243 PART, BHIWANDI WADA\nROAD, HOTEL MURLI MANOHAR, FOREST ROAD, KHUPARI, WADA - 421312',
+    mobile: '90825 15434',
   },
   Swastik: {
     name: 'SWASTIK ROADWAYS CORPORATION',
