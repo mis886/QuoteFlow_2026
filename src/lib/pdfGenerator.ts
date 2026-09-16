@@ -844,6 +844,9 @@ export async function generateOutwardPDF(
   download: boolean,
 ): Promise<jsPDF> {
   const productCode = (movement as any).productCode || '—';
+  const partyNameDisplay = (movement.partyName === 'Other' ? movement.otherParty : movement.partyName) || '—';
+  const transporterDisplay = (movement.transporter === 'Other' ? movement.otherTransporter : movement.transporter) || '—';
+  const fulfilmentTypeDisplay = movement.fulfilmentType || '—';
 
   // Draws the entire Outward Delivery Order body — header through the
   // footer signature block — onto `doc` and returns the y position right
@@ -950,7 +953,7 @@ export async function generateOutwardPDF(
     // ── Line-items table — single row, Outward only ever carries one item.
     // Same head/body/fillColor/grid styling as the item table in
     // generateQuotePDF above, for visual consistency across generated docs.
-    const tableHead = [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']];
+    const tableHead = [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU', 'Party Name', 'Transporter', 'Fulfilment Type']];
     const tableBody = [[
       movement.productName || '—',
       productCode,
@@ -959,6 +962,9 @@ export async function generateOutwardPDF(
       movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—',
       movement.packagingType || '—',
       movement.weightType || '—',
+      partyNameDisplay,
+      transporterDisplay,
+      fulfilmentTypeDisplay,
     ]];
 
     autoTable(doc, {

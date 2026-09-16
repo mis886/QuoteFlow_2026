@@ -128,18 +128,22 @@ export async function downloadOutwardDOCX(
   unit?: CompanyUnit,
 ) {
   const productCode = (movement as any).productCode || '—';
+  const partyNameDisplay = (movement.partyName === 'Other' ? movement.otherParty : movement.partyName) || '—';
+  const transporterDisplay = (movement.transporter === 'Other' ? movement.otherTransporter : movement.transporter) || '—';
+  const fulfilmentTypeDisplay = movement.fulfilmentType || '—';
 
   // Outward's footer signatory is hardcoded (unlike Quote/Order, which
   // resolve it from settings.signatory_name/defaultSignatory) — the same
   // person signs every Delivery Order regardless of warehouse or app_settings.
   const person: SigPerson = { name: 'Samata Yadav', designation: 'DISPATCH', phone: '+919987682255' };
 
-  // Line-items table column widths (DXA) — same 7 columns/order as the PDF's
+  // Line-items table column widths (DXA) — same 10 columns/order as the PDF's
   // autoTable, following the multi-column line-items table pattern in
   // quoteDocx.ts.
   const PAGE_W = 8640;
-  const wHsn = 1200, wBarrels = 1200, wPacking = 900, wTotalQty = 1000, wPackType = 1300, wMou = 900;
-  const wProdName = PAGE_W - wHsn - wBarrels - wPacking - wTotalQty - wPackType - wMou;
+  const wHsn = 900, wBarrels = 850, wPacking = 650, wTotalQty = 750, wPackType = 950, wMou = 650;
+  const wParty = 900, wTransporter = 850, wFulfil = 640;
+  const wProdName = PAGE_W - wHsn - wBarrels - wPacking - wTotalQty - wPackType - wMou - wParty - wTransporter - wFulfil;
 
   const godown = GODOWN_ADDRESSES[movement.warehouse];
 
@@ -217,6 +221,9 @@ export async function downloadOutwardDOCX(
                 thCell('Total Qty', wTotalQty),
                 thCell('Packing Type', wPackType),
                 thCell('MOU', wMou),
+                thCell('Party Name', wParty),
+                thCell('Transporter', wTransporter),
+                thCell('Fulfilment Type', wFulfil),
               ],
             }),
             new TableRow({
@@ -228,6 +235,9 @@ export async function downloadOutwardDOCX(
                 tdCell(movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—', wTotalQty, AlignmentType.CENTER),
                 tdCell(movement.packagingType || '—', wPackType, AlignmentType.CENTER),
                 tdCell(movement.weightType || '—', wMou, AlignmentType.CENTER),
+                tdCell(partyNameDisplay, wParty, AlignmentType.CENTER),
+                tdCell(transporterDisplay, wTransporter, AlignmentType.CENTER),
+                tdCell(fulfilmentTypeDisplay, wFulfil, AlignmentType.CENTER),
               ],
             }),
           ],
