@@ -825,8 +825,10 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
  * generated doc in this app, which shares generatePIPDF's letterhead).
  * Addressed to the godown holding the stock (see GODOWN_ADDRESSES above)
  * rather than the customer, with a single line-items row (Outward only ever
- * carries one) instead of a pricing table. Async because it looks up the
- * product's HSN code from product_catalog.
+ * carries one) instead of a pricing table. Kept async for compatibility with
+ * existing callers, though it no longer awaits anything itself — the
+ * line-items table shows the form's own Product Code (no real GST HSN code
+ * exists for Outward movements, unlike Quote/Order).
  */
 export async function generateOutwardPDF(
   movement: StockMovement,
@@ -836,12 +838,7 @@ export async function generateOutwardPDF(
   unit: CompanyUnit | undefined,
   download: boolean,
 ): Promise<jsPDF> {
-  const { data: catalogEntry } = await supabase
-    .from('product_catalog')
-    .select('hsn_code')
-    .ilike('product_name', movement.productName.trim())
-    .maybeSingle();
-  const hsnCode = catalogEntry?.hsn_code || '—';
+  const productCode = (movement as any).productCode || '—';
 
   const doc = new jsPDF('p', 'mm', 'a4');
   const pw = 210, ph = 297;
@@ -935,10 +932,10 @@ export async function generateOutwardPDF(
   // ── Line-items table — single row, Outward only ever carries one item.
   // Same head/body/fillColor/grid styling as the item table in
   // generateQuotePDF above, for visual consistency across generated docs.
-  const tableHead = [['Product Name', 'HSN Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']];
+  const tableHead = [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']];
   const tableBody = [[
     movement.productName || '—',
-    hsnCode,
+    productCode,
     movement.numArticles || '—',
     movement.packing != null ? String(movement.packing) : '—',
     movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—',

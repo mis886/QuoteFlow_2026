@@ -128,12 +128,7 @@ export async function downloadOutwardDOCX(
   defaultSignatory?: SigPerson,
   unit?: CompanyUnit,
 ) {
-  const { data: catalogEntry } = await supabase
-    .from('product_catalog')
-    .select('hsn_code')
-    .ilike('product_name', movement.productName.trim())
-    .maybeSingle();
-  const hsnCode = catalogEntry?.hsn_code || '—';
+  const productCode = (movement as any).productCode || '—';
 
   // Outward's footer signatory is hardcoded (unlike Quote/Order, which
   // resolve it from settings.signatory_name/defaultSignatory) — the same
@@ -217,7 +212,7 @@ export async function downloadOutwardDOCX(
               tableHeader: true,
               children: [
                 thCell('Product Name', wProdName),
-                thCell('HSN Code', wHsn),
+                thCell('Product Code', wHsn),
                 thCell('No of Barrels', wBarrels),
                 thCell('Packing', wPacking),
                 thCell('Total Qty', wTotalQty),
@@ -228,7 +223,7 @@ export async function downloadOutwardDOCX(
             new TableRow({
               children: [
                 tdCell(movement.productName || '—', wProdName),
-                tdCell(hsnCode, wHsn, AlignmentType.CENTER),
+                tdCell(productCode, wHsn, AlignmentType.CENTER),
                 tdCell(movement.numArticles || '—', wBarrels, AlignmentType.CENTER),
                 tdCell(movement.packing != null ? String(movement.packing) : '—', wPacking, AlignmentType.CENTER),
                 tdCell(movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—', wTotalQty, AlignmentType.CENTER),
