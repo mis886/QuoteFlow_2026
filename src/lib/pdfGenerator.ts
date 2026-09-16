@@ -833,10 +833,9 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
  * Unlike every other generator in this file, the page is sized to fit this
  * document's own content (single item, fixed-height footer) instead of a
  * fixed A4 height — see drawOutwardContent's two-pass measure-then-draw
- * comment below for why. Back to standard A4 width (210mm) — the
- * line-items table is 7 columns again, with Party Name/Transporter/
- * Fulfilment Type shown on their own line below it instead of as extra
- * table columns.
+ * comment below for why. 180mm wide (narrower than standard A4's 210mm) —
+ * the line-items table is 7 columns with Party Name/Transporter/Fulfilment
+ * Type on their own line below it, so it doesn't need full A4 width.
  */
 export async function generateOutwardPDF(
   movement: StockMovement,
@@ -1084,29 +1083,28 @@ export async function generateOutwardPDF(
   // content positioned for the old, taller page — the page must be created
   // at its final size before anything is drawn onto it, hence measuring on
   // a separate doc first rather than resizing this one in place. Orientation
-  // 'p' is safe here — 400 > 210 already satisfies portrait, so jsPDF's
-  // orientation swap (see below) never triggers on this doc. Back to
-  // standard A4 width (210mm) now that Party Name/Transporter/Fulfilment
-  // Type live on their own line below the table instead of as 3 extra
-  // table columns, so the table is back to 7 columns and doesn't need the
-  // extra width.
-  const measureDoc = new jsPDF('p', 'mm', [210, 400]);
+  // 'p' is safe here — 400 > 180 already satisfies portrait, so jsPDF's
+  // orientation swap (see below) never triggers on this doc. 180mm wide
+  // (narrower than standard A4's 210mm) since the table is back to 7
+  // columns with Party Name/Transporter/Fulfilment Type on their own line
+  // below it instead of extra table columns.
+  const measureDoc = new jsPDF('p', 'mm', [180, 400]);
   const finalY = drawOutwardContent(measureDoc);
 
   // ── Pass 2: draw for real onto a doc sized to fit that content, with an
   // ~18mm bottom margin below the footer. jsPDF's constructor silently
   // swaps a custom [width, height] array's two values whenever they
   // contradict the requested orientation — passing 'p' (portrait) with
-  // width(210) > height would make it swap to a doc that's actually 210mm
-  // TALL and shorter than 210mm WIDE, silently clipping everything
-  // positioned off the intended 210mm width (Date/Dated fields, the whole
+  // width(180) > height would make it swap to a doc that's actually 180mm
+  // TALL and shorter than 180mm WIDE, silently clipping everything
+  // positioned off the intended 180mm width (Date/Dated fields, the whole
   // right-aligned signature block). Picking 'p' vs 'l' based on which
   // dimension is actually larger avoids the swap in both directions;
   // drawOutwardContent itself reads the page's real width back from the
   // doc rather than assuming a fixed number, as a second safety net.
   const pageHeight = finalY + 18;
-  const orientation = pageHeight >= 210 ? 'p' : 'l';
-  const doc = new jsPDF(orientation, 'mm', [210, pageHeight]);
+  const orientation = pageHeight >= 180 ? 'p' : 'l';
+  const doc = new jsPDF(orientation, 'mm', [180, pageHeight]);
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
   const rx = pw - 15.4;
