@@ -829,6 +829,11 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
  * existing callers, though it no longer awaits anything itself — the
  * line-items table shows the form's own Product Code (no real GST HSN code
  * exists for Outward movements, unlike Quote/Order).
+ *
+ * Unlike every other generator in this file, the page is sized to fit this
+ * document's own content (single item, fixed-height footer) instead of a
+ * fixed A4 height — see drawOutwardContent's two-pass measure-then-draw
+ * comment below for why.
  */
 export async function generateOutwardPDF(
   movement: StockMovement,
@@ -840,213 +845,240 @@ export async function generateOutwardPDF(
 ): Promise<jsPDF> {
   const productCode = (movement as any).productCode || '—';
 
-  const doc = new jsPDF('p', 'mm', 'a4');
-  const pw = 210, ph = 297;
-  const mx = 15.4;
-  const rx = pw - 15.4;
-  const cw = rx - mx;
-  const sigImg = unit?.sig_url || settings?.sig_url || localStorage.getItem('mrt_sig_img');
+  // Draws the entire Outward Delivery Order body — header through the
+  // footer signature block — onto `doc` and returns the y position right
+  // after it. Pulled out into a function (rather than inline) so it can run
+  // twice: once on a throwaway tall doc purely to measure how tall the real
+  // content is, then again on a doc sized to fit that content exactly —
+  // this document has one line item and a fixed-height footer, so unlike
+  // Quote/Order (which keep using standard A4 and may span multiple pages)
+  // it should never need more than a single, content-sized page.
+  const drawOutwardContent = (doc: jsPDF): number => {
+    const pw = 210;
+    const mx = 15.4;
+    const rx = pw - 15.4;
+    const cw = rx - mx;
+    const sigImg = unit?.sig_url || settings?.sig_url || localStorage.getItem('mrt_sig_img');
 
-  // ── Header — four centered lines matching the pre-printed Delivery Order
-  // pad (no tagline/CIN/GSTIN/contact line — those don't appear on it) ────
-  let y: number;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(0, 0, 0);
-  doc.text('Delivery Order', pw / 2, 9, { align: 'center' });
-  doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
-  doc.text('Himalaya Terpenes Pvt. Ltd.', pw / 2, 17, { align: 'center' });
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(40, 40, 40);
-  doc.text('Unit No. 201, Building No. 5, Jogani Industrial Complex,', pw / 2, 23, { align: 'center' });
-  doc.text('V. N. Purav Marg, Sion-Chunabhatti, Mumbai - 400 022. INDIA', pw / 2, 27, { align: 'center' });
-  y = 34;
+    // ── Header — four centered lines matching the pre-printed Delivery Order
+    // pad (no tagline/CIN/GSTIN/contact line — those don't appear on it) ────
+    let y: number;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(0, 0, 0);
+    doc.text('Delivery Order', pw / 2, 9, { align: 'center' });
+    doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
+    doc.text('Himalaya Terpenes Pvt. Ltd.', pw / 2, 17, { align: 'center' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(40, 40, 40);
+    doc.text('Unit No. 201, Building No. 5, Jogani Industrial Complex,', pw / 2, 23, { align: 'center' });
+    doc.text('V. N. Purav Marg, Sion-Chunabhatti, Mumbai - 400 022. INDIA', pw / 2, 27, { align: 'center' });
+    y = 34;
 
-  // Draws "label" + "value" as plain text, positioning the value right after
-  // the label (or, for align 'right', anchoring the whole label+value pair
-  // to x instead of starting from it).
-  const drawField = (
-    x: number, yPos: number, label: string, value: string,
-    opts: { align?: 'left' | 'right'; bold?: boolean } = {},
-  ) => {
-    doc.setFont('helvetica', 'normal');
-    const labelW = doc.getTextWidth(label);
-    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
-    const valueW = doc.getTextWidth(value);
-    const valueX = opts.align === 'right' ? x - valueW : x + labelW;
-    const labelX = opts.align === 'right' ? valueX - labelW : x;
-    doc.setFont('helvetica', 'normal');
-    doc.text(label, labelX, yPos);
-    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
-    doc.text(value, valueX, yPos);
-    doc.setFont('helvetica', 'normal');
+    // Draws "label" + "value" as plain text, positioning the value right after
+    // the label (or, for align 'right', anchoring the whole label+value pair
+    // to x instead of starting from it).
+    const drawField = (
+      x: number, yPos: number, label: string, value: string,
+      opts: { align?: 'left' | 'right'; bold?: boolean } = {},
+    ) => {
+      doc.setFont('helvetica', 'normal');
+      const labelW = doc.getTextWidth(label);
+      doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+      const valueW = doc.getTextWidth(value);
+      const valueX = opts.align === 'right' ? x - valueW : x + labelW;
+      const labelX = opts.align === 'right' ? valueX - labelW : x;
+      doc.setFont('helvetica', 'normal');
+      doc.text(label, labelX, yPos);
+      doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+      doc.text(value, valueX, yPos);
+      doc.setFont('helvetica', 'normal');
+    };
+
+    // ── Delivery Order No. | Date ────────────────────────────────────────────
+    y += 6;
+    doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+    const dateStr = movement.doDate
+      ? new Date(movement.doDate + 'T00:00:00').toLocaleDateString('en-GB')
+      : '—';
+    drawField(mx, y, 'Delivery Order No.: ', movement.doNumber || '—');
+    drawField(rx, y, 'Date : ', dateStr, { align: 'right' });
+
+    // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES),
+    // centered like the header block at the top of this function — bold name,
+    // then the address (re-wrapped with splitTextToSize since it may run
+    // longer than one line), then mobile (only when non-empty — Reliable has
+    // none on file).
+    const godown = GODOWN_ADDRESSES[movement.warehouse];
+    if (godown) {
+      y += 9;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+      doc.text('M/s. ' + godown.name, pw / 2, y, { align: 'center' });
+      y += 5;
+      doc.setFont('helvetica', 'normal');
+      const addrLines = doc.splitTextToSize(godown.address, cw) as string[];
+      addrLines.forEach((line) => { doc.text(line, pw / 2, y, { align: 'center' }); y += 5; });
+      if (godown.mobile) {
+        doc.text('Mobile : ' + godown.mobile, pw / 2, y, { align: 'center' });
+        y += 5;
+      }
+    }
+
+    // ── Delivery instruction — Lot No./Dated now split out into their own
+    // field line below instead of being folded into this sentence ──────────
+    y += 8;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    const instrLines = doc.splitTextToSize(
+      'Please Deliver the following material to the bearer from our stock stored at your warehouse vide your',
+      cw,
+    ) as string[];
+    instrLines.forEach((line) => { doc.text(line, mx, y); y += 5; });
+
+    // ── Lot No. | Dated — same field style as Delivery Order No./Date above
+    y += 3;
+    doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    const lotDateText = movement.inwardDate
+      ? new Date(movement.inwardDate + 'T00:00:00').toLocaleDateString('en-GB').replace(/\//g, '-')
+      : '—';
+    drawField(mx, y, 'Lot No.: ', movement.whLotNo || '—');
+    drawField(rx, y, 'Dated: ', lotDateText, { align: 'right' });
+
+    y += 4;
+
+    // ── Line-items table — single row, Outward only ever carries one item.
+    // Same head/body/fillColor/grid styling as the item table in
+    // generateQuotePDF above, for visual consistency across generated docs.
+    const tableHead = [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']];
+    const tableBody = [[
+      movement.productName || '—',
+      productCode,
+      movement.numArticles || '—',
+      movement.packing != null ? String(movement.packing) : '—',
+      movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—',
+      movement.packagingType || '—',
+      movement.weightType || '—',
+    ]];
+
+    autoTable(doc, {
+      startY: y,
+      head: tableHead,
+      body: tableBody,
+      theme: 'grid',
+      headStyles: {
+        fillColor: TRUST_BLUE,
+        textColor: [0, 0, 0],
+        fontStyle: 'bold',
+        fontSize: 8,
+        cellPadding: 1,
+        lineColor: HEAD_BORDER,
+        lineWidth: 0.5,
+        halign: 'center',
+      },
+      bodyStyles: {
+        fontSize: 9,
+        cellPadding: 1.5,
+        textColor: [30, 30, 30],
+        lineColor: [80, 80, 80],
+        lineWidth: 0.35,
+        halign: 'center',
+      },
+      columnStyles: { 0: { halign: 'left' } },
+      margin: { left: mx, right: mx },
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 14;
+
+    // ── Sign-off — matches the pre-printed pad's own footer: a rubber-stamp
+    // rule, then "Thanking You." + fine-print terms on the left against a
+    // signature block on the right, instead of the old one-line "Thanks &
+    // Kind Regards," + company/signatory line. No page-break guard here —
+    // the page is sized to fit this content exactly, so it always fits on
+    // the one page.
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    // A literal "●" (U+25CF) isn't in the WinAnsi encoding jsPDF's built-in
+    // "helvetica" font uses, so doc.text() would render it as corrupted
+    // characters instead of a dot — draw an actual filled circle shape
+    // instead, which renders regardless of font/encoding support.
+    doc.setFillColor(0, 0, 0);
+    doc.circle(mx + 1, y - 1, 1, 'F');
+    doc.text('PLEASE PUT YOUR RUBBER STAMP & SIGN', mx + 4, y);
+    y += 3;
+    doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.3);
+    doc.line(mx, y, rx, y);
+    y += 10;
+
+    // Outward's footer signatory is hardcoded (unlike Quote/Order, which
+    // resolve it from settings.signatory_name/defaultSignatory) — the same
+    // person signs every Delivery Order regardless of warehouse or app_settings.
+    const person: SigPerson = { name: 'Samata Yadav', designation: 'DISPATCH', phone: '+919987682255' };
+
+    const colTopY = y;
+
+    // Left column — "Thanking You." + the pad's numbered fine-print terms.
+    let yLeft = colTopY;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    doc.text('Thanking You.', mx, yLeft);
+    yLeft += 8;
+    doc.setFontSize(8.5); doc.setTextColor(30, 30, 30);
+    const termLines = [
+      '1) This D.O. is valid for 4 days only',
+      '2) Please weight the material before taking the delivery.',
+      '3) No responsibility of leakages/shortage after leaving the material from our godown.',
+    ];
+    termLines.forEach((t) => {
+      (doc.splitTextToSize(t, cw / 2 - 6) as string[]).forEach((l) => { doc.text(l, mx, yLeft); yLeft += 4.8; });
+    });
+
+    // Right column — signature block, right-aligned to rx. Same sigImg
+    // source/try-catch as before, just relocated here; the resolved
+    // person (name/designation/phone) moves to a small gray line under
+    // "Authorised Signatory" instead of sharing the main sign-off line.
+    let yRight = colTopY;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    doc.text('For Himalaya Terpenes Pvt. Ltd.', rx, yRight, { align: 'right' });
+    yRight += 8;
+
+    if (sigImg) {
+      try {
+        const fmt = sigImg.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+        doc.addImage(sigImg, fmt, rx - 40, yRight, 40, 15);
+        yRight += 18;
+      } catch (e) { console.warn('Signature image failed', e); }
+    }
+
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+    doc.text('Authorised Signatory', rx, yRight, { align: 'right' });
+    yRight += 6;
+
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(0, 0, 0);
+    doc.text(person.name + (person.designation ? ' | ' + person.designation : '') + (person.phone ? ' | Tel.: ' + person.phone : ''), rx, yRight, { align: 'right' });
+    yRight += 4;
+
+    return Math.max(yLeft, yRight);
   };
 
-  // ── Delivery Order No. | Date ────────────────────────────────────────────
-  y += 6;
-  doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-  const dateStr = movement.doDate
-    ? new Date(movement.doDate + 'T00:00:00').toLocaleDateString('en-GB')
-    : '—';
-  drawField(mx, y, 'Delivery Order No.: ', movement.doNumber || '—');
-  drawField(rx, y, 'Date : ', dateStr, { align: 'right' });
+  // ── Pass 1: measure — draw onto a throwaway, generously tall doc purely to
+  // find out how tall the real content is. Never saved/returned; jsPDF's
+  // getVerticalCoordinate() bakes each draw call's y-position into the PDF
+  // content stream using THIS doc's page height at draw time, so shrinking a
+  // page's height after its content is already drawn would leave that
+  // content positioned for the old, taller page — the page must be created
+  // at its final size before anything is drawn onto it, hence measuring on
+  // a separate doc first rather than resizing this one in place.
+  const measureDoc = new jsPDF('p', 'mm', [210, 400]);
+  const finalY = drawOutwardContent(measureDoc);
 
-  // ── Godown address (who this DO is addressed to — see GODOWN_ADDRESSES),
-  // centered like the header block at the top of this function — bold name,
-  // then the address (re-wrapped with splitTextToSize since it may run
-  // longer than one line), then mobile (only when non-empty — Reliable has
-  // none on file).
-  const godown = GODOWN_ADDRESSES[movement.warehouse];
-  if (godown) {
-    y += 9;
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-    doc.text('M/s. ' + godown.name, pw / 2, y, { align: 'center' });
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    const addrLines = doc.splitTextToSize(godown.address, cw) as string[];
-    addrLines.forEach((line) => { doc.text(line, pw / 2, y, { align: 'center' }); y += 5; });
-    if (godown.mobile) {
-      doc.text('Mobile : ' + godown.mobile, pw / 2, y, { align: 'center' });
-      y += 5;
-    }
-  }
-
-  // ── Delivery instruction — Lot No./Dated now split out into their own
-  // field line below instead of being folded into this sentence ──────────
-  y += 8;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  const instrLines = doc.splitTextToSize(
-    'Please Deliver the following material to the bearer from our stock stored at your warehouse vide your',
-    cw,
-  ) as string[];
-  instrLines.forEach((line) => { doc.text(line, mx, y); y += 5; });
-
-  // ── Lot No. | Dated — same field style as Delivery Order No./Date above
-  y += 3;
-  doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  const lotDateText = movement.inwardDate
-    ? new Date(movement.inwardDate + 'T00:00:00').toLocaleDateString('en-GB').replace(/\//g, '-')
-    : '—';
-  drawField(mx, y, 'Lot No.: ', movement.whLotNo || '—');
-  drawField(rx, y, 'Dated: ', lotDateText, { align: 'right' });
-
-  y += 4;
-
-  // ── Line-items table — single row, Outward only ever carries one item.
-  // Same head/body/fillColor/grid styling as the item table in
-  // generateQuotePDF above, for visual consistency across generated docs.
-  const tableHead = [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']];
-  const tableBody = [[
-    movement.productName || '—',
-    productCode,
-    movement.numArticles || '—',
-    movement.packing != null ? String(movement.packing) : '—',
-    movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—',
-    movement.packagingType || '—',
-    movement.weightType || '—',
-  ]];
-
-  autoTable(doc, {
-    startY: y,
-    head: tableHead,
-    body: tableBody,
-    theme: 'grid',
-    headStyles: {
-      fillColor: TRUST_BLUE,
-      textColor: [0, 0, 0],
-      fontStyle: 'bold',
-      fontSize: 8,
-      cellPadding: 1,
-      lineColor: HEAD_BORDER,
-      lineWidth: 0.5,
-      halign: 'center',
-    },
-    bodyStyles: {
-      fontSize: 9,
-      cellPadding: 1.5,
-      textColor: [30, 30, 30],
-      lineColor: [80, 80, 80],
-      lineWidth: 0.35,
-      halign: 'center',
-    },
-    columnStyles: { 0: { halign: 'left' } },
-    margin: { left: mx, right: mx },
-  });
-
-  y = (doc as any).lastAutoTable.finalY + 14;
-
-  // ── Sign-off — matches the pre-printed pad's own footer: a rubber-stamp
-  // rule, then "Thanking You." + fine-print terms on the left against a
-  // signature block on the right, instead of the old one-line "Thanks &
-  // Kind Regards," + company/signatory line. Noticeably taller than that
-  // old sign-off, hence the bigger page-break threshold below.
-  if (y > ph - 65) { doc.addPage(); y = 20; }
-
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  // A literal "●" (U+25CF) isn't in the WinAnsi encoding jsPDF's built-in
-  // "helvetica" font uses, so doc.text() would render it as corrupted
-  // characters instead of a dot — draw an actual filled circle shape
-  // instead, which renders regardless of font/encoding support.
-  doc.setFillColor(0, 0, 0);
-  doc.circle(mx + 1, y - 1, 1, 'F');
-  doc.text('PLEASE PUT YOUR RUBBER STAMP & SIGN', mx + 4, y);
-  y += 3;
-  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.3);
-  doc.line(mx, y, rx, y);
-  y += 10;
-
-  // Outward's footer signatory is hardcoded (unlike Quote/Order, which
-  // resolve it from settings.signatory_name/defaultSignatory) — the same
-  // person signs every Delivery Order regardless of warehouse or app_settings.
-  const person: SigPerson = { name: 'Samata Yadav', designation: 'DISPATCH', phone: '+919987682255' };
-
-  const colTopY = y;
-
-  // Left column — "Thanking You." + the pad's numbered fine-print terms.
-  let yLeft = colTopY;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  doc.text('Thanking You.', mx, yLeft);
-  yLeft += 8;
-  doc.setFontSize(8.5); doc.setTextColor(30, 30, 30);
-  const termLines = [
-    '1) This D.O. is valid for 4 days only',
-    '2) Please weight the material before taking the delivery.',
-    '3) No responsibility of leakages/shortage after leaving the material from our godown.',
-  ];
-  termLines.forEach((t) => {
-    (doc.splitTextToSize(t, cw / 2 - 6) as string[]).forEach((l) => { doc.text(l, mx, yLeft); yLeft += 4.8; });
-  });
-
-  // Right column — signature block, right-aligned to rx. Same sigImg
-  // source/try-catch as before, just relocated here; the resolved
-  // person (name/designation/phone) moves to a small gray line under
-  // "Authorised Signatory" instead of sharing the main sign-off line.
-  let yRight = colTopY;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  doc.text('For Himalaya Terpenes Pvt. Ltd.', rx, yRight, { align: 'right' });
-  yRight += 8;
-
-  if (sigImg) {
-    try {
-      const fmt = sigImg.startsWith('data:image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(sigImg, fmt, rx - 40, yRight, 40, 15);
-      yRight += 18;
-    } catch (e) { console.warn('Signature image failed', e); }
-  }
-
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  doc.text('Authorised Signatory', rx, yRight, { align: 'right' });
-  yRight += 6;
-
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(0, 0, 0);
-  doc.text(person.name + (person.designation ? ' | ' + person.designation : '') + (person.phone ? ' | Tel.: ' + person.phone : ''), rx, yRight, { align: 'right' });
-  yRight += 4;
-
-  y = Math.max(yLeft, yRight);
+  // ── Pass 2: draw for real onto a doc sized to fit that content, with an
+  // ~18mm bottom margin below the footer.
+  const pageWidth = 210;
+  const pageHeight = finalY + 18;
+  const doc = new jsPDF('p', 'mm', [pageWidth, pageHeight]);
+  const rx = pageWidth - 15.4;
+  drawOutwardContent(doc);
 
   // ── Page numbers — stamp "Page X of N" on every page ─────────────────────
   const pageCount = doc.getNumberOfPages();
   for (let p = 1; p <= pageCount; p++) {
     doc.setPage(p);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(100, 100, 100);
-    doc.text(`Page ${p} of ${pageCount}`, rx, ph - 8, { align: 'right' });
+    doc.text(`Page ${p} of ${pageCount}`, rx, pageHeight - 8, { align: 'right' });
   }
 
   if (download) doc.save((movement.doNumber || 'delivery_challan') + '_DC.pdf');
