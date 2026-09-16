@@ -8,6 +8,7 @@ import { resolveCoaStorageUrl } from '../lib/supabase';
 import { useAppStore } from '../store';
 
 const SHISHIR = 'shishir@himalayaterpene.com';
+const BHIWANDI_EMAIL = 'bhiwandi@himalayaterpene.com';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 interface CCCandidate { name: string; role?: string; email: string; isPrimary?: boolean; }
@@ -86,19 +87,34 @@ export function SendEmailModal(props: Props) {
   const { customer, siteId, onClose, onSent } = props;
   const { activeDoer, user, data } = useAppStore();
   const senderEmail = activeDoer?.email ?? user?.email ?? '';
-  const defaultCCs = [
-    ...((user?.email ?? '').toLowerCase() === SHISHIR
-      ? ['sales@himalayaterpene.com', 'anil@himalayaterpene.com']
-      : [SHISHIR, 'anil@himalayaterpene.com']),
-    ...(props.mode === 'order' ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'] : []),
-  ];
-
   const siteContacts = getSiteContacts(customer, siteId);
   const primaryContact = getPrimaryContact(customer, siteId);
   const primaryEmail = primaryContact?.email ?? '';
 
   const isQuote   = props.mode === 'quote';
   const isOutward = props.mode === 'outward';
+
+  // Outward's default To/CC depends on Fulfilment Type — see the block below.
+  // 'Both' or an unset Fulfilment Type falls through to no forced defaults
+  // beyond whatever site contacts/extra CCs the user adds themselves, since
+  // only 'Delivery' and 'Self Pickup' have defined behavior.
+  const outwardFulfilmentType = isOutward ? ((props.doc as StockMovement).fulfilmentType || '') : '';
+  const isOutwardDelivery = isOutward && outwardFulfilmentType === 'Delivery';
+  const isOutwardSelfPickup = isOutward && outwardFulfilmentType === 'Self Pickup';
+
+  const defaultCCs = isOutward
+    ? (isOutwardDelivery
+        ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com']
+        : isOutwardSelfPickup
+        ? [BHIWANDI_EMAIL]
+        : [])
+    : [
+        ...((user?.email ?? '').toLowerCase() === SHISHIR
+          ? ['sales@himalayaterpene.com', 'anil@himalayaterpene.com']
+          : [SHISHIR, 'anil@himalayaterpene.com']),
+        ...(props.mode === 'order' ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'] : []),
+      ];
+
   // For Quote/Order, `.id` IS the human-readable reference (HTP-2026-685,
   // ORD-2026-035). For StockMovement, `.id` is a database UUID — completely
   // different thing, so the display id there must come from `.doNumber`
@@ -143,7 +159,7 @@ export function SendEmailModal(props: Props) {
     ? `${greeting}\n\nPlease find attached the Delivery Order ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
     : `${greeting}\n\nPlease find attached our Proforma Invoice ${docId} for the requirements discussed.\n\nKindly arrange for the Purchase Order at your earliest convenience.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`;
 
-  const [to, setTo]           = useState(primaryEmail);
+  const [to, setTo]           = useState(isOutwardDelivery ? BHIWANDI_EMAIL : primaryEmail);
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody]       = useState(defaultBody);
   const [toError, setToError] = useState('');
@@ -159,7 +175,7 @@ export function SendEmailModal(props: Props) {
     ...(docContactEmail && !defaultCCs.includes(docContactEmail) && docContactEmail !== primaryEmail ? [docContactEmail] : []),
   ];
   const [selectedCC, setSelectedCC] = useState<Set<string>>(() => new Set([
-    ...siteContacts.filter(c => c.email && c.email !== primaryEmail).map(c => c.email),
+    ...(isOutward ? [] : siteContacts.filter(c => c.email && c.email !== primaryEmail).map(c => c.email)),
     ...initialExtraCCs,
   ]));
   const [customCC, setCustomCC] = useState('');
