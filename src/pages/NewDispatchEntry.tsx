@@ -377,7 +377,20 @@ export function NewDispatchEntry() {
               {type === 'self_pickup' ? 'Self Pickup Form' : 'HTPL Delivery FMS Form'}
             </p>
           </div>
-          <Button variant="secondary" onClick={() => navigate('/dispatch')}>Back</Button>
+          <div className="flex items-center gap-3 shrink-0">
+            {isEditMode && (
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
+                <select title="Dispatch status" value={sentStatus}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSentStatus(e.target.value as 'to_dispatch' | 'sent')}
+                  className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer">
+                  <option value="to_dispatch">Order → Dispatch</option>
+                  <option value="sent">Dispatch → Sent</option>
+                </select>
+              </div>
+            )}
+            <Button variant="secondary" onClick={() => navigate('/dispatch')}>Back</Button>
+          </div>
         </div>
       </div>
 
@@ -462,13 +475,6 @@ export function NewDispatchEntry() {
                 {/* Dispatch Details — fulfillment type + the fields filled in by the customer-facing form, folded into Customer & Contact */}
                 <div className="p-[0_16px_14px]">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-[12px]">
-                    <div>
-                      <label className={labelCls}>Status</label>
-                      <select value={sentStatus} onChange={e => setSentStatus(e.target.value as 'to_dispatch' | 'sent')} className={selectCls}>
-                        <option value="to_dispatch">Order → Dispatch</option>
-                        <option value="sent">Dispatch → Sent</option>
-                      </select>
-                    </div>
                     <div>
                       <label className={labelCls}>Fulfillment Type</label>
                       <select value={type} onChange={e => setType(e.target.value as '' | DispatchFulfillmentType)} className={selectCls}>
