@@ -997,35 +997,22 @@ export async function generateOutwardPDF(
     y = (doc as any).lastAutoTable.finalY + 8;
 
     // ── Party Name | Transporter | Fulfilment Type — moved out of the
-    // line-items table (used to be 3 of its columns) onto their own line
-    // below it. Unlike drawField's fixed-x layout (which overlapped when
-    // Party Name/Transporter — free-text fields that can be long — pushed
-    // past the next field's hardcoded x position), this measures each
-    // field's actual rendered width via getTextWidth() and places the next
-    // one right after it with a fixed gap, wrapping to a new line if it
-    // would run past the right margin. Values can be arbitrarily long
-    // (otherParty/otherTransporter free text), so a fixed layout isn't safe.
+    // line-items table (used to be 3 of its columns), stacked one per line
+    // below it. Party Name/Transporter are free-text fields
+    // (otherParty/otherTransporter) that can be long, so each field gets
+    // its own line rather than trying to fit them side by side.
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
     const infoFields: [string, string][] = [
       ['Party Name: ', partyNameDisplay],
       ['Transporter: ', transporterDisplay],
       ['Fulfilment Type: ', fulfilmentTypeDisplay],
     ];
-    const fieldGap = 10;
-    let fx = mx;
     infoFields.forEach(([label, value]) => {
-      const labelW = doc.getTextWidth(label);
-      const valueW = doc.getTextWidth(value);
-      const fieldW = labelW + valueW;
-      if (fx !== mx && fx + fieldW > rx) {
-        fx = mx;
-        y += 6;
-      }
-      doc.text(label, fx, y);
-      doc.text(value, fx + labelW, y);
-      fx += fieldW + fieldGap;
+      doc.text(label, mx, y);
+      doc.text(value, mx + doc.getTextWidth(label), y);
+      y += 5;
     });
-    y += 12;
+    y += 7;
 
     // ── Sign-off — matches the pre-printed pad's own footer: a rubber-stamp
     // rule, then "Thanking You." + fine-print terms on the left against a
