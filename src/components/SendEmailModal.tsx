@@ -106,7 +106,7 @@ export function SendEmailModal(props: Props) {
     ? (isOutwardDelivery
         ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com']
         : isOutwardSelfPickup
-        ? [BHIWANDI_EMAIL]
+        ? [BHIWANDI_EMAIL, 'accounts@himalayaterpene.com', 'mum@himalayaterpene.com']
         : [])
     : [
         ...((user?.email ?? '').toLowerCase() === SHISHIR
