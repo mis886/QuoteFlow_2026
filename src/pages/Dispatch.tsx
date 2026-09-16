@@ -7,7 +7,7 @@ import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, deleteDispatchEntry } = useAppStore();
+  const { data, user, deleteDispatchEntry, updateDispatchEntry } = useAppStore();
   const canDelete = canDeleteRecords(user?.email);
 
   const [tab, setTab] = useState<'toDispatch' | 'toSend'>('toDispatch');
@@ -15,13 +15,17 @@ export function Dispatch() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   const entries = data.dispatchEntries;
-  const selfPickupCount = entries.filter(e => e.fulfillmentType === 'self_pickup').length;
-  const deliveryCount = entries.filter(e => e.fulfillmentType === 'delivery').length;
+  // "Sent" is tracked purely by sentAt being set (see the "Dispatch → Sent"
+  // button below) — an entry lives in exactly one of the two tabs at a time.
+  const toDispatchEntries = entries.filter(e => !e.sentAt);
+  const sentEntries = entries.filter(e => e.sentAt);
+  const selfPickupCount = toDispatchEntries.filter(e => e.fulfillmentType === 'self_pickup').length;
+  const deliveryCount = toDispatchEntries.filter(e => e.fulfillmentType === 'delivery').length;
 
-  const visibleEntries = useMemo(
-    () => entries.filter(e => e.fulfillmentType === subType).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
-    [entries, subType],
-  );
+  const visibleEntries = useMemo(() => {
+    const base = tab === 'toSend' ? sentEntries : toDispatchEntries.filter(e => e.fulfillmentType === subType);
+    return [...base].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  }, [tab, toDispatchEntries, sentEntries, subType]);
 
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
 
@@ -45,13 +49,13 @@ export function Dispatch() {
             onClick={() => setTab('toDispatch')}
             className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${tab === 'toDispatch' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
           >
-            Order → Dispatch ({entries.length})
+            Order → Dispatch ({toDispatchEntries.length})
           </div>
           <div
-            title="Parked for a later phase — not built yet"
-            className="px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium text-g400 whitespace-nowrap select-none cursor-not-allowed"
+            onClick={() => setTab('toSend')}
+            className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${tab === 'toSend' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
           >
-            Dispatch → Sent
+            Dispatch → Sent ({sentEntries.length})
           </div>
         </div>
 
@@ -79,13 +83,8 @@ export function Dispatch() {
       </div>
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-        {tab === 'toSend' ? (
-          <div className="bg-white border border-g200 rounded-[4px] p-10 text-center text-g400 text-[13px]">
-            Dispatch → Sent is parked for a later phase — not built yet.
-          </div>
-        ) : (
-          <div className="bg-white border border-g200 overflow-x-auto m-0">
-            <table className="w-full border-collapse text-[12.5px]">
+        <div className="bg-white border border-g200 overflow-x-auto m-0">
+          <table className="w-full border-collapse text-[12.5px]">
               <thead className="bg-g100">
                 <tr>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Order Ref</th>
@@ -103,7 +102,7 @@ export function Dispatch() {
               </thead>
               <tbody>
                 {visibleEntries.length === 0 ? (
-                  <tr><td colSpan={11} className="text-center p-8 text-g400 text-[13px]">No {subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries yet</td></tr>
+                  <tr><td colSpan={11} className="text-center p-8 text-g400 text-[13px]">{tab === 'toSend' ? 'No entries sent yet' : `No ${subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries yet`}</td></tr>
                 ) : (
                   visibleEntries.map(entry => {
                     const order = orderFor(entry);
@@ -131,6 +130,15 @@ export function Dispatch() {
                           <td className="px-[13px] py-[10px] align-top">{entry.created_at ? fmtIST(new Date(entry.created_at), 'dd-MMM-yyyy') : '—'}</td>
                           <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
                             <div className="flex gap-1.5 flex-wrap">
+                              {tab === 'toDispatch' && (
+                                <Button size="sm" variant="success" onClick={async () => {
+                                  try {
+                                    await updateDispatchEntry(entry.id, { sentAt: new Date().toISOString() });
+                                  } catch (err: any) {
+                                    alert(`Could not mark as sent: ${err?.message || JSON.stringify(err)}`);
+                                  }
+                                }}>Dispatch → Sent</Button>
+                              )}
                               <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}`)}>Edit</Button>
                               {canDelete && (
                                 <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async () => {
@@ -207,9 +215,8 @@ export function Dispatch() {
                   })
                 )}
               </tbody>
-            </table>
-          </div>
-        )}
+          </table>
+        </div>
       </div>
 
     </div>

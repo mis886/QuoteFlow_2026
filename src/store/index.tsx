@@ -621,6 +621,7 @@ const mapEnquiryToDB = (e: any) => {
     unit: d.unit || undefined,
     promisedDeliveryDate: d.promised_delivery_date || undefined,
     estimatedDeliveryDate: d.estimated_delivery_date || undefined,
+    sentAt: d.sent_at || undefined,
     formFilledBy: d.form_filled_by || undefined,
     createdBy: d.created_by || undefined,
     created_at: d.created_at,
@@ -644,6 +645,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('unit' in d) obj.unit = d.unit || null;
     if ('promisedDeliveryDate' in d) obj.promised_delivery_date = d.promisedDeliveryDate || null;
     if ('estimatedDeliveryDate' in d) obj.estimated_delivery_date = d.estimatedDeliveryDate || null;
+    if ('sentAt' in d) obj.sent_at = d.sentAt || null;
     if ('formFilledBy' in d) obj.form_filled_by = d.formFilledBy || null;
     if ('createdBy' in d) obj.created_by = d.createdBy || null;
     if ('items' in d) obj.items = d.items ?? [];

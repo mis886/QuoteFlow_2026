@@ -497,6 +497,10 @@ export interface DispatchEntry {
   unit?: string;             // kgs / lts / ml / gm
   promisedDeliveryDate?: string;
   estimatedDeliveryDate?: string;
+  // Set once this entry is moved from "Order → Dispatch" to "Dispatch →
+  // Sent" (see src/pages/Dispatch.tsx's "Dispatch → Sent" button). Null/
+  // undefined = still in Order → Dispatch.
+  sentAt?: string;
   formFilledBy?: string;
   createdBy?: string;
   created_at?: string;
