@@ -1038,7 +1038,7 @@ export async function generateOutwardPDF(
   doc.text('Authorised Signatory', rx, yRight, { align: 'right' });
   yRight += 6;
 
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(110, 110, 110);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
   doc.text(person.name + (person.designation ? ' | ' + person.designation : '') + (person.phone ? ' | Tel.: ' + person.phone : ''), rx, yRight, { align: 'right' });
   yRight += 4;
 
