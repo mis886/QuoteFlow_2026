@@ -914,7 +914,7 @@ export async function generateOutwardPDF(
     const godown = GODOWN_ADDRESSES[movement.warehouse];
     if (godown) {
       y += 9;
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
       doc.text('M/s. ' + godown.name, pw / 2, y, { align: 'center' });
       y += 5;
       doc.setFont('helvetica', 'normal');

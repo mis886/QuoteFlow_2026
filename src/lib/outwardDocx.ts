@@ -178,9 +178,9 @@ export async function downloadOutwardDOCX(
         // GODOWN_ADDRESSES), centered — bold name, address, then mobile
         // (only when non-empty — Reliable has none on file).
         ...(godown ? [
-          para([r('M/s. ' + godown.name, { bold: true, size: 17 })], AlignmentType.CENTER, 0),
-          ...godown.address.split('\n').map(line => para([r(line, { size: 17 })], AlignmentType.CENTER, 0)),
-          ...(godown.mobile ? [para([r('Mobile : ' + godown.mobile, { size: 17 })], AlignmentType.CENTER, 0)] : []),
+          para([r('M/s. ' + godown.name, { bold: true, size: 20 })], AlignmentType.CENTER, 0),
+          ...godown.address.split('\n').map(line => para([r(line, { size: 20 })], AlignmentType.CENTER, 0)),
+          ...(godown.mobile ? [para([r('Mobile : ' + godown.mobile, { size: 20 })], AlignmentType.CENTER, 0)] : []),
           para([], AlignmentType.LEFT, 80),
         ] : []),
 
