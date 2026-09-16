@@ -683,13 +683,14 @@ export function NewStockOutward() {
   // of the shared StockMovement interface. generateOutwardPDF/
   // downloadOutwardDOCX both read it via `(movement as any).productCode`,
   // so it's widened on here rather than added to StockMovement itself.
-  const buildOutwardData = (): StockMovement & { productCode?: string } => ({
+  const buildOutwardData = (): StockMovement & { productCode?: string; billingName?: string } => ({
     id: movementId || '',
     type: 'outward',
     warehouse: isOtherWarehouse ? form.otherWarehouse.trim() : form.warehouse,
     whLotNo: form.lotNo.trim() || undefined,
     productName: form.productName.trim(),
     productCode: form.productCode || undefined,
+    billingName: form.billingName || undefined,
     doNumber: form.doNumber.trim() || undefined,
     doDate: form.doDate || undefined,
     inwardDate: form.lotDate || undefined,

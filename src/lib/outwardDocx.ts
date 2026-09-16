@@ -228,7 +228,7 @@ export async function downloadOutwardDOCX(
             }),
             new TableRow({
               children: [
-                tdCell(movement.productName || '—', wProdName),
+                tdCell((movement as any).billingName || movement.productName || '—', wProdName),
                 tdCell(productCode, wHsn, AlignmentType.CENTER),
                 tdCell(movement.numArticles || '—', wBarrels, AlignmentType.CENTER),
                 tdCell(movement.packing != null ? String(movement.packing) : '—', wPacking, AlignmentType.CENTER),

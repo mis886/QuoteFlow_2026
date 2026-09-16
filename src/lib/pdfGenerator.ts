@@ -958,7 +958,7 @@ export async function generateOutwardPDF(
     // generateQuotePDF above, for visual consistency across generated docs.
     const tableHead = [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU', 'Party Name', 'Transporter', 'Fulfilment Type']];
     const tableBody = [[
-      movement.productName || '—',
+      (movement as any).billingName || movement.productName || '—',
       productCode,
       movement.numArticles || '—',
       movement.packing != null ? String(movement.packing) : '—',
