@@ -833,9 +833,10 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
  * Unlike every other generator in this file, the page is sized to fit this
  * document's own content (single item, fixed-height footer) instead of a
  * fixed A4 height — see drawOutwardContent's two-pass measure-then-draw
- * comment below for why. Also 275mm wide (wider than A4 portrait's 210)
- * so the 10-column line-items table has room to spread out instead of
- * wrapping Party Name/Transporter into cramped cells.
+ * comment below for why. Back to standard A4 width (210mm) — the
+ * line-items table is 7 columns again, with Party Name/Transporter/
+ * Fulfilment Type shown on their own line below it instead of as extra
+ * table columns.
  */
 export async function generateOutwardPDF(
   movement: StockMovement,
@@ -956,7 +957,7 @@ export async function generateOutwardPDF(
     // ── Line-items table — single row, Outward only ever carries one item.
     // Same head/body/fillColor/grid styling as the item table in
     // generateQuotePDF above, for visual consistency across generated docs.
-    const tableHead = [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU', 'Party Name', 'Transporter', 'Fulfilment Type']];
+    const tableHead = [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']];
     const tableBody = [[
       (movement as any).billingName || movement.productName || '—',
       productCode,
@@ -965,9 +966,6 @@ export async function generateOutwardPDF(
       movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—',
       movement.packagingType || '—',
       movement.weightType || '—',
-      partyNameDisplay,
-      transporterDisplay,
-      fulfilmentTypeDisplay,
     ]];
 
     autoTable(doc, {
@@ -997,7 +995,17 @@ export async function generateOutwardPDF(
       margin: { left: mx, right: mx },
     });
 
-    y = (doc as any).lastAutoTable.finalY + 14;
+    y = (doc as any).lastAutoTable.finalY + 8;
+
+    // ── Party Name | Transporter | Fulfilment Type — moved out of the
+    // line-items table (used to be 3 of its columns) onto their own line
+    // below it, so the table stays narrow. Same drawField pattern as the
+    // Delivery Order No./Date and Lot No./Dated rows above.
+    doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+    drawField(mx, y, 'Party Name: ', partyNameDisplay);
+    drawField(pw / 2 - 12, y, 'Transporter: ', transporterDisplay);
+    drawField(rx, y, 'Fulfilment Type: ', fulfilmentTypeDisplay, { align: 'right' });
+    y += 12;
 
     // ── Sign-off — matches the pre-printed pad's own footer: a rubber-stamp
     // rule, then "Thanking You." + fine-print terms on the left against a
@@ -1076,29 +1084,29 @@ export async function generateOutwardPDF(
   // content positioned for the old, taller page — the page must be created
   // at its final size before anything is drawn onto it, hence measuring on
   // a separate doc first rather than resizing this one in place. Orientation
-  // 'p' is safe here — 400 > 275 already satisfies portrait, so jsPDF's
-  // orientation swap (see below) never triggers on this doc. 275mm wide
-  // (wider than A4 portrait's 210) so the 10-column line-items table
-  // (Product Name through Fulfilment Type) has room to breathe instead of
-  // wrapping Party Name/Transporter into cramped cells.
-  const measureDoc = new jsPDF('p', 'mm', [275, 400]);
+  // 'p' is safe here — 400 > 210 already satisfies portrait, so jsPDF's
+  // orientation swap (see below) never triggers on this doc. Back to
+  // standard A4 width (210mm) now that Party Name/Transporter/Fulfilment
+  // Type live on their own line below the table instead of as 3 extra
+  // table columns, so the table is back to 7 columns and doesn't need the
+  // extra width.
+  const measureDoc = new jsPDF('p', 'mm', [210, 400]);
   const finalY = drawOutwardContent(measureDoc);
 
   // ── Pass 2: draw for real onto a doc sized to fit that content, with an
   // ~18mm bottom margin below the footer. jsPDF's constructor silently
   // swaps a custom [width, height] array's two values whenever they
   // contradict the requested orientation — passing 'p' (portrait) with
-  // width(275) > height (true for any Outward DO under 275mm tall, i.e.
-  // almost always) makes it swap to a doc that's actually 275mm TALL and
-  // shorter than 275mm WIDE, silently clipping everything positioned off
-  // the intended 275mm width (Date/Dated fields, the whole right-aligned
-  // signature block). Picking 'p' vs 'l' based on which dimension is
-  // actually larger avoids the swap in both directions; drawOutwardContent
-  // itself reads the page's real width back from the doc rather than
-  // assuming a fixed number, as a second safety net.
+  // width(210) > height would make it swap to a doc that's actually 210mm
+  // TALL and shorter than 210mm WIDE, silently clipping everything
+  // positioned off the intended 210mm width (Date/Dated fields, the whole
+  // right-aligned signature block). Picking 'p' vs 'l' based on which
+  // dimension is actually larger avoids the swap in both directions;
+  // drawOutwardContent itself reads the page's real width back from the
+  // doc rather than assuming a fixed number, as a second safety net.
   const pageHeight = finalY + 18;
-  const orientation = pageHeight >= 275 ? 'p' : 'l';
-  const doc = new jsPDF(orientation, 'mm', [275, pageHeight]);
+  const orientation = pageHeight >= 210 ? 'p' : 'l';
+  const doc = new jsPDF(orientation, 'mm', [210, pageHeight]);
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
   const rx = pw - 15.4;

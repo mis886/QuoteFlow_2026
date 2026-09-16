@@ -142,8 +142,7 @@ export async function downloadOutwardDOCX(
   // quoteDocx.ts.
   const PAGE_W = 8640;
   const wHsn = 900, wBarrels = 850, wPacking = 650, wTotalQty = 750, wPackType = 950, wMou = 650;
-  const wParty = 900, wTransporter = 850, wFulfil = 640;
-  const wProdName = PAGE_W - wHsn - wBarrels - wPacking - wTotalQty - wPackType - wMou - wParty - wTransporter - wFulfil;
+  const wProdName = PAGE_W - wHsn - wBarrels - wPacking - wTotalQty - wPackType - wMou;
 
   const godown = GODOWN_ADDRESSES[movement.warehouse];
 
@@ -221,9 +220,6 @@ export async function downloadOutwardDOCX(
                 thCell('Total Qty', wTotalQty),
                 thCell('Packing Type', wPackType),
                 thCell('MOU', wMou),
-                thCell('Party Name', wParty),
-                thCell('Transporter', wTransporter),
-                thCell('Fulfilment Type', wFulfil),
               ],
             }),
             new TableRow({
@@ -235,11 +231,25 @@ export async function downloadOutwardDOCX(
                 tdCell(movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—', wTotalQty, AlignmentType.CENTER),
                 tdCell(movement.packagingType || '—', wPackType, AlignmentType.CENTER),
                 tdCell(movement.weightType || '—', wMou, AlignmentType.CENTER),
-                tdCell(partyNameDisplay, wParty, AlignmentType.CENTER),
-                tdCell(transporterDisplay, wTransporter, AlignmentType.CENTER),
-                tdCell(fulfilmentTypeDisplay, wFulfil, AlignmentType.CENTER),
               ],
             }),
+          ],
+        }),
+
+        // ── Party Name | Transporter | Fulfilment Type — moved out of the
+        // line-items table (used to be 3 of its columns) onto their own
+        // line below it, same field style as the Lot No./Dated line above.
+        new Paragraph({
+          spacing: { after: 120 },
+          children: [
+            r('Party Name: ', { size: 17 }),
+            r(partyNameDisplay, { size: 17 }),
+            r('     ', { size: 17 }),
+            r('Transporter: ', { size: 17 }),
+            r(transporterDisplay, { size: 17 }),
+            r('     ', { size: 17 }),
+            r('Fulfilment Type: ', { size: 17 }),
+            r(fulfilmentTypeDisplay, { size: 17 }),
           ],
         }),
 
