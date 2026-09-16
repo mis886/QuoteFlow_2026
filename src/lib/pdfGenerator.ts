@@ -998,12 +998,33 @@ export async function generateOutwardPDF(
 
     // ── Party Name | Transporter | Fulfilment Type — moved out of the
     // line-items table (used to be 3 of its columns) onto their own line
-    // below it, so the table stays narrow. Same drawField pattern as the
-    // Delivery Order No./Date and Lot No./Dated rows above.
-    doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-    drawField(mx, y, 'Party Name: ', partyNameDisplay);
-    drawField(pw / 2 - 12, y, 'Transporter: ', transporterDisplay);
-    drawField(rx, y, 'Fulfilment Type: ', fulfilmentTypeDisplay, { align: 'right' });
+    // below it. Unlike drawField's fixed-x layout (which overlapped when
+    // Party Name/Transporter — free-text fields that can be long — pushed
+    // past the next field's hardcoded x position), this measures each
+    // field's actual rendered width via getTextWidth() and places the next
+    // one right after it with a fixed gap, wrapping to a new line if it
+    // would run past the right margin. Values can be arbitrarily long
+    // (otherParty/otherTransporter free text), so a fixed layout isn't safe.
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+    const infoFields: [string, string][] = [
+      ['Party Name: ', partyNameDisplay],
+      ['Transporter: ', transporterDisplay],
+      ['Fulfilment Type: ', fulfilmentTypeDisplay],
+    ];
+    const fieldGap = 10;
+    let fx = mx;
+    infoFields.forEach(([label, value]) => {
+      const labelW = doc.getTextWidth(label);
+      const valueW = doc.getTextWidth(value);
+      const fieldW = labelW + valueW;
+      if (fx !== mx && fx + fieldW > rx) {
+        fx = mx;
+        y += 6;
+      }
+      doc.text(label, fx, y);
+      doc.text(value, fx + labelW, y);
+      fx += fieldW + fieldGap;
+    });
     y += 12;
 
     // ── Sign-off — matches the pre-printed pad's own footer: a rubber-stamp
