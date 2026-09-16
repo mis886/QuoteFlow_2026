@@ -11,7 +11,6 @@ import {
 } from 'docx';
 import type { StockMovement, Customer, AppSettings, CompanyUnit } from './types';
 import { fmtDate as utilFmtDate } from './utils';
-import { supabase } from './supabase';
 
 type SigPerson = { name: string; designation: string; phone?: string };
 
