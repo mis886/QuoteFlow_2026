@@ -16,16 +16,19 @@ export function Dispatch() {
 
   const entries = data.dispatchEntries;
   // "Sent" is tracked purely by sentAt being set (see the "Dispatch → Sent"
-  // button below) — an entry lives in exactly one of the two tabs at a time.
+  // button below, and the Status dropdown in NewDispatchEntry.tsx) — an
+  // entry lives in exactly one of the two tabs at a time. Both tabs share
+  // the same Delivery/Self Pickup sub-split.
   const toDispatchEntries = entries.filter(e => !e.sentAt);
   const sentEntries = entries.filter(e => e.sentAt);
-  const selfPickupCount = toDispatchEntries.filter(e => e.fulfillmentType === 'self_pickup').length;
-  const deliveryCount = toDispatchEntries.filter(e => e.fulfillmentType === 'delivery').length;
+  const activeEntries = tab === 'toSend' ? sentEntries : toDispatchEntries;
+  const selfPickupCount = activeEntries.filter(e => e.fulfillmentType === 'self_pickup').length;
+  const deliveryCount = activeEntries.filter(e => e.fulfillmentType === 'delivery').length;
 
-  const visibleEntries = useMemo(() => {
-    const base = tab === 'toSend' ? sentEntries : toDispatchEntries.filter(e => e.fulfillmentType === subType);
-    return [...base].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-  }, [tab, toDispatchEntries, sentEntries, subType]);
+  const visibleEntries = useMemo(
+    () => activeEntries.filter(e => e.fulfillmentType === subType).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+    [activeEntries, subType],
+  );
 
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
 
@@ -59,25 +62,21 @@ export function Dispatch() {
           </div>
         </div>
 
-        {tab === 'toDispatch' && (
-          <>
-            <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
-            <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-              <div
-                onClick={() => setSubType('delivery')}
-                className={`flex items-center gap-1.5 px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${subType === 'delivery' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
-              >
-                <span className="w-[7px] h-[7px] rounded-full bg-sN shrink-0" /> Delivery ({deliveryCount})
-              </div>
-              <div
-                onClick={() => setSubType('self_pickup')}
-                className={`flex items-center gap-1.5 px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${subType === 'self_pickup' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
-              >
-                <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup ({selfPickupCount})
-              </div>
-            </div>
-          </>
-        )}
+        <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
+        <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
+          <div
+            onClick={() => setSubType('delivery')}
+            className={`flex items-center gap-1.5 px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${subType === 'delivery' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
+          >
+            <span className="w-[7px] h-[7px] rounded-full bg-sN shrink-0" /> Delivery ({deliveryCount})
+          </div>
+          <div
+            onClick={() => setSubType('self_pickup')}
+            className={`flex items-center gap-1.5 px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${subType === 'self_pickup' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
+          >
+            <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup ({selfPickupCount})
+          </div>
+        </div>
 
         <div className="ml-auto font-mono text-[10px] text-g500">{visibleEntries.length} entr{visibleEntries.length === 1 ? 'y' : 'ies'}</div>
       </div>
@@ -102,7 +101,7 @@ export function Dispatch() {
               </thead>
               <tbody>
                 {visibleEntries.length === 0 ? (
-                  <tr><td colSpan={11} className="text-center p-8 text-g400 text-[13px]">{tab === 'toSend' ? 'No entries sent yet' : `No ${subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries yet`}</td></tr>
+                  <tr><td colSpan={11} className="text-center p-8 text-g400 text-[13px]">No {subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries {tab === 'toSend' ? 'sent yet' : 'yet'}</td></tr>
                 ) : (
                   visibleEntries.map(entry => {
                     const order = orderFor(entry);

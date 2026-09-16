@@ -65,6 +65,11 @@ export function NewDispatchEntry() {
   const [remark, setRemark] = useState('');
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState('');
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState('');
+  // Which of Dispatch.tsx's two tabs this entry shows under — mirrors that
+  // page's own sentAt-based split (see its "Dispatch → Sent" button).
+  // Defaults to 'to_dispatch' for a brand-new entry; hydrated from the
+  // existing entry's sentAt below when editing one.
+  const [sentStatus, setSentStatus] = useState<'to_dispatch' | 'sent'>('to_dispatch');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -134,6 +139,7 @@ export function NewDispatchEntry() {
       setRemark(existing.remark || order.remark || '');
       setPromisedDeliveryDate(existing.promisedDeliveryDate || order.promisedDeliveryDate || '');
       setEstimatedDeliveryDate(existing.estimatedDeliveryDate || order.estimatedDeliveryDate || '');
+      setSentStatus(existing.sentAt ? 'sent' : 'to_dispatch');
       // Reopening a saved dispatch entry must show what was actually
       // dispatched, not the order's own (unchanged) confirmed quantities —
       // the entry carries its own items/insurance snapshot for exactly this.
@@ -324,11 +330,19 @@ export function NewDispatchEntry() {
       }
       await updateOrder(selectedOrderId, orderUpdates);
 
+      // Preserve the original sentAt timestamp if this entry was already
+      // "sent" and stays that way — only stamp a fresh one the moment it
+      // transitions from Order → Dispatch to Dispatch → Sent here. Going
+      // back to Order → Dispatch clears it (undefined → null via
+      // mapDispatchEntryToDB's `'sentAt' in d` check in store/index.tsx).
+      const sentAt = sentStatus === 'sent' ? (existingEntry?.sentAt || new Date().toISOString()) : undefined;
+
       const extra = {
         transporter: transporter || undefined,
         remark: remark || undefined,
         promisedDeliveryDate: promisedDeliveryDate || undefined,
         estimatedDeliveryDate: estimatedDeliveryDate || undefined,
+        sentAt,
         // This dispatch's own line items/insurance/value — what's actually
         // being dispatched right now, independent of the order's own totals.
         items,
@@ -448,6 +462,13 @@ export function NewDispatchEntry() {
                 {/* Dispatch Details — fulfillment type + the fields filled in by the customer-facing form, folded into Customer & Contact */}
                 <div className="p-[0_16px_14px]">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-[12px]">
+                    <div>
+                      <label className={labelCls}>Status</label>
+                      <select value={sentStatus} onChange={e => setSentStatus(e.target.value as 'to_dispatch' | 'sent')} className={selectCls}>
+                        <option value="to_dispatch">Order → Dispatch</option>
+                        <option value="sent">Dispatch → Sent</option>
+                      </select>
+                    </div>
                     <div>
                       <label className={labelCls}>Fulfillment Type</label>
                       <select value={type} onChange={e => setType(e.target.value as '' | DispatchFulfillmentType)} className={selectCls}>
