@@ -270,7 +270,7 @@ export async function downloadOutwardDOCX(
                 children: [
                   para([r('For Himalaya Terpenes Pvt. Ltd.', { size: 17 })], AlignmentType.RIGHT, 300),
                   para([r('Authorised Signatory', { size: 17 })], AlignmentType.RIGHT, 40),
-                  para([r(`${person.name}${person.designation ? ' | ' + person.designation : ''}${person.phone ? ' | Tel.: ' + person.phone : ''}`, { size: 18, color: '000000' })], AlignmentType.RIGHT, 0),
+                  para([r(`${person.name}${person.designation ? ' | ' + person.designation : ''}${person.phone ? ' | Tel.: ' + person.phone : ''}`, { size: 14, color: '000000' })], AlignmentType.RIGHT, 0),
                 ],
               }),
             ],
