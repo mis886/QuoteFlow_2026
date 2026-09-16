@@ -188,6 +188,7 @@ const PRODUCT_NAME_OPTIONS = PRODUCTS.map(p => p.name);
 // (2026-09-08: the Lot No auto-fill feature reuses this instead of matching
 // against PRODUCTS a second time).
 const codeForProductName = (name: string): string => PRODUCTS.find(p => p.name === name)?.code ?? '';
+const billingNameForProductName = (name: string): string => PRODUCTS.find(p => p.name === name)?.billingName ?? '';
 
 // MOU's own fixed option pair — pulled out to a const (was inline <option>s)
 // so the component below can widen it with an out-of-list auto-filled value
@@ -237,7 +238,7 @@ const TRANSPORTERS = [
 
 const emptyForm = {
   warehouse: '', otherWarehouse: '',
-  doNumber: '', doDate: '', lotNo: '', lotDate: '', productName: '', productCode: '',
+  doNumber: '', doDate: '', lotNo: '', lotDate: '', productName: '', productCode: '', billingName: '',
   numArticles: '', packing: '', totalQty: '', weightType: '', packagingType: '',
   partyName: '', otherParty: '', transporter: '', otherTransporter: '', fulfilmentType: '', note: '',
 };
@@ -388,6 +389,7 @@ export function NewStockOutward() {
         // Name combobox's own onChange already uses, same as
         // OutwardEditModal.tsx did.
         productCode: codeForProductName(data.product_name || ''),
+        billingName: billingNameForProductName(data.product_name || ''),
         numArticles: data.num_articles || '',
         packing: data.packing?.toString() ?? '',
         totalQty: data.total_qty?.toString() ?? '',
@@ -595,6 +597,9 @@ export function NewStockOutward() {
         // Delivery Order is worse than a blank one the user fills in).
         if (!f.productCode.trim()) {
           next.productCode = existing.product_code || codeForProductName(next.productName);
+        }
+        if (!f.billingName?.trim()) {
+          next.billingName = billingNameForProductName(next.productName);
         }
         // 2026-09-08: sourced from the party qty_* column (qtyAtWarehouse,
         // already read above to decide the "no stock" warning), NOT
@@ -911,12 +916,16 @@ export function NewStockOutward() {
                   className={inputCls}
                   options={PRODUCT_NAME_OPTIONS}
                   value={form.productName}
-                  onChange={v => setForm(f => ({ ...f, productName: v, productCode: codeForProductName(v) }))}
+                  onChange={v => setForm(f => ({ ...f, productName: v, productCode: codeForProductName(v), billingName: billingNameForProductName(v) }))}
                 />
               </div>
               <div>
                 <label className={labelCls}>Product Code</label>
                 <input className={`${inputCls} bg-g100 text-g600 cursor-not-allowed`} value={form.productCode} readOnly />
+              </div>
+              <div>
+                <label className={labelCls}>Billing Name</label>
+                <input className={`${inputCls} bg-g100 text-g600 cursor-not-allowed`} value={form.billingName} readOnly />
               </div>
             </div>
           </div>
