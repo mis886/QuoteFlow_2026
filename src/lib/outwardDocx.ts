@@ -45,7 +45,7 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
     mobile: '82918 87543, 78753 29222',
   },
   Reliable: {
-    name: 'Reliable Warehouse',
+    name: 'RELIABLE WAREHOUSE',
     address: 'Industrial Godown Shed No.86,87,88,89, GUT NO 243 PART, BHIWANDI WADA\nROAD, HOTEL MURLI MANOHAR, FOREST ROAD, KHUPARI, WADA - 421312',
     mobile: '90825 15434',
   },
@@ -135,12 +135,10 @@ export async function downloadOutwardDOCX(
     .maybeSingle();
   const hsnCode = catalogEntry?.hsn_code || '—';
 
-  const settingsSig: SigPerson | undefined = settings?.signatory_name
-    ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
-    : undefined;
-  // Outward movements have no per-record authorizedPerson (unlike Quote/
-  // Order) — priority: app_settings -> passed defaultSignatory -> hardcoded fallback.
-  const person: SigPerson = settingsSig || defaultSignatory || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
+  // Outward's footer signatory is hardcoded (unlike Quote/Order, which
+  // resolve it from settings.signatory_name/defaultSignatory) — the same
+  // person signs every Delivery Order regardless of warehouse or app_settings.
+  const person: SigPerson = { name: 'Samata Yadav', designation: '', phone: '+919987682255' };
 
   // Line-items table column widths (DXA) — same 7 columns/order as the PDF's
   // autoTable, following the multi-column line-items table pattern in
@@ -272,7 +270,7 @@ export async function downloadOutwardDOCX(
                 children: [
                   para([r('For Himalaya Terpenes Pvt. Ltd.', { size: 17 })], AlignmentType.RIGHT, 300),
                   para([r('Authorised Signatory', { size: 17 })], AlignmentType.RIGHT, 40),
-                  para([r(`${person.name} | ${person.designation}${person.phone ? ' | Tel.: ' + person.phone : ''}`, { size: 14, color: C_GRAY })], AlignmentType.RIGHT, 0),
+                  para([r(`${person.name}${person.designation ? ' | ' + person.designation : ''}${person.phone ? ' | Tel.: ' + person.phone : ''}`, { size: 14, color: C_GRAY })], AlignmentType.RIGHT, 0),
                 ],
               }),
             ],

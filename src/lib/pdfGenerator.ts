@@ -802,7 +802,7 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
     mobile: '82918 87543, 78753 29222',
   },
   Reliable: {
-    name: 'Reliable Warehouse',
+    name: 'RELIABLE WAREHOUSE',
     address: 'Industrial Godown Shed No.86,87,88,89, GUT NO 243 PART, BHIWANDI WADA\nROAD, HOTEL MURLI MANOHAR, FOREST ROAD, KHUPARI, WADA - 421312',
     mobile: '90825 15434',
   },
@@ -995,14 +995,10 @@ export async function generateOutwardPDF(
   doc.line(mx, y, rx, y);
   y += 10;
 
-  const settingsSig: SigPerson | undefined = settings?.signatory_name
-    ? { name: settings.signatory_name, designation: settings.signatory_title || 'CRM', phone: settings.signatory_phone || '' }
-    : undefined;
-  // Outward movements have no per-record authorizedPerson (unlike
-  // Quote/Order) — priority: app_settings → passed defaultSignatory → hardcoded fallback.
-  const person: SigPerson = settingsSig
-    || defaultSignatory
-    || { name: 'Samata Yadav', designation: 'CRM', phone: '+918657000610' };
+  // Outward's footer signatory is hardcoded (unlike Quote/Order, which
+  // resolve it from settings.signatory_name/defaultSignatory) — the same
+  // person signs every Delivery Order regardless of warehouse or app_settings.
+  const person: SigPerson = { name: 'Samata Yadav', designation: '', phone: '+919987682255' };
 
   const colTopY = y;
 
@@ -1043,7 +1039,7 @@ export async function generateOutwardPDF(
   yRight += 6;
 
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(110, 110, 110);
-  doc.text(person.name + ' | ' + person.designation + (person.phone ? ' | Tel.: ' + person.phone : ''), rx, yRight, { align: 'right' });
+  doc.text(person.name + (person.designation ? ' | ' + person.designation : '') + (person.phone ? ' | Tel.: ' + person.phone : ''), rx, yRight, { align: 'right' });
   yRight += 4;
 
   y = Math.max(yLeft, yRight);
