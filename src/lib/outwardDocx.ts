@@ -131,7 +131,7 @@ export async function downloadOutwardDOCX(
   const { data: catalogEntry } = await supabase
     .from('product_catalog')
     .select('hsn_code')
-    .eq('product_name', movement.productName)
+    .ilike('product_name', movement.productName.trim())
     .maybeSingle();
   const hsnCode = catalogEntry?.hsn_code || '—';
 
@@ -162,7 +162,7 @@ export async function downloadOutwardDOCX(
         // Order pad (no tagline/CIN/GSTIN/contact line — those don't appear
         // on it). Must stay in sync with the equivalent block in
         // generateOutwardPDF, pdfGenerator.ts.
-        para([r('Delivery Order', { size: 18, color: C_GRAY })], AlignmentType.CENTER, 6),
+        para([r('Delivery Order', { size: 18, bold: true, color: '000000' })], AlignmentType.CENTER, 6),
         para([r('Himalaya Terpenes Pvt. Ltd.', { bold: true, size: 26 })], AlignmentType.CENTER, 6),
         para([r('Unit No. 201, Building No. 5, Jogani Industrial Complex,', { size: 15, color: C_GRAY })], AlignmentType.CENTER, 2),
         para([r('V. N. Purav Marg, Sion-Chunabhatti, Mumbai - 400 022. INDIA', { size: 15, color: C_GRAY })], AlignmentType.CENTER, 40),

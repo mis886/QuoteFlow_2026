@@ -839,7 +839,7 @@ export async function generateOutwardPDF(
   const { data: catalogEntry } = await supabase
     .from('product_catalog')
     .select('hsn_code')
-    .eq('product_name', movement.productName)
+    .ilike('product_name', movement.productName.trim())
     .maybeSingle();
   const hsnCode = catalogEntry?.hsn_code || '—';
 
@@ -853,7 +853,7 @@ export async function generateOutwardPDF(
   // ── Header — four centered lines matching the pre-printed Delivery Order
   // pad (no tagline/CIN/GSTIN/contact line — those don't appear on it) ────
   let y: number;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40, 40, 40);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(0, 0, 0);
   doc.text('Delivery Order', pw / 2, 9, { align: 'center' });
   doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
   doc.text('Himalaya Terpenes Pvt. Ltd.', pw / 2, 17, { align: 'center' });
