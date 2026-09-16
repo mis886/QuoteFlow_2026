@@ -854,7 +854,12 @@ export async function generateOutwardPDF(
   // Quote/Order (which keep using standard A4 and may span multiple pages)
   // it should never need more than a single, content-sized page.
   const drawOutwardContent = (doc: jsPDF): number => {
-    const pw = 210;
+    // Read the page's actual width back from the doc rather than assuming
+    // 210 — jsPDF's constructor silently swaps a custom [width, height]
+    // array's values when orientation 'p' is passed but width > height (see
+    // the two-pass construction below for why), so the real width isn't
+    // reliably knowable ahead of time from the numbers passed in.
+    const pw = doc.internal.pageSize.getWidth();
     const mx = 15.4;
     const rx = pw - 15.4;
     const cw = rx - mx;
@@ -1061,16 +1066,30 @@ export async function generateOutwardPDF(
   // page's height after its content is already drawn would leave that
   // content positioned for the old, taller page — the page must be created
   // at its final size before anything is drawn onto it, hence measuring on
-  // a separate doc first rather than resizing this one in place.
+  // a separate doc first rather than resizing this one in place. Orientation
+  // 'p' is safe here — 400 > 210 already satisfies portrait, so jsPDF's
+  // orientation swap (see below) never triggers on this doc.
   const measureDoc = new jsPDF('p', 'mm', [210, 400]);
   const finalY = drawOutwardContent(measureDoc);
 
   // ── Pass 2: draw for real onto a doc sized to fit that content, with an
-  // ~18mm bottom margin below the footer.
-  const pageWidth = 210;
+  // ~18mm bottom margin below the footer. jsPDF's constructor silently
+  // swaps a custom [width, height] array's two values whenever they
+  // contradict the requested orientation — passing 'p' (portrait) with
+  // width(210) > height (true for any Outward DO under 210mm tall, i.e.
+  // almost always) makes it swap to a doc that's actually 210mm TALL and
+  // shorter than 210mm WIDE, silently clipping everything positioned off
+  // the intended 210mm width (Date/Dated fields, the whole right-aligned
+  // signature block). Picking 'p' vs 'l' based on which dimension is
+  // actually larger avoids the swap in both directions; drawOutwardContent
+  // itself reads the page's real width back from the doc rather than
+  // assuming 210, as a second safety net.
   const pageHeight = finalY + 18;
-  const doc = new jsPDF('p', 'mm', [pageWidth, pageHeight]);
-  const rx = pageWidth - 15.4;
+  const orientation = pageHeight >= 210 ? 'p' : 'l';
+  const doc = new jsPDF(orientation, 'mm', [210, pageHeight]);
+  const pw = doc.internal.pageSize.getWidth();
+  const ph = doc.internal.pageSize.getHeight();
+  const rx = pw - 15.4;
   drawOutwardContent(doc);
 
   // ── Page numbers — stamp "Page X of N" on every page ─────────────────────
@@ -1078,7 +1097,7 @@ export async function generateOutwardPDF(
   for (let p = 1; p <= pageCount; p++) {
     doc.setPage(p);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(100, 100, 100);
-    doc.text(`Page ${p} of ${pageCount}`, rx, pageHeight - 8, { align: 'right' });
+    doc.text(`Page ${p} of ${pageCount}`, rx, ph - 8, { align: 'right' });
   }
 
   if (download) doc.save((movement.doNumber || 'delivery_challan') + '_DC.pdf');
