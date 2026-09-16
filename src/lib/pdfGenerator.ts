@@ -812,8 +812,8 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
     mobile: '82918 87543, 78753 29222',
   },
   BALAJI: {
-    name: 'C/o Shri Balaji Warehouse',
-    address: 'Godown No 1240/3-4, 1020/3, Gr Floor, Dropati Chaya Compound, Old Agra Road, Purna Village, Tal. Bhiwandi, Thane - 421302',
+    name: 'C/o SHRI BALAJI WAREHOUSE',
+    address: 'Godown No 1240/3-4, 1020/3, Gr Floor, Dropati Chaya Compound,\nOld Agra Road, Purna Village, Tal. Bhiwandi, Thane - 421302',
     mobile: '82918 87543, 78753 29222',
   },
 };
