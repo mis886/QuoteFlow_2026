@@ -37,7 +37,7 @@ export function NewDispatchEntry() {
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
-  const [type, setType] = useState<DispatchFulfillmentType>('delivery');
+  const [type, setType] = useState<'' | DispatchFulfillmentType>('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [existingEntryId, setExistingEntryId] = useState<string | null>(null);
 
@@ -129,7 +129,7 @@ export function NewDispatchEntry() {
       setExistingEntryId(existing.id);
       // Entry's own saved value wins; fall back to what hydrateFromOrder just
       // set from the order rather than blanking it when the entry has none.
-      setType(existing.fulfillmentType || order.fulfillmentType || 'delivery');
+      setType(existing.fulfillmentType || order.fulfillmentType || '');
       setTransporter(existing.transporter || order.transporter || '');
       setRemark(existing.remark || order.remark || '');
       setPromisedDeliveryDate(existing.promisedDeliveryDate || order.promisedDeliveryDate || '');
@@ -179,6 +179,7 @@ export function NewDispatchEntry() {
 
   const handleSubmit = async () => {
     if (!selectedOrderId || !selectedOrder || saving) return;
+    if (!type) { setError('Please select Fulfilment Type: Delivery or Self Pickup.'); return; }
     setSaving(true);
     setError('');
     try {
@@ -336,9 +337,9 @@ export function NewDispatchEntry() {
       };
 
       if (existingEntryId) {
-        await updateDispatchEntry(existingEntryId, { fulfillmentType: type, ...extra });
+        await updateDispatchEntry(existingEntryId, { fulfillmentType: type as DispatchFulfillmentType, ...extra });
       } else {
-        await addDispatchEntry(selectedOrderId, type, extra);
+        await addDispatchEntry(selectedOrderId, type as DispatchFulfillmentType, extra);
       }
       navigate('/dispatch');
     } catch (err: any) {
@@ -449,7 +450,8 @@ export function NewDispatchEntry() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-[12px]">
                     <div>
                       <label className={labelCls}>Fulfillment Type</label>
-                      <select value={type} onChange={e => setType(e.target.value as DispatchFulfillmentType)} className={selectCls}>
+                      <select value={type} onChange={e => setType(e.target.value as '' | DispatchFulfillmentType)} className={selectCls}>
+                        <option value="">Select...</option>
                         <option value="delivery">Delivery</option>
                         <option value="self_pickup">Self Pickup</option>
                       </select>
