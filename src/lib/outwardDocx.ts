@@ -138,7 +138,7 @@ export async function downloadOutwardDOCX(
   // Outward's footer signatory is hardcoded (unlike Quote/Order, which
   // resolve it from settings.signatory_name/defaultSignatory) — the same
   // person signs every Delivery Order regardless of warehouse or app_settings.
-  const person: SigPerson = { name: 'Samata Yadav', designation: '', phone: '+919987682255' };
+  const person: SigPerson = { name: 'Samata Yadav', designation: 'DISPATCH', phone: '+919987682255' };
 
   // Line-items table column widths (DXA) — same 7 columns/order as the PDF's
   // autoTable, following the multi-column line-items table pattern in

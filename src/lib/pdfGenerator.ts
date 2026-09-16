@@ -998,7 +998,7 @@ export async function generateOutwardPDF(
   // Outward's footer signatory is hardcoded (unlike Quote/Order, which
   // resolve it from settings.signatory_name/defaultSignatory) — the same
   // person signs every Delivery Order regardless of warehouse or app_settings.
-  const person: SigPerson = { name: 'Samata Yadav', designation: '', phone: '+919987682255' };
+  const person: SigPerson = { name: 'Samata Yadav', designation: 'DISPATCH', phone: '+919987682255' };
 
   const colTopY = y;
 
