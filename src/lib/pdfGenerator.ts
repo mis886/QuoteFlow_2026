@@ -833,7 +833,9 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
  * Unlike every other generator in this file, the page is sized to fit this
  * document's own content (single item, fixed-height footer) instead of a
  * fixed A4 height — see drawOutwardContent's two-pass measure-then-draw
- * comment below for why.
+ * comment below for why. Also 297mm wide (A4 landscape width) rather than
+ * 210 (A4 portrait), so the 10-column line-items table has room to spread
+ * out instead of wrapping Party Name/Transporter into cramped cells.
  */
 export async function generateOutwardPDF(
   movement: StockMovement,
@@ -857,11 +859,12 @@ export async function generateOutwardPDF(
   // Quote/Order (which keep using standard A4 and may span multiple pages)
   // it should never need more than a single, content-sized page.
   const drawOutwardContent = (doc: jsPDF): number => {
-    // Read the page's actual width back from the doc rather than assuming
-    // 210 — jsPDF's constructor silently swaps a custom [width, height]
-    // array's values when orientation 'p' is passed but width > height (see
-    // the two-pass construction below for why), so the real width isn't
-    // reliably knowable ahead of time from the numbers passed in.
+    // Read the page's actual width back from the doc rather than assuming a
+    // fixed number — jsPDF's constructor silently swaps a custom
+    // [width, height] array's values when orientation 'p' is passed but
+    // width > height (see the two-pass construction below for why), so the
+    // real width isn't reliably knowable ahead of time from the numbers
+    // passed in.
     const pw = doc.internal.pageSize.getWidth();
     const mx = 15.4;
     const rx = pw - 15.4;
@@ -1073,26 +1076,29 @@ export async function generateOutwardPDF(
   // content positioned for the old, taller page — the page must be created
   // at its final size before anything is drawn onto it, hence measuring on
   // a separate doc first rather than resizing this one in place. Orientation
-  // 'p' is safe here — 400 > 210 already satisfies portrait, so jsPDF's
-  // orientation swap (see below) never triggers on this doc.
-  const measureDoc = new jsPDF('p', 'mm', [210, 400]);
+  // 'p' is safe here — 400 > 297 already satisfies portrait, so jsPDF's
+  // orientation swap (see below) never triggers on this doc. 297mm (A4
+  // landscape width) rather than 210 (A4 portrait) so the 10-column
+  // line-items table (Product Name through Fulfilment Type) has room to
+  // breathe instead of wrapping Party Name/Transporter into cramped cells.
+  const measureDoc = new jsPDF('p', 'mm', [297, 400]);
   const finalY = drawOutwardContent(measureDoc);
 
   // ── Pass 2: draw for real onto a doc sized to fit that content, with an
   // ~18mm bottom margin below the footer. jsPDF's constructor silently
   // swaps a custom [width, height] array's two values whenever they
   // contradict the requested orientation — passing 'p' (portrait) with
-  // width(210) > height (true for any Outward DO under 210mm tall, i.e.
-  // almost always) makes it swap to a doc that's actually 210mm TALL and
-  // shorter than 210mm WIDE, silently clipping everything positioned off
-  // the intended 210mm width (Date/Dated fields, the whole right-aligned
+  // width(297) > height (true for any Outward DO under 297mm tall, i.e.
+  // almost always) makes it swap to a doc that's actually 297mm TALL and
+  // shorter than 297mm WIDE, silently clipping everything positioned off
+  // the intended 297mm width (Date/Dated fields, the whole right-aligned
   // signature block). Picking 'p' vs 'l' based on which dimension is
   // actually larger avoids the swap in both directions; drawOutwardContent
   // itself reads the page's real width back from the doc rather than
-  // assuming 210, as a second safety net.
+  // assuming a fixed number, as a second safety net.
   const pageHeight = finalY + 18;
-  const orientation = pageHeight >= 210 ? 'p' : 'l';
-  const doc = new jsPDF(orientation, 'mm', [210, pageHeight]);
+  const orientation = pageHeight >= 297 ? 'p' : 'l';
+  const doc = new jsPDF(orientation, 'mm', [297, pageHeight]);
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
   const rx = pw - 15.4;
