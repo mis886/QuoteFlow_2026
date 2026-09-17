@@ -147,11 +147,15 @@ export function SendEmailModal(props: Props) {
   // — this is the whole attachment list for a dispatch email (no PDF, no
   // toggling; every uploaded document goes out).
   const dispatchAttachments = isDispatch ? (props as DispatchProps).attachments : [];
-  // Body lists each attached document by its actual file name (what's shown
-  // in the Attachments panel below), not the generic field label.
+  // Body lists each attached document by its human-readable category label
+  // (Invoice / Eway Bill, LR, Supplier Portal, Term Card Attachment, COA) —
+  // matching the reference email's "Invoice Document" / "LR" style — not
+  // the raw uploaded file name. The actual file names are shown separately
+  // in the Attachments panel below, where each label is already paired with
+  // its real file name.
   const dispatchDocLines = dispatchAttachments.length
-    ? dispatchAttachments.map(a => ` ${a.fileName}`).join('\n')
-    : ' (no documents uploaded yet)';
+    ? dispatchAttachments.map(a => `◽ ${a.label}`).join('\n')
+    : '◽ (no documents uploaded yet)';
 
   const defaultSubject = isQuote
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
