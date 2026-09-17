@@ -8,7 +8,7 @@ import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
-import { Upload, ExternalLink, Loader2, Search, X } from 'lucide-react';
+import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
@@ -1041,8 +1041,17 @@ export function NewDispatchEntry() {
           )}
 
           <div className="flex items-center justify-end gap-2 pt-1 pb-2">
-            <Button variant="secondary" onClick={() => navigate('/dispatch')}>Cancel</Button>
             <Button variant="dark" disabled={!selectedOrderId || saving} onClick={handleSubmit}>{saving ? 'Saving…' : 'Save'}</Button>
+            {/* Wiring (send flow, attachments, subject/body) to be added later —
+                this is just the button, placed to match the Save / Email to
+                Client / divider / Cancel order used on the Order and Quote
+                forms' footers. */}
+            <Button variant="dark">
+              <Mail size={12} />
+              Email to Client
+            </Button>
+            <div className="h-5 w-px bg-g200 mx-1" />
+            <Button variant="secondary" onClick={() => navigate('/dispatch')}>Cancel</Button>
           </div>
         </div>
       </div>
