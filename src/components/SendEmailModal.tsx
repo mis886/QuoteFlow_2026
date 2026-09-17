@@ -158,7 +158,12 @@ export function SendEmailModal(props: Props) {
     : isOutward
     ? `Delivery Order ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : isDispatch
-    ? `Dispatch Documents${docId ? ` — ${docId}` : ''} — HIMALAYA TERPENES PVT. LTD.`
+    // Matches how these are actually written by hand — "INV NO. -<invoice
+    // number> <CUSTOMER NAME>" (see the reference "Fwd: INV NO. -W1494
+    // PEDDINGTON LUBRICANTS" email) — not a generic "Dispatch Documents —"
+    // subject. docId already resolves to the entry's own Invoice Number
+    // field first, falling back to the entry id only if that's blank.
+    ? `INV NO. -${docId}${customer?.name ? ` ${customer.name.toUpperCase()}` : ''}`
     : `Proforma Invoice ${docId} — HIMALAYA TERPENES PVT. LTD.`;
 
   // Signatory: prefer doc's saved authorizedPerson → app_settings → passed defaultSignatory
