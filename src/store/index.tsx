@@ -629,6 +629,16 @@ const mapEnquiryToDB = (e: any) => {
     items: (d.items || []) as OrderItem[],
     insurance: d.insurance ?? undefined,
     value: d.value ?? undefined,
+    invoiceEwayBillUrl: d.invoice_eway_bill_url || undefined,
+    invoiceEwayBillName: d.invoice_eway_bill_name || undefined,
+    coaUrl: d.coa_url || undefined,
+    coaName: d.coa_name || undefined,
+    lrUrl: d.lr_url || undefined,
+    lrName: d.lr_name || undefined,
+    supplierPortalUrl: d.supplier_portal_url || undefined,
+    supplierPortalName: d.supplier_portal_name || undefined,
+    termCardAttachmentUrl: d.term_card_attachment_url || undefined,
+    termCardAttachmentName: d.term_card_attachment_name || undefined,
   });
 
   const mapDispatchEntryToDB = (d: any) => {
@@ -651,6 +661,16 @@ const mapEnquiryToDB = (e: any) => {
     if ('items' in d) obj.items = d.items ?? [];
     if ('insurance' in d) obj.insurance = d.insurance ?? null;
     if ('value' in d) obj.value = d.value ?? null;
+    if ('invoiceEwayBillUrl' in d) obj.invoice_eway_bill_url = d.invoiceEwayBillUrl || null;
+    if ('invoiceEwayBillName' in d) obj.invoice_eway_bill_name = d.invoiceEwayBillName || null;
+    if ('coaUrl' in d) obj.coa_url = d.coaUrl || null;
+    if ('coaName' in d) obj.coa_name = d.coaName || null;
+    if ('lrUrl' in d) obj.lr_url = d.lrUrl || null;
+    if ('lrName' in d) obj.lr_name = d.lrName || null;
+    if ('supplierPortalUrl' in d) obj.supplier_portal_url = d.supplierPortalUrl || null;
+    if ('supplierPortalName' in d) obj.supplier_portal_name = d.supplierPortalName || null;
+    if ('termCardAttachmentUrl' in d) obj.term_card_attachment_url = d.termCardAttachmentUrl || null;
+    if ('termCardAttachmentName' in d) obj.term_card_attachment_name = d.termCardAttachmentName || null;
     obj.updated_at = new Date().toISOString();
     return obj;
   };

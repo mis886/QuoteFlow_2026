@@ -513,6 +513,19 @@ export interface DispatchEntry {
   items?: OrderItem[];
   insurance?: number;
   value?: number;
+  // "Documents Attachment" card shown in the "Dispatch → Sent" view (see
+  // src/pages/Dispatch.tsx). Each pair is a public Supabase Storage URL +
+  // the original file name, uploaded to the 'dispatch-documents' bucket.
+  invoiceEwayBillUrl?: string;
+  invoiceEwayBillName?: string;
+  coaUrl?: string;
+  coaName?: string;
+  lrUrl?: string;
+  lrName?: string;
+  supplierPortalUrl?: string;
+  supplierPortalName?: string;
+  termCardAttachmentUrl?: string;
+  termCardAttachmentName?: string;
 }
 
 // ── Tickets (internal issue-tracking) ──────────────────────────────
