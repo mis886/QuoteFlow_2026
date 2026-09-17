@@ -8,19 +8,21 @@ import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
-import { Upload, ExternalLink } from 'lucide-react';
-import { uploadPublicFile } from '../lib/supabase';
+import { Upload, ExternalLink, Loader2, Search, X } from 'lucide-react';
+import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
 // entry's Status is switched to "Dispatch → Sent" (see the sentStatus select
 // below). Mirrors the "PO Document" field on the Order form (NewOrder.tsx):
 // a file picked here is only uploaded when the whole form is saved, not
-// immediately on selection.
-type DispatchDocKey = 'invoiceEwayBill' | 'coa' | 'lr' | 'supplierPortal' | 'termCardAttachment';
+// immediately on selection. COA is handled separately below (see the COA
+// picker state further down) — it reuses the shared coa_document library
+// (search-and-attach, or upload-new-and-attach) the same way
+// NewStockInward.tsx's "COA" section does, rather than a plain file input.
+type DispatchDocKey = 'invoiceEwayBill' | 'lr' | 'supplierPortal' | 'termCardAttachment';
 
 const DISPATCH_DOC_FIELDS: { key: DispatchDocKey; label: string; urlKey: keyof DispatchEntry; nameKey: keyof DispatchEntry; slug: string }[] = [
   { key: 'invoiceEwayBill', label: 'Invoice / Eway Bill', urlKey: 'invoiceEwayBillUrl', nameKey: 'invoiceEwayBillName', slug: 'invoice-eway-bill' },
-  { key: 'coa', label: 'COA', urlKey: 'coaUrl', nameKey: 'coaName', slug: 'coa' },
   { key: 'lr', label: 'LR', urlKey: 'lrUrl', nameKey: 'lrName', slug: 'lr' },
   { key: 'supplierPortal', label: 'Supplier Portal', urlKey: 'supplierPortalUrl', nameKey: 'supplierPortalName', slug: 'supplier-portal' },
   { key: 'termCardAttachment', label: 'Term Card Attachment', urlKey: 'termCardAttachmentUrl', nameKey: 'termCardAttachmentName', slug: 'term-card-attachment' },
@@ -114,6 +116,93 @@ export function NewDispatchEntry() {
     setTouchedDocs(prev => new Set(prev).add(key));
   };
 
+  // COA — search the shared coa_document library (by product name or lot no.)
+  // and attach one, or upload a brand-new certificate there. Adapted from the
+  // identical picker in NewStockInward.tsx's "COA" section: picking or
+  // uploading a doc just sets coaFileName/coaFileUrl locally (+ coaTouched),
+  // same as every other Documents Attachment field — nothing is written to
+  // this dispatch entry until Save runs, below.
+  const [coaFileName, setCoaFileName] = useState<string | undefined>(undefined);
+  const [coaFileUrl, setCoaFileUrl] = useState<string | undefined>(undefined);
+  const [coaTouched, setCoaTouched] = useState(false);
+  const [coaSearch, setCoaSearch] = useState('');
+  const [coaSearchDebounced, setCoaSearchDebounced] = useState('');
+  const [coaResults, setCoaResults] = useState<any[]>([]);
+  const [coaSearchLoading, setCoaSearchLoading] = useState(false);
+  const [newCoaFile, setNewCoaFile] = useState<File | null>(null);
+  const [coaUploading, setCoaUploading] = useState(false);
+  const [coaUploadError, setCoaUploadError] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setCoaSearchDebounced(coaSearch.trim()), 350);
+    return () => clearTimeout(t);
+  }, [coaSearch]);
+
+  useEffect(() => {
+    if (sentStatus !== 'sent') return;
+    const controller = new AbortController();
+    setCoaSearchLoading(true);
+    let query = supabase.from('coa_document').select('*').order('created_at', { ascending: false }).limit(20).abortSignal(controller.signal);
+    if (coaSearchDebounced) query = query.or(`product_name.ilike.%${coaSearchDebounced}%,lot_no.ilike.%${coaSearchDebounced}%`);
+    query.then(({ data: rows, error }) => {
+      if (controller.signal.aborted) return;
+      if (error) { console.error(error); setCoaResults([]); setCoaSearchLoading(false); return; }
+      setCoaResults(rows ?? []);
+      setCoaSearchLoading(false);
+    });
+    return () => controller.abort();
+  }, [coaSearchDebounced, sentStatus]);
+
+  const selectCoaDoc = (doc: any) => {
+    setCoaFileName(doc.file_name);
+    setCoaFileUrl(resolveCoaStorageUrl(doc.storage_path));
+    setCoaTouched(true);
+  };
+
+  const clearCoa = () => {
+    setCoaFileName(undefined);
+    setCoaFileUrl(undefined);
+    setCoaTouched(true);
+  };
+
+  const handleUploadNewCoa = async () => {
+    setCoaUploadError('');
+    if (!newCoaFile) { setCoaUploadError('Choose a file to upload.'); return; }
+    setCoaUploading(true);
+    try {
+      const ext = newCoaFile.name.split('.').pop() || 'bin';
+      // No single "product name" field applies to a dispatch (an order can
+      // carry several line items) — fall back through the first line item's
+      // product, then the customer name, so the shared library still gets a
+      // meaningful, searchable label instead of a blank one.
+      const coaProductName = (items[0]?.desc || selectedOrder?.cust || existingEntryId || selectedOrderId || 'Dispatch').trim();
+      const safeProductName = coaProductName.replace(/[^a-zA-Z0-9]/g, '_');
+      const path = `COA/${safeProductName}_${Date.now()}.${ext}`;
+      const { data: url, error: uploadError } = await uploadPublicFile('coa-gc-documents', path, newCoaFile);
+      if (uploadError || !url) throw uploadError || new Error('Upload failed');
+
+      const { data: row, error: insertError } = await supabase.from('coa_document').insert({
+        product_name: coaProductName,
+        lot_no: null,
+        doc_type: 'COA',
+        file_name: newCoaFile.name,
+        storage_path: url,
+        file_size: newCoaFile.size,
+        uploaded_by: user?.email ?? null,
+        notes: `Dispatch ${existingEntryId || selectedOrderId || ''}`.trim(),
+      }).select().single();
+      if (insertError || !row) throw insertError || new Error('Could not save document reference');
+
+      selectCoaDoc(row);
+      setCoaResults(prev => [row, ...prev]);
+      setNewCoaFile(null);
+    } catch (e: any) {
+      console.error(e);
+      setCoaUploadError(e?.message || 'Failed to upload document.');
+    }
+    setCoaUploading(false);
+  };
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -185,18 +274,18 @@ export function NewDispatchEntry() {
       setSentStatus(existing.sentAt ? 'sent' : 'to_dispatch');
       setExistingDocUrls({
         invoiceEwayBill: existing.invoiceEwayBillUrl,
-        coa: existing.coaUrl,
         lr: existing.lrUrl,
         supplierPortal: existing.supplierPortalUrl,
         termCardAttachment: existing.termCardAttachmentUrl,
       });
       setExistingDocNames({
         invoiceEwayBill: existing.invoiceEwayBillName,
-        coa: existing.coaName,
         lr: existing.lrName,
         supplierPortal: existing.supplierPortalName,
         termCardAttachment: existing.termCardAttachmentName,
       });
+      setCoaFileName(existing.coaName || undefined);
+      setCoaFileUrl(existing.coaUrl || undefined);
       // Reopening a saved dispatch entry must show what was actually
       // dispatched, not the order's own (unchanged) confirmed quantities —
       // the entry carries its own items/insurance snapshot for exactly this.
@@ -416,6 +505,13 @@ export function NewDispatchEntry() {
           (docUpdates as any)[field.nameKey] = undefined;
         }
       }
+      // COA is attached via the search/upload picker above, not a raw file
+      // input, so it's already got a resolved URL by the time we get here —
+      // just persist whatever's currently picked (or clear it) if touched.
+      if (coaTouched) {
+        docUpdates.coaUrl = coaFileUrl || undefined;
+        docUpdates.coaName = coaFileName || undefined;
+      }
 
       const extra = {
         transporter: transporter || undefined,
@@ -627,7 +723,7 @@ export function NewDispatchEntry() {
           {selectedOrder && sentStatus === 'sent' && (
             <div className="bg-white border border-g200">
               <div className={sectionHeaderCls}>Documents Attachment</div>
-              <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-5 gap-[12px]">
+              <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-4 gap-[12px]">
                 {DISPATCH_DOC_FIELDS.map(field => {
                   const file = docFiles[field.key];
                   const localUrl = docLocalUrls[field.key];
@@ -669,6 +765,72 @@ export function NewDispatchEntry() {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* COA — search the shared coa_document library (same widget as the
+                  Stock Movement "Log New Inward" form's COA section) and attach an
+                  existing certificate, or upload a brand-new one to the library. */}
+              <div className="px-[16px] pb-[14px] pt-[2px] border-t border-g200 mt-[2px]">
+                <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[6px]">COA</label>
+                {coaFileName ? (
+                  <div className="flex items-center justify-between gap-2 bg-g100 border border-g200 rounded-[3px] px-2.5 py-2">
+                    <div className="min-w-0">
+                      <div className="text-[12px] font-semibold text-blk truncate">{coaFileName}</div>
+                      {coaFileUrl && (
+                        <a href={coaFileUrl} target="_blank" rel="noopener noreferrer" className="text-[10.5px] text-red-mrt hover:underline">View PDF</a>
+                      )}
+                    </div>
+                    <button type="button" onClick={clearCoa} className="p-1 text-g400 hover:text-red-mrt shrink-0" title="Remove"><X size={14} /></button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative mb-2">
+                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-g400 pointer-events-none" />
+                      <input
+                        type="text" value={coaSearch} onChange={e => setCoaSearch(e.target.value)}
+                        placeholder="Search existing COA by product or lot no."
+                        className={`${inputCls} pl-8 pr-8`}
+                      />
+                      {coaSearchLoading && <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-g400 animate-spin" />}
+                    </div>
+                    <div className="max-h-[160px] overflow-y-auto border border-g200 rounded-[3px] divide-y divide-g100 mb-3">
+                      {coaResults.length === 0 ? (
+                        <div className="text-center py-4 text-g400 text-xs italic">
+                          {coaSearchLoading ? 'Searching…' : 'No matching COA documents found.'}
+                        </div>
+                      ) : (
+                        coaResults.map(doc => (
+                          <button
+                            type="button" key={doc.id} onClick={() => selectCoaDoc(doc)}
+                            className="w-full text-left flex items-center gap-3 p-2 hover:bg-g50"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[12px] font-semibold text-blk truncate">{doc.product_name}{doc.lot_no ? ` — Lot ${doc.lot_no}` : ''}</div>
+                              <div className="text-[10px] text-g500 truncate">{doc.file_name}</div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    <div className="pt-2 border-t border-g200">
+                      <div className="text-[10px] font-medium text-g500 mb-2 uppercase tracking-wider font-mono">Or Upload New COA</div>
+                      <input
+                        type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                        onChange={e => setNewCoaFile(e.target.files?.[0] ?? null)}
+                        className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-g100 file:text-g700 hover:file:bg-g200"
+                      />
+                      {coaUploadError && <p className="mt-2 text-[10.5px] text-red-mrt font-medium">{coaUploadError}</p>}
+                      <div className="flex justify-end mt-2">
+                        <button
+                          type="button" onClick={handleUploadNewCoa} disabled={coaUploading}
+                          className="bg-blk hover:bg-g700 text-white text-xs font-semibold px-4 py-2 rounded shadow-sm disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+                        >
+                          {coaUploading ? <><Loader2 size={14} className="animate-spin"/> Uploading...</> : 'Upload & Attach'}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
