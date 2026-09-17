@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, Paperclip, Mail, Loader2 } from 'lucide-react';
-import { Quote, Order, StockMovement, Customer, AppSettings, AuthorizedSignatory } from '../lib/types';
+import { Quote, Order, StockMovement, DispatchEntry, Customer, AppSettings, AuthorizedSignatory } from '../lib/types';
 import { Button } from './ui';
 import { generateQuotePDF, generateOrderPDF, generateOutwardPDF } from '../lib/pdfGenerator';
 import { sendViaGmailAsUser } from '../lib/gmail';
@@ -9,6 +9,9 @@ import { useAppStore } from '../store';
 
 const SHISHIR = 'shishir@himalayaterpene.com';
 const BHIWANDI_EMAIL = 'bhiwandi@himalayaterpene.com';
+// Fixed customer-feedback form link appended to every Dispatch → Sent email
+// (see DispatchProps below) — the same URL on every send, not per-entry.
+const DISPATCH_FEEDBACK_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScBnStF2lqFUT8KXSRQjefuzEgbU5Zxxt8TtrpU_UJprs0Zbw/viewform';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 interface CCCandidate { name: string; role?: string; email: string; isPrimary?: boolean; }
@@ -78,7 +81,13 @@ interface BaseProps {
 interface QuoteProps extends BaseProps { mode: 'quote'; doc: Quote; }
 interface OrderProps extends BaseProps { mode: 'order'; doc: Order; relatedQuote?: Quote; }
 interface OutwardProps extends BaseProps { mode: 'outward'; doc: StockMovement; }
-type Props = QuoteProps | OrderProps | OutwardProps;
+// Attachments here are already-uploaded documents living on the dispatch
+// entry (the 4 Documents Attachment fields + COA — see NewDispatchEntry.tsx)
+// — this modal fetches and attaches each one as-is, rather than generating a
+// PDF the way Quote/Order/Outward do.
+export interface DispatchEmailAttachment { label: string; url: string; fileName: string; }
+interface DispatchProps extends BaseProps { mode: 'dispatch'; doc: DispatchEntry; attachments: DispatchEmailAttachment[]; }
+type Props = QuoteProps | OrderProps | OutwardProps | DispatchProps;
 
 const OAUTH_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -91,8 +100,9 @@ export function SendEmailModal(props: Props) {
   const primaryContact = getPrimaryContact(customer, siteId);
   const primaryEmail = primaryContact?.email ?? '';
 
-  const isQuote   = props.mode === 'quote';
-  const isOutward = props.mode === 'outward';
+  const isQuote    = props.mode === 'quote';
+  const isOutward  = props.mode === 'outward';
+  const isDispatch = props.mode === 'dispatch';
 
   // Outward's default To/CC depends on Fulfilment Type — see the block below.
   // 'Both' or an unset Fulfilment Type falls through to no forced defaults
@@ -112,24 +122,38 @@ export function SendEmailModal(props: Props) {
         ...((user?.email ?? '').toLowerCase() === SHISHIR
           ? ['sales@himalayaterpene.com', 'anil@himalayaterpene.com']
           : [SHISHIR, 'anil@himalayaterpene.com']),
-        ...(props.mode === 'order' ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'] : []),
+        ...(props.mode === 'order' || props.mode === 'dispatch' ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'] : []),
       ];
 
   // For Quote/Order, `.id` IS the human-readable reference (HTP-2026-685,
   // ORD-2026-035). For StockMovement, `.id` is a database UUID — completely
   // different thing, so the display id there must come from `.doNumber`
   // instead, or every emailed file/subject/Ref would show a UUID.
-  const docId = isOutward ? ((props.doc as StockMovement).doNumber || '') : props.doc.id;
-  const pdfName = isQuote ? `${docId}.pdf` : isOutward ? `${docId}_DC.pdf` : `${docId}_PI.pdf`;
+  const docId = isOutward
+    ? ((props.doc as StockMovement).doNumber || '')
+    : isDispatch
+    ? ((props.doc as DispatchEntry).invoiceNumber || props.doc.id)
+    : props.doc.id;
+  const pdfName = isQuote ? `${docId}.pdf` : isOutward ? `${docId}_DC.pdf` : isDispatch ? '' : `${docId}_PI.pdf`;
 
   // Orders/Outward don't have a DB `attachments` column, so this is
   // quote-only — (props.doc as any).attachments is simply undefined otherwise.
   const coaGcDocs = isQuote ? ((props.doc as any).attachments ?? []).filter((a: any) => a.docType === 'COA') : [];
 
+  // Dispatch's already-uploaded documents, passed in by NewDispatchEntry.tsx
+  // — this is the whole attachment list for a dispatch email (no PDF, no
+  // toggling; every uploaded document goes out).
+  const dispatchAttachments = isDispatch ? (props as DispatchProps).attachments : [];
+  const dispatchDocLines = dispatchAttachments.length
+    ? dispatchAttachments.map(a => ` ${a.label}`).join('\n')
+    : ' (no documents uploaded yet)';
+
   const defaultSubject = isQuote
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : isOutward
     ? `Delivery Order ${docId} — HIMALAYA TERPENES PVT. LTD.`
+    : isDispatch
+    ? `Dispatch Documents${docId ? ` — ${docId}` : ''} — HIMALAYA TERPENES PVT. LTD.`
     : `Proforma Invoice ${docId} — HIMALAYA TERPENES PVT. LTD.`;
 
   // Signatory: prefer doc's saved authorizedPerson → app_settings → passed defaultSignatory
@@ -157,6 +181,8 @@ export function SendEmailModal(props: Props) {
     ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
     : isOutward
     ? `${greeting}\n\nPlease find attached the Delivery Order ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
+    : isDispatch
+    ? `${greeting}\n\nWe have dispatched your goods. Attached here with are the following \ndocuments for your reference:\n${dispatchDocLines}\n\nWe request you to kindly get in touch with us for any clarifications.\n\nPS: The Tax Invoice is Digitally Signed. Kindly take a printout for your \nrecords. No hard copy will be couriered to you.\n\nImp: Please update any changes to your email ID, Address (Bill To & Ship \nTo), Telephone no., GST No. etc., for updating our records.\n\nWe request you to please fill out this Customer feedback form:\n${DISPATCH_FEEDBACK_FORM_URL}\n\n${sigBlock}`
     : `${greeting}\n\nPlease find attached our Proforma Invoice ${docId} for the requirements discussed.\n\nKindly arrange for the Purchase Order at your earliest convenience.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`;
 
   const [to, setTo]           = useState(isOutwardDelivery ? BHIWANDI_EMAIL : primaryEmail);
@@ -211,38 +237,50 @@ export function SendEmailModal(props: Props) {
     setErrorMsg('');
 
     try {
-      let doc: any;
-      if (isQuote) {
-        doc = generateQuotePDF(props.doc as Quote, customer, props.settings, props.defaultSignatory, false);
-      } else if (isOutward) {
-        // Outward has no unitId/company-unit concept on the form — always
-        // falls back to whichever unit is marked default, same as Quote/
-        // Order's own fallback when their unitId is unset. generateOutwardPDF
-        // is async (it looks up the product's HSN code from product_catalog),
-        // not because Outward carries any bank data — it carries none.
-        const unit = data.units.find(u => u.is_default);
-        doc = await generateOutwardPDF(props.doc as StockMovement, customer, props.settings, props.defaultSignatory, unit, false);
+      const attachments: { base64: string; fileName: string; mimeType: string }[] = [];
+
+      if (isDispatch) {
+        // No PDF is generated for a dispatch email — every attachment is an
+        // already-uploaded document living on this entry (Documents
+        // Attachment fields + COA), fetched and base64-encoded as-is.
+        for (const a of dispatchAttachments) {
+          const { base64, mimeType } = await urlToBase64(a.url);
+          attachments.push({ base64, fileName: a.fileName, mimeType });
+        }
       } else {
-        const op = props as OrderProps;
-        const orderDoc = props.doc as Order;
-        const orderUnit = orderDoc.unitId
-          ? data.units.find(u => u.id === orderDoc.unitId)
-          : data.units.find(u => u.is_default);
-        doc = await generateOrderPDF(orderDoc, op.relatedQuote, customer, props.settings, props.defaultSignatory, orderUnit, false);
-      }
+        let doc: any;
+        if (isQuote) {
+          doc = generateQuotePDF(props.doc as Quote, customer, props.settings, props.defaultSignatory, false);
+        } else if (isOutward) {
+          // Outward has no unitId/company-unit concept on the form — always
+          // falls back to whichever unit is marked default, same as Quote/
+          // Order's own fallback when their unitId is unset. generateOutwardPDF
+          // is async (it looks up the product's HSN code from product_catalog),
+          // not because Outward carries any bank data — it carries none.
+          const unit = data.units.find(u => u.is_default);
+          doc = await generateOutwardPDF(props.doc as StockMovement, customer, props.settings, props.defaultSignatory, unit, false);
+        } else {
+          const op = props as OrderProps;
+          const orderDoc = props.doc as Order;
+          const orderUnit = orderDoc.unitId
+            ? data.units.find(u => u.id === orderDoc.unitId)
+            : data.units.find(u => u.is_default);
+          doc = await generateOrderPDF(orderDoc, op.relatedQuote, customer, props.settings, props.defaultSignatory, orderUnit, false);
+        }
 
-      const dataUri: string = doc.output('datauristring');
-      const pdfBase64 = dataUri.split(',')[1];
-      const attachments = [{ base64: pdfBase64, fileName: pdfName, mimeType: 'application/pdf' }];
+        const dataUri: string = doc.output('datauristring');
+        const pdfBase64 = dataUri.split(',')[1];
+        attachments.push({ base64: pdfBase64, fileName: pdfName, mimeType: 'application/pdf' });
 
-      for (const d of coaGcDocs.filter((d: any) => selectedDocs.has(d.id))) {
-        // Re-resolve at send time (not just at attach time) so a quote
-        // whose COA was attached before this fix — storing a bare
-        // bucket-relative path rather than a full URL — still gets a
-        // correct, fetchable URL here instead of one that resolves against
-        // this app's own origin. See resolveCoaStorageUrl.
-        const { base64, mimeType } = await urlToBase64(resolveCoaStorageUrl(d.storagePath));
-        attachments.push({ base64, fileName: d.fileName, mimeType });
+        for (const d of coaGcDocs.filter((d: any) => selectedDocs.has(d.id))) {
+          // Re-resolve at send time (not just at attach time) so a quote
+          // whose COA was attached before this fix — storing a bare
+          // bucket-relative path rather than a full URL — still gets a
+          // correct, fetchable URL here instead of one that resolves against
+          // this app's own origin. See resolveCoaStorageUrl.
+          const { base64, mimeType } = await urlToBase64(resolveCoaStorageUrl(d.storagePath));
+          attachments.push({ base64, fileName: d.fileName, mimeType });
+        }
       }
 
       await sendViaGmailAsUser({ to: to.trim(), cc: ccString, subject, body, attachments, poLink: poSubmitLink || undefined }, senderEmail);
@@ -270,9 +308,11 @@ export function SendEmailModal(props: Props) {
             <Mail size={15} className="text-red-mrt" />
             <div>
               <h2 className="font-serif text-[16px] text-blk tracking-tight leading-tight">
-                Email <em className="italic text-red-mrt">{isQuote ? 'Quotation' : isOutward ? 'Delivery Order' : 'Proforma Invoice'}</em>
+                Email <em className="italic text-red-mrt">{isQuote ? 'Quotation' : isOutward ? 'Delivery Order' : isDispatch ? 'Dispatch Documents' : 'Proforma Invoice'}</em>
               </h2>
-              <p className="text-[10.5px] text-g400 mt-[1px]">Generates PDF · Sends via Gmail · {isQuote ? 'Marks quote Sent' : isOutward ? 'Confirms dispatch' : 'Confirms delivery'}</p>
+              <p className="text-[10.5px] text-g400 mt-[1px]">
+                {isDispatch ? 'Attaches uploaded documents · Sends via Gmail' : `Generates PDF · Sends via Gmail · ${isQuote ? 'Marks quote Sent' : isOutward ? 'Confirms dispatch' : 'Confirms delivery'}`}
+              </p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-g400 hover:text-blk transition-colors p-1 rounded">
@@ -286,7 +326,7 @@ export function SendEmailModal(props: Props) {
               <svg viewBox="0 0 24 24" width="22" height="22" stroke="#22c55e" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>
             </div>
             <div className="font-semibold text-[15px] text-blk">Email sent successfully</div>
-            <div className="text-[12px] text-g400">PDF attached and delivered to {to}</div>
+            <div className="text-[12px] text-g400">{isDispatch ? 'Documents' : 'PDF'} attached and delivered to {to}</div>
           </div>
         ) : (
           <form onSubmit={handleSend} className="flex flex-col flex-1 min-h-0">
@@ -371,13 +411,40 @@ export function SendEmailModal(props: Props) {
             </div>
 
             {/* Attachment */}
-            <div className="bg-blue-50 border border-blue-100 rounded-[3px] p-[9px_13px] flex items-center gap-2.5">
-              <Paperclip size={13} className="text-blue-500 shrink-0" />
-              <div>
-                <div className="text-[11.5px] font-semibold text-blue-900">{pdfName}</div>
-                <div className="text-[10px] text-blue-500">PDF generated and attached automatically</div>
+            {!isDispatch && (
+              <div className="bg-blue-50 border border-blue-100 rounded-[3px] p-[9px_13px] flex items-center gap-2.5">
+                <Paperclip size={13} className="text-blue-500 shrink-0" />
+                <div>
+                  <div className="text-[11.5px] font-semibold text-blue-900">{pdfName}</div>
+                  <div className="text-[10px] text-blue-500">PDF generated and attached automatically</div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Dispatch documents — every already-uploaded document on this
+                entry (Documents Attachment fields + COA). Nothing to toggle:
+                these are exactly what's saved on the entry and all of them
+                go out automatically. */}
+            {isDispatch && (
+              <div>
+                <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1.5">Attachments</label>
+                {dispatchAttachments.length > 0 ? (
+                  <div className="flex flex-col gap-1.5">
+                    {dispatchAttachments.map(a => (
+                      <div key={a.label} className="flex items-center gap-2.5 bg-blue-50 border border-blue-100 rounded-[3px] p-[8px_12px]">
+                        <Paperclip size={13} className="text-blue-500 shrink-0" />
+                        <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded shrink-0 bg-blue-100 text-blue-700">{a.label}</span>
+                        <span className="text-[11.5px] font-medium text-blk truncate">{a.fileName}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_13px] text-[11.5px] text-amber-800 font-medium">
+                    No documents are attached to this entry yet. Upload and Save the Documents Attachment fields above, then reopen Email to Client.
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* COA attachments already on this quote — togglable, pre-checked */}
             {coaGcDocs.length > 0 && (

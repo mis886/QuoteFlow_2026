@@ -10,6 +10,7 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
+import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
 // entry's Status is switched to "Dispatch → Sent" (see the sentStatus select
@@ -214,6 +215,7 @@ export function NewDispatchEntry() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   const hydrateFromOrder = (order: Order) => {
     setContact(order.contact || '');
@@ -320,6 +322,21 @@ export function NewDispatchEntry() {
   const selectedOrder = selectedOrderId ? data.orders.find(o => o.id === selectedOrderId) : null;
   const isEditMode = !!existingEntryId;
   const selectedCustomer = selectedOrder ? data.customers.find(c => c.name === selectedOrder.cust) : undefined;
+
+  // "Email to Client" attachments — every document already saved on this
+  // entry (the 4 Documents Attachment fields + COA), whichever of those are
+  // actually present. Built from existingDocUrls/Names + coaFileUrl/Name
+  // (what's persisted), not docFiles (freshly-picked-but-unsaved files) —
+  // an attachment has to actually be uploaded before it can be emailed.
+  const dispatchEmailAttachments: DispatchEmailAttachment[] = useMemo(() => {
+    const list: DispatchEmailAttachment[] = [];
+    for (const field of DISPATCH_DOC_FIELDS) {
+      const url = existingDocUrls[field.key];
+      if (url) list.push({ label: field.label, url, fileName: existingDocNames[field.key] || field.label });
+    }
+    if (coaFileUrl) list.push({ label: 'COA', url: coaFileUrl, fileName: coaFileName || 'COA' });
+    return list;
+  }, [existingDocUrls, existingDocNames, coaFileUrl, coaFileName]);
 
   // Order totals — mirrors the exact Subtotal/Insurance/Taxable Value/GST
   // Total/Order Value math used on the Order form itself, now recomputed
@@ -1042,11 +1059,7 @@ export function NewDispatchEntry() {
 
           <div className="flex items-center justify-end gap-2 pt-1 pb-2">
             <Button variant="dark" disabled={!selectedOrderId || saving} onClick={handleSubmit}>{saving ? 'Saving…' : 'Save'}</Button>
-            {/* Wiring (send flow, attachments, subject/body) to be added later —
-                this is just the button, placed to match the Save / Email to
-                Client / divider / Cancel order used on the Order and Quote
-                forms' footers. */}
-            <Button variant="dark">
+            <Button variant="dark" disabled={!selectedOrderId} onClick={() => setShowEmailModal(true)}>
               <Mail size={12} />
               Email to Client
             </Button>
@@ -1055,6 +1068,19 @@ export function NewDispatchEntry() {
           </div>
         </div>
       </div>
+
+      {showEmailModal && selectedOrder && (
+        <SendEmailModal
+          mode="dispatch"
+          doc={{ id: existingEntryId || selectedOrderId || '', invoiceNumber } as any}
+          attachments={dispatchEmailAttachments}
+          customer={selectedCustomer}
+          siteId={selectedOrder.siteId || undefined}
+          settings={data.settings}
+          defaultSignatory={data.signatories.find((s: any) => s.is_default)}
+          onClose={() => setShowEmailModal(false)}
+        />
+      )}
     </div>
   );
 }
