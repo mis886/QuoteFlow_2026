@@ -183,19 +183,16 @@ export function SendEmailModal(props: Props) {
   const poSubmitLink = '';
 
   const sigBlock = `${sigName}${sigDesig}\nHIMALAYA TERPENES PVT. LTD.\nTel.: 91-22-35397800/01\nE-mail: mum@himalayaterpene.com\nWeb: www.himalayaterpene.com`;
-  const greeting = isDispatch
-    // Dispatch greets the customer (company) by name, not a site contact's
-    // first name — site-contact data isn't reliable enough for a "Dear
-    // <first name> ji," greeting here (e.g. a contact named after a field
-    // that isn't actually a person's name).
-    ? (customer?.name ? `Dear ${customer.name},` : 'Dear Sir/Madam,')
-    : (() => {
-        const name = (primaryContact?.name || '').trim();
-        if (!name) return 'Dear Sir/Madam,';
-        const stripped = name.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
-        const firstName = stripped.split(/\s+/)[0] || '';
-        return firstName ? `Dear ${firstName} ji,` : 'Dear Sir/Madam,';
-      })();
+  // Same contact-based "Dear <first name> ji," greeting for every mode,
+  // Dispatch included — matches Quote/Order exactly rather than special-
+  // casing Dispatch to greet by company name.
+  const greeting = (() => {
+    const name = (primaryContact?.name || '').trim();
+    if (!name) return 'Dear Sir/Madam,';
+    const stripped = name.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+    const firstName = stripped.split(/\s+/)[0] || '';
+    return firstName ? `Dear ${firstName} ji,` : 'Dear Sir/Madam,';
+  })();
 
   const defaultBody = isQuote
     ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
