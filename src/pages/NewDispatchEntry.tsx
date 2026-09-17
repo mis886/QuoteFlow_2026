@@ -107,13 +107,9 @@ export function NewDispatchEntry() {
   const [existingDocNames, setExistingDocNames] = useState<Partial<Record<DispatchDocKey, string>>>({});
   const [touchedDocs, setTouchedDocs] = useState<Set<DispatchDocKey>>(new Set());
 
-  // Invoice Number — a plain manually-typed value (not a file), shown
-  // alongside the Invoice / Eway Bill upload in the same Documents
-  // Attachment card. invoiceNumberTouched mirrors touchedDocs' purpose: only
-  // overwrite the saved value on Save if the user actually edited this
-  // field this session.
+  // Invoice Number — a plain manually-typed value, shown next to Remark in
+  // the Customer & Contact card (not gated behind Status, same as Remark).
   const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [invoiceNumberTouched, setInvoiceNumberTouched] = useState(false);
 
   const handleDocFileChange = (key: DispatchDocKey, file: File) => {
     setDocFiles(prev => ({ ...prev, [key]: file }));
@@ -526,16 +522,11 @@ export function NewDispatchEntry() {
         docUpdates.coaUrl = coaFileUrl || undefined;
         docUpdates.coaName = coaFileName || undefined;
       }
-      // Invoice Number is plain typed text, not a file — persist it the same
-      // touched-only way so an untouched, already-saved value isn't nulled
-      // out just because this field wasn't visited this session.
-      if (invoiceNumberTouched) {
-        docUpdates.invoiceNumber = invoiceNumber.trim() || undefined;
-      }
 
       const extra = {
         transporter: transporter || undefined,
         remark: remark || undefined,
+        invoiceNumber: invoiceNumber || undefined,
         promisedDeliveryDate: promisedDeliveryDate || undefined,
         estimatedDeliveryDate: estimatedDeliveryDate || undefined,
         sentAt,
@@ -692,9 +683,13 @@ export function NewDispatchEntry() {
                       <label className={labelCls}>Estimated Delivery Date</label>
                       <input type="date" className={inputCls} value={estimatedDeliveryDate} onChange={e => setEstimatedDeliveryDate(e.target.value)} />
                     </div>
-                    <div className="col-span-2 sm:col-span-1">
+                    <div>
                       <label className={labelCls}>Remark</label>
                       <input className={inputCls} value={remark} onChange={e => setRemark(e.target.value)} placeholder="Optional remark" />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Invoice Number</label>
+                      <input className={inputCls} value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="Enter Invoice Number" />
                     </div>
                   </div>
                 </div>
@@ -743,19 +738,7 @@ export function NewDispatchEntry() {
           {selectedOrder && sentStatus === 'sent' && (
             <div className="bg-white border border-g200">
               <div className={sectionHeaderCls}>Documents Attachment</div>
-              <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-5 gap-[12px]">
-                {/* Invoice Number — plain manually-typed text, not a file
-                    upload, shown alongside the Invoice / Eway Bill upload. */}
-                <div>
-                  <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">Invoice Number</label>
-                  <input
-                    type="text"
-                    value={invoiceNumber}
-                    onChange={e => { setInvoiceNumber(e.target.value); setInvoiceNumberTouched(true); }}
-                    placeholder="Enter Invoice Number"
-                    className={`${inputCls} h-[36px]`}
-                  />
-                </div>
+              <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-4 gap-[12px]">
                 {DISPATCH_DOC_FIELDS.map(field => {
                   const file = docFiles[field.key];
                   const localUrl = docLocalUrls[field.key];
