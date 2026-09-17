@@ -51,6 +51,11 @@ export function NewDispatchEntry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const orderRef = searchParams.get('orderRef');
+  // Set when opened from the Dispatch list's "Dispatch → Sent" button
+  // (?toSent=1) so the Status dropdown below opens pre-switched to
+  // "Dispatch → Sent" and the Documents Attachment / COA section is visible
+  // right away — the entry itself isn't marked sent until Save is clicked.
+  const toSent = searchParams.get('toSent') === '1';
   const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   const packingTypeOptions = usePackingTypes();
@@ -271,7 +276,7 @@ export function NewDispatchEntry() {
       setRemark(existing.remark || order.remark || '');
       setPromisedDeliveryDate(existing.promisedDeliveryDate || order.promisedDeliveryDate || '');
       setEstimatedDeliveryDate(existing.estimatedDeliveryDate || order.estimatedDeliveryDate || '');
-      setSentStatus(existing.sentAt ? 'sent' : 'to_dispatch');
+      setSentStatus(existing.sentAt || toSent ? 'sent' : 'to_dispatch');
       setExistingDocUrls({
         invoiceEwayBill: existing.invoiceEwayBillUrl,
         lr: existing.lrUrl,

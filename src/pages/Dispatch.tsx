@@ -7,7 +7,7 @@ import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, deleteDispatchEntry, updateDispatchEntry } = useAppStore();
+  const { data, user, deleteDispatchEntry } = useAppStore();
   const canDelete = canDeleteRecords(user?.email);
 
   const [tab, setTab] = useState<'toDispatch' | 'toSend'>('toDispatch');
@@ -130,13 +130,13 @@ export function Dispatch() {
                           <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
                             <div className="flex gap-1.5 flex-wrap">
                               {tab === 'toDispatch' && (
-                                <Button size="sm" variant="success" onClick={async () => {
-                                  try {
-                                    await updateDispatchEntry(entry.id, { sentAt: new Date().toISOString() });
-                                  } catch (err: any) {
-                                    alert(`Could not mark as sent: ${err?.message || JSON.stringify(err)}`);
-                                  }
-                                }}>Dispatch → Sent</Button>
+                                // Opens the full entry form with the Status dropdown
+                                // pre-set to "Dispatch → Sent" (and existing data
+                                // prefilled), instead of marking it sent immediately.
+                                // The entry only actually moves to the Dispatch → Sent
+                                // tab once the user fills in the Documents Attachment
+                                // section there and clicks Save.
+                                <Button size="sm" variant="success" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}&toSent=1`)}>Dispatch → Sent</Button>
                               )}
                               <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}`)}>Edit</Button>
                               {canDelete && (
