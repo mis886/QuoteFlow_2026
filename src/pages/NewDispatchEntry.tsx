@@ -627,7 +627,7 @@ export function NewDispatchEntry() {
           {selectedOrder && sentStatus === 'sent' && (
             <div className="bg-white border border-g200">
               <div className={sectionHeaderCls}>Documents Attachment</div>
-              <div className="p-[14px_16px] flex flex-wrap gap-4">
+              <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-5 gap-[12px]">
                 {DISPATCH_DOC_FIELDS.map(field => {
                   const file = docFiles[field.key];
                   const localUrl = docLocalUrls[field.key];
@@ -642,7 +642,7 @@ export function NewDispatchEntry() {
                           onChange={e => { if (e.target.files?.length) handleDocFileChange(field.key, e.target.files[0]); }}
                           accept=".pdf,.jpeg,.jpg,.png,.webp" />
                         <label htmlFor={inputId}
-                          className="cursor-pointer font-sans text-[11px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors h-[36px] w-[155px]">
+                          className="cursor-pointer font-sans text-[11px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors h-[36px] flex-1 min-w-0">
                           <Upload size={13} className="text-g500 shrink-0" />
                           {file
                             ? <span className="truncate">{file.name}</span>
