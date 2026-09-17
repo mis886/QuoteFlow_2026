@@ -12,6 +12,9 @@ const BHIWANDI_EMAIL = 'bhiwandi@himalayaterpene.com';
 // Fixed customer-feedback form link appended to every Dispatch → Sent email
 // (see DispatchProps below) — the same URL on every send, not per-entry.
 const DISPATCH_FEEDBACK_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScBnStF2lqFUT8KXSRQjefuzEgbU5Zxxt8TtrpU_UJprs0Zbw/viewform';
+// Fixed sign-off for Dispatch → Sent emails — given as exact text, not
+// derived from app_settings/defaultSignatory like Quote/Order's sigBlock.
+const DISPATCH_SIGNATURE = 'SAMATA YADAV\nHimalaya Terpenes Pvt Ltd\nMobile No.: 9987682255\nweb: www.himalayaterpene.com';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 interface CCCandidate { name: string; role?: string; email: string; isPrimary?: boolean; }
@@ -144,8 +147,10 @@ export function SendEmailModal(props: Props) {
   // — this is the whole attachment list for a dispatch email (no PDF, no
   // toggling; every uploaded document goes out).
   const dispatchAttachments = isDispatch ? (props as DispatchProps).attachments : [];
+  // Body lists each attached document by its actual file name (what's shown
+  // in the Attachments panel below), not the generic field label.
   const dispatchDocLines = dispatchAttachments.length
-    ? dispatchAttachments.map(a => ` ${a.label}`).join('\n')
+    ? dispatchAttachments.map(a => ` ${a.fileName}`).join('\n')
     : ' (no documents uploaded yet)';
 
   const defaultSubject = isQuote
@@ -169,20 +174,26 @@ export function SendEmailModal(props: Props) {
   const poSubmitLink = '';
 
   const sigBlock = `${sigName}${sigDesig}\nHIMALAYA TERPENES PVT. LTD.\nTel.: 91-22-35397800/01\nE-mail: mum@himalayaterpene.com\nWeb: www.himalayaterpene.com`;
-  const greeting = (() => {
-    const name = (primaryContact?.name || '').trim();
-    if (!name) return 'Dear Sir/Madam,';
-    const stripped = name.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
-    const firstName = stripped.split(/\s+/)[0] || '';
-    return firstName ? `Dear ${firstName} ji,` : 'Dear Sir/Madam,';
-  })();
+  const greeting = isDispatch
+    // Dispatch greets the customer (company) by name, not a site contact's
+    // first name — site-contact data isn't reliable enough for a "Dear
+    // <first name> ji," greeting here (e.g. a contact named after a field
+    // that isn't actually a person's name).
+    ? (customer?.name ? `Dear ${customer.name},` : 'Dear Sir/Madam,')
+    : (() => {
+        const name = (primaryContact?.name || '').trim();
+        if (!name) return 'Dear Sir/Madam,';
+        const stripped = name.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+        const firstName = stripped.split(/\s+/)[0] || '';
+        return firstName ? `Dear ${firstName} ji,` : 'Dear Sir/Madam,';
+      })();
 
   const defaultBody = isQuote
     ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
     : isOutward
     ? `${greeting}\n\nPlease find attached the Delivery Order ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
     : isDispatch
-    ? `${greeting}\n\nWe have dispatched your goods. Attached here with are the following \ndocuments for your reference:\n${dispatchDocLines}\n\nWe request you to kindly get in touch with us for any clarifications.\n\nPS: The Tax Invoice is Digitally Signed. Kindly take a printout for your \nrecords. No hard copy will be couriered to you.\n\nImp: Please update any changes to your email ID, Address (Bill To & Ship \nTo), Telephone no., GST No. etc., for updating our records.\n\nWe request you to please fill out this Customer feedback form:\n${DISPATCH_FEEDBACK_FORM_URL}\n\n${sigBlock}`
+    ? `${greeting}\n\nWe have dispatched your goods. Attached here with are the following \ndocuments for your reference:\n${dispatchDocLines}\n\nWe request you to kindly get in touch with us for any clarifications.\n\nPS: The Tax Invoice is Digitally Signed. Kindly take a printout for your \nrecords. No hard copy will be couriered to you.\n\nImp: Please update any changes to your email ID, Address (Bill To & Ship \nTo), Telephone no., GST No. etc., for updating our records.\n\nWe request you to please fill out this Customer feedback form:\n${DISPATCH_FEEDBACK_FORM_URL}\n\nbest regards,\n${DISPATCH_SIGNATURE}`
     : `${greeting}\n\nPlease find attached our Proforma Invoice ${docId} for the requirements discussed.\n\nKindly arrange for the Purchase Order at your earliest convenience.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`;
 
   const [to, setTo]           = useState(isOutwardDelivery ? BHIWANDI_EMAIL : primaryEmail);
