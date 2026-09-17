@@ -3,11 +3,28 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, generateId } from '../lib/utils';
-import { DispatchFulfillmentType, Order, OrderItem, CustomerTier } from '../lib/types';
+import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
+import { Upload, ExternalLink } from 'lucide-react';
+import { uploadPublicFile } from '../lib/supabase';
+
+// "Documents Attachment" fields shown in this form once an existing dispatch
+// entry's Status is switched to "Dispatch → Sent" (see the sentStatus select
+// below). Mirrors the "PO Document" field on the Order form (NewOrder.tsx):
+// a file picked here is only uploaded when the whole form is saved, not
+// immediately on selection.
+type DispatchDocKey = 'invoiceEwayBill' | 'coa' | 'lr' | 'supplierPortal' | 'termCardAttachment';
+
+const DISPATCH_DOC_FIELDS: { key: DispatchDocKey; label: string; urlKey: keyof DispatchEntry; nameKey: keyof DispatchEntry; slug: string }[] = [
+  { key: 'invoiceEwayBill', label: 'Invoice / Eway Bill', urlKey: 'invoiceEwayBillUrl', nameKey: 'invoiceEwayBillName', slug: 'invoice-eway-bill' },
+  { key: 'coa', label: 'COA', urlKey: 'coaUrl', nameKey: 'coaName', slug: 'coa' },
+  { key: 'lr', label: 'LR', urlKey: 'lrUrl', nameKey: 'lrName', slug: 'lr' },
+  { key: 'supplierPortal', label: 'Supplier Portal', urlKey: 'supplierPortalUrl', nameKey: 'supplierPortalName', slug: 'supplier-portal' },
+  { key: 'termCardAttachment', label: 'Term Card Attachment', urlKey: 'termCardAttachmentUrl', nameKey: 'termCardAttachmentName', slug: 'term-card-attachment' },
+];
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow disabled:bg-g50 disabled:cursor-not-allowed disabled:text-g500";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-60 disabled:cursor-not-allowed";
@@ -70,6 +87,32 @@ export function NewDispatchEntry() {
   // Defaults to 'to_dispatch' for a brand-new entry; hydrated from the
   // existing entry's sentAt below when editing one.
   const [sentStatus, setSentStatus] = useState<'to_dispatch' | 'sent'>('to_dispatch');
+
+  // "Documents Attachment" — only meaningful (and only ever shown) once
+  // sentStatus === 'sent'. docFiles/docLocalUrls hold a freshly-picked,
+  // not-yet-uploaded file per field; existingDocUrls/Names hold what's
+  // already saved on the entry being edited. touchedDocs tracks which
+  // fields the user actually changed this session, so handleSubmit only
+  // overwrites those — leaving every untouched field's saved value alone.
+  const [docFiles, setDocFiles] = useState<Partial<Record<DispatchDocKey, File>>>({});
+  const [docLocalUrls, setDocLocalUrls] = useState<Partial<Record<DispatchDocKey, string>>>({});
+  const [existingDocUrls, setExistingDocUrls] = useState<Partial<Record<DispatchDocKey, string>>>({});
+  const [existingDocNames, setExistingDocNames] = useState<Partial<Record<DispatchDocKey, string>>>({});
+  const [touchedDocs, setTouchedDocs] = useState<Set<DispatchDocKey>>(new Set());
+
+  const handleDocFileChange = (key: DispatchDocKey, file: File) => {
+    setDocFiles(prev => ({ ...prev, [key]: file }));
+    setDocLocalUrls(prev => ({ ...prev, [key]: URL.createObjectURL(file) }));
+    setTouchedDocs(prev => new Set(prev).add(key));
+  };
+
+  const handleDocRemove = (key: DispatchDocKey) => {
+    setDocFiles(prev => { const n = { ...prev }; delete n[key]; return n; });
+    setDocLocalUrls(prev => { const n = { ...prev }; delete n[key]; return n; });
+    setExistingDocUrls(prev => ({ ...prev, [key]: undefined }));
+    setExistingDocNames(prev => ({ ...prev, [key]: undefined }));
+    setTouchedDocs(prev => new Set(prev).add(key));
+  };
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -140,6 +183,20 @@ export function NewDispatchEntry() {
       setPromisedDeliveryDate(existing.promisedDeliveryDate || order.promisedDeliveryDate || '');
       setEstimatedDeliveryDate(existing.estimatedDeliveryDate || order.estimatedDeliveryDate || '');
       setSentStatus(existing.sentAt ? 'sent' : 'to_dispatch');
+      setExistingDocUrls({
+        invoiceEwayBill: existing.invoiceEwayBillUrl,
+        coa: existing.coaUrl,
+        lr: existing.lrUrl,
+        supplierPortal: existing.supplierPortalUrl,
+        termCardAttachment: existing.termCardAttachmentUrl,
+      });
+      setExistingDocNames({
+        invoiceEwayBill: existing.invoiceEwayBillName,
+        coa: existing.coaName,
+        lr: existing.lrName,
+        supplierPortal: existing.supplierPortalName,
+        termCardAttachment: existing.termCardAttachmentName,
+      });
       // Reopening a saved dispatch entry must show what was actually
       // dispatched, not the order's own (unchanged) confirmed quantities —
       // the entry carries its own items/insurance snapshot for exactly this.
@@ -337,6 +394,29 @@ export function NewDispatchEntry() {
       // mapDispatchEntryToDB's `'sentAt' in d` check in store/index.tsx).
       const sentAt = sentStatus === 'sent' ? (existingEntry?.sentAt || new Date().toISOString()) : undefined;
 
+      // Documents Attachment — upload only the fields the user actually
+      // touched this session (see touchedDocs above), only now on Save,
+      // exactly like the Order form's PO Document field. A field with a
+      // freshly-picked file uploads it and records the resulting public URL
+      // + original name; a field cleared via "×" with nothing re-picked
+      // writes undefined so mapDispatchEntryToDB nulls out both columns.
+      const docUpdates: Partial<DispatchEntry> = {};
+      for (const field of DISPATCH_DOC_FIELDS) {
+        if (!touchedDocs.has(field.key)) continue;
+        const file = docFiles[field.key];
+        if (file) {
+          const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const pathPrefix = existingEntryId || selectedOrderId;
+          const { data: publicUrl, error: uploadError } = await uploadPublicFile('dispatch-documents', `${pathPrefix}/${field.slug}/${safeName}`, file);
+          if (uploadError || !publicUrl) throw uploadError || new Error(`Could not upload ${field.label}`);
+          (docUpdates as any)[field.urlKey] = publicUrl;
+          (docUpdates as any)[field.nameKey] = file.name;
+        } else {
+          (docUpdates as any)[field.urlKey] = undefined;
+          (docUpdates as any)[field.nameKey] = undefined;
+        }
+      }
+
       const extra = {
         transporter: transporter || undefined,
         remark: remark || undefined,
@@ -348,6 +428,7 @@ export function NewDispatchEntry() {
         items,
         insurance: curr === 'INR' ? insurance : 0,
         value: orderTotals ? orderTotals.grandTotal : selectedOrder.value,
+        ...docUpdates,
       };
 
       if (existingEntryId) {
@@ -537,6 +618,57 @@ export function NewDispatchEntry() {
                     <input className={inputCls} value={custEnquiryDocNo} onChange={e => setCustEnquiryDocNo(e.target.value)} placeholder="Ref/2024/01..." />
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Documents Attachment — only once this entry's Status (above) is switched
+              to "Dispatch → Sent". Uploads are deferred to Save, same as PO Document. */}
+          {selectedOrder && sentStatus === 'sent' && (
+            <div className="bg-white border border-g200">
+              <div className={sectionHeaderCls}>Documents Attachment</div>
+              <div className="p-[14px_16px] flex flex-wrap gap-4">
+                {DISPATCH_DOC_FIELDS.map(field => {
+                  const file = docFiles[field.key];
+                  const localUrl = docLocalUrls[field.key];
+                  const existingUrl = existingDocUrls[field.key];
+                  const existingName = existingDocNames[field.key];
+                  const inputId = `dispatch-doc-${field.key}`;
+                  return (
+                    <div key={field.key}>
+                      <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}</label>
+                      <div className="flex items-center gap-1.5">
+                        <input type="file" id={inputId} className="hidden"
+                          onChange={e => { if (e.target.files?.length) handleDocFileChange(field.key, e.target.files[0]); }}
+                          accept=".pdf,.jpeg,.jpg,.png,.webp" />
+                        <label htmlFor={inputId}
+                          className="cursor-pointer font-sans text-[11px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors h-[36px] w-[155px]">
+                          <Upload size={13} className="text-g500 shrink-0" />
+                          {file
+                            ? <span className="truncate">{file.name}</span>
+                            : existingName
+                            ? <span className="truncate text-emerald-600">Existing (click to replace)</span>
+                            : <span className="truncate">Upload {field.label}</span>}
+                        </label>
+                        {file && localUrl && (
+                          <a href={localUrl} target="_blank" rel="noopener noreferrer" title="Preview selected file"
+                            className="p-1.5 text-g400 hover:text-blue-600 transition-colors" onClick={e => e.stopPropagation()}>
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
+                        {!file && existingUrl && (
+                          <a href={existingUrl} target="_blank" rel="noopener noreferrer" title={`Open ${field.label}`}
+                            className="p-1.5 text-g400 hover:text-blue-600 transition-colors" onClick={e => e.stopPropagation()}>
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
+                        {(file || existingUrl || existingName) && (
+                          <button type="button" title="Remove" onClick={() => handleDocRemove(field.key)} className="text-g400 hover:text-red-mrt text-[16px]">×</button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

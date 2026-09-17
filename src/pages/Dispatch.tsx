@@ -4,104 +4,6 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { canDeleteRecords, formatINR, fmtDate, fmtIST } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { Upload, ExternalLink } from 'lucide-react';
-import { uploadPublicFile } from '../lib/supabase';
-
-// ── "Documents Attachment" card (Dispatch → Sent view only) ───────────
-// Five document slots per dispatch entry, each a public Supabase Storage
-// URL + the original file name, uploaded to the 'dispatch-documents'
-// bucket. Mirrors the "PO Document" upload field on the Order form
-// (src/pages/NewOrder.tsx), except the upload happens immediately on file
-// select — a dispatch entry already exists in the DB by the time it
-// reaches this tab, and this table has no separate "save" step.
-type DispatchDocUrlKey = 'invoiceEwayBillUrl' | 'coaUrl' | 'lrUrl' | 'supplierPortalUrl' | 'termCardAttachmentUrl';
-type DispatchDocNameKey = 'invoiceEwayBillName' | 'coaName' | 'lrName' | 'supplierPortalName' | 'termCardAttachmentName';
-
-const DISPATCH_DOC_FIELDS: { key: string; label: string; urlKey: DispatchDocUrlKey; nameKey: DispatchDocNameKey; slug: string }[] = [
-  { key: 'invoiceEwayBill', label: 'Invoice / Eway Bill', urlKey: 'invoiceEwayBillUrl', nameKey: 'invoiceEwayBillName', slug: 'invoice-eway-bill' },
-  { key: 'coa', label: 'COA', urlKey: 'coaUrl', nameKey: 'coaName', slug: 'coa' },
-  { key: 'lr', label: 'LR', urlKey: 'lrUrl', nameKey: 'lrName', slug: 'lr' },
-  { key: 'supplierPortal', label: 'Supplier Portal', urlKey: 'supplierPortalUrl', nameKey: 'supplierPortalName', slug: 'supplier-portal' },
-  { key: 'termCardAttachment', label: 'Term Card Attachment', urlKey: 'termCardAttachmentUrl', nameKey: 'termCardAttachmentName', slug: 'term-card-attachment' },
-];
-
-function DispatchDocField({ entry, field, onSaved }: {
-  entry: DispatchEntry;
-  field: typeof DISPATCH_DOC_FIELDS[number];
-  onSaved: (updates: Partial<DispatchEntry>) => Promise<void>;
-}) {
-  const [localFile, setLocalFile] = useState<File | null>(null);
-  const [localUrl, setLocalUrl] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const inputId = `dispatch-doc-${entry.id}-${field.key}`;
-
-  const existingUrl = entry[field.urlKey];
-  const existingName = entry[field.nameKey];
-  const hasFile = !!localFile || !!existingUrl;
-  const previewHref = localUrl || existingUrl;
-
-  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setLocalFile(f);
-    setLocalUrl(URL.createObjectURL(f));
-    setUploading(true);
-    try {
-      const safeName = f.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const { data: publicUrl, error } = await uploadPublicFile('dispatch-documents', `${entry.id}/${field.slug}/${safeName}`, f);
-      if (error || !publicUrl) throw error || new Error('Upload failed');
-      await onSaved({ [field.urlKey]: publicUrl, [field.nameKey]: f.name } as Partial<DispatchEntry>);
-    } catch (err: any) {
-      alert(`Could not upload ${field.label}: ${err?.message || JSON.stringify(err)}`);
-      setLocalFile(null);
-      setLocalUrl(null);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleRemove = async () => {
-    const prevFile = localFile, prevUrl = localUrl;
-    setLocalFile(null);
-    setLocalUrl(null);
-    try {
-      await onSaved({ [field.urlKey]: undefined, [field.nameKey]: undefined } as Partial<DispatchEntry>);
-    } catch (err: any) {
-      alert(`Could not remove ${field.label}: ${err?.message || JSON.stringify(err)}`);
-      setLocalFile(prevFile);
-      setLocalUrl(prevUrl);
-    }
-  };
-
-  return (
-    <div>
-      <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}</label>
-      <div className="flex items-center gap-1.5">
-        <input type="file" id={inputId} className="hidden" onChange={handleChange} accept=".pdf,.jpeg,.jpg,.png,.webp" disabled={uploading} />
-        <label htmlFor={inputId}
-          className={`cursor-pointer font-sans text-[11px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors h-[36px] w-[155px] ${uploading ? 'opacity-60 pointer-events-none' : ''}`}>
-          <Upload size={13} className="text-g500 shrink-0" />
-          {uploading
-            ? <span className="truncate">Uploading…</span>
-            : localFile
-            ? <span className="truncate">{localFile.name}</span>
-            : existingName
-            ? <span className="truncate text-emerald-600">{existingName}</span>
-            : <span className="truncate">Upload {field.label}</span>}
-        </label>
-        {previewHref && (
-          <a href={previewHref} target="_blank" rel="noopener noreferrer" title={`Preview ${field.label}`}
-            className="p-1.5 text-g400 hover:text-blue-600 transition-colors" onClick={e => e.stopPropagation()}>
-            <ExternalLink size={14} />
-          </a>
-        )}
-        {hasFile && !uploading && (
-          <button type="button" title="Remove" onClick={handleRemove} className="text-g400 hover:text-red-mrt text-[16px]">×</button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export function Dispatch() {
   const navigate = useNavigate();
@@ -303,22 +205,6 @@ export function Dispatch() {
                                     <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(Math.round(entry.value || 0))}</span>
                                   </div>
                                 )}
-
-                                {tab === 'toSend' && (
-                                  <div className="mt-3 pt-3 border-t border-g200">
-                                    <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sW mb-[9px]">Documents Attachment</div>
-                                    <div className="flex flex-wrap gap-4">
-                                      {DISPATCH_DOC_FIELDS.map(field => (
-                                        <DispatchDocField
-                                          key={field.key}
-                                          entry={entry}
-                                          field={field}
-                                          onSaved={updates => updateDispatchEntry(entry.id, updates)}
-                                        />
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             </td>
                           </tr>
@@ -335,4 +221,3 @@ export function Dispatch() {
     </div>
   );
 }
-
