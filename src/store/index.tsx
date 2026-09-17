@@ -631,6 +631,7 @@ const mapEnquiryToDB = (e: any) => {
     value: d.value ?? undefined,
     invoiceEwayBillUrl: d.invoice_eway_bill_url || undefined,
     invoiceEwayBillName: d.invoice_eway_bill_name || undefined,
+    invoiceNumber: d.invoice_number || undefined,
     coaUrl: d.coa_url || undefined,
     coaName: d.coa_name || undefined,
     lrUrl: d.lr_url || undefined,
@@ -663,6 +664,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('value' in d) obj.value = d.value ?? null;
     if ('invoiceEwayBillUrl' in d) obj.invoice_eway_bill_url = d.invoiceEwayBillUrl || null;
     if ('invoiceEwayBillName' in d) obj.invoice_eway_bill_name = d.invoiceEwayBillName || null;
+    if ('invoiceNumber' in d) obj.invoice_number = d.invoiceNumber || null;
     if ('coaUrl' in d) obj.coa_url = d.coaUrl || null;
     if ('coaName' in d) obj.coa_name = d.coaName || null;
     if ('lrUrl' in d) obj.lr_url = d.lrUrl || null;

@@ -107,6 +107,14 @@ export function NewDispatchEntry() {
   const [existingDocNames, setExistingDocNames] = useState<Partial<Record<DispatchDocKey, string>>>({});
   const [touchedDocs, setTouchedDocs] = useState<Set<DispatchDocKey>>(new Set());
 
+  // Invoice Number — a plain manually-typed value (not a file), shown
+  // alongside the Invoice / Eway Bill upload in the same Documents
+  // Attachment card. invoiceNumberTouched mirrors touchedDocs' purpose: only
+  // overwrite the saved value on Save if the user actually edited this
+  // field this session.
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceNumberTouched, setInvoiceNumberTouched] = useState(false);
+
   const handleDocFileChange = (key: DispatchDocKey, file: File) => {
     setDocFiles(prev => ({ ...prev, [key]: file }));
     setDocLocalUrls(prev => ({ ...prev, [key]: URL.createObjectURL(file) }));
@@ -291,6 +299,7 @@ export function NewDispatchEntry() {
       });
       setCoaFileName(existing.coaName || undefined);
       setCoaFileUrl(existing.coaUrl || undefined);
+      setInvoiceNumber(existing.invoiceNumber || '');
       // Reopening a saved dispatch entry must show what was actually
       // dispatched, not the order's own (unchanged) confirmed quantities —
       // the entry carries its own items/insurance snapshot for exactly this.
@@ -517,6 +526,12 @@ export function NewDispatchEntry() {
         docUpdates.coaUrl = coaFileUrl || undefined;
         docUpdates.coaName = coaFileName || undefined;
       }
+      // Invoice Number is plain typed text, not a file — persist it the same
+      // touched-only way so an untouched, already-saved value isn't nulled
+      // out just because this field wasn't visited this session.
+      if (invoiceNumberTouched) {
+        docUpdates.invoiceNumber = invoiceNumber.trim() || undefined;
+      }
 
       const extra = {
         transporter: transporter || undefined,
@@ -728,7 +743,19 @@ export function NewDispatchEntry() {
           {selectedOrder && sentStatus === 'sent' && (
             <div className="bg-white border border-g200">
               <div className={sectionHeaderCls}>Documents Attachment</div>
-              <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-4 gap-[12px]">
+              <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-5 gap-[12px]">
+                {/* Invoice Number — plain manually-typed text, not a file
+                    upload, shown alongside the Invoice / Eway Bill upload. */}
+                <div>
+                  <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">Invoice Number</label>
+                  <input
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={e => { setInvoiceNumber(e.target.value); setInvoiceNumberTouched(true); }}
+                    placeholder="Enter Invoice Number"
+                    className={`${inputCls} h-[36px]`}
+                  />
+                </div>
                 {DISPATCH_DOC_FIELDS.map(field => {
                   const file = docFiles[field.key];
                   const localUrl = docLocalUrls[field.key];

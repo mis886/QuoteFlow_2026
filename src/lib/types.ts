@@ -518,6 +518,9 @@ export interface DispatchEntry {
   // the original file name, uploaded to the 'dispatch-documents' bucket.
   invoiceEwayBillUrl?: string;
   invoiceEwayBillName?: string;
+  // Manually-typed invoice number (not a file) — entered alongside the
+  // Invoice / Eway Bill upload in the same "Documents Attachment" card.
+  invoiceNumber?: string;
   coaUrl?: string;
   coaName?: string;
   lrUrl?: string;
