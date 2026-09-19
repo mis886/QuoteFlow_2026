@@ -6,7 +6,10 @@
 export type EnqStatus = 'New' | 'In Review' | 'Quoted' | 'Won' | 'Lost' | 'Parked' | 'Not Qualified';
 export type Urgency = 'Hot' | 'Urgent' | 'Normal' | 'Low';
 export type QuoteStatus = 'Draft' | 'Sent' | 'Won' | 'Lost' | 'Parked';
-export type OrderStatus = 'Order Confirmed' | 'Processing' | 'Delivered' | 'Order Pending for Dispatch';
+// 2026-09-19: added 'Won' | 'Lost' at the user's request — manually
+// selectable from the Edit Order status dropdown, each with its own tab in
+// the Orders register (like Won/Lost already work for Enquiries/Quotes).
+export type OrderStatus = 'Order Confirmed' | 'Processing' | 'Delivered' | 'Order Pending for Dispatch' | 'Won' | 'Lost';
 
 export interface LineItem {
   seq: number;

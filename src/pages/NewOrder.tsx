@@ -681,6 +681,9 @@ export function NewOrder() {
                   <option value="Order Confirmed">Order Confirmed</option>
                   <option value="Processing">Order Pending for Payment</option>
                   <option value="Delivered" disabled={!canComplete} title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}>Delivered</option>
+                  {/* 2026-09-19: Won/Lost — user can move an order into either from here, same as the other statuses */}
+                  <option value="Won">Won</option>
+                  <option value="Lost">Lost</option>
                 </select>
               </div>
             )}
