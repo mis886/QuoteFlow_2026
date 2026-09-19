@@ -18,6 +18,23 @@ const DISPATCH_SIGNATURE = 'SAMATA YADAV\nHimalaya Terpenes Pvt Ltd\nMobile No.:
 // Fixed sign-off for Outward/Stock Movement → Sent emails — given as exact
 // text, not derived from app_settings/defaultSignatory like Quote/Order's sigBlock.
 const OUTWARD_SIGNATURE = 'Samata Yadav\nDISPATCH\nTel.: +919987682255';
+// 2026-09-19: per-warehouse contact block for Outward Self Pickup's "Email
+// to Client" body, at the user's request — each Self Pickup email now tells
+// the client who to contact and when, at whichever warehouse the stock is
+// being lifted from. Keyed lowercase and looked up lowercase (see
+// outwardPickupContact below) because the saved warehouse value isn't
+// consistently cased across the codebase — NewStockOutward.tsx's own
+// WAREHOUSES list and DO_NUMBER_PREFIX map use 'BALAJI', while
+// StockMovementWarehouse (types.ts) and NewStockInward.tsx use 'Balaji';
+// older Outward rows may hold either. A warehouse not listed here (e.g. a
+// legacy/"Other" value) falls back to the original generic Outward body
+// below rather than sending a body with no contact info.
+const OUTWARD_PICKUP_CONTACTS: Record<string, string> = {
+  hariom: 'Kiran / Sunny\n+91 82918 87543 / +91 78753 29222',
+  balaji: 'Kiran / Sunny\n+91 82918 87543 / +91 78753 29222',
+  swastik: 'Kiran / Sunny\n+91 82918 87543 / +91 78753 29222',
+  reliable: 'Suraj\n+91 90825 15434',
+};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 interface CCCandidate { name: string; role?: string; email: string; isPrimary?: boolean; }
@@ -117,6 +134,12 @@ export function SendEmailModal(props: Props) {
   const outwardFulfilmentType = isOutward ? ((props.doc as StockMovement).fulfilmentType || '') : '';
   const isOutwardDelivery = isOutward && outwardFulfilmentType === 'Delivery';
   const isOutwardSelfPickup = isOutward && outwardFulfilmentType === 'Self Pickup';
+  // 2026-09-19: which warehouse this Self Pickup is lifting from, and that
+  // warehouse's contact block (see OUTWARD_PICKUP_CONTACTS above) — undefined
+  // for a warehouse not in that list, in which case the body below falls
+  // back to the original generic wording.
+  const outwardWarehouse = isOutward ? ((props.doc as StockMovement).warehouse || '') : '';
+  const outwardPickupContact = isOutwardSelfPickup ? OUTWARD_PICKUP_CONTACTS[outwardWarehouse.trim().toLowerCase()] : undefined;
 
   // 2026-09-19: mum@ is the account that actually sends these emails (it's
   // the "From"), so it no longer needs to also be CC'd — dropped from both
@@ -217,7 +240,12 @@ export function SendEmailModal(props: Props) {
   const defaultBody = isQuote
     ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
     : isOutward
-    ? `${greeting}\n\nPlease find attached the Delivery Order ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${OUTWARD_SIGNATURE}`
+    ? (outwardPickupContact
+        // 2026-09-19: Self Pickup at a known warehouse — company-name
+        // greeting (matching how Dispatch greets) + the warehouse's own
+        // contact block, at the user's request.
+        ? `Dear ${customer?.name || 'Sir/Madam'},\n\nPlease find attached the DO copy for lifting the material.\n\nKindly share the vehicle number before lifting the material.\n\nContact Persons:\n${outwardPickupContact}\n\nGodown Timings: 9:30 AM to 5:30 PM\n\nThank you for your cooperation.`
+        : `${greeting}\n\nPlease find attached the Delivery Order ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${OUTWARD_SIGNATURE}`)
     : isDispatch
     ? `${greeting}\n\nWe have dispatched your goods. We have attached the following \ndocuments for your reference:\n${dispatchDocLines}\n\nWe request you to kindly get in touch with us for any clarifications.\n\nPS: The Tax Invoice is Digitally Signed. Kindly take a printout for your \nrecords. No hard copy will be couriered to you.\n\nImp: Please update any changes to your email ID, Address (Bill To & Ship \nTo), Telephone no., GST No. etc., for updating our records.\n\nWe request you to please fill out this Customer feedback form:\n${DISPATCH_FEEDBACK_FORM_URL}\n\nBest Regards,\n${DISPATCH_SIGNATURE}`
     : `${greeting}\n\nPlease find attached our Proforma Invoice ${docId} for the requirements discussed.\n\nKindly arrange for the Purchase Order at your earliest convenience.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`;
