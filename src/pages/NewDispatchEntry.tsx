@@ -65,6 +65,11 @@ export function NewDispatchEntry() {
   // allowed to upload/replace/remove. Every other logged-in user gets the
   // opposite: LR is view-only for them, everything else on this page is
   // normal. See isReadOnlyUser usage throughout this file.
+  // mum@himalayaterpene.com gets the same LR edit access as isReadOnlyUser
+  // (the Bhiwandi login) — but ONLY for LR. Unlike Bhiwandi, mum@ is not
+  // read-only anywhere else in the app; this is purely an added exception
+  // to who can edit the LR field, computed with canEditLr below.
+  const canEditLr = isReadOnlyUser || (user?.email ?? '').toLowerCase() === 'mum@himalayaterpene.com';
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
@@ -777,11 +782,13 @@ export function NewDispatchEntry() {
                   const existingName = existingDocNames[field.key];
                   const inputId = `dispatch-doc-${field.key}`;
                   // LR is the one field exempt from the page-wide read-only lock
-                  // for isReadOnlyUser (the Bhiwandi login): it stays editable for
-                  // them and only them. Every other doc field flips the other way —
-                  // locked for isReadOnlyUser, normal for everyone else. Either way
-                  // the Open link (below) still works, so viewing is never blocked.
-                  const isLrLocked = field.key === 'lr' ? !isReadOnlyUser : isReadOnlyUser;
+                  // for isReadOnlyUser (the Bhiwandi login) — and canEditLr also
+                  // lets mum@himalayaterpene.com edit it. Everyone else is locked
+                  // out of LR. Every OTHER doc field flips the other way — locked
+                  // for isReadOnlyUser (Bhiwandi only, mum@ unaffected there),
+                  // normal for everyone else. Either way the Open link (below)
+                  // still works, so viewing is never blocked.
+                  const isLrLocked = field.key === 'lr' ? !canEditLr : isReadOnlyUser;
                   return (
                     <div key={field.key}>
                       <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}</label>

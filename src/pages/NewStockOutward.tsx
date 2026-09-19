@@ -269,18 +269,26 @@ async function adjustLot(partyCol: string | undefined, whLotNo: string, qtyDelta
   }
 }
 
-// 2026-09-09: DO Number auto-generation, replacing free-hand entry. Prefix is
-// each warehouse's first 4 letters, uppercase — a literal map (not derived
-// via .slice(0,4).toUpperCase()) so the exact prefixes stay obvious and
-// stable even if a warehouse's display name ever changes. No entry for
-// 'Other' — DO Number generation only applies to the 4 known warehouses this
-// form's own dropdown offers (isOtherWarehouse is otherwise unreachable, see
-// the WAREHOUSES comment above).
+// 2026-09-09: DO Number auto-generation, replacing free-hand entry.
+// 2026-09-19: prefix shortened from each warehouse's first 4 letters to just
+// its first letter (e.g. Reliable -> "R-0001") — a literal map (not derived
+// via .slice(0,1).toUpperCase()) so the exact prefixes stay obvious and
+// stable even if a warehouse's display name ever changes. The 4 warehouses
+// below happen to all start with a different letter, so single-letter
+// prefixes can't collide with each other today — if a future warehouse is
+// added whose name starts with H/R/S/B, give it a different prefix letter
+// here rather than relying on .slice(0,1). No entry for 'Other' — DO Number
+// generation only applies to the 4 known warehouses this form's own dropdown
+// offers (isOtherWarehouse is otherwise unreachable, see the WAREHOUSES
+// comment above). Existing entries saved under the old 4-letter prefixes
+// (e.g. "BALA-0002") are untouched — they simply don't match the new
+// single-letter pattern, so the per-warehouse sequence below starts fresh at
+// -0001 under the new prefix rather than continuing the old one.
 const DO_NUMBER_PREFIX: Record<string, string> = {
-  Hariom: 'HARI',
-  Reliable: 'RELI',
-  Swastik: 'SWAS',
-  BALAJI: 'BALA',
+  Hariom: 'H',
+  Reliable: 'R',
+  Swastik: 'S',
+  BALAJI: 'B',
 };
 
 // Next DO Number for `warehouse`: "<PREFIX>-0001", zero-padded to 4 digits,
