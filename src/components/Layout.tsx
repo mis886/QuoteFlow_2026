@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar, useSidebarCollapse } from './Sidebar';
 import { Topbar } from './Topbar';
 import { DetailPanel } from './DetailPanel';
@@ -10,16 +10,31 @@ import { useAppStore } from '../store';
 import { Loader2 } from 'lucide-react';
 
 export function Layout() {
-  const { loading, attachmentModal, closeAttachmentModal } = useAppStore();
+  const { loading, attachmentModal, closeAttachmentModal, isReadOnlyUser } = useAppStore();
   const { collapsed, setCollapsed } = useSidebarCollapse();
+  const location = useLocation();
+  // Whole-app view-only mode is enforced here for every routed page in one
+  // place — except New Dispatch Entry, which contains the one field
+  // (LR, in Dispatch → Sent) that stays editable for this same read-only
+  // login. That page locks down everything else about itself internally
+  // instead (see NewDispatchEntry.tsx), so it's excluded from this blanket
+  // lock rather than being doubly-locked.
+  const lockThisRoute = isReadOnlyUser && location.pathname !== '/dispatch/new';
 
   return (
     <div className="flex w-full h-screen overflow-hidden">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-cream relative">
         <Topbar />
+        {isReadOnlyUser && (
+          <div className="shrink-0 bg-amber-50 border-b border-amber-200 text-amber-800 text-[11px] font-semibold px-4 py-1.5 text-center">
+            View-only access — changes can't be saved here (except the LR document in Dispatch → Sent)
+          </div>
+        )}
         <main className="flex-1 overflow-y-auto">
-          <Outlet />
+          <fieldset disabled={lockThisRoute} className="contents">
+            <Outlet />
+          </fieldset>
         </main>
 
         {loading && (

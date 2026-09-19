@@ -50,6 +50,10 @@ export type SignatoryResolution =
   | { status: 'needs-picker' };
 
 export const SALES_EMAIL = 'sales@himalayaterpene.com';
+// The one login the whole app is locked to view-only for (see isReadOnlyUser
+// below) — everything except the LR document field in Dispatch → Sent
+// (NewDispatchEntry.tsx), which stays editable for exactly this login.
+export const BHIWANDI_EMAIL = 'bhiwandi@himalayaterpene.com';
 // Tickets module admins — see the Ticket Resolver view in src/pages/Tickets.tsx.
 // Compared against the logged-in Supabase Auth email (user?.email?.toLowerCase()),
 // NOT the self-picked "doer" identity used for KPI attribution elsewhere.
@@ -126,6 +130,11 @@ interface AppContextType {
   updateTicket: (id: string, updates: Partial<Ticket>) => Promise<void>;
   // Whether the logged-in Supabase Auth email is one of ADMIN_EMAILS.
   isAdmin: boolean;
+  // Whole-app view-only mode: true only for BHIWANDI_EMAIL. Layout.tsx and
+  // ProductionLayout.tsx use this to disable every form control app-wide,
+  // except the LR document field in Dispatch → Sent, which handles its own
+  // carve-out locally (see NewDispatchEntry.tsx).
+  isReadOnlyUser: boolean;
   roleForDoer: (nameOrEmail?: string | null) => DoerRole[];
   // Active doer (post-login identity on a possibly-shared Google login).
   activeDoer: ActiveDoer | null;
@@ -332,6 +341,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // useState+useEffect, so it can never lag one render behind user/data.
   const email = user?.email?.toLowerCase() ?? null;
   const isAdmin = !!email && ADMIN_EMAILS.includes(email);
+  const isReadOnlyUser = email === BHIWANDI_EMAIL;
   const resolvedSignatory: SignatoryResolution = (() => {
     if (!email) return { status: 'unmapped' };
     if (email === SALES_EMAIL) {
@@ -1868,6 +1878,7 @@ const mapEnquiryToDB = (e: any) => {
         addTicket,
         updateTicket,
         isAdmin,
+        isReadOnlyUser,
         roleForDoer,
         activeDoer,
         setActiveDoer,

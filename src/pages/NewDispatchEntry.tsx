@@ -57,8 +57,14 @@ export function NewDispatchEntry() {
   // "Dispatch → Sent" and the Documents Attachment / COA section is visible
   // right away — the entry itself isn't marked sent until Save is clicked.
   const toSent = searchParams.get('toSent') === '1';
-  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder } = useAppStore();
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder, isReadOnlyUser } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
+  // This whole page is locked to view-only for isReadOnlyUser (the Bhiwandi
+  // warehouse login) — see the <fieldset> wraps below — with one deliberate
+  // exception: the LR document field, which is the one thing that login is
+  // allowed to upload/replace/remove. Every other logged-in user gets the
+  // opposite: LR is view-only for them, everything else on this page is
+  // normal. See isReadOnlyUser usage throughout this file.
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
@@ -586,9 +592,9 @@ export function NewDispatchEntry() {
             {isEditMode && (
               <div className="flex items-center gap-2">
                 <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
-                <select title="Dispatch status" value={sentStatus}
+                <select title="Dispatch status" value={sentStatus} disabled={isReadOnlyUser}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSentStatus(e.target.value as 'to_dispatch' | 'sent')}
-                  className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer">
+                  className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
                   <option value="to_dispatch">Order → Dispatch</option>
                   <option value="sent">Dispatch → Sent</option>
                 </select>
@@ -602,6 +608,12 @@ export function NewDispatchEntry() {
       {/* Content */}
       <div className="px-5 pb-8 pt-3 flex-1 overflow-y-auto">
         <div className="flex flex-col gap-[12px]">
+
+          {/* Everything down to Documents Attachment is locked for
+              isReadOnlyUser (the Bhiwandi login) — LR is their one carved-out
+              exception, handled field-by-field inside that section instead
+              of being wrapped by this fieldset. */}
+          <fieldset disabled={isReadOnlyUser} className="contents">
 
           {isEditMode && selectedOrder && (
             <div className="bg-sW/5 border border-sW/20 rounded-[3px] p-[9px_14px] flex items-center gap-[10px] text-[12px]">
@@ -750,6 +762,8 @@ export function NewDispatchEntry() {
             </div>
           )}
 
+          </fieldset>
+
           {/* Documents Attachment — only once this entry's Status (above) is switched
               to "Dispatch → Sent". Uploads are deferred to Save, same as PO Document. */}
           {selectedOrder && sentStatus === 'sent' && (
@@ -762,21 +776,27 @@ export function NewDispatchEntry() {
                   const existingUrl = existingDocUrls[field.key];
                   const existingName = existingDocNames[field.key];
                   const inputId = `dispatch-doc-${field.key}`;
+                  // LR is the one field exempt from the page-wide read-only lock
+                  // for isReadOnlyUser (the Bhiwandi login): it stays editable for
+                  // them and only them. Every other doc field flips the other way —
+                  // locked for isReadOnlyUser, normal for everyone else. Either way
+                  // the Open link (below) still works, so viewing is never blocked.
+                  const isLrLocked = field.key === 'lr' ? !isReadOnlyUser : isReadOnlyUser;
                   return (
                     <div key={field.key}>
                       <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}</label>
                       <div className="flex items-center gap-1.5">
-                        <input type="file" id={inputId} className="hidden"
+                        <input type="file" id={inputId} className="hidden" disabled={isLrLocked}
                           onChange={e => { if (e.target.files?.length) handleDocFileChange(field.key, e.target.files[0]); }}
                           accept=".pdf,.jpeg,.jpg,.png,.webp" />
                         <label htmlFor={inputId}
-                          className="cursor-pointer font-sans text-[11px] font-medium text-blk bg-white border border-g300 rounded-[3px] p-[7px_10px] flex items-center gap-2 hover:bg-g50 transition-colors h-[36px] flex-1 min-w-0">
+                          className={`font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border ${isLrLocked ? 'cursor-not-allowed bg-g50 text-g500 border-g200' : 'cursor-pointer text-blk bg-white border-g300 hover:bg-g50 transition-colors'}`}>
                           <Upload size={13} className="text-g500 shrink-0" />
                           {file
                             ? <span className="truncate">{file.name}</span>
                             : existingName
-                            ? <span className="truncate text-emerald-600">Existing (click to replace)</span>
-                            : <span className="truncate">Upload {field.label}</span>}
+                            ? <span className={`truncate ${isLrLocked ? '' : 'text-emerald-600'}`}>{isLrLocked ? existingName : 'Existing (click to replace)'}</span>
+                            : <span className="truncate">{isLrLocked ? 'Not uploaded' : `Upload ${field.label}`}</span>}
                         </label>
                         {file && localUrl && (
                           <a href={localUrl} target="_blank" rel="noopener noreferrer" title="Preview selected file"
@@ -790,7 +810,7 @@ export function NewDispatchEntry() {
                             <ExternalLink size={14} />
                           </a>
                         )}
-                        {(file || existingUrl || existingName) && (
+                        {(file || existingUrl || existingName) && !isLrLocked && (
                           <button type="button" title="Remove" onClick={() => handleDocRemove(field.key)} className="text-g400 hover:text-red-mrt text-[16px]">×</button>
                         )}
                       </div>
@@ -801,7 +821,10 @@ export function NewDispatchEntry() {
 
               {/* COA — search the shared coa_document library (same widget as the
                   Stock Movement "Log New Inward" form's COA section) and attach an
-                  existing certificate, or upload a brand-new one to the library. */}
+                  existing certificate, or upload a brand-new one to the library.
+                  Unlike LR, COA has no carve-out — it's locked for isReadOnlyUser
+                  same as everything else on the page. */}
+              <fieldset disabled={isReadOnlyUser} className="contents">
               <div className="px-[16px] pb-[14px] pt-[2px] border-t border-g200 mt-[2px]">
                 <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[6px]">COA</label>
                 {coaFileName ? (
@@ -864,11 +887,14 @@ export function NewDispatchEntry() {
                   </>
                 )}
               </div>
+              </fieldset>
             </div>
           )}
 
-          {/* Order line items — read-only reference styled exactly like the Order form's table, through Order Value */}
+          {/* Order line items — read-only reference styled exactly like the Order form's table, through Order Value.
+              Locked for isReadOnlyUser like the rest of the page — no LR-style exception here. */}
           {selectedOrder && orderTotals && (
+            <fieldset disabled={isReadOnlyUser} className="contents">
             <div className="bg-white border border-g200">
               <div className="p-[11px_16px] border-b border-g200">
                 <span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g500">Order Line Items</span>
@@ -1051,6 +1077,7 @@ export function NewDispatchEntry() {
                 </table>
               </div>
             </div>
+            </fieldset>
           )}
 
           {error && (
@@ -1058,8 +1085,14 @@ export function NewDispatchEntry() {
           )}
 
           <div className="flex items-center justify-end gap-2 pt-1 pb-2">
+            {/* Save is deliberately NOT disabled for isReadOnlyUser: LR uploads on
+                this page are only persisted when the form is saved (see the
+                Documents Attachment comment above), so blocking Save would also
+                block the one LR exception that's supposed to keep working. Every
+                other field on this page is locked, so Save can only ever persist
+                an LR change for this user — nothing else can have changed. */}
             <Button variant="dark" disabled={!selectedOrderId || saving} onClick={handleSubmit}>{saving ? 'Saving…' : 'Save'}</Button>
-            <Button variant="dark" disabled={!selectedOrderId} onClick={() => setShowEmailModal(true)}>
+            <Button variant="dark" disabled={!selectedOrderId || isReadOnlyUser} onClick={() => setShowEmailModal(true)}>
               <Mail size={12} />
               Email to Client
             </Button>
