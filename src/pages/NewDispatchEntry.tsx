@@ -21,13 +21,42 @@ import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmail
 // (search-and-attach, or upload-new-and-attach) the same way
 // NewStockInward.tsx's "COA" section does, rather than a plain file input.
 type DispatchDocKey = 'invoiceEwayBill' | 'lr' | 'supplierPortal' | 'termCardAttachment';
+// 2026-09-19: Invoice/Eway Bill and LR now accept any number of documents
+// (multi-file), matching the "+ Add Email" / "+ Add Contact Number" pattern
+// on the Customer form — see MULTI_DOC_FIELDS/multiDocSlots below. Supplier
+// Portal and Term Card Attachment are unchanged, still single-file.
+type MultiDocKey = 'invoiceEwayBill' | 'lr';
+type SingleDocKey = 'supplierPortal' | 'termCardAttachment';
 
-const DISPATCH_DOC_FIELDS: { key: DispatchDocKey; label: string; urlKey: keyof DispatchEntry; nameKey: keyof DispatchEntry; slug: string }[] = [
-  { key: 'invoiceEwayBill', label: 'Invoice / Eway Bill', urlKey: 'invoiceEwayBillUrl', nameKey: 'invoiceEwayBillName', slug: 'invoice-eway-bill' },
-  { key: 'lr', label: 'LR', urlKey: 'lrUrl', nameKey: 'lrName', slug: 'lr' },
-  { key: 'supplierPortal', label: 'Supplier Portal', urlKey: 'supplierPortalUrl', nameKey: 'supplierPortalName', slug: 'supplier-portal' },
-  { key: 'termCardAttachment', label: 'Term Card Attachment', urlKey: 'termCardAttachmentUrl', nameKey: 'termCardAttachmentName', slug: 'term-card-attachment' },
+const DISPATCH_DOC_FIELDS: { key: DispatchDocKey; label: string; urlKey: keyof DispatchEntry; nameKey: keyof DispatchEntry; filesKey?: keyof DispatchEntry; slug: string; multi: boolean }[] = [
+  { key: 'invoiceEwayBill', label: 'Invoice / Eway Bill', urlKey: 'invoiceEwayBillUrl', nameKey: 'invoiceEwayBillName', filesKey: 'invoiceEwayBillFiles', slug: 'invoice-eway-bill', multi: true },
+  { key: 'lr', label: 'LR', urlKey: 'lrUrl', nameKey: 'lrName', filesKey: 'lrFiles', slug: 'lr', multi: true },
+  { key: 'supplierPortal', label: 'Supplier Portal', urlKey: 'supplierPortalUrl', nameKey: 'supplierPortalName', slug: 'supplier-portal', multi: false },
+  { key: 'termCardAttachment', label: 'Term Card Attachment', urlKey: 'termCardAttachmentUrl', nameKey: 'termCardAttachmentName', slug: 'term-card-attachment', multi: false },
 ];
+const SINGLE_DOC_FIELDS = DISPATCH_DOC_FIELDS.filter(f => !f.multi) as (Omit<typeof DISPATCH_DOC_FIELDS[number], 'key'> & { key: SingleDocKey })[];
+const MULTI_DOC_FIELDS = DISPATCH_DOC_FIELDS.filter(f => f.multi) as (Omit<typeof DISPATCH_DOC_FIELDS[number], 'key' | 'filesKey'> & { key: MultiDocKey; filesKey: keyof DispatchEntry })[];
+
+// One row in a multi-document field's list — either a file already saved on
+// this entry (kind: 'existing'), a freshly-picked file not yet uploaded
+// (kind: 'new'), or an empty row just added via "+ Add" with no file chosen
+// yet (kind: 'empty', dropped silently on Save if never filled in).
+type DocSlot =
+  | { id: string; kind: 'existing'; url: string; name: string }
+  | { id: string; kind: 'new'; file: File; localUrl: string }
+  | { id: string; kind: 'empty' };
+
+let docSlotSeq = 0;
+const newDocSlotId = () => `slot-${Date.now()}-${++docSlotSeq}`;
+
+// Builds a multi-doc field's initial slot list from its saved files array,
+// falling back to the legacy single url/name columns for any entry that
+// predates this feature (or the migration backfill, as a safety net).
+const buildDocSlots = (files: { url: string; name: string }[] | undefined, legacyUrl?: string, legacyName?: string): DocSlot[] => {
+  if (files && files.length) return files.map(f => ({ id: newDocSlotId(), kind: 'existing' as const, url: f.url, name: f.name }));
+  if (legacyUrl) return [{ id: newDocSlotId(), kind: 'existing' as const, url: legacyUrl, name: legacyName || 'Document' }];
+  return [];
+};
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow disabled:bg-g50 disabled:cursor-not-allowed disabled:text-g500";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-60 disabled:cursor-not-allowed";
@@ -108,33 +137,61 @@ export function NewDispatchEntry() {
   const [sentStatus, setSentStatus] = useState<'to_dispatch' | 'sent'>('to_dispatch');
 
   // "Documents Attachment" — only meaningful (and only ever shown) once
-  // sentStatus === 'sent'. docFiles/docLocalUrls hold a freshly-picked,
-  // not-yet-uploaded file per field; existingDocUrls/Names hold what's
-  // already saved on the entry being edited. touchedDocs tracks which
-  // fields the user actually changed this session, so handleSubmit only
-  // overwrites those — leaving every untouched field's saved value alone.
-  const [docFiles, setDocFiles] = useState<Partial<Record<DispatchDocKey, File>>>({});
-  const [docLocalUrls, setDocLocalUrls] = useState<Partial<Record<DispatchDocKey, string>>>({});
-  const [existingDocUrls, setExistingDocUrls] = useState<Partial<Record<DispatchDocKey, string>>>({});
-  const [existingDocNames, setExistingDocNames] = useState<Partial<Record<DispatchDocKey, string>>>({});
-  const [touchedDocs, setTouchedDocs] = useState<Set<DispatchDocKey>>(new Set());
+  // sentStatus === 'sent'.
+  // Single-file fields (Supplier Portal, Term Card Attachment) — unchanged
+  // from before: docFiles/docLocalUrls hold a freshly-picked, not-yet-
+  // uploaded file; existingDocUrls/Names hold what's already saved.
+  // touchedDocs tracks which of these two fields the user actually changed
+  // this session, so handleSubmit only overwrites those.
+  const [docFiles, setDocFiles] = useState<Partial<Record<SingleDocKey, File>>>({});
+  const [docLocalUrls, setDocLocalUrls] = useState<Partial<Record<SingleDocKey, string>>>({});
+  const [existingDocUrls, setExistingDocUrls] = useState<Partial<Record<SingleDocKey, string>>>({});
+  const [existingDocNames, setExistingDocNames] = useState<Partial<Record<SingleDocKey, string>>>({});
+  const [touchedDocs, setTouchedDocs] = useState<Set<SingleDocKey>>(new Set());
+
+  // Multi-file fields (Invoice/Eway Bill, LR) — one list of DocSlot rows per
+  // field; see the DocSlot type above. multiDocTouched mirrors touchedDocs:
+  // only fields the user actually added/picked/removed something in get
+  // written back on Save, leaving every other field's saved list untouched.
+  const [multiDocSlots, setMultiDocSlots] = useState<Record<MultiDocKey, DocSlot[]>>({ invoiceEwayBill: [], lr: [] });
+  const [multiDocTouched, setMultiDocTouched] = useState<Set<MultiDocKey>>(new Set());
 
   // Invoice Number — a plain manually-typed value, shown next to Remark in
   // the Customer & Contact card (not gated behind Status, same as Remark).
   const [invoiceNumber, setInvoiceNumber] = useState('');
 
-  const handleDocFileChange = (key: DispatchDocKey, file: File) => {
+  const handleDocFileChange = (key: SingleDocKey, file: File) => {
     setDocFiles(prev => ({ ...prev, [key]: file }));
     setDocLocalUrls(prev => ({ ...prev, [key]: URL.createObjectURL(file) }));
     setTouchedDocs(prev => new Set(prev).add(key));
   };
 
-  const handleDocRemove = (key: DispatchDocKey) => {
+  const handleDocRemove = (key: SingleDocKey) => {
     setDocFiles(prev => { const n = { ...prev }; delete n[key]; return n; });
     setDocLocalUrls(prev => { const n = { ...prev }; delete n[key]; return n; });
     setExistingDocUrls(prev => ({ ...prev, [key]: undefined }));
     setExistingDocNames(prev => ({ ...prev, [key]: undefined }));
     setTouchedDocs(prev => new Set(prev).add(key));
+  };
+
+  // "+ Add {label}" — appends an empty row for the user to pick a file into,
+  // same affordance as Customer form's "+ Add Email"/"+ Add Contact Number".
+  const addMultiDocSlot = (key: MultiDocKey) => {
+    setMultiDocSlots(prev => ({ ...prev, [key]: [...prev[key], { id: newDocSlotId(), kind: 'empty' }] }));
+    setMultiDocTouched(prev => new Set(prev).add(key));
+  };
+
+  const pickMultiDocFile = (key: MultiDocKey, slotId: string, file: File) => {
+    setMultiDocSlots(prev => ({
+      ...prev,
+      [key]: prev[key].map(s => s.id === slotId ? { id: slotId, kind: 'new', file, localUrl: URL.createObjectURL(file) } : s),
+    }));
+    setMultiDocTouched(prev => new Set(prev).add(key));
+  };
+
+  const removeMultiDocSlot = (key: MultiDocKey, slotId: string) => {
+    setMultiDocSlots(prev => ({ ...prev, [key]: prev[key].filter(s => s.id !== slotId) }));
+    setMultiDocTouched(prev => new Set(prev).add(key));
   };
 
   // COA — search the shared coa_document library (by product name or lot no.)
@@ -295,16 +352,16 @@ export function NewDispatchEntry() {
       setEstimatedDeliveryDate(existing.estimatedDeliveryDate || order.estimatedDeliveryDate || '');
       setSentStatus(existing.sentAt || toSent ? 'sent' : 'to_dispatch');
       setExistingDocUrls({
-        invoiceEwayBill: existing.invoiceEwayBillUrl,
-        lr: existing.lrUrl,
         supplierPortal: existing.supplierPortalUrl,
         termCardAttachment: existing.termCardAttachmentUrl,
       });
       setExistingDocNames({
-        invoiceEwayBill: existing.invoiceEwayBillName,
-        lr: existing.lrName,
         supplierPortal: existing.supplierPortalName,
         termCardAttachment: existing.termCardAttachmentName,
+      });
+      setMultiDocSlots({
+        invoiceEwayBill: buildDocSlots(existing.invoiceEwayBillFiles, existing.invoiceEwayBillUrl, existing.invoiceEwayBillName),
+        lr: buildDocSlots(existing.lrFiles, existing.lrUrl, existing.lrName),
       });
       setCoaFileName(existing.coaName || undefined);
       setCoaFileUrl(existing.coaUrl || undefined);
@@ -336,18 +393,25 @@ export function NewDispatchEntry() {
 
   // "Email to Client" attachments — every document already saved on this
   // entry (the 4 Documents Attachment fields + COA), whichever of those are
-  // actually present. Built from existingDocUrls/Names + coaFileUrl/Name
-  // (what's persisted), not docFiles (freshly-picked-but-unsaved files) —
-  // an attachment has to actually be uploaded before it can be emailed.
+  // actually present. Built from existingDocUrls/Names + multiDocSlots'
+  // 'existing' rows + coaFileUrl/Name (what's persisted), not docFiles /
+  // freshly-picked multiDocSlots rows — a file has to actually be uploaded
+  // before it can be emailed. Invoice/Eway Bill and LR can contribute more
+  // than one attachment under the same label now that they're multi-file.
   const dispatchEmailAttachments: DispatchEmailAttachment[] = useMemo(() => {
     const list: DispatchEmailAttachment[] = [];
-    for (const field of DISPATCH_DOC_FIELDS) {
+    for (const field of SINGLE_DOC_FIELDS) {
       const url = existingDocUrls[field.key];
       if (url) list.push({ label: field.label, url, fileName: existingDocNames[field.key] || field.label });
     }
+    for (const field of MULTI_DOC_FIELDS) {
+      for (const slot of multiDocSlots[field.key]) {
+        if (slot.kind === 'existing') list.push({ label: field.label, url: slot.url, fileName: slot.name || field.label });
+      }
+    }
     if (coaFileUrl) list.push({ label: 'COA', url: coaFileUrl, fileName: coaFileName || 'COA' });
     return list;
-  }, [existingDocUrls, existingDocNames, coaFileUrl, coaFileName]);
+  }, [existingDocUrls, existingDocNames, multiDocSlots, coaFileUrl, coaFileName]);
 
   // Order totals — mirrors the exact Subtotal/Insurance/Taxable Value/GST
   // Total/Order Value math used on the Order form itself, now recomputed
@@ -522,13 +586,14 @@ export function NewDispatchEntry() {
       const sentAt = sentStatus === 'sent' ? (existingEntry?.sentAt || new Date().toISOString()) : undefined;
 
       // Documents Attachment — upload only the fields the user actually
-      // touched this session (see touchedDocs above), only now on Save,
-      // exactly like the Order form's PO Document field. A field with a
-      // freshly-picked file uploads it and records the resulting public URL
-      // + original name; a field cleared via "×" with nothing re-picked
-      // writes undefined so mapDispatchEntryToDB nulls out both columns.
+      // touched this session, only now on Save, exactly like the Order
+      // form's PO Document field.
       const docUpdates: Partial<DispatchEntry> = {};
-      for (const field of DISPATCH_DOC_FIELDS) {
+      // Single-file fields (Supplier Portal, Term Card Attachment) —
+      // unchanged: a freshly-picked file uploads and records its public URL
+      // + original name; cleared via "×" with nothing re-picked writes
+      // undefined so mapDispatchEntryToDB nulls out both columns.
+      for (const field of SINGLE_DOC_FIELDS) {
         if (!touchedDocs.has(field.key)) continue;
         const file = docFiles[field.key];
         if (file) {
@@ -542,6 +607,28 @@ export function NewDispatchEntry() {
           (docUpdates as any)[field.urlKey] = undefined;
           (docUpdates as any)[field.nameKey] = undefined;
         }
+      }
+      // Multi-file fields (Invoice/Eway Bill, LR) — upload every freshly-
+      // picked ('new') slot, keep every already-saved ('existing') slot,
+      // and drop removed/never-filled-in ('empty') slots, then save the
+      // resulting list as this field's files array. Each new file's storage
+      // path includes its slot id so multiple files picked for the same
+      // field in the same session never collide with each other.
+      for (const field of MULTI_DOC_FIELDS) {
+        if (!multiDocTouched.has(field.key)) continue;
+        const files: { url: string; name: string }[] = [];
+        for (const slot of multiDocSlots[field.key]) {
+          if (slot.kind === 'existing') {
+            files.push({ url: slot.url, name: slot.name });
+          } else if (slot.kind === 'new') {
+            const safeName = slot.file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+            const pathPrefix = existingEntryId || selectedOrderId;
+            const { data: publicUrl, error: uploadError } = await uploadPublicFile('dispatch-documents', `${pathPrefix}/${field.slug}/${slot.id}-${safeName}`, slot.file);
+            if (uploadError || !publicUrl) throw uploadError || new Error(`Could not upload ${field.label}`);
+            files.push({ url: publicUrl, name: slot.file.name });
+          }
+        }
+        (docUpdates as any)[field.filesKey] = files;
       }
       // COA is attached via the search/upload picker above, not a raw file
       // input, so it's already got a resolved URL by the time we get here —
@@ -775,35 +862,91 @@ export function NewDispatchEntry() {
             <div className="bg-white border border-g200">
               <div className={sectionHeaderCls}>Documents Attachment</div>
               <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-4 gap-[12px]">
-                {DISPATCH_DOC_FIELDS.map(field => {
+                {/* Invoice/Eway Bill and LR — multi-document: a list of rows
+                    (one per saved/picked file) plus a "+ Add" link, mirroring
+                    the Customer form's "+ Add Email"/"+ Add Contact Number"
+                    pattern. LR is the one field exempt from the page-wide
+                    read-only lock for isReadOnlyUser (the Bhiwandi login) —
+                    canEditLr also lets mum@himalayaterpene.com edit it.
+                    Everyone else is locked out of LR. Invoice/Eway Bill locks
+                    the normal way, for isReadOnlyUser only. Either way every
+                    already-saved file's Open link still works, so viewing is
+                    never blocked. */}
+                {MULTI_DOC_FIELDS.map(field => {
+                  const slots = multiDocSlots[field.key];
+                  const isFieldLocked = field.key === 'lr' ? !canEditLr : isReadOnlyUser;
+                  return (
+                    <div key={field.key}>
+                      <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}</label>
+                      <div className="flex flex-col gap-1.5">
+                        {slots.length === 0 && (
+                          <div className="text-[11px] text-g400 italic py-1.5">{isFieldLocked ? 'Not uploaded' : 'No documents yet'}</div>
+                        )}
+                        {slots.map(slot => {
+                          const inputId = `dispatch-doc-${field.key}-${slot.id}`;
+                          return (
+                            <div key={slot.id} className="flex items-center gap-1.5">
+                              {slot.kind === 'empty' ? (
+                                <>
+                                  <input type="file" id={inputId} className="hidden" disabled={isFieldLocked}
+                                    onChange={e => { if (e.target.files?.length) pickMultiDocFile(field.key, slot.id, e.target.files[0]); }}
+                                    accept=".pdf,.jpeg,.jpg,.png,.webp" />
+                                  <label htmlFor={inputId}
+                                    className={`font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border ${isFieldLocked ? 'cursor-not-allowed bg-g50 text-g500 border-g200' : 'cursor-pointer text-blk bg-white border-g300 hover:bg-g50 transition-colors'}`}>
+                                    <Upload size={13} className="text-g500 shrink-0" />
+                                    <span className="truncate">Choose file…</span>
+                                  </label>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border text-blk bg-white border-g300">
+                                    <Upload size={13} className="text-g500 shrink-0" />
+                                    <span className={`truncate ${slot.kind === 'new' ? '' : 'text-emerald-600'}`}>{slot.kind === 'new' ? slot.file.name : slot.name}</span>
+                                  </div>
+                                  <a href={slot.kind === 'new' ? slot.localUrl : slot.url} target="_blank" rel="noopener noreferrer" title={`Open ${field.label}`}
+                                    className="p-1.5 text-g400 hover:text-blue-600 transition-colors shrink-0" onClick={e => e.stopPropagation()}>
+                                    <ExternalLink size={14} />
+                                  </a>
+                                </>
+                              )}
+                              {!isFieldLocked && (
+                                <button type="button" title="Remove" onClick={() => removeMultiDocSlot(field.key, slot.id)} className="text-g400 hover:text-red-mrt text-[16px] shrink-0">×</button>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {!isFieldLocked && (
+                          <button type="button" onClick={() => addMultiDocSlot(field.key)} className="text-[11px] text-blue-600 hover:text-blue-800 font-medium text-left mt-0.5">
+                            + Add {field.label}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Supplier Portal / Term Card Attachment — unchanged single-file fields. */}
+                {SINGLE_DOC_FIELDS.map(field => {
                   const file = docFiles[field.key];
                   const localUrl = docLocalUrls[field.key];
                   const existingUrl = existingDocUrls[field.key];
                   const existingName = existingDocNames[field.key];
                   const inputId = `dispatch-doc-${field.key}`;
-                  // LR is the one field exempt from the page-wide read-only lock
-                  // for isReadOnlyUser (the Bhiwandi login) — and canEditLr also
-                  // lets mum@himalayaterpene.com edit it. Everyone else is locked
-                  // out of LR. Every OTHER doc field flips the other way — locked
-                  // for isReadOnlyUser (Bhiwandi only, mum@ unaffected there),
-                  // normal for everyone else. Either way the Open link (below)
-                  // still works, so viewing is never blocked.
-                  const isLrLocked = field.key === 'lr' ? !canEditLr : isReadOnlyUser;
+                  const isFieldLocked = isReadOnlyUser;
                   return (
                     <div key={field.key}>
                       <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}</label>
                       <div className="flex items-center gap-1.5">
-                        <input type="file" id={inputId} className="hidden" disabled={isLrLocked}
+                        <input type="file" id={inputId} className="hidden" disabled={isFieldLocked}
                           onChange={e => { if (e.target.files?.length) handleDocFileChange(field.key, e.target.files[0]); }}
                           accept=".pdf,.jpeg,.jpg,.png,.webp" />
                         <label htmlFor={inputId}
-                          className={`font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border ${isLrLocked ? 'cursor-not-allowed bg-g50 text-g500 border-g200' : 'cursor-pointer text-blk bg-white border-g300 hover:bg-g50 transition-colors'}`}>
+                          className={`font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border ${isFieldLocked ? 'cursor-not-allowed bg-g50 text-g500 border-g200' : 'cursor-pointer text-blk bg-white border-g300 hover:bg-g50 transition-colors'}`}>
                           <Upload size={13} className="text-g500 shrink-0" />
                           {file
                             ? <span className="truncate">{file.name}</span>
                             : existingName
-                            ? <span className={`truncate ${isLrLocked ? '' : 'text-emerald-600'}`}>{isLrLocked ? existingName : 'Existing (click to replace)'}</span>
-                            : <span className="truncate">{isLrLocked ? 'Not uploaded' : `Upload ${field.label}`}</span>}
+                            ? <span className={`truncate ${isFieldLocked ? '' : 'text-emerald-600'}`}>{isFieldLocked ? existingName : 'Existing (click to replace)'}</span>
+                            : <span className="truncate">{isFieldLocked ? 'Not uploaded' : `Upload ${field.label}`}</span>}
                         </label>
                         {file && localUrl && (
                           <a href={localUrl} target="_blank" rel="noopener noreferrer" title="Preview selected file"
@@ -817,7 +960,7 @@ export function NewDispatchEntry() {
                             <ExternalLink size={14} />
                           </a>
                         )}
-                        {(file || existingUrl || existingName) && !isLrLocked && (
+                        {(file || existingUrl || existingName) && !isFieldLocked && (
                           <button type="button" title="Remove" onClick={() => handleDocRemove(field.key)} className="text-g400 hover:text-red-mrt text-[16px]">×</button>
                         )}
                       </div>

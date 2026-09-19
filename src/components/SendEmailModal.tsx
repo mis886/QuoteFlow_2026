@@ -159,8 +159,13 @@ export function SendEmailModal(props: Props) {
   // the raw uploaded file name. The actual file names are shown separately
   // in the Attachments panel below, where each label is already paired with
   // its real file name.
-  const dispatchDocLines = dispatchAttachments.length
-    ? dispatchAttachments.map(a => `◽ ${a.label}`).join('\n')
+  // 2026-09-19: Invoice/Eway Bill and LR can now carry several files under
+  // one label (see NewDispatchEntry.tsx's multi-document support), and
+  // dispatchAttachments has one entry per file — dedupe by label here so the
+  // body still lists each category once, however many files it holds.
+  const dispatchDocLabels = Array.from(new Set(dispatchAttachments.map(a => a.label)));
+  const dispatchDocLines = dispatchDocLabels.length
+    ? dispatchDocLabels.map(label => `◽ ${label}`).join('\n')
     : '◽ (no documents uploaded yet)';
 
   const defaultSubject = isQuote

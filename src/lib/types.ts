@@ -516,15 +516,28 @@ export interface DispatchEntry {
   // "Documents Attachment" card shown in the "Dispatch → Sent" view (see
   // src/pages/Dispatch.tsx). Each pair is a public Supabase Storage URL +
   // the original file name, uploaded to the 'dispatch-documents' bucket.
+  // invoiceEwayBillUrl/Name are the legacy single-file columns — kept for
+  // backward compatibility with any code path that still reads them, but no
+  // longer written to going forward. Invoice/Eway Bill now supports multiple
+  // documents, saved in invoiceEwayBillFiles below.
   invoiceEwayBillUrl?: string;
   invoiceEwayBillName?: string;
+  // 2026-09-19: multi-document support for Invoice/Eway Bill — array of
+  // every uploaded file under this field (replaces the single-file
+  // invoiceEwayBillUrl/Name above going forward; those are left populated
+  // from the pre-migration data but no longer updated on save).
+  invoiceEwayBillFiles?: { url: string; name: string }[];
   // Manually-typed invoice number (not a file) — entered alongside the
   // Invoice / Eway Bill upload in the same "Documents Attachment" card.
   invoiceNumber?: string;
   coaUrl?: string;
   coaName?: string;
+  // Legacy single-file LR columns — see invoiceEwayBillUrl/Name above; same
+  // deal, superseded by lrFiles below.
   lrUrl?: string;
   lrName?: string;
+  // 2026-09-19: multi-document support for LR — see invoiceEwayBillFiles above.
+  lrFiles?: { url: string; name: string }[];
   supplierPortalUrl?: string;
   supplierPortalName?: string;
   termCardAttachmentUrl?: string;

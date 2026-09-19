@@ -641,11 +641,13 @@ const mapEnquiryToDB = (e: any) => {
     value: d.value ?? undefined,
     invoiceEwayBillUrl: d.invoice_eway_bill_url || undefined,
     invoiceEwayBillName: d.invoice_eway_bill_name || undefined,
+    invoiceEwayBillFiles: Array.isArray(d.invoice_eway_bill_files) ? d.invoice_eway_bill_files : undefined,
     invoiceNumber: d.invoice_number || undefined,
     coaUrl: d.coa_url || undefined,
     coaName: d.coa_name || undefined,
     lrUrl: d.lr_url || undefined,
     lrName: d.lr_name || undefined,
+    lrFiles: Array.isArray(d.lr_files) ? d.lr_files : undefined,
     supplierPortalUrl: d.supplier_portal_url || undefined,
     supplierPortalName: d.supplier_portal_name || undefined,
     termCardAttachmentUrl: d.term_card_attachment_url || undefined,
@@ -674,11 +676,13 @@ const mapEnquiryToDB = (e: any) => {
     if ('value' in d) obj.value = d.value ?? null;
     if ('invoiceEwayBillUrl' in d) obj.invoice_eway_bill_url = d.invoiceEwayBillUrl || null;
     if ('invoiceEwayBillName' in d) obj.invoice_eway_bill_name = d.invoiceEwayBillName || null;
+    if ('invoiceEwayBillFiles' in d) obj.invoice_eway_bill_files = d.invoiceEwayBillFiles ?? [];
     if ('invoiceNumber' in d) obj.invoice_number = d.invoiceNumber || null;
     if ('coaUrl' in d) obj.coa_url = d.coaUrl || null;
     if ('coaName' in d) obj.coa_name = d.coaName || null;
     if ('lrUrl' in d) obj.lr_url = d.lrUrl || null;
     if ('lrName' in d) obj.lr_name = d.lrName || null;
+    if ('lrFiles' in d) obj.lr_files = d.lrFiles ?? [];
     if ('supplierPortalUrl' in d) obj.supplier_portal_url = d.supplierPortalUrl || null;
     if ('supplierPortalName' in d) obj.supplier_portal_name = d.supplierPortalName || null;
     if ('termCardAttachmentUrl' in d) obj.term_card_attachment_url = d.termCardAttachmentUrl || null;
