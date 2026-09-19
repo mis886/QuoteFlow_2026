@@ -38,13 +38,16 @@ const SINGLE_DOC_FIELDS = DISPATCH_DOC_FIELDS.filter(f => !f.multi) as (Omit<typ
 const MULTI_DOC_FIELDS = DISPATCH_DOC_FIELDS.filter(f => f.multi) as (Omit<typeof DISPATCH_DOC_FIELDS[number], 'key' | 'filesKey'> & { key: MultiDocKey; filesKey: keyof DispatchEntry })[];
 
 // One row in a multi-document field's list — either a file already saved on
-// this entry (kind: 'existing'), a freshly-picked file not yet uploaded
-// (kind: 'new'), or an empty row just added via "+ Add" with no file chosen
-// yet (kind: 'empty', dropped silently on Save if never filled in).
+// this entry (kind: 'existing') or a freshly-picked file not yet uploaded
+// (kind: 'new'). Unlike the Customer form's "+ Add Email" (which adds a
+// blank row to type into), a file field has nothing to add until a file is
+// actually chosen — so both the primary "Upload" control (when the field is
+// still empty) and the "+ Add" link (once it has files) open the same OS
+// file picker and append a filled 'new' slot the instant something is
+// picked. There's no empty/unfilled slot state to render.
 type DocSlot =
   | { id: string; kind: 'existing'; url: string; name: string }
-  | { id: string; kind: 'new'; file: File; localUrl: string }
-  | { id: string; kind: 'empty' };
+  | { id: string; kind: 'new'; file: File; localUrl: string };
 
 let docSlotSeq = 0;
 const newDocSlotId = () => `slot-${Date.now()}-${++docSlotSeq}`;
@@ -176,18 +179,11 @@ export function NewDispatchEntry() {
     setTouchedDocs(prev => new Set(prev).add(key));
   };
 
-  // "+ Add {label}" — appends an empty row for the user to pick a file into,
-  // same affordance as Customer form's "+ Add Email"/"+ Add Contact Number".
-  const addMultiDocSlot = (key: MultiDocKey) => {
-    setMultiDocSlots(prev => ({ ...prev, [key]: [...prev[key], { id: newDocSlotId(), kind: 'empty' }] }));
-    setMultiDocTouched(prev => new Set(prev).add(key));
-  };
-
-  const pickMultiDocFile = (key: MultiDocKey, slotId: string, file: File) => {
-    setMultiDocSlots(prev => ({
-      ...prev,
-      [key]: prev[key].map(s => s.id === slotId ? { id: slotId, kind: 'new', file, localUrl: URL.createObjectURL(file) } : s),
-    }));
+  // Picking a file for a multi-doc field — via either the primary "Upload"
+  // control (field still empty) or the "+ Add" link (field already has
+  // files) — appends it as a new, already-filled slot in one step.
+  const pickAndAddMultiDocFile = (key: MultiDocKey, file: File) => {
+    setMultiDocSlots(prev => ({ ...prev, [key]: [...prev[key], { id: newDocSlotId(), kind: 'new', file, localUrl: URL.createObjectURL(file) }] }));
     setMultiDocTouched(prev => new Set(prev).add(key));
   };
 
@@ -612,17 +608,18 @@ export function NewDispatchEntry() {
       }
       // Multi-file fields (Invoice/Eway Bill, LR) — upload every freshly-
       // picked ('new') slot, keep every already-saved ('existing') slot,
-      // and drop removed/never-filled-in ('empty') slots, then save the
-      // resulting list as this field's files array. Each new file's storage
-      // path includes its slot id so multiple files picked for the same
-      // field in the same session never collide with each other.
+      // and drop removed slots (they're just not in the array anymore),
+      // then save the resulting list as this field's files array. Each new
+      // file's storage path includes its slot id so multiple files picked
+      // for the same field in the same session never collide with each
+      // other.
       for (const field of MULTI_DOC_FIELDS) {
         if (!multiDocTouched.has(field.key)) continue;
         const files: { url: string; name: string }[] = [];
         for (const slot of multiDocSlots[field.key]) {
           if (slot.kind === 'existing') {
             files.push({ url: slot.url, name: slot.name });
-          } else if (slot.kind === 'new') {
+          } else {
             const safeName = slot.file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
             const pathPrefix = existingEntryId || selectedOrderId;
             const { data: publicUrl, error: uploadError } = await uploadPublicFile('dispatch-documents', `${pathPrefix}/${field.slug}/${slot.id}-${safeName}`, slot.file);
@@ -864,63 +861,60 @@ export function NewDispatchEntry() {
             <div className="bg-white border border-g200">
               <div className={sectionHeaderCls}>Documents Attachment</div>
               <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-4 gap-[12px]">
-                {/* Invoice/Eway Bill and LR — multi-document: a list of rows
-                    (one per saved/picked file) plus a "+ Add" link, mirroring
-                    the Customer form's "+ Add Email"/"+ Add Contact Number"
-                    pattern. LR is the one field exempt from the page-wide
-                    read-only lock for isReadOnlyUser (the Bhiwandi login) —
-                    canEditLr also lets mum@himalayaterpene.com edit it.
-                    Everyone else is locked out of LR. Invoice/Eway Bill locks
-                    the normal way, for isReadOnlyUser only. Either way every
-                    already-saved file's Open link still works, so viewing is
-                    never blocked. */}
+                {/* Invoice/Eway Bill and LR — multi-document. With no files
+                    yet, this looks and behaves exactly like Supplier Portal/
+                    Term Card Attachment's single upload button below — one
+                    click opens the file picker and attaches it. Once it has
+                    a file, that same picker (now reached via a "+ Add" link
+                    under the list) is used to attach more; a picked file is
+                    never a separate two-step "empty row" — see the DocSlot
+                    comment above. LR is the one field exempt from the
+                    page-wide read-only lock for isReadOnlyUser (the Bhiwandi
+                    login) — canEditLr also lets mum@ and every ADMIN_EMAILS
+                    login edit it. Everyone else is locked out of LR.
+                    Invoice/Eway Bill locks the normal way, for isReadOnlyUser
+                    only. Either way every already-saved file's Open link
+                    still works, so viewing is never blocked. */}
                 {MULTI_DOC_FIELDS.map(field => {
                   const slots = multiDocSlots[field.key];
                   const isFieldLocked = field.key === 'lr' ? !canEditLr : isReadOnlyUser;
+                  const inputId = `dispatch-doc-${field.key}-picker`;
                   return (
                     <div key={field.key}>
                       <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}</label>
                       <div className="flex flex-col gap-1.5">
-                        {slots.length === 0 && (
-                          <div className="text-[11px] text-g400 italic py-1.5">{isFieldLocked ? 'Not uploaded' : 'No documents yet'}</div>
-                        )}
-                        {slots.map(slot => {
-                          const inputId = `dispatch-doc-${field.key}-${slot.id}`;
-                          return (
-                            <div key={slot.id} className="flex items-center gap-1.5">
-                              {slot.kind === 'empty' ? (
-                                <>
-                                  <input type="file" id={inputId} className="hidden" disabled={isFieldLocked}
-                                    onChange={e => { if (e.target.files?.length) pickMultiDocFile(field.key, slot.id, e.target.files[0]); }}
-                                    accept=".pdf,.jpeg,.jpg,.png,.webp" />
-                                  <label htmlFor={inputId}
-                                    className={`font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border ${isFieldLocked ? 'cursor-not-allowed bg-g50 text-g500 border-g200' : 'cursor-pointer text-blk bg-white border-g300 hover:bg-g50 transition-colors'}`}>
-                                    <Upload size={13} className="text-g500 shrink-0" />
-                                    <span className="truncate">Choose file…</span>
-                                  </label>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border text-blk bg-white border-g300">
-                                    <Upload size={13} className="text-g500 shrink-0" />
-                                    <span className={`truncate ${slot.kind === 'new' ? '' : 'text-emerald-600'}`}>{slot.kind === 'new' ? slot.file.name : slot.name}</span>
-                                  </div>
-                                  <a href={slot.kind === 'new' ? slot.localUrl : slot.url} target="_blank" rel="noopener noreferrer" title={`Open ${field.label}`}
-                                    className="p-1.5 text-g400 hover:text-blue-600 transition-colors shrink-0" onClick={e => e.stopPropagation()}>
-                                    <ExternalLink size={14} />
-                                  </a>
-                                </>
-                              )}
-                              {!isFieldLocked && (
-                                <button type="button" title="Remove" onClick={() => removeMultiDocSlot(field.key, slot.id)} className="text-g400 hover:text-red-mrt text-[16px] shrink-0">×</button>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {!isFieldLocked && (
-                          <button type="button" onClick={() => addMultiDocSlot(field.key)} className="text-[11px] text-blue-600 hover:text-blue-800 font-medium text-left mt-0.5">
-                            + Add {field.label}
-                          </button>
+                        <input type="file" id={inputId} className="hidden" disabled={isFieldLocked}
+                          onChange={e => { if (e.target.files?.length) { pickAndAddMultiDocFile(field.key, e.target.files[0]); e.target.value = ''; } }}
+                          accept=".pdf,.jpeg,.jpg,.png,.webp" />
+                        {slots.length === 0 ? (
+                          <label htmlFor={inputId}
+                            className={`font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border ${isFieldLocked ? 'cursor-not-allowed bg-g50 text-g500 border-g200' : 'cursor-pointer text-blk bg-white border-g300 hover:bg-g50 transition-colors'}`}>
+                            <Upload size={13} className="text-g500 shrink-0" />
+                            <span className="truncate">{isFieldLocked ? 'Not uploaded' : `Upload ${field.label}`}</span>
+                          </label>
+                        ) : (
+                          <>
+                            {slots.map(slot => (
+                              <div key={slot.id} className="flex items-center gap-1.5">
+                                <div className="font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border text-blk bg-white border-g300">
+                                  <Upload size={13} className="text-g500 shrink-0" />
+                                  <span className={`truncate ${slot.kind === 'new' ? '' : 'text-emerald-600'}`}>{slot.kind === 'new' ? slot.file.name : slot.name}</span>
+                                </div>
+                                <a href={slot.kind === 'new' ? slot.localUrl : slot.url} target="_blank" rel="noopener noreferrer" title={`Open ${field.label}`}
+                                  className="p-1.5 text-g400 hover:text-blue-600 transition-colors shrink-0" onClick={e => e.stopPropagation()}>
+                                  <ExternalLink size={14} />
+                                </a>
+                                {!isFieldLocked && (
+                                  <button type="button" title="Remove" onClick={() => removeMultiDocSlot(field.key, slot.id)} className="text-g400 hover:text-red-mrt text-[16px] shrink-0">×</button>
+                                )}
+                              </div>
+                            ))}
+                            {!isFieldLocked && (
+                              <label htmlFor={inputId} className="text-[11px] text-blue-600 hover:text-blue-800 font-medium cursor-pointer mt-0.5">
+                                + Add {field.label}
+                              </label>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
