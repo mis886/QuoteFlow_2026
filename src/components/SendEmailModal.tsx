@@ -188,18 +188,14 @@ export function SendEmailModal(props: Props) {
   const poSubmitLink = '';
 
   const sigBlock = `${sigName}${sigDesig}\nHIMALAYA TERPENES PVT. LTD.\nTel.: 91-22-35397800/01\nE-mail: mum@himalayaterpene.com\nWeb: www.himalayaterpene.com`;
-  // Contact-based "Dear <first name> ji," greeting for Quote/Order/Dispatch —
-  // Outward (Stock Movement) is the one exception, greeting by company name
-  // instead (see below).
-  const greeting = isOutward
-    ? (customer?.name ? `Dear ${customer.name},` : 'Dear Sir/Madam,')
-    : (() => {
-        const name = (primaryContact?.name || '').trim();
-        if (!name) return 'Dear Sir/Madam,';
-        const stripped = name.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
-        const firstName = stripped.split(/\s+/)[0] || '';
-        return firstName ? `Dear ${firstName} ji,` : 'Dear Sir/Madam,';
-      })();
+  // Same contact-based "Dear <first name> ji," greeting for every mode.
+  const greeting = (() => {
+    const name = (primaryContact?.name || '').trim();
+    if (!name) return 'Dear Sir/Madam,';
+    const stripped = name.replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+    const firstName = stripped.split(/\s+/)[0] || '';
+    return firstName ? `Dear ${firstName} ji,` : 'Dear Sir/Madam,';
+  })();
 
   const defaultBody = isQuote
     ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
