@@ -118,17 +118,23 @@ export function SendEmailModal(props: Props) {
   const isOutwardDelivery = isOutward && outwardFulfilmentType === 'Delivery';
   const isOutwardSelfPickup = isOutward && outwardFulfilmentType === 'Self Pickup';
 
+  // 2026-09-19: mum@ is the account that actually sends these emails (it's
+  // the "From"), so it no longer needs to also be CC'd — dropped from both
+  // Dispatch's CC and Outward's CC (both Delivery and Self Pickup).
+  // Accounts@ stays everywhere it already was. Order's CC is untouched
+  // (still gets both accounts@ and mum@).
   const defaultCCs = isOutward
     ? (isOutwardDelivery
-        ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com']
+        ? ['accounts@himalayaterpene.com']
         : isOutwardSelfPickup
-        ? [BHIWANDI_EMAIL, 'accounts@himalayaterpene.com', 'mum@himalayaterpene.com']
+        ? [BHIWANDI_EMAIL, 'accounts@himalayaterpene.com']
         : [])
     : [
         ...((user?.email ?? '').toLowerCase() === SHISHIR
           ? ['sales@himalayaterpene.com', 'anil@himalayaterpene.com']
           : [SHISHIR, 'anil@himalayaterpene.com']),
-        ...(props.mode === 'order' || props.mode === 'dispatch' ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'] : []),
+        ...(props.mode === 'order' ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'] : []),
+        ...(props.mode === 'dispatch' ? ['accounts@himalayaterpene.com'] : []),
       ];
 
   // For Quote/Order, `.id` IS the human-readable reference (HTP-2026-685,
