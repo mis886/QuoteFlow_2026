@@ -86,7 +86,7 @@ export function NewDispatchEntry() {
   // "Dispatch → Sent" and the Documents Attachment / COA section is visible
   // right away — the entry itself isn't marked sent until Save is clicked.
   const toSent = searchParams.get('toSent') === '1';
-  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder, isReadOnlyUser } = useAppStore();
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder, isReadOnlyUser, isAdmin } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   // This whole page is locked to view-only for isReadOnlyUser (the Bhiwandi
   // warehouse login) — see the <fieldset> wraps below — with one deliberate
@@ -94,11 +94,13 @@ export function NewDispatchEntry() {
   // allowed to upload/replace/remove. Every other logged-in user gets the
   // opposite: LR is view-only for them, everything else on this page is
   // normal. See isReadOnlyUser usage throughout this file.
-  // mum@himalayaterpene.com gets the same LR edit access as isReadOnlyUser
-  // (the Bhiwandi login) — but ONLY for LR. Unlike Bhiwandi, mum@ is not
-  // read-only anywhere else in the app; this is purely an added exception
-  // to who can edit the LR field, computed with canEditLr below.
-  const canEditLr = isReadOnlyUser || (user?.email ?? '').toLowerCase() === 'mum@himalayaterpene.com';
+  // mum@himalayaterpene.com and every ADMIN_EMAILS login (mis@, shishir@,
+  // anil@ — see isAdmin in store/index.tsx) get the same LR edit access as
+  // isReadOnlyUser (the Bhiwandi login) — but ONLY for LR. Unlike Bhiwandi,
+  // none of these logins are read-only anywhere else in the app; this is
+  // purely an added exception to who can edit the LR field, computed with
+  // canEditLr below.
+  const canEditLr = isReadOnlyUser || isAdmin || (user?.email ?? '').toLowerCase() === 'mum@himalayaterpene.com';
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
