@@ -118,17 +118,23 @@ export function SendEmailModal(props: Props) {
   const isOutwardDelivery = isOutward && outwardFulfilmentType === 'Delivery';
   const isOutwardSelfPickup = isOutward && outwardFulfilmentType === 'Self Pickup';
 
+  // 2026-09-19: Outward's CC now always includes Bhiwandi + Accounts,
+  // whatever the Fulfilment Type (previously only Self Pickup got Bhiwandi,
+  // and 'Both'/unset got no CC at all) — mum@ stays conditional on
+  // Delivery/Self Pickup, unchanged. Dispatch's CC drops mum@ (Accounts
+  // stays) — Order's CC is untouched (still gets both accounts@ and mum@).
   const defaultCCs = isOutward
-    ? (isOutwardDelivery
-        ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com']
-        : isOutwardSelfPickup
-        ? [BHIWANDI_EMAIL, 'accounts@himalayaterpene.com', 'mum@himalayaterpene.com']
-        : [])
+    ? [
+        BHIWANDI_EMAIL,
+        'accounts@himalayaterpene.com',
+        ...(isOutwardDelivery || isOutwardSelfPickup ? ['mum@himalayaterpene.com'] : []),
+      ]
     : [
         ...((user?.email ?? '').toLowerCase() === SHISHIR
           ? ['sales@himalayaterpene.com', 'anil@himalayaterpene.com']
           : [SHISHIR, 'anil@himalayaterpene.com']),
-        ...(props.mode === 'order' || props.mode === 'dispatch' ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'] : []),
+        ...(props.mode === 'order' ? ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'] : []),
+        ...(props.mode === 'dispatch' ? ['accounts@himalayaterpene.com'] : []),
       ];
 
   // For Quote/Order, `.id` IS the human-readable reference (HTP-2026-685,
