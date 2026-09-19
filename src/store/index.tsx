@@ -645,6 +645,7 @@ const mapEnquiryToDB = (e: any) => {
     invoiceNumber: d.invoice_number || undefined,
     coaUrl: d.coa_url || undefined,
     coaName: d.coa_name || undefined,
+    coaFiles: Array.isArray(d.coa_files) ? d.coa_files : undefined,
     lrUrl: d.lr_url || undefined,
     lrName: d.lr_name || undefined,
     lrFiles: Array.isArray(d.lr_files) ? d.lr_files : undefined,
@@ -680,6 +681,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('invoiceNumber' in d) obj.invoice_number = d.invoiceNumber || null;
     if ('coaUrl' in d) obj.coa_url = d.coaUrl || null;
     if ('coaName' in d) obj.coa_name = d.coaName || null;
+    if ('coaFiles' in d) obj.coa_files = d.coaFiles ?? [];
     if ('lrUrl' in d) obj.lr_url = d.lrUrl || null;
     if ('lrName' in d) obj.lr_name = d.lrName || null;
     if ('lrFiles' in d) obj.lr_files = d.lrFiles ?? [];

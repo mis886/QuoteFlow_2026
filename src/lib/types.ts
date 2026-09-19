@@ -530,8 +530,12 @@ export interface DispatchEntry {
   // Manually-typed invoice number (not a file) — entered alongside the
   // Invoice / Eway Bill upload in the same "Documents Attachment" card.
   invoiceNumber?: string;
+  // Legacy single-file COA columns — see invoiceEwayBillUrl/Name above; same
+  // deal, superseded by coaFiles below.
   coaUrl?: string;
   coaName?: string;
+  // 2026-09-19: multi-document support for COA — see invoiceEwayBillFiles above.
+  coaFiles?: { url: string; name: string }[];
   // Legacy single-file LR columns — see invoiceEwayBillUrl/Name above; same
   // deal, superseded by lrFiles below.
   lrUrl?: string;

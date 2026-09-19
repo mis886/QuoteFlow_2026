@@ -194,13 +194,21 @@ export function NewDispatchEntry() {
 
   // COA — search the shared coa_document library (by product name or lot no.)
   // and attach one, or upload a brand-new certificate there. Adapted from the
-  // identical picker in NewStockInward.tsx's "COA" section: picking or
-  // uploading a doc just sets coaFileName/coaFileUrl locally (+ coaTouched),
-  // same as every other Documents Attachment field — nothing is written to
-  // this dispatch entry until Save runs, below.
-  const [coaFileName, setCoaFileName] = useState<string | undefined>(undefined);
-  const [coaFileUrl, setCoaFileUrl] = useState<string | undefined>(undefined);
+  // identical picker in NewStockInward.tsx's "COA" section. 2026-09-19:
+  // multi-document, like Invoice/Eway Bill and LR — coaFiles holds every
+  // attached {url,name}, each already fully resolved the moment it's picked
+  // (a library search-select just references an existing storage URL, and
+  // "Upload New" both stores the file and inserts it into coa_document
+  // immediately) — unlike LR/Invoice there's no deferred-upload File object
+  // to track here, only the final list written to this dispatch entry on
+  // Save (via coaTouched, same as every other Documents Attachment field).
+  const [coaFiles, setCoaFiles] = useState<{ url: string; name: string }[]>([]);
   const [coaTouched, setCoaTouched] = useState(false);
+  // Once at least one COA is attached, the search/upload panel hides behind
+  // a "+ Add COA" link (mirroring Invoice/Eway Bill and LR) and this toggles
+  // it back open to attach another. With nothing attached yet, the panel is
+  // always shown directly — see the render below.
+  const [showCoaPicker, setShowCoaPicker] = useState(false);
   const [coaSearch, setCoaSearch] = useState('');
   const [coaSearchDebounced, setCoaSearchDebounced] = useState('');
   const [coaResults, setCoaResults] = useState<any[]>([]);
@@ -230,14 +238,14 @@ export function NewDispatchEntry() {
   }, [coaSearchDebounced, sentStatus]);
 
   const selectCoaDoc = (doc: any) => {
-    setCoaFileName(doc.file_name);
-    setCoaFileUrl(resolveCoaStorageUrl(doc.storage_path));
+    setCoaFiles(prev => [...prev, { url: resolveCoaStorageUrl(doc.storage_path), name: doc.file_name }]);
     setCoaTouched(true);
+    setShowCoaPicker(false);
+    setCoaSearch('');
   };
 
-  const clearCoa = () => {
-    setCoaFileName(undefined);
-    setCoaFileUrl(undefined);
+  const removeCoaFile = (url: string) => {
+    setCoaFiles(prev => prev.filter(f => f.url !== url));
     setCoaTouched(true);
   };
 
@@ -361,8 +369,7 @@ export function NewDispatchEntry() {
         invoiceEwayBill: buildDocSlots(existing.invoiceEwayBillFiles, existing.invoiceEwayBillUrl, existing.invoiceEwayBillName),
         lr: buildDocSlots(existing.lrFiles, existing.lrUrl, existing.lrName),
       });
-      setCoaFileName(existing.coaName || undefined);
-      setCoaFileUrl(existing.coaUrl || undefined);
+      setCoaFiles(existing.coaFiles && existing.coaFiles.length ? existing.coaFiles : (existing.coaUrl ? [{ url: existing.coaUrl, name: existing.coaName || 'COA' }] : []));
       setInvoiceNumber(existing.invoiceNumber || '');
       // Reopening a saved dispatch entry must show what was actually
       // dispatched, not the order's own (unchanged) confirmed quantities —
@@ -392,10 +399,12 @@ export function NewDispatchEntry() {
   // "Email to Client" attachments — every document already saved on this
   // entry (the 4 Documents Attachment fields + COA), whichever of those are
   // actually present. Built from existingDocUrls/Names + multiDocSlots'
-  // 'existing' rows + coaFileUrl/Name (what's persisted), not docFiles /
-  // freshly-picked multiDocSlots rows — a file has to actually be uploaded
-  // before it can be emailed. Invoice/Eway Bill and LR can contribute more
-  // than one attachment under the same label now that they're multi-file.
+  // 'existing' rows + coaFiles (what's persisted), not docFiles / freshly-
+  // picked multiDocSlots rows — a file has to actually be uploaded before it
+  // can be emailed. Invoice/Eway Bill, LR, and now COA can each contribute
+  // more than one attachment under the same label since they're multi-file
+  // (coaFiles entries are always already-resolved, so every one of them
+  // counts as "saved" here — see the coaFiles comment above).
   const dispatchEmailAttachments: DispatchEmailAttachment[] = useMemo(() => {
     const list: DispatchEmailAttachment[] = [];
     for (const field of SINGLE_DOC_FIELDS) {
@@ -407,9 +416,9 @@ export function NewDispatchEntry() {
         if (slot.kind === 'existing') list.push({ label: field.label, url: slot.url, fileName: slot.name || field.label });
       }
     }
-    if (coaFileUrl) list.push({ label: 'COA', url: coaFileUrl, fileName: coaFileName || 'COA' });
+    for (const f of coaFiles) list.push({ label: 'COA', url: f.url, fileName: f.name || 'COA' });
     return list;
-  }, [existingDocUrls, existingDocNames, multiDocSlots, coaFileUrl, coaFileName]);
+  }, [existingDocUrls, existingDocNames, multiDocSlots, coaFiles]);
 
   // Order totals — mirrors the exact Subtotal/Insurance/Taxable Value/GST
   // Total/Order Value math used on the Order form itself, now recomputed
@@ -630,11 +639,11 @@ export function NewDispatchEntry() {
         (docUpdates as any)[field.filesKey] = files;
       }
       // COA is attached via the search/upload picker above, not a raw file
-      // input, so it's already got a resolved URL by the time we get here —
-      // just persist whatever's currently picked (or clear it) if touched.
+      // input, so every entry in coaFiles is already fully resolved by the
+      // time we get here — just persist the current list if touched, same
+      // as the multi-file fields above.
       if (coaTouched) {
-        docUpdates.coaUrl = coaFileUrl || undefined;
-        docUpdates.coaName = coaFileName || undefined;
+        (docUpdates as any).coaFiles = coaFiles;
       }
 
       const extra = {
@@ -968,22 +977,37 @@ export function NewDispatchEntry() {
               {/* COA — search the shared coa_document library (same widget as the
                   Stock Movement "Log New Inward" form's COA section) and attach an
                   existing certificate, or upload a brand-new one to the library.
-                  Unlike LR, COA has no carve-out — it's locked for isReadOnlyUser
-                  same as everything else on the page. */}
+                  2026-09-19: multi-document, same idea as Invoice/Eway Bill and
+                  LR — once at least one COA is attached, the search/upload panel
+                  collapses behind a "+ Add COA" link; with none attached, the
+                  panel is shown directly, same as before this change. Unlike LR,
+                  COA still has no per-user carve-out — every control in this
+                  section is locked for isReadOnlyUser same as everything else on
+                  the page, via the fieldset wrap below (native <fieldset disabled>
+                  auto-disables every button/input inside it, so no per-control
+                  lock check is needed here). */}
               <fieldset disabled={isReadOnlyUser} className="contents">
               <div className="px-[16px] pb-[14px] pt-[2px] border-t border-g200 mt-[2px]">
                 <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[6px]">COA</label>
-                {coaFileName ? (
-                  <div className="flex items-center justify-between gap-2 bg-g100 border border-g200 rounded-[3px] px-2.5 py-2">
-                    <div className="min-w-0">
-                      <div className="text-[12px] font-semibold text-blk truncate">{coaFileName}</div>
-                      {coaFileUrl && (
-                        <a href={coaFileUrl} target="_blank" rel="noopener noreferrer" className="text-[10.5px] text-red-mrt hover:underline">View PDF</a>
-                      )}
-                    </div>
-                    <button type="button" onClick={clearCoa} className="p-1 text-g400 hover:text-red-mrt shrink-0" title="Remove"><X size={14} /></button>
+                {coaFiles.length > 0 && (
+                  <div className="flex flex-col gap-1.5 mb-2">
+                    {coaFiles.map(f => (
+                      <div key={f.url} className="flex items-center justify-between gap-2 bg-g100 border border-g200 rounded-[3px] px-2.5 py-2">
+                        <div className="min-w-0">
+                          <div className="text-[12px] font-semibold text-blk truncate">{f.name}</div>
+                          <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-[10.5px] text-red-mrt hover:underline">View PDF</a>
+                        </div>
+                        <button type="button" onClick={() => removeCoaFile(f.url)} className="p-1 text-g400 hover:text-red-mrt shrink-0" title="Remove"><X size={14} /></button>
+                      </div>
+                    ))}
+                    {!showCoaPicker && (
+                      <button type="button" onClick={() => setShowCoaPicker(true)} className="text-[11px] text-blue-600 hover:text-blue-800 font-medium text-left">
+                        + Add COA
+                      </button>
+                    )}
                   </div>
-                ) : (
+                )}
+                {(coaFiles.length === 0 || showCoaPicker) && (
                   <>
                     <div className="relative mb-2">
                       <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-g400 pointer-events-none" />
@@ -1021,7 +1045,12 @@ export function NewDispatchEntry() {
                         className="w-full font-sans text-xs text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-g100 file:text-g700 hover:file:bg-g200"
                       />
                       {coaUploadError && <p className="mt-2 text-[10.5px] text-red-mrt font-medium">{coaUploadError}</p>}
-                      <div className="flex justify-end mt-2">
+                      <div className="flex justify-end items-center mt-2 gap-3">
+                        {coaFiles.length > 0 && (
+                          <button type="button" onClick={() => setShowCoaPicker(false)} className="text-g500 hover:text-blk text-xs font-medium">
+                            Cancel
+                          </button>
+                        )}
                         <button
                           type="button" onClick={handleUploadNewCoa} disabled={coaUploading}
                           className="bg-blk hover:bg-g700 text-white text-xs font-semibold px-4 py-2 rounded shadow-sm disabled:opacity-50 transition-colors inline-flex items-center gap-2"
