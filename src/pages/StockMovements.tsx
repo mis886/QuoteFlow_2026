@@ -354,7 +354,7 @@ export function StockMovements() {
                   <Th label="Packing Type" />
                   <Th label="Total Qty" align="right" />
                   <Th label="Note" />
-                  <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200" />
+                  <Th label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -437,7 +437,7 @@ export function StockMovements() {
                   <Th label="Total Qty" align="right" />
                   <Th label="Make" />
                   <Th label="Remark" />
-                  <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200" />
+                  <Th label="Actions" />
                 </tr>
               </thead>
               <tbody>
