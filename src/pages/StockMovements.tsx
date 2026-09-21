@@ -69,7 +69,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Plus, RefreshCw, ArrowLeftRight, Pencil, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { fmtDate, normalizeSearchText } from '../lib/utils';
+import { fmtDate, normalizeSearchText, doerLabel } from '../lib/utils';
 import { StockMovement } from '../lib/types';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
@@ -140,7 +140,7 @@ const Th = ({ label, align }: { label: string; align?: 'right' }) => (
 
 export function StockMovements() {
   const navigate = useNavigate();
-  const { user, activeDoer } = useAppStore();
+  const { user, activeDoer, data } = useAppStore();
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -397,15 +397,15 @@ export function StockMovements() {
                               <Trash2 size={12} />
                             </button>
                           </div>
-                          {/* 2026-09-21: shows just the email of whoever made the most
+                          {/* 2026-09-21: shows just the name of whoever made the most
                               recent change — updated_by if the entry's been edited since
-                              it was created, else created_by — with no "Created:"/
-                              "Updated:" label, single line, matching Sampling's
-                              created-by display under the row's action buttons. Unlike
-                              the icon buttons above, this stays visible without hovering
-                              the row. */}
+                              it was created, else created_by — resolved through the team
+                              roster to a display name (falls back to the raw email if no
+                              roster match), single line, no "Created:"/"Updated:" label,
+                              under the row's action buttons. Unlike the icon buttons
+                              above, this stays visible without hovering the row. */}
                           {(m.updated_by || m.created_by) && (
-                            <span className="text-[10px] font-mono text-g400 whitespace-nowrap">{m.updated_by || m.created_by}</span>
+                            <span className="text-[10px] font-mono text-g400 whitespace-nowrap">{doerLabel(m.updated_by || m.created_by, data.roster)}</span>
                           )}
                         </div>
                       </td>
@@ -476,15 +476,15 @@ export function StockMovements() {
                               <Trash2 size={12} />
                             </button>
                           </div>
-                          {/* 2026-09-21: shows just the email of whoever made the most
+                          {/* 2026-09-21: shows just the name of whoever made the most
                               recent change — updated_by if the entry's been edited since
-                              it was created, else created_by — with no "Created:"/
-                              "Updated:" label, single line, matching Sampling's
-                              created-by display under the row's action buttons. Unlike
-                              the icon buttons above, this stays visible without hovering
-                              the row. */}
+                              it was created, else created_by — resolved through the team
+                              roster to a display name (falls back to the raw email if no
+                              roster match), single line, no "Created:"/"Updated:" label,
+                              under the row's action buttons. Unlike the icon buttons
+                              above, this stays visible without hovering the row. */}
                           {(m.updated_by || m.created_by) && (
-                            <span className="text-[10px] font-mono text-g400 whitespace-nowrap">{m.updated_by || m.created_by}</span>
+                            <span className="text-[10px] font-mono text-g400 whitespace-nowrap">{doerLabel(m.updated_by || m.created_by, data.roster)}</span>
                           )}
                         </div>
                       </td>

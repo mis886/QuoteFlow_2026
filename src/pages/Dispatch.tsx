@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { canDeleteRecords, formatINR, fmtDate, fmtIST } from '../lib/utils';
+import { canDeleteRecords, formatINR, fmtDate, fmtIST, doerLabel } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 
 export function Dispatch() {
@@ -151,13 +151,14 @@ export function Dispatch() {
                                   }}>Delete</Button>
                                 )}
                               </div>
-                              {/* 2026-09-21: shows just the email of whoever made the most
+                              {/* 2026-09-21: shows just the name of whoever made the most
                                   recent change — updatedBy if the entry's been edited since
-                                  it was created, else createdBy — with no "Created:"/
-                                  "Updated:" label, single line, matching Sampling's
-                                  created-by display under the action buttons. */}
+                                  it was created, else createdBy — resolved through the team
+                                  roster to a display name (falls back to the raw email if
+                                  no roster match), single line, no "Created:"/"Updated:"
+                                  label, positioned under the action buttons. */}
                               {(entry.updatedBy || entry.createdBy) && (
-                                <span className="text-[10px] font-mono text-g400 whitespace-nowrap">{entry.updatedBy || entry.createdBy}</span>
+                                <span className="text-[10px] font-mono text-g400 whitespace-nowrap">{doerLabel(entry.updatedBy || entry.createdBy, data.roster)}</span>
                               )}
                             </div>
                           </td>
