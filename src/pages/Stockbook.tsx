@@ -74,7 +74,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, Warehouse, PackageCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { fmtDate, normalizeSearchText, doerLabel } from '../lib/utils';
+import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockLot } from '../lib/types';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
@@ -280,19 +280,17 @@ export function Stockbook() {
                 <SortTh col="quantity" label="Total Quantity" />
                 <SortTh col="make" label="Make" />
                 <Th label="Remark" />
-                {/* 2026-09-19: at the user's request — who created this lot
-                    (Inward entry) and, if it's been edited since, who last
-                    edited it, matching the "Created By" column Sampling
-                    already shows. */}
-                <Th label="Created / Updated By" />
+                {/* 2026-09-21: the "Created / Updated By" column was removed
+                    from Stockbook at the user's request — still shown in
+                    Stock Movements and Dispatch. */}
                 <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[130px]" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={21} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={20} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={21} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+                <tr><td colSpan={20} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
                 filtered.map((l, idx) => {
                 const isDepleted = l.quantity === 0;
@@ -360,13 +358,6 @@ export function Stockbook() {
                         : '—'}
                     </td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g500 max-w-[220px] truncate" title={l.remark}>{l.remark || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top text-center text-[10px] font-mono text-g500 whitespace-nowrap">
-                      <div className="flex flex-col gap-0.5 items-center">
-                        {l.created_by && <span>Created: {doerLabel(l.created_by, data.roster)}</span>}
-                        {l.updated_by && <span>Updated: {doerLabel(l.updated_by, data.roster)}</span>}
-                        {!l.created_by && !l.updated_by && '—'}
-                      </div>
-                    </td>
                     <td className="px-[13px] py-[9px] align-top">
                       <div className="flex items-center justify-center gap-1">
                         {isDepleted && (
