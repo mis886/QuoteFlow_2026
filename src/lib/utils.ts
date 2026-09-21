@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, QuoteItem, Quote } from './types';
+import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, QuoteItem, Quote, TeamMember } from './types';
 
 export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'];
 
@@ -583,6 +583,24 @@ export function nameTier(name: string, query: string, exactMatches: (string | un
   if (n.startsWith(nq)) return 1;
   if (n.includes(nq)) return 2;
   return 3;
+}
+
+// 2026-09-19: resolves a stored created_by/updated_by value (an email) to
+// the matching team_roster member's display name, at the user's request —
+// Stockbook/Finished Lots/Stock Movements/Dispatch all show "Created By"/
+// "Updated By" as a name where one is known, falling back to the raw email
+// (same style Sampling.tsx already shows created_by in) when no roster
+// member matches, or '' when there's no value at all (nothing shown).
+// Matches by email OR alias, case-insensitively — same matching used by
+// roleForDoer in store/index.tsx — and does NOT filter by `active`, since a
+// since-deactivated team member's name should still show on old records.
+export function doerLabel(value: string | null | undefined, roster: TeamMember[]): string {
+  if (!value) return '';
+  const key = value.trim().toLowerCase();
+  const match = roster.find(m =>
+    m.email.toLowerCase() === key ||
+    (m.aliases ?? []).some(a => a.trim().toLowerCase() === key));
+  return match?.display_name || value;
 }
 
 export const generateId = (prefix: string, existingIds: (string | undefined | null)[]) => {

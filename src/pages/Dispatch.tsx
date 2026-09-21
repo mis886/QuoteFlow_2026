@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { canDeleteRecords, formatINR, fmtDate, fmtIST } from '../lib/utils';
+import { canDeleteRecords, formatINR, fmtDate, fmtIST, doerLabel } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 
 export function Dispatch() {
@@ -96,12 +96,17 @@ export function Dispatch() {
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Promised Delivery</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Estimated Delivery</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Dispatched On</th>
+                  {/* 2026-09-19: at the user's request — who created this
+                      dispatch entry (Order → Dispatch) and, if it's been
+                      edited since (e.g. the Dispatch → Sent step), who last
+                      edited it. */}
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Created / Updated By</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleEntries.length === 0 ? (
-                  <tr><td colSpan={11} className="text-center p-8 text-g400 text-[13px]">No {subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries {tab === 'toSend' ? 'sent yet' : 'yet'}</td></tr>
+                  <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">No {subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries {tab === 'toSend' ? 'sent yet' : 'yet'}</td></tr>
                 ) : (
                   visibleEntries.map(entry => {
                     const order = orderFor(entry);
@@ -127,6 +132,13 @@ export function Dispatch() {
                           <td className="px-[13px] py-[10px] align-top">{fmtDate(entry.promisedDeliveryDate)}</td>
                           <td className="px-[13px] py-[10px] align-top">{fmtDate(entry.estimatedDeliveryDate)}</td>
                           <td className="px-[13px] py-[10px] align-top">{entry.created_at ? fmtIST(new Date(entry.created_at), 'dd-MMM-yyyy') : '—'}</td>
+                          <td className="px-[13px] py-[10px] align-top text-[10.5px] font-mono text-g500 whitespace-nowrap">
+                            <div className="flex flex-col gap-0.5">
+                              {entry.createdBy && <span>Created: {doerLabel(entry.createdBy, data.roster)}</span>}
+                              {entry.updatedBy && <span>Updated: {doerLabel(entry.updatedBy, data.roster)}</span>}
+                              {!entry.createdBy && !entry.updatedBy && '—'}
+                            </div>
+                          </td>
                           <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
                             <div className="flex gap-1.5 flex-wrap">
                               {tab === 'toDispatch' && (
@@ -155,7 +167,7 @@ export function Dispatch() {
 
                         {isExpanded && (
                           <tr className="bg-sW/[0.02] border-b-2 border-sW">
-                            <td colSpan={11} className="p-0">
+                            <td colSpan={12} className="p-0">
                               <div className="p-[10px_16px]">
                                 <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sW mb-[7px]">Dispatch Line Items -- {entry.orderId}</div>
                                 {lineItems.length === 0 ? (

@@ -506,6 +506,11 @@ export interface DispatchEntry {
   sentAt?: string;
   formFilledBy?: string;
   createdBy?: string;
+  // 2026-09-19: who last edited this entry, at the user's request — stamped
+  // centrally in store/index.tsx's updateDispatchEntry (not by callers),
+  // same pattern as stock_lots.updated_by. Undefined until the entry is
+  // edited at least once (never set at insert time).
+  updatedBy?: string;
   created_at?: string;
   updated_at?: string;
   // The line items actually being dispatched in this specific dispatch
@@ -681,6 +686,11 @@ export interface StockMovement {
   note?: string;
   created_by?: string;
   created_at?: string;
+  // 2026-09-19: who last edited this entry, at the user's request — same
+  // pattern as stock_lots.updated_by. Undefined until the entry is edited
+  // at least once (never set at insert time).
+  updated_by?: string;
+  updated_at?: string;
 }
 
 export interface AuthorizedSignatory {

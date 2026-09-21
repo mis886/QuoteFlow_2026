@@ -13,7 +13,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { fmtDate, normalizeSearchText } from '../lib/utils';
+import { useAppStore } from '../store';
+import { fmtDate, normalizeSearchText, doerLabel } from '../lib/utils';
 import { StockLot } from '../lib/types';
 import FloatingHorizontalScrollbar from './FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from './FloatingVerticalScrollbar';
@@ -55,6 +56,10 @@ function mapRow(r: any): StockLot {
 const num = (v?: number) => (v === undefined || v === null || v === 0 ? '—' : v.toLocaleString('en-IN'));
 
 export function FinishedLotsTable() {
+  // 2026-09-19: only used to resolve created_by/updated_by emails to display
+  // names for the "Created / Updated By" column below — this component is
+  // otherwise self-contained (own Supabase query, own state), unchanged.
+  const { data } = useAppStore();
   const [lots, setLots] = useState<StockLot[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -172,13 +177,18 @@ export function FinishedLotsTable() {
                 <Th label="Packing Type" />
                 <SortTh col="quantity" label="Total Quantity" />
                 <Th label="Finished On" />
+                {/* 2026-09-19: at the user's request — who created this lot
+                    (Inward entry) and, if it's been edited since, who last
+                    edited it, matching the "Created By" column Sampling
+                    already shows, and the same column Stockbook.tsx now has. */}
+                <Th label="Created / Updated By" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={18} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={19} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={18} className="text-center p-8 text-g400 text-[13px]">No finished lots yet.</td></tr>
+                <tr><td colSpan={19} className="text-center p-8 text-g400 text-[13px]">No finished lots yet.</td></tr>
               ) : (
                 filtered.map((l, idx) => (
                   <tr key={l.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -221,6 +231,13 @@ export function FinishedLotsTable() {
                     <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.packingType || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(l.quantity)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.finishedAt ? new Date(l.finishedAt).toLocaleDateString('en-IN') : '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center text-[10px] font-mono text-g500 whitespace-nowrap">
+                      <div className="flex flex-col gap-0.5 items-center">
+                        {l.created_by && <span>Created: {doerLabel(l.created_by, data.roster)}</span>}
+                        {l.updated_by && <span>Updated: {doerLabel(l.updated_by, data.roster)}</span>}
+                        {!l.created_by && !l.updated_by && '—'}
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}

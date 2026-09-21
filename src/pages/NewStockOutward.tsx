@@ -352,7 +352,7 @@ async function insertOutwardWithRetry(
 
 export function NewStockOutward() {
   const navigate = useNavigate();
-  const { user, data } = useAppStore();
+  const { user, activeDoer, data } = useAppStore();
   const [searchParams] = useSearchParams();
   const movementId = searchParams.get('movementId');
   const isEditing = !!movementId;
@@ -754,10 +754,14 @@ export function NewStockOutward() {
       const newPartyCol = PARTY_COLUMN[warehouseToSave];
       const oldNumArticles = num(original.numArticles) ?? 0;
 
+      // 2026-09-19: activeDoer (the specific person acting right now,
+      // matching SendEmailModal.tsx's "who is sending this" identity),
+      // falling back to the raw login email — was raw user?.email only.
+      const actingEmail = activeDoer?.email ?? user?.email;
       // 1. Reverse the OLD entry's decrement (add its quantity back).
-      await adjustLot(oldPartyCol, original.lotNo, original.totalQty, oldNumArticles, user?.email);
+      await adjustLot(oldPartyCol, original.lotNo, original.totalQty, oldNumArticles, actingEmail);
       // 2. Re-apply the NEW (edited) decrement.
-      await adjustLot(newPartyCol, lotNo, -(totalQty ?? 0), -(numArticles ?? 0), user?.email);
+      await adjustLot(newPartyCol, lotNo, -(totalQty ?? 0), -(numArticles ?? 0), actingEmail);
 
       // 3. Update the stock_movements row itself.
       const { error: moveErr } = await supabase.from('stock_movements').update({
@@ -778,6 +782,11 @@ export function NewStockOutward() {
         other_transporter: isOtherTransporter ? (form.otherTransporter.trim() || null) : null,
         fulfilment_type: form.fulfilmentType || null,
         note: form.note.trim() || null,
+        // 2026-09-19: at the user's request — who last edited this Outward
+        // entry (stock_movements had no updated_by/updated_at at all before
+        // this; see the migration that added them alongside dispatch_entries.updated_by).
+        updated_at: new Date().toISOString(),
+        updated_by: actingEmail ?? null,
       }).eq('id', movementId);
 
       if (moveErr) { setError(moveErr.message); setSaving(false); return; }
@@ -805,7 +814,7 @@ export function NewStockOutward() {
       other_transporter: isOtherTransporter ? (form.otherTransporter.trim() || null) : null,
       fulfilment_type: form.fulfilmentType || null,
       note: form.note.trim() || null,
-      created_by: user?.email ?? null,
+      created_by: activeDoer?.email ?? user?.email ?? null,
     };
 
     // insertOutwardWithRetry (not a plain insert) so a DO Number collision
@@ -838,7 +847,7 @@ export function NewStockOutward() {
               [partyCol]: (existing[partyCol] ?? 0) - (numArticles ?? 0),
               quantity: (existing.quantity ?? 0) - (totalQty ?? 0),
               updated_at: new Date().toISOString(),
-              updated_by: user?.email ?? null,
+              updated_by: activeDoer?.email ?? user?.email ?? null,
             })
             .eq('id', existing.id);
         }

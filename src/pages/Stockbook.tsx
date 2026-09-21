@@ -74,7 +74,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, Warehouse, PackageCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { fmtDate, normalizeSearchText } from '../lib/utils';
+import { fmtDate, normalizeSearchText, doerLabel } from '../lib/utils';
 import { StockLot } from '../lib/types';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
@@ -121,7 +121,7 @@ function mapRow(r: any): StockLot {
 const num = (v?: number) => (v === undefined || v === null || v === 0 ? '—' : v.toLocaleString('en-IN'));
 
 export function Stockbook() {
-  const { user } = useAppStore();
+  const { user, activeDoer, data } = useAppStore();
   const [lots, setLots] = useState<StockLot[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -156,7 +156,10 @@ export function Stockbook() {
       is_finished: true,
       finished_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      updated_by: user?.email ?? null,
+      // 2026-09-19: activeDoer (the specific person acting right now,
+      // matching SendEmailModal.tsx's "who is sending this" identity),
+      // falling back to the raw login email — was raw user?.email only.
+      updated_by: activeDoer?.email ?? user?.email ?? null,
     }).eq('id', lot.id);
     if (!error) setLots(prev => prev.filter(l => l.id !== lot.id));
   };
@@ -277,14 +280,19 @@ export function Stockbook() {
                 <SortTh col="quantity" label="Total Quantity" />
                 <SortTh col="make" label="Make" />
                 <Th label="Remark" />
+                {/* 2026-09-19: at the user's request — who created this lot
+                    (Inward entry) and, if it's been edited since, who last
+                    edited it, matching the "Created By" column Sampling
+                    already shows. */}
+                <Th label="Created / Updated By" />
                 <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[130px]" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={20} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                <tr><td colSpan={21} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={20} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
+                <tr><td colSpan={21} className="text-center p-8 text-g400 text-[13px]">No stock lots match this filter</td></tr>
               ) : (
                 filtered.map((l, idx) => {
                 const isDepleted = l.quantity === 0;
@@ -352,6 +360,13 @@ export function Stockbook() {
                         : '—'}
                     </td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g500 max-w-[220px] truncate" title={l.remark}>{l.remark || '—'}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center text-[10px] font-mono text-g500 whitespace-nowrap">
+                      <div className="flex flex-col gap-0.5 items-center">
+                        {l.created_by && <span>Created: {doerLabel(l.created_by, data.roster)}</span>}
+                        {l.updated_by && <span>Updated: {doerLabel(l.updated_by, data.roster)}</span>}
+                        {!l.created_by && !l.updated_by && '—'}
+                      </div>
+                    </td>
                     <td className="px-[13px] py-[9px] align-top">
                       <div className="flex items-center justify-center gap-1">
                         {isDepleted && (

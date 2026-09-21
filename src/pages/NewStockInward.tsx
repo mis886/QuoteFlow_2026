@@ -106,7 +106,7 @@ const emptyForm = {
 
 export function NewStockInward() {
   const navigate = useNavigate();
-  const { user } = useAppStore();
+  const { user, activeDoer } = useAppStore();
   const [searchParams] = useSearchParams();
   const movementId = searchParams.get('movementId');
   const isEditing = !!movementId;
@@ -349,7 +349,10 @@ export function NewStockInward() {
           coa_file: form.coaFile.trim() || null,
           coa_url: form.coaUrl.trim() || null,
           updated_at: new Date().toISOString(),
-          updated_by: user?.email ?? null,
+          // 2026-09-19: activeDoer (the specific person acting right now,
+          // matching SendEmailModal.tsx's "who is sending this" identity),
+          // falling back to the raw login email — was raw user?.email only.
+          updated_by: activeDoer?.email ?? user?.email ?? null,
           quantity: (lotRow.quantity ?? 0) - original.totalQty + (totalQty ?? 0),
         };
         // Same warehouse: net old-vs-new barrels on that one column. Changed
@@ -372,7 +375,7 @@ export function NewStockInward() {
                 [newPartyCol]: (newLot[newPartyCol] ?? 0) + (barrels ?? 0),
                 quantity: (newLot.quantity ?? 0) + (totalQty ?? 0),
                 updated_at: new Date().toISOString(),
-                updated_by: user?.email ?? null,
+                updated_by: activeDoer?.email ?? user?.email ?? null,
               })
               .eq('id', newLot.id)).error
           : (await supabase.from('stock_lots').insert({
@@ -392,7 +395,7 @@ export function NewStockInward() {
               sample_off: form.sampleOff,
               coa_file: form.coaFile.trim() || null,
               coa_url: form.coaUrl.trim() || null,
-              created_by: user?.email ?? null,
+              created_by: activeDoer?.email ?? user?.email ?? null,
             })).error;
 
         if (lotErr) { setError(lotErr.message); setSaving(false); return; }
@@ -415,6 +418,11 @@ export function NewStockInward() {
         sample_off: form.sampleOff,
         coa_file: form.coaFile.trim() || null,
         coa_url: form.coaUrl.trim() || null,
+        // 2026-09-19: at the user's request — who last edited this Inward
+        // entry (stock_movements had no updated_by/updated_at at all before
+        // this; see the migration that added them alongside dispatch_entries.updated_by).
+        updated_at: new Date().toISOString(),
+        updated_by: activeDoer?.email ?? user?.email ?? null,
       }).eq('id', movementId);
 
       if (moveErr) { setError(moveErr.message); setSaving(false); return; }
@@ -445,7 +453,7 @@ export function NewStockInward() {
       sample_off: form.sampleOff,
       coa_file: form.coaFile.trim() || null,
       coa_url: form.coaUrl.trim() || null,
-      created_by: user?.email ?? null,
+      created_by: activeDoer?.email ?? user?.email ?? null,
     };
 
     const { error: moveErr } = await supabase.from('stock_movements').insert(movementPayload);
@@ -467,7 +475,7 @@ export function NewStockInward() {
             [partyCol]: (existing[partyCol] ?? 0) + (barrels ?? 0),
             quantity: (existing.quantity ?? 0) + (totalQty ?? 0),
             updated_at: new Date().toISOString(),
-            updated_by: user?.email ?? null,
+            updated_by: activeDoer?.email ?? user?.email ?? null,
           })
           .eq('id', existing.id)).error
       : (await supabase.from('stock_lots').insert({
@@ -487,7 +495,7 @@ export function NewStockInward() {
           sample_off: form.sampleOff,
           coa_file: form.coaFile.trim() || null,
           coa_url: form.coaUrl.trim() || null,
-          created_by: user?.email ?? null,
+          created_by: activeDoer?.email ?? user?.email ?? null,
         })).error;
 
     if (lotErr) {

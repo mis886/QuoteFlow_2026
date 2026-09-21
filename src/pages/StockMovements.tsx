@@ -69,7 +69,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Plus, RefreshCw, ArrowLeftRight, Pencil, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { fmtDate, normalizeSearchText } from '../lib/utils';
+import { fmtDate, normalizeSearchText, doerLabel } from '../lib/utils';
 import { StockMovement } from '../lib/types';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
@@ -110,6 +110,8 @@ function mapRow(r: any): StockMovement {
     coaUrl: r.coa_url ?? undefined,
     created_by: r.created_by ?? undefined,
     created_at: r.created_at ?? undefined,
+    updated_by: r.updated_by ?? undefined,
+    updated_at: r.updated_at ?? undefined,
   };
 }
 
@@ -138,7 +140,7 @@ const Th = ({ label, align }: { label: string; align?: 'right' }) => (
 
 export function StockMovements() {
   const navigate = useNavigate();
-  const { user } = useAppStore();
+  const { user, activeDoer, data } = useAppStore();
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -214,7 +216,11 @@ export function StockMovements() {
               [partyCol]: (lot[partyCol] ?? 0) + partyDelta,
               quantity: newQuantity,
               updated_at: new Date().toISOString(),
-              updated_by: user?.email ?? null,
+              // 2026-09-19: activeDoer (the specific person acting right
+              // now, matching SendEmailModal.tsx's "who is sending this"
+              // identity), falling back to the raw login email — was raw
+              // user?.email only.
+              updated_by: activeDoer?.email ?? user?.email ?? null,
             }).eq('id', lot.id);
           }
         }
@@ -347,7 +353,11 @@ export function StockMovements() {
                   <Th label="Packing Type" />
                   <Th label="Total Qty" align="right" />
                   <Th label="Note" />
-                  <Th label="Entered By" />
+                  {/* 2026-09-19: renamed from "Entered By" and now shows
+                      both — who created this entry and, if it's been
+                      edited since, who last edited it, at the user's
+                      request. */}
+                  <Th label="Created / Updated By" />
                   <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[70px]" />
                 </tr>
               </thead>
@@ -377,7 +387,13 @@ export function StockMovements() {
                       <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.packagingType || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(m.totalQty)}</td>
                       <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.note}>{m.note || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g500 whitespace-nowrap">{m.created_by || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-[10.5px] font-mono text-g500 whitespace-nowrap">
+                        <div className="flex flex-col gap-0.5">
+                          {m.created_by && <span>Created: {doerLabel(m.created_by, data.roster)}</span>}
+                          {m.updated_by && <span>Updated: {doerLabel(m.updated_by, data.roster)}</span>}
+                          {!m.created_by && !m.updated_by && '—'}
+                        </div>
+                      </td>
                       <td className="px-[13px] py-[9px] align-top">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {/* 2026-09-09: Outward's Edit now opens the full-page
@@ -420,7 +436,11 @@ export function StockMovements() {
                   <Th label="Total Qty" align="right" />
                   <Th label="Make" />
                   <Th label="Remark" />
-                  <Th label="Entered By" />
+                  {/* 2026-09-19: renamed from "Entered By" and now shows
+                      both — who created this entry and, if it's been
+                      edited since, who last edited it, at the user's
+                      request. */}
+                  <Th label="Created / Updated By" />
                   <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[70px]" />
                 </tr>
               </thead>
@@ -448,7 +468,13 @@ export function StockMovements() {
                           : '—'}
                       </td>
                       <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.remark}>{m.remark || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g500 whitespace-nowrap">{m.created_by || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-[10.5px] font-mono text-g500 whitespace-nowrap">
+                        <div className="flex flex-col gap-0.5">
+                          {m.created_by && <span>Created: {doerLabel(m.created_by, data.roster)}</span>}
+                          {m.updated_by && <span>Updated: {doerLabel(m.updated_by, data.roster)}</span>}
+                          {!m.created_by && !m.updated_by && '—'}
+                        </div>
+                      </td>
                       <td className="px-[13px] py-[9px] align-top">
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {/* Inward's Edit opens the full-page NewStockInward.tsx (same

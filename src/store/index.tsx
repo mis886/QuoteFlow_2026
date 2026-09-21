@@ -634,6 +634,7 @@ const mapEnquiryToDB = (e: any) => {
     sentAt: d.sent_at || undefined,
     formFilledBy: d.form_filled_by || undefined,
     createdBy: d.created_by || undefined,
+    updatedBy: d.updated_by || undefined,
     created_at: d.created_at,
     updated_at: d.updated_at,
     items: (d.items || []) as OrderItem[],
@@ -672,6 +673,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('sentAt' in d) obj.sent_at = d.sentAt || null;
     if ('formFilledBy' in d) obj.form_filled_by = d.formFilledBy || null;
     if ('createdBy' in d) obj.created_by = d.createdBy || null;
+    if ('updatedBy' in d) obj.updated_by = d.updatedBy || null;
     if ('items' in d) obj.items = d.items ?? [];
     if ('insurance' in d) obj.insurance = d.insurance ?? null;
     if ('value' in d) obj.value = d.value ?? null;
@@ -953,6 +955,10 @@ const mapEnquiryToDB = (e: any) => {
       orderId,
       fulfillmentType: type,
       docLinkStatus: 'not_uploaded',
+      // 2026-09-19: who created this dispatch entry, at the user's request —
+      // stamped here (not by the caller) so every entry gets it consistently,
+      // same "acting person" identity used for Gmail sending (SendEmailModal.tsx).
+      createdBy: activeDoer?.email ?? user?.email ?? undefined,
       ...extra,
     };
     const { error, finalRecord } = await insertWithIdRetry<DispatchEntry>(
@@ -978,13 +984,22 @@ const mapEnquiryToDB = (e: any) => {
   const updateDispatchEntry = async (id: string, updates: Partial<DispatchEntry>) => {
     const before = data.dispatchEntries.find(d => d.id === id);
     const dbUpdates = mapDispatchEntryToDB(updates);
+    // 2026-09-19: who last edited this entry, at the user's request — stamped
+    // here (not by the caller) so every update gets it consistently, same
+    // "acting person" identity used for Gmail sending (SendEmailModal.tsx).
+    // Deliberately NOT set on insert (addDispatchEntry has its own createdBy
+    // stamp above) — updatedBy stays undefined until a real edit happens, so
+    // the UI can tell "never edited" apart from "edited by the same person
+    // who created it".
+    dbUpdates.updated_by = activeDoer?.email ?? user?.email ?? null;
     const { error } = await supabase.from('dispatch_entries').update(dbUpdates).eq('id', id);
     if (!error) {
+      const updatesWithStamp = { ...updates, updatedBy: dbUpdates.updated_by ?? undefined };
       setData(prev => ({
         ...prev,
-        dispatchEntries: prev.dispatchEntries.map(d => d.id === id ? { ...d, ...updates } : d)
+        dispatchEntries: prev.dispatchEntries.map(d => d.id === id ? { ...d, ...updatesWithStamp } : d)
       }));
-      const after = before ? { ...before, ...updates } : updates;
+      const after = before ? { ...before, ...updatesWithStamp } : updatesWithStamp;
       const order = data.orders.find(o => o.id === (after as DispatchEntry).orderId);
       logActivity({ module: 'dispatch_entries', recordId: id, recordLabel: order?.poNo || id, action: 'update', before, after });
     } else {
