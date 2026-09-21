@@ -151,15 +151,13 @@ export function Dispatch() {
                                   }}>Delete</Button>
                                 )}
                               </div>
-                              {/* 2026-09-21: moved here from a dedicated "Created / Updated
-                                  By" column, at the user's request, to match how the
-                                  Sampling module shows its created-by email — right under
-                                  the action buttons rather than in its own column. */}
-                              {(entry.createdBy || entry.updatedBy) && (
-                                <div className="flex flex-col gap-0.5">
-                                  {entry.createdBy && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Created: {entry.createdBy}</span>}
-                                  {entry.updatedBy && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Updated: {entry.updatedBy}</span>}
-                                </div>
+                              {/* 2026-09-21: shows just the email of whoever made the most
+                                  recent change — updatedBy if the entry's been edited since
+                                  it was created, else createdBy — with no "Created:"/
+                                  "Updated:" label, single line, matching Sampling's
+                                  created-by display under the action buttons. */}
+                              {(entry.updatedBy || entry.createdBy) && (
+                                <span className="text-[10px] font-mono text-g400 whitespace-nowrap">{entry.updatedBy || entry.createdBy}</span>
                               )}
                             </div>
                           </td>

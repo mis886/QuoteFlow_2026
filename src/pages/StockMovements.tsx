@@ -397,17 +397,15 @@ export function StockMovements() {
                               <Trash2 size={12} />
                             </button>
                           </div>
-                          {/* 2026-09-21: moved here from a dedicated "Created / Updated
-                              By" column, at the user's request, to match how the
-                              Sampling module shows its created-by email — right under
-                              the row's action buttons rather than in its own column.
-                              Unlike the icon buttons above, this stays visible without
-                              hovering the row. */}
-                          {(m.created_by || m.updated_by) && (
-                            <div className="flex flex-col gap-0.5">
-                              {m.created_by && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Created: {m.created_by}</span>}
-                              {m.updated_by && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Updated: {m.updated_by}</span>}
-                            </div>
+                          {/* 2026-09-21: shows just the email of whoever made the most
+                              recent change — updated_by if the entry's been edited since
+                              it was created, else created_by — with no "Created:"/
+                              "Updated:" label, single line, matching Sampling's
+                              created-by display under the row's action buttons. Unlike
+                              the icon buttons above, this stays visible without hovering
+                              the row. */}
+                          {(m.updated_by || m.created_by) && (
+                            <span className="text-[10px] font-mono text-g400 whitespace-nowrap">{m.updated_by || m.created_by}</span>
                           )}
                         </div>
                       </td>
@@ -478,17 +476,15 @@ export function StockMovements() {
                               <Trash2 size={12} />
                             </button>
                           </div>
-                          {/* 2026-09-21: moved here from a dedicated "Created / Updated
-                              By" column, at the user's request, to match how the
-                              Sampling module shows its created-by email — right under
-                              the row's action buttons rather than in its own column.
-                              Unlike the icon buttons above, this stays visible without
-                              hovering the row. */}
-                          {(m.created_by || m.updated_by) && (
-                            <div className="flex flex-col gap-0.5">
-                              {m.created_by && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Created: {m.created_by}</span>}
-                              {m.updated_by && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Updated: {m.updated_by}</span>}
-                            </div>
+                          {/* 2026-09-21: shows just the email of whoever made the most
+                              recent change — updated_by if the entry's been edited since
+                              it was created, else created_by — with no "Created:"/
+                              "Updated:" label, single line, matching Sampling's
+                              created-by display under the row's action buttons. Unlike
+                              the icon buttons above, this stays visible without hovering
+                              the row. */}
+                          {(m.updated_by || m.created_by) && (
+                            <span className="text-[10px] font-mono text-g400 whitespace-nowrap">{m.updated_by || m.created_by}</span>
                           )}
                         </div>
                       </td>
