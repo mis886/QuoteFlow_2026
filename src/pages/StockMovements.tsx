@@ -66,11 +66,12 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, RefreshCw, ArrowLeftRight, Pencil, Trash2 } from 'lucide-react';
+import { Search, Plus, RefreshCw, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { fmtDate, normalizeSearchText, doerLabel } from '../lib/utils';
 import { StockMovement } from '../lib/types';
+import { Button } from '../components/ui';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { FinishedLotsTable } from '../components/FinishedLotsTable';
@@ -384,18 +385,18 @@ export function StockMovements() {
                       <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.note}>{m.note || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top">
                         <div className="flex flex-col gap-[3px]">
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-1.5">
                             {/* 2026-09-09: Outward's Edit now opens the full-page
                                 NewStockOutward.tsx (same ?movementId=-style
                                 full-page-edit convention Inward's own Edit button
                                 already uses below), not a modal — see the
-                                2026-09-09 file-header note above. */}
-                            <button type="button" onClick={() => navigate(`/stock-movements/new-outward?movementId=${m.id}`)} className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors" title="Edit">
-                              <Pencil size={12} />
-                            </button>
-                            <button type="button" onClick={() => handleDelete(m)} className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors" title="Delete">
-                              <Trash2 size={12} />
-                            </button>
+                                2026-09-09 file-header note above.
+                                2026-09-21: switched from hover-reveal icon buttons
+                                to labeled Edit/Delete buttons, always visible, at
+                                the user's request — matching the Button style
+                                already used in Dispatch and Sampling. */}
+                            <Button size="sm" variant="secondary" onClick={() => navigate(`/stock-movements/new-outward?movementId=${m.id}`)}>Edit</Button>
+                            <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(m)}>Delete</Button>
                           </div>
                           {/* 2026-09-21: shows just the name of whoever made the most
                               recent change — updated_by if the entry's been edited since
@@ -465,16 +466,16 @@ export function StockMovements() {
                       <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.remark}>{m.remark || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top">
                         <div className="flex flex-col gap-[3px]">
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-1.5">
                             {/* Inward's Edit opens the full-page NewStockInward.tsx (same
                                 ?id=-style full-page-edit convention as Orders/Quotes),
-                                not a modal — see the 2026-09-05 file-header note above. */}
-                            <button type="button" onClick={() => navigate(`/stock-movements/new?movementId=${m.id}`)} className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors" title="Edit">
-                              <Pencil size={12} />
-                            </button>
-                            <button type="button" onClick={() => handleDelete(m)} className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors" title="Delete">
-                              <Trash2 size={12} />
-                            </button>
+                                not a modal — see the 2026-09-05 file-header note above.
+                                2026-09-21: switched from hover-reveal icon buttons to
+                                labeled Edit/Delete buttons, always visible, at the
+                                user's request — matching the Button style already used
+                                in Dispatch and Sampling. */}
+                            <Button size="sm" variant="secondary" onClick={() => navigate(`/stock-movements/new?movementId=${m.id}`)}>Edit</Button>
+                            <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(m)}>Delete</Button>
                           </div>
                           {/* 2026-09-21: shows just the name of whoever made the most
                               recent change — updated_by if the entry's been edited since
