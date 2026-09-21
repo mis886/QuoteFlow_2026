@@ -57,8 +57,8 @@ const num = (v?: number) => (v === undefined || v === null || v === 0 ? '—' : 
 
 export function FinishedLotsTable() {
   // 2026-09-19: only used to resolve created_by/updated_by emails to display
-  // names for the "Created / Updated By" column below — this component is
-  // otherwise self-contained (own Supabase query, own state), unchanged.
+  // names for the "Updated By" column below — this component is otherwise
+  // self-contained (own Supabase query, own state), unchanged.
   const { data } = useAppStore();
   const [lots, setLots] = useState<StockLot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -177,11 +177,17 @@ export function FinishedLotsTable() {
                 <Th label="Packing Type" />
                 <SortTh col="quantity" label="Total Quantity" />
                 <Th label="Finished On" />
-                {/* 2026-09-19: at the user's request — who created this lot
-                    (Inward entry) and, if it's been edited since, who last
-                    edited it, matching the "Created By" column Sampling
-                    already shows, and the same column Stockbook.tsx now has. */}
-                <Th label="Created / Updated By" />
+                {/* 2026-09-21: shows just the name of whoever made the most
+                    recent change to this lot — updated_by if it's been
+                    edited since the Inward entry created it, else
+                    created_by — resolved through the team roster to a
+                    display name (falls back to the raw email if no roster
+                    match), single line, no "Created:"/"Updated:" label.
+                    Matches the same simplification made to Dispatch and
+                    Stock Movements' Inward/Outward tabs; kept as its own
+                    column here since Finished Lots has no per-row action
+                    buttons to tuck it under. */}
+                <Th label="Updated By" />
               </tr>
             </thead>
             <tbody>
@@ -232,11 +238,7 @@ export function FinishedLotsTable() {
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(l.quantity)}</td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.finishedAt ? new Date(l.finishedAt).toLocaleDateString('en-IN') : '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center text-[10px] font-mono text-g500 whitespace-nowrap">
-                      <div className="flex flex-col gap-0.5 items-center">
-                        {l.created_by && <span>Created: {doerLabel(l.created_by, data.roster)}</span>}
-                        {l.updated_by && <span>Updated: {doerLabel(l.updated_by, data.roster)}</span>}
-                        {!l.created_by && !l.updated_by && '—'}
-                      </div>
+                      {(l.updated_by || l.created_by) ? doerLabel(l.updated_by || l.created_by, data.roster) : '—'}
                     </td>
                   </tr>
                 ))
