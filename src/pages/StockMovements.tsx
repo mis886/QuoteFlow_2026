@@ -353,19 +353,14 @@ export function StockMovements() {
                   <Th label="Packing Type" />
                   <Th label="Total Qty" align="right" />
                   <Th label="Note" />
-                  {/* 2026-09-19: renamed from "Entered By" and now shows
-                      both — who created this entry and, if it's been
-                      edited since, who last edited it, at the user's
-                      request. */}
-                  <Th label="Created / Updated By" />
-                  <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[70px]" />
+                  <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200" />
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={16} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                  <tr><td colSpan={15} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={16} className="text-center p-8 text-g400 text-[13px]">No outward entries match this filter</td></tr>
+                  <tr><td colSpan={15} className="text-center p-8 text-g400 text-[13px]">No outward entries match this filter</td></tr>
                 ) : (
                   filtered.map(m => (
                     <tr key={m.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -387,26 +382,33 @@ export function StockMovements() {
                       <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.packagingType || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(m.totalQty)}</td>
                       <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.note}>{m.note || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-[10.5px] font-mono text-g500 whitespace-nowrap">
-                        <div className="flex flex-col gap-0.5">
-                          {m.created_by && <span>Created: {m.created_by}</span>}
-                          {m.updated_by && <span>Updated: {m.updated_by}</span>}
-                          {!m.created_by && !m.updated_by && '—'}
-                        </div>
-                      </td>
                       <td className="px-[13px] py-[9px] align-top">
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {/* 2026-09-09: Outward's Edit now opens the full-page
-                              NewStockOutward.tsx (same ?movementId=-style
-                              full-page-edit convention Inward's own Edit button
-                              already uses below), not a modal — see the
-                              2026-09-09 file-header note above. */}
-                          <button type="button" onClick={() => navigate(`/stock-movements/new-outward?movementId=${m.id}`)} className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors" title="Edit">
-                            <Pencil size={12} />
-                          </button>
-                          <button type="button" onClick={() => handleDelete(m)} className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors" title="Delete">
-                            <Trash2 size={12} />
-                          </button>
+                        <div className="flex flex-col gap-[3px]">
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* 2026-09-09: Outward's Edit now opens the full-page
+                                NewStockOutward.tsx (same ?movementId=-style
+                                full-page-edit convention Inward's own Edit button
+                                already uses below), not a modal — see the
+                                2026-09-09 file-header note above. */}
+                            <button type="button" onClick={() => navigate(`/stock-movements/new-outward?movementId=${m.id}`)} className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors" title="Edit">
+                              <Pencil size={12} />
+                            </button>
+                            <button type="button" onClick={() => handleDelete(m)} className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors" title="Delete">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                          {/* 2026-09-21: moved here from a dedicated "Created / Updated
+                              By" column, at the user's request, to match how the
+                              Sampling module shows its created-by email — right under
+                              the row's action buttons rather than in its own column.
+                              Unlike the icon buttons above, this stays visible without
+                              hovering the row. */}
+                          {(m.created_by || m.updated_by) && (
+                            <div className="flex flex-col gap-0.5">
+                              {m.created_by && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Created: {m.created_by}</span>}
+                              {m.updated_by && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Updated: {m.updated_by}</span>}
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -436,19 +438,14 @@ export function StockMovements() {
                   <Th label="Total Qty" align="right" />
                   <Th label="Make" />
                   <Th label="Remark" />
-                  {/* 2026-09-19: renamed from "Entered By" and now shows
-                      both — who created this entry and, if it's been
-                      edited since, who last edited it, at the user's
-                      request. */}
-                  <Th label="Created / Updated By" />
-                  <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[70px]" />
+                  <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200" />
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={14} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                  <tr><td colSpan={13} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={14} className="text-center p-8 text-g400 text-[13px]">No inward entries match this filter</td></tr>
+                  <tr><td colSpan={13} className="text-center p-8 text-g400 text-[13px]">No inward entries match this filter</td></tr>
                 ) : (
                   filtered.map(m => (
                     <tr key={m.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
@@ -468,24 +465,31 @@ export function StockMovements() {
                           : '—'}
                       </td>
                       <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.remark}>{m.remark || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-[10.5px] font-mono text-g500 whitespace-nowrap">
-                        <div className="flex flex-col gap-0.5">
-                          {m.created_by && <span>Created: {m.created_by}</span>}
-                          {m.updated_by && <span>Updated: {m.updated_by}</span>}
-                          {!m.created_by && !m.updated_by && '—'}
-                        </div>
-                      </td>
                       <td className="px-[13px] py-[9px] align-top">
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {/* Inward's Edit opens the full-page NewStockInward.tsx (same
-                              ?id=-style full-page-edit convention as Orders/Quotes),
-                              not a modal — see the 2026-09-05 file-header note above. */}
-                          <button type="button" onClick={() => navigate(`/stock-movements/new?movementId=${m.id}`)} className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors" title="Edit">
-                            <Pencil size={12} />
-                          </button>
-                          <button type="button" onClick={() => handleDelete(m)} className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors" title="Delete">
-                            <Trash2 size={12} />
-                          </button>
+                        <div className="flex flex-col gap-[3px]">
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Inward's Edit opens the full-page NewStockInward.tsx (same
+                                ?id=-style full-page-edit convention as Orders/Quotes),
+                                not a modal — see the 2026-09-05 file-header note above. */}
+                            <button type="button" onClick={() => navigate(`/stock-movements/new?movementId=${m.id}`)} className="p-1.5 rounded text-g400 hover:text-blk hover:bg-g100 transition-colors" title="Edit">
+                              <Pencil size={12} />
+                            </button>
+                            <button type="button" onClick={() => handleDelete(m)} className="p-1.5 rounded text-g400 hover:text-red-mrt hover:bg-red-50 transition-colors" title="Delete">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                          {/* 2026-09-21: moved here from a dedicated "Created / Updated
+                              By" column, at the user's request, to match how the
+                              Sampling module shows its created-by email — right under
+                              the row's action buttons rather than in its own column.
+                              Unlike the icon buttons above, this stays visible without
+                              hovering the row. */}
+                          {(m.created_by || m.updated_by) && (
+                            <div className="flex flex-col gap-0.5">
+                              {m.created_by && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Created: {m.created_by}</span>}
+                              {m.updated_by && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Updated: {m.updated_by}</span>}
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>

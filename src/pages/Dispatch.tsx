@@ -96,17 +96,12 @@ export function Dispatch() {
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Promised Delivery</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Estimated Delivery</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Dispatched On</th>
-                  {/* 2026-09-19: at the user's request — who created this
-                      dispatch entry (Order → Dispatch) and, if it's been
-                      edited since (e.g. the Dispatch → Sent step), who last
-                      edited it. */}
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Created / Updated By</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleEntries.length === 0 ? (
-                  <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">No {subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries {tab === 'toSend' ? 'sent yet' : 'yet'}</td></tr>
+                  <tr><td colSpan={11} className="text-center p-8 text-g400 text-[13px]">No {subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries {tab === 'toSend' ? 'sent yet' : 'yet'}</td></tr>
                 ) : (
                   visibleEntries.map(entry => {
                     const order = orderFor(entry);
@@ -132,34 +127,39 @@ export function Dispatch() {
                           <td className="px-[13px] py-[10px] align-top">{fmtDate(entry.promisedDeliveryDate)}</td>
                           <td className="px-[13px] py-[10px] align-top">{fmtDate(entry.estimatedDeliveryDate)}</td>
                           <td className="px-[13px] py-[10px] align-top">{entry.created_at ? fmtIST(new Date(entry.created_at), 'dd-MMM-yyyy') : '—'}</td>
-                          <td className="px-[13px] py-[10px] align-top text-[10.5px] font-mono text-g500 whitespace-nowrap">
-                            <div className="flex flex-col gap-0.5">
-                              {entry.createdBy && <span>Created: {entry.createdBy}</span>}
-                              {entry.updatedBy && <span>Updated: {entry.updatedBy}</span>}
-                              {!entry.createdBy && !entry.updatedBy && '—'}
-                            </div>
-                          </td>
                           <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
-                            <div className="flex gap-1.5 flex-wrap">
-                              {tab === 'toDispatch' && (
-                                // Opens the full entry form with the Status dropdown
-                                // pre-set to "Dispatch → Sent" (and existing data
-                                // prefilled), instead of marking it sent immediately.
-                                // The entry only actually moves to the Dispatch → Sent
-                                // tab once the user fills in the Documents Attachment
-                                // section there and clicks Save.
-                                <Button size="sm" variant="success" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}&toSent=1`)}>Dispatch → Sent</Button>
-                              )}
-                              <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}`)}>Edit</Button>
-                              {canDelete && (
-                                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async () => {
-                                  if (!confirm(`Are you sure you want to delete the dispatch entry for ${entry.orderId}? This action cannot be undone.`)) return;
-                                  try {
-                                    await deleteDispatchEntry(entry.id);
-                                  } catch (err: any) {
-                                    alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
-                                  }
-                                }}>Delete</Button>
+                            <div className="flex flex-col gap-[3px]">
+                              <div className="flex gap-1.5 flex-wrap">
+                                {tab === 'toDispatch' && (
+                                  // Opens the full entry form with the Status dropdown
+                                  // pre-set to "Dispatch → Sent" (and existing data
+                                  // prefilled), instead of marking it sent immediately.
+                                  // The entry only actually moves to the Dispatch → Sent
+                                  // tab once the user fills in the Documents Attachment
+                                  // section there and clicks Save.
+                                  <Button size="sm" variant="success" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}&toSent=1`)}>Dispatch → Sent</Button>
+                                )}
+                                <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}`)}>Edit</Button>
+                                {canDelete && (
+                                  <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async () => {
+                                    if (!confirm(`Are you sure you want to delete the dispatch entry for ${entry.orderId}? This action cannot be undone.`)) return;
+                                    try {
+                                      await deleteDispatchEntry(entry.id);
+                                    } catch (err: any) {
+                                      alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
+                                    }
+                                  }}>Delete</Button>
+                                )}
+                              </div>
+                              {/* 2026-09-21: moved here from a dedicated "Created / Updated
+                                  By" column, at the user's request, to match how the
+                                  Sampling module shows its created-by email — right under
+                                  the action buttons rather than in its own column. */}
+                              {(entry.createdBy || entry.updatedBy) && (
+                                <div className="flex flex-col gap-0.5">
+                                  {entry.createdBy && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Created: {entry.createdBy}</span>}
+                                  {entry.updatedBy && <span className="text-[10px] font-mono text-g400 whitespace-nowrap">Updated: {entry.updatedBy}</span>}
+                                </div>
                               )}
                             </div>
                           </td>
@@ -167,7 +167,7 @@ export function Dispatch() {
 
                         {isExpanded && (
                           <tr className="bg-sW/[0.02] border-b-2 border-sW">
-                            <td colSpan={12} className="p-0">
+                            <td colSpan={11} className="p-0">
                               <div className="p-[10px_16px]">
                                 <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sW mb-[7px]">Dispatch Line Items -- {entry.orderId}</div>
                                 {lineItems.length === 0 ? (
