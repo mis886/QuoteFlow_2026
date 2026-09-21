@@ -594,20 +594,15 @@ export function nameTier(name: string, query: string, exactMatches: (string | un
 // Matches by email OR alias, case-insensitively — same matching used by
 // roleForDoer in store/index.tsx — and does NOT filter by `active`, since a
 // since-deactivated team member's name should still show on old records.
-// 2026-09-21: a matched name is now followed by the actual email in
-// parentheses (e.g. "MIS Coordinator (mis@himalayaterpene.com)"), at the
-// user's request — several roster entries (e.g. mis@) have a role-title
-// display_name that doesn't by itself say which login/account made the
-// entry, so the email is always shown alongside it, not instead of it. A
-// value with no roster match already IS the raw email, so it's returned
-// as-is (no parentheses, nothing to disambiguate).
+// 2026-09-21: briefly showed the email in parentheses alongside a matched
+// name; reverted the same day at the user's request — back to name-only.
 export function doerLabel(value: string | null | undefined, roster: TeamMember[]): string {
   if (!value) return '';
   const key = value.trim().toLowerCase();
   const match = roster.find(m =>
     m.email.toLowerCase() === key ||
     (m.aliases ?? []).some(a => a.trim().toLowerCase() === key));
-  return match?.display_name ? `${match.display_name} (${value.trim()})` : value;
+  return match?.display_name || value;
 }
 
 export const generateId = (prefix: string, existingIds: (string | undefined | null)[]) => {
