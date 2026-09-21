@@ -3,24 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { canDeleteRecords, formatINR, fmtDate, fmtIST } from '../lib/utils';
-import { Order, DispatchEntry, DispatchFulfillmentType, TeamMember } from '../lib/types';
-
-// 2026-09-21: Dispatch-only variant of utils.ts's doerLabel() — also shows
-// the matched roster member's role/designation (e.g. "Technical") next to
-// their name, at the user's request. Kept local to this file rather than
-// changed on the shared doerLabel(), since the user separately asked for
-// doerLabel() itself (used by Stockbook/Stock Movements/Finished Lots) to
-// stay name-only. Falls back to the raw email when no roster member
-// matches, same as doerLabel().
-function doerLabelWithRole(value: string | null | undefined, roster: TeamMember[]): string {
-  if (!value) return '';
-  const key = value.trim().toLowerCase();
-  const match = roster.find(m =>
-    m.email.toLowerCase() === key ||
-    (m.aliases ?? []).some(a => a.trim().toLowerCase() === key));
-  if (!match) return value;
-  return match.role ? `${match.display_name} (${match.role})` : match.display_name;
-}
+import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 
 export function Dispatch() {
   const navigate = useNavigate();
@@ -151,8 +134,8 @@ export function Dispatch() {
                           <td className="px-[13px] py-[10px] align-top">{entry.created_at ? fmtIST(new Date(entry.created_at), 'dd-MMM-yyyy') : '—'}</td>
                           <td className="px-[13px] py-[10px] align-top text-[10.5px] font-mono text-g500 whitespace-nowrap">
                             <div className="flex flex-col gap-0.5">
-                              {entry.createdBy && <span>Created: {doerLabelWithRole(entry.createdBy, data.roster)}</span>}
-                              {entry.updatedBy && <span>Updated: {doerLabelWithRole(entry.updatedBy, data.roster)}</span>}
+                              {entry.createdBy && <span>Created: {entry.createdBy}</span>}
+                              {entry.updatedBy && <span>Updated: {entry.updatedBy}</span>}
                               {!entry.createdBy && !entry.updatedBy && '—'}
                             </div>
                           </td>

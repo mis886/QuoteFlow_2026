@@ -69,7 +69,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Plus, RefreshCw, ArrowLeftRight, Pencil, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { fmtDate, normalizeSearchText, doerLabel } from '../lib/utils';
+import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockMovement } from '../lib/types';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
@@ -140,7 +140,7 @@ const Th = ({ label, align }: { label: string; align?: 'right' }) => (
 
 export function StockMovements() {
   const navigate = useNavigate();
-  const { user, activeDoer, data } = useAppStore();
+  const { user, activeDoer } = useAppStore();
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -389,8 +389,8 @@ export function StockMovements() {
                       <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.note}>{m.note || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top text-[10.5px] font-mono text-g500 whitespace-nowrap">
                         <div className="flex flex-col gap-0.5">
-                          {m.created_by && <span>Created: {doerLabel(m.created_by, data.roster)}</span>}
-                          {m.updated_by && <span>Updated: {doerLabel(m.updated_by, data.roster)}</span>}
+                          {m.created_by && <span>Created: {m.created_by}</span>}
+                          {m.updated_by && <span>Updated: {m.updated_by}</span>}
                           {!m.created_by && !m.updated_by && '—'}
                         </div>
                       </td>
@@ -470,8 +470,8 @@ export function StockMovements() {
                       <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.remark}>{m.remark || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top text-[10.5px] font-mono text-g500 whitespace-nowrap">
                         <div className="flex flex-col gap-0.5">
-                          {m.created_by && <span>Created: {doerLabel(m.created_by, data.roster)}</span>}
-                          {m.updated_by && <span>Updated: {doerLabel(m.updated_by, data.roster)}</span>}
+                          {m.created_by && <span>Created: {m.created_by}</span>}
+                          {m.updated_by && <span>Updated: {m.updated_by}</span>}
                           {!m.created_by && !m.updated_by && '—'}
                         </div>
                       </td>
