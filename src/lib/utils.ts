@@ -7,8 +7,8 @@ export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himala
 // ── Payment Terms — shared across Orders, Quotations, and Customers ──────────
 
 export const PAY_OPTIONS = [
-  '1 Day', '3 Days', '7 Days', '10 Days', '14 Days', '30 Days Net', '45 Days', '60 Days',
-  '90 Days', '120 Days', '50% Advance, 50% on Delivery', '100% Advance',
+  '1 Day', '3 Days', '7 Days', '10 Days', '14 Days', '18 Days', '30 Days Net', '45 Days',
+  '60 Days', '90 Days', '120 Days', '50% Advance, 50% on Delivery', '100% Advance',
   'LC at Sight', 'Advance',
 ] as const;
 
