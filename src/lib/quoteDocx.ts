@@ -384,12 +384,21 @@ export async function downloadPIDOCX(
   bankAccount?: BankAccount,
 ) {
   const sym = getCurrSym(quote?.curr || 'INR');
-  const t_raw = resolveAdjustments(order.adjustments, order.items.reduce((a, i) => a + i.total, 0), order.items.reduce((a, i) => a + i.total * i.gst / 100, 0), maxItemGstRate(order.items));
   const sub = order.items.reduce((a, i) => a + i.total, 0);
+  const insurance = order.insurance || 0;
+  const itemGst = order.items.reduce((a, i) => a + i.total * i.gst / 100, 0);
+  // Scale item GST to also tax the Insurance amount — mirrors NewOrder.tsx's
+  // live calculation, where GST is charged on (Subtotal + Insurance).
+  const scaledItemGst = sub > 0 ? itemGst * (sub + insurance) / sub : 0;
+  const t_raw = resolveAdjustments(order.adjustments, sub, scaledItemGst, maxItemGstRate(order.items));
   const adjLines = t_raw.lines;
   const preLines  = adjLines.filter(a => a.taxable);
   const postLines = adjLines.filter(a => !a.taxable);
-  const grand = t_raw.grand;
+  // grand = Order Total (incl. GST), the full amount owed before any advance
+  // is deducted. balanceDue subtracts the Received Amount from that.
+  const grand = Math.round(sub + insurance + t_raw.preNet + t_raw.gstTotal + t_raw.postNet);
+  const receivedAmount = order.receivedAmount || 0;
+  const balanceDue = Math.round(grand - receivedAmount);
 
   const primarySite = ((order as any).siteId ? customer?.sites.find(s => s.id === (order as any).siteId) : undefined)
     ?? customer?.sites.find(s => s.isPrimary)
@@ -592,14 +601,15 @@ export async function downloadPIDOCX(
         para([], AlignmentType.LEFT, 80),
 
         // ── Totals (right-aligned paragraphs)
-        para([r('Sub-Total (excl. GST):  ', { size: 17, color: C_GRAY }), r(fmtRate(sub, sym), { size: 17 })], AlignmentType.RIGHT, 30),
+        para([r('Sub-Total (before tax):  ', { size: 17, color: C_GRAY }), r(fmtRate(sub, sym), { size: 17 })], AlignmentType.RIGHT, 30),
+        ...(insurance > 0 ? [para([r('Insurance:  ', { size: 17, color: C_GRAY }), r(fmtRate(insurance, sym), { size: 17 })], AlignmentType.RIGHT, 30)] : []),
         ...preLines.map(a => {
           const pct = a.mode === 'percent' ? ` (${a.rate}%)` : '';
           const label = `${a.label || 'Adjustment'}${pct}:  `;
           return para([r(label, { size: 17, color: C_GRAY }), r((a.amount < 0 ? '-' : '') + fmtRate(Math.abs(a.amount), sym), { size: 17 })], AlignmentType.RIGHT, 30);
         }),
-        ...(preLines.length > 0 ? [para([r('Taxable Value:  ', { size: 17, color: C_GRAY }), r(fmtRate(sub + preLines.reduce((s, a) => s + a.amount, 0), sym), { size: 17 })], AlignmentType.RIGHT, 30)] : []),
-        para([r('GST Amount:  ', { size: 17, color: C_GRAY }), r(fmtRate(t_raw.gstTotal, sym), { size: 17 })], AlignmentType.RIGHT, 30),
+        ...((preLines.length > 0 || insurance > 0) ? [para([r('Taxable Value:  ', { size: 17, color: C_GRAY }), r(fmtRate(sub + insurance + preLines.reduce((s, a) => s + a.amount, 0), sym), { size: 17 })], AlignmentType.RIGHT, 30)] : []),
+        para([r('GST Total:  ', { size: 17, color: C_GRAY }), r(fmtRate(t_raw.gstTotal, sym), { size: 17 })], AlignmentType.RIGHT, 30),
         ...postLines.map(a => {
           const pct = a.mode === 'percent' ? ` (${a.rate}%)` : '';
           return para([r(`${a.label || 'Adjustment'}${pct}:  `, { size: 17, color: C_GRAY }), r((a.amount < 0 ? '-' : '') + fmtRate(Math.abs(a.amount), sym), { size: 17 })], AlignmentType.RIGHT, 30);
@@ -608,7 +618,14 @@ export async function downloadPIDOCX(
           border: { top: { style: BorderStyle.SINGLE, size: 6, color: '000000' } },
           alignment: AlignmentType.RIGHT,
           spacing: { before: 40, after: 60 },
-          children: [r('Grand Total:  ', { bold: true, size: 20 }), r(fmtRate(grand, sym), { bold: true, size: 20 })],
+          children: [r('Order Total (incl. GST):  ', { bold: true, size: 20 }), r(fmtRate(grand, sym), { bold: true, size: 20 })],
+        }),
+        ...(receivedAmount > 0 ? [para([r('Received Amount:  ', { size: 17, color: C_GRAY }), r('-' + fmtRate(receivedAmount, sym), { size: 17 })], AlignmentType.RIGHT, 30)] : []),
+        new Paragraph({
+          border: { top: { style: BorderStyle.SINGLE, size: 6, color: '000000' } },
+          alignment: AlignmentType.RIGHT,
+          spacing: { before: 40, after: 60 },
+          children: [r('Balance Due:  ', { bold: true, size: 20 }), r(fmtRate(balanceDue, sym), { bold: true, size: 20 })],
         }),
 
         // ── Banking + T&C

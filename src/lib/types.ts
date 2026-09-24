@@ -218,7 +218,7 @@ export interface Order {
   status: OrderStatus;
   value: number;
   insurance?: number;      // INR only; user-applied 0.15% charge on subtotal
-  receivedAmount?: number;
+  receivedAmount?: number; // INR only; advance/token payment already collected against this order
   inco?: string;
   curr?: string;
   pay?: string;

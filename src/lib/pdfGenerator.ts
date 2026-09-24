@@ -12,16 +12,29 @@ export function getQuoteTotals(q: Quote) {
 
 export function getOrderTotals(o: Order) {
   const sub = o.items.reduce((a, i) => a + i.total, 0);
+  const insurance = o.insurance || 0;
   const itemGst = o.items.reduce((a, i) => a + (i.total * i.gst / 100), 0);
-  const adj = resolveAdjustments(o.adjustments, sub, itemGst, maxItemGstRate(o.items));
-  // `gst` is the combined GST (items + GST on taxable charges) so the existing
-  // "GST Amount" line reflects tax on the P&F-inclusive value.
+  // Scale item GST to also tax the Insurance amount — mirrors NewOrder.tsx's
+  // live calculation, where GST is charged on (Subtotal + Insurance).
+  const scaledItemGst = sub > 0 ? itemGst * (sub + insurance) / sub : 0;
+  const adj = resolveAdjustments(o.adjustments, sub, scaledItemGst, maxItemGstRate(o.items));
+  // `gst` is the combined GST (items + insurance + GST on taxable charges), so
+  // the "GST Total" line reflects tax on the full Insurance-inclusive value.
+  // `grand` is the Order Total (incl. GST) — the full amount owed BEFORE any
+  // advance/token payment is deducted. `balanceDue` subtracts the Received
+  // Amount from that, same order of operations as NewOrder.tsx.
+  const grand = Math.round(sub + insurance + adj.preNet + adj.gstTotal + adj.postNet);
+  const receivedAmount = o.receivedAmount || 0;
+  const balanceDue = Math.round(grand - receivedAmount);
   return {
     sub,
+    insurance,
     gst: adj.gstTotal,
     adjustmentLines: adj.lines,
     adjustmentsNet: adj.net,
-    grand: adj.grand,
+    grand,
+    receivedAmount,
+    balanceDue,
   };
 }
 
@@ -629,21 +642,28 @@ export function generatePIPDF(
   };
 
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
-  doc.text('Sub-Total (excl. GST)', rx - 60, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
+  doc.text('Sub-Total (before tax)', rx - 60, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
   doc.text(fmtAmount(t.sub, sym), rx, y, { align: 'right' }); y += 5.5;
+
+  // Insurance (if any) is added to the taxable value before GST, same as Subtotal.
+  if (t.insurance > 0) {
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
+    doc.text('Insurance', rx - 60, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
+    doc.text(fmtAmount(t.insurance, sym), rx, y, { align: 'right' }); y += 5.5;
+  }
 
   // Taxable charges (P&F, Freight…) are added to the taxable value BEFORE GST.
   preLines.forEach(adjRow);
-  if (preLines.length > 0) {
-    const taxableValue = t.sub + preLines.reduce((s, a) => s + a.amount, 0);
+  if (preLines.length > 0 || t.insurance > 0) {
+    const taxableValue = t.sub + t.insurance + preLines.reduce((s, a) => s + a.amount, 0);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
     doc.text('Taxable Value', rx - 60, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
     doc.text(fmtAmount(taxableValue, sym), rx, y, { align: 'right' }); y += 5.5;
   }
 
-  // GST is charged on the (P&F-inclusive) taxable value.
+  // GST is charged on the (Insurance/P&F-inclusive) taxable value.
   doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
-  doc.text('GST Amount', rx - 60, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
+  doc.text('GST Total', rx - 60, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
   doc.text(fmtAmount(t.gst, sym), rx, y, { align: 'right' }); y += 5.5;
 
   // Post-GST lines (TDS/TCS, post-tax freight) after GST.
@@ -652,9 +672,23 @@ export function generatePIPDF(
   y -= 3.5;
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4); doc.line(rx - 65, y, rx, y); y += 5;
   doc.setFontSize(11); doc.setTextColor(0, 0, 0);
-  doc.text('Grand Total', rx - 60, y);
-   
+  doc.text('Order Total (incl. GST)', rx - 60, y);
   doc.text(fmtAmount(t.grand, sym), rx, y, { align: 'right' });
+  y += 7;
+
+  // Received Amount (advance/token payment already collected) is deducted
+  // from the Order Total to arrive at the Balance Due — mirrors the on-screen
+  // Order form exactly.
+  if (t.receivedAmount > 0) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+    doc.text('Received Amount', rx - 60, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
+    doc.text('-' + fmtAmount(t.receivedAmount, sym), rx, y, { align: 'right' }); y += 5.5;
+  }
+
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4); doc.line(rx - 65, y, rx, y); y += 5;
+  doc.setFontSize(11); doc.setTextColor(0, 0, 0);
+  doc.text('Balance Due', rx - 60, y);
+  doc.text(fmtAmount(t.balanceDue, sym), rx, y, { align: 'right' });
   y += 10;
 
   // ── Banking + Terms side by side ─────────────────────────────────────────
