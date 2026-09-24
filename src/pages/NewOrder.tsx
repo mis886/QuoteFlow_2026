@@ -1238,7 +1238,7 @@ export function NewOrder() {
                       {curr === 'INR' && receivedAmount > 0 && (
                         <tr className="bg-g50/50">
                           <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">Advance Received (+)</td>
-                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(subTotal - netSubTotal)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(Math.round(subTotal - netSubTotal))}</td>
                           <td></td>
                         </tr>
                       )}
@@ -1250,7 +1250,7 @@ export function NewOrder() {
                       {curr === 'INR' && receivedAmount > 0 && (
                         <tr className="bg-g50/50">
                           <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g600">Balance Due</td>
-                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(grandTotal - (subTotal - netSubTotal))}</td>
+                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(grandTotal - Math.round(subTotal - netSubTotal))}</td>
                           <td></td>
                         </tr>
                       )}
@@ -1552,9 +1552,9 @@ export function NewOrder() {
                       <span className={`font-mono ${l.amount < 0 ? 'text-red-mrt' : ''}`}>{l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}</span>
                     </div>
                   ))}
-                  {curr === 'INR' && receivedAmount > 0 && <div className="flex justify-between text-g500"><span>Advance Received (+)</span><span className="font-mono">{formatINR(subTotal - netSubTotal)}</span></div>}
+                  {curr === 'INR' && receivedAmount > 0 && <div className="flex justify-between text-g500"><span>Advance Received (+)</span><span className="font-mono">{formatINR(Math.round(subTotal - netSubTotal))}</span></div>}
                   <div className="flex justify-between font-bold text-blk border-t border-g200 pt-2 text-[14px]"><span>Order Value</span><span className="font-mono text-red-mrt">{formatINR(grandTotal)}</span></div>
-                  {curr === 'INR' && receivedAmount > 0 && <div className="flex justify-between text-g600"><span>Balance Due</span><span className="font-mono">{formatINR(grandTotal - (subTotal - netSubTotal))}</span></div>}
+                  {curr === 'INR' && receivedAmount > 0 && <div className="flex justify-between text-g600"><span>Balance Due</span><span className="font-mono">{formatINR(grandTotal - Math.round(subTotal - netSubTotal))}</span></div>}
                 </div>
               </div>
             </div>
