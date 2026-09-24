@@ -361,7 +361,7 @@ export function NewEnquiry() {
 
             <div className="bg-white border border-g200 p-[18px_20px]">
               <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200">Customer & Contact</div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Customer <span className="text-red-mrt">*</span></label>
                   <CustomerSearch
@@ -396,12 +396,10 @@ export function NewEnquiry() {
                     );
                   })()}
                 </div>
-              </div>
-              {(() => {
-                const canEditTier = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
-                return (
-                  <div className="flex gap-3 mt-3 items-start">
-                    <div className="w-40 shrink-0">
+                {(() => {
+                  const canEditTier = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
+                  return (
+                    <div>
                       <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">
                         Customer Tier
                         {!canEditTier && <span className="ml-1 text-g400 font-normal normal-case text-[10px]">(view only)</span>}
@@ -420,19 +418,9 @@ export function NewEnquiry() {
                         <option>Gold</option>
                       </select>
                     </div>
-                    <div className="flex-1">
-                      <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Notes from Management</label>
-                      <textarea
-                        placeholder="Any notes from management about this customer..."
-                        value={managementNotes}
-                        onChange={e => setManagementNotes(e.target.value)}
-                        className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none"
-                        rows={1}
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
+              </div>
               <div className="grid grid-cols-3 gap-3 mt-3">
                 <div ref={contactRef} className="relative">
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Contact Person</label>
@@ -493,6 +481,15 @@ export function NewEnquiry() {
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Email</label>
                   <input type="email" placeholder="contact@company.com" value={email} onChange={e => { setContactManual(true); setEmail(e.target.value); }} className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
                 </div>
+              </div>
+              <div className="mt-3">
+                <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Notes from Management</label>
+                <textarea
+                  placeholder="Any notes from management about this customer..."
+                  value={managementNotes}
+                  onChange={e => setManagementNotes(e.target.value)}
+                  className="w-full min-h-[68px] font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt"
+                />
               </div>
             </div>
 
