@@ -620,7 +620,7 @@ export async function downloadPIDOCX(
           spacing: { before: 40, after: 60 },
           children: [r('Order Total (incl. GST):  ', { bold: true, size: 20 }), r(fmtRate(grand, sym), { bold: true, size: 20 })],
         }),
-        ...(receivedAmount > 0 ? [para([r('Received Amount:  ', { size: 17, color: C_GRAY }), r('-' + fmtRate(receivedAmount, sym), { size: 17 })], AlignmentType.RIGHT, 30)] : []),
+        ...(receivedAmount > 0 ? [para([r('Received Amount:  ', { size: 17, color: C_GRAY }), r('- ' + fmtRate(receivedAmount, sym), { size: 17 })], AlignmentType.RIGHT, 30)] : []),
         new Paragraph({
           border: { top: { style: BorderStyle.SINGLE, size: 6, color: '000000' } },
           alignment: AlignmentType.RIGHT,

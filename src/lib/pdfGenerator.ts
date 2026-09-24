@@ -671,9 +671,19 @@ export function generatePIPDF(
 
   y -= 3.5;
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4); doc.line(rx - 65, y, rx, y); y += 5;
-  doc.setFontSize(11); doc.setTextColor(0, 0, 0);
-  doc.text('Order Total (incl. GST)', rx - 60, y);
-  doc.text(fmtAmount(t.grand, sym), rx, y, { align: 'right' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
+  {
+    // "Order Total (incl. GST)" is long enough at this font size to collide
+    // with the right-aligned amount when both use the fixed rx-60 offset
+    // that works for short labels like "Grand Total"/"Balance Due". Measure
+    // both strings at the current font so the label always stops with a
+    // fixed 6mm gap before the amount, however long either one turns out.
+    const otValue = fmtAmount(t.grand, sym);
+    const otValueW = doc.getTextWidth(otValue);
+    const otLabelW = doc.getTextWidth('Order Total (incl. GST)');
+    doc.text('Order Total (incl. GST)', rx - otValueW - 6 - otLabelW, y);
+    doc.text(otValue, rx, y, { align: 'right' });
+  }
   y += 7;
 
   // Received Amount (advance/token payment already collected) is deducted
@@ -682,7 +692,7 @@ export function generatePIPDF(
   if (t.receivedAmount > 0) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(80, 80, 80);
     doc.text('Received Amount', rx - 60, y); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
-    doc.text('-' + fmtAmount(t.receivedAmount, sym), rx, y, { align: 'right' }); y += 5.5;
+    doc.text('- ' + fmtAmount(t.receivedAmount, sym), rx, y, { align: 'right' }); y += 5.5;
   }
 
   doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4); doc.line(rx - 65, y, rx, y); y += 5;
