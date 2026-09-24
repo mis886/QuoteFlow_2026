@@ -11,9 +11,6 @@ import { OptionSearch } from '../components/OptionSearch';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 
-import { uploadToS3 } from '../lib/s3';
-import { parseRfqPdf } from '../lib/rfqParser';
-import { RfqMapDialog } from '../components/RfqMapDialog';
 import { syncContactToCustomer } from '../lib/contactSync';
 
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
@@ -63,8 +60,6 @@ export function NewEnquiry() {
   const [contactOpen, setContactOpen] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
   
-  const [enquiryDocs, setEnquiryDocs] = useState<{ id: string, fileName: string, file: File | null }[]>([]);
-  const [drawingDocs, setDrawingDocs] = useState<{ id: string, fileName: string, file: File | null }[]>([]);
   
   const [assigned, setAssigned] = useState('Sales Team');
   const [customerTier, setCustomerTier] = useState<CustomerTier | ''>('');
@@ -81,46 +76,6 @@ export function NewEnquiry() {
   const [managementNotes, setManagementNotes] = useState('');
   
   const [urgency, setUrgency] = useState<Urgency>('Normal');
-
-  // Beta: PDF extract
-  const [isExtracting, setIsExtracting] = useState(false);
-  const [extractError, setExtractError] = useState('');
-  const [extractedItems, setExtractedItems] = useState<LineItem[] | null>(null);
-  const [mapDialog, setMapDialog] = useState<{ headers: string[]; rows: string[][] } | null>(null);
-
-  const extractItemsFromPdf = async () => {
-    const pdfDoc = enquiryDocs.find(d => d.file && d.fileName.toLowerCase().endsWith('.pdf'));
-    if (!pdfDoc?.file) { setExtractError('Upload a PDF enquiry document first.'); return; }
-    setIsExtracting(true);
-    setExtractError('');
-    setExtractedItems(null);
-    try {
-      const result = await parseRfqPdf(pdfDoc.file);
-      if (result.items.length > 0) {
-        // Auto-extracted successfully
-        setExtractedItems(result.items);
-        // Also show map button if confidence is low
-        if (result.confidence < 0.75) {
-          setExtractError(`Low confidence (${Math.round(result.confidence * 100)}%) — review carefully or use Map Columns.`);
-        }
-      } else {
-        // Nothing extracted — open map dialog directly
-        setMapDialog({ headers: result.rawHeaders, rows: result.rawRows });
-      }
-    } catch (err: any) {
-      setExtractError(err.message || 'Extraction failed.');
-    } finally {
-      setIsExtracting(false);
-    }
-  };
-
-  const applyExtractedItems = () => {
-    if (!extractedItems) return;
-    setItems(extractedItems.map((it, i) => ({ ...it, seq: i + 1 })));
-    setExtractedItems(null);
-    setExtractError('');
-    markDirty();
-  };
 
   const [items, setItems] = useState<LineItem[]>([
     { seq: 1, desc: '', mat: '', qty: 1, uom: 'pcs', drwg: '', hsn: '', packing: '', packingType: '' }
@@ -164,16 +119,6 @@ export function NewEnquiry() {
         setNotes(e.notes || '');
         setManagementNotes(e.managementNotes || '');
         setItems(e.items);
-        
-        // Split existing attachments
-        if (e.attachments) {
-            setEnquiryDocs(e.attachments
-                .filter(a => !a.fileName.toLowerCase().includes('drawing'))
-                .map(a => ({ id: a.id, fileName: a.fileName, file: null })));
-            setDrawingDocs(e.attachments
-                .filter(a => a.fileName.toLowerCase().includes('drawing'))
-                .map(a => ({ id: a.id, fileName: a.fileName, file: null })));
-        }
         
         const c = data.customers.find(x => x.name === e.cust);
         if (c && !e.customerTier) setCustomerTier(c.tier || '');
@@ -250,31 +195,6 @@ export function NewEnquiry() {
     }
   }, [custName, siteId, contactId, contactManual, data.customers]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'enquiry' | 'drawing') => {
-    if (e.target.files) {
-      const filesArray = Array.from(e.target.files) as File[];
-      const newFiles = filesArray.map(file => ({
-        id: Math.random().toString(36).substr(2, 9),
-        fileName: type === 'drawing' && !file.name.toLowerCase().includes('drawing') ? `(Drawing) ${file.name}` : file.name,
-        file
-      }));
-      
-      if (type === 'enquiry') {
-        setEnquiryDocs([...enquiryDocs, ...newFiles]);
-      } else {
-        setDrawingDocs([...drawingDocs, ...newFiles]);
-      }
-    }
-  };
-
-  const removeAttachment = (id: string, type: 'enquiry' | 'drawing') => {
-    if (type === 'enquiry') {
-        setEnquiryDocs(enquiryDocs.filter(a => a.id !== id));
-    } else {
-        setDrawingDocs(drawingDocs.filter(a => a.id !== id));
-    }
-  };
-
   const updateItem = (index: number, field: keyof LineItem, value: any) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
@@ -314,40 +234,6 @@ export function NewEnquiry() {
     setIsSaving(true);
     
     try {
-      // Upload new attachments to S3
-      const allDocs = [...enquiryDocs, ...drawingDocs];
-      const uploadedAttachments = await Promise.all(
-        allDocs.map(async (a) => {
-          if (!a.file) {
-            // Already uploaded (edit mode)
-            const existingEnq = data.enquiries.find(ex => ex.id === editId);
-            const existingAtt = existingEnq?.attachments?.find(att => att.id === a.id);
-            return existingAtt || { id: a.id, fileName: a.fileName, storagePath: '', uploadedAt: new Date().toISOString() };
-          }
-          
-          try {
-            const safeName = a.fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const path = `enquiries/${enqId}/${a.id}_${safeName}`;
-            const s3Path = await uploadToS3(a.file, path);
-            
-            return {
-              id: a.id,
-              fileName: a.fileName,
-              storagePath: s3Path || `local/${a.fileName}`, // Fallback path if S3 fails
-              uploadedAt: new Date().toISOString()
-            };
-          } catch (uploadError) {
-            console.error("Failed to upload attachment:", a.fileName, uploadError);
-            return {
-              id: a.id,
-              fileName: a.fileName,
-              storagePath: `upload-failed/${a.fileName}`,
-              uploadedAt: new Date().toISOString()
-            };
-          }
-        })
-      );
-      
       // Store exact date as iso string for age calculation
       const isoDate = new Date(date).toISOString();
 
@@ -376,7 +262,6 @@ export function NewEnquiry() {
         ageH: editId ? (data.enquiries.find(x => x.id === editId)?.ageH || 0) : 0,
         qRef: editId ? (data.enquiries.find(x => x.id === editId)?.qRef || null) : null,
         items,
-        attachments: uploadedAttachments
       };
 
       if (editId) {
@@ -748,154 +633,6 @@ export function NewEnquiry() {
               </div>
             </div>
 
-            <div className="bg-white border border-g200 p-[16px_18px] rounded-[3px]">
-              <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200">Enquiry Documents</div>
-              <div className="border-2 border-dashed border-g200 rounded-[3px] p-4 text-center hover:border-red-mrt/30 transition-colors bg-g50 group cursor-pointer relative">
-                <input type="file" multiple onChange={e => handleFileUpload(e, 'enquiry')} className="absolute inset-0 opacity-0 cursor-pointer" />
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm border border-g200 group-hover:border-red-mrt group-hover:text-red-mrt transition-colors">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                  </div>
-                  <div className="text-[11px] font-medium text-blk">Upload Docs (PDF, DOCX)</div>
-                </div>
-              </div>
-
-              {enquiryDocs.length > 0 && (
-                <div className="mt-3 flex flex-col gap-1">
-                  {enquiryDocs.map(a => (
-                    <div key={a.id} className="flex items-center justify-between p-2 bg-g100 rounded-[3px] border border-g200">
-                      <span className="text-[10px] font-medium truncate">{a.fileName}</span>
-                      <button onClick={() => removeAttachment(a.id, 'enquiry')} className="text-red-mrt p-1 hover:bg-red-mrt/10 rounded"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* ── AI Extract panel — auto-fill items from an uploaded PDF ── */}
-              {enquiryDocs.some(d => d.file && d.fileName.toLowerCase().endsWith('.pdf')) && (
-                <div className="mt-3 border border-dashed border-amber-300 bg-amber-50 rounded-[3px] p-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[9px] font-bold tracking-[1.5px] uppercase text-amber-700">Auto-fill Items from PDF</span>
-                  </div>
-                  <p className="text-[10px] text-amber-700 mb-2 leading-relaxed">Scans the uploaded PDF and extracts line items automatically. Review before applying.</p>
-
-                  <button
-                    type="button"
-                    onClick={extractItemsFromPdf}
-                    disabled={isExtracting}
-                    className="w-full py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-[11px] font-bold rounded-[3px] transition-colors flex items-center justify-center gap-2"
-                  >
-                    {isExtracting
-                      ? <><svg className="animate-spin w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" strokeOpacity="0.3"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="4"/></svg>Extracting items...</>
-                      : '⚡ Extract Items from PDF'
-                    }
-                  </button>
-
-                  {extractError && (
-                    <p className="mt-2 text-[10px] text-red-600 font-medium bg-red-50 border border-red-200 rounded px-2 py-1">{extractError}</p>
-                  )}
-
-                  {extractedItems && (
-                    <div className="mt-3 border border-amber-300 rounded-[3px] overflow-hidden">
-                      <div className="bg-amber-100 px-3 py-2 flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-amber-800">{extractedItems.length} item{extractedItems.length !== 1 ? 's' : ''} found — review before applying</span>
-                      </div>
-                      <div className="max-h-[200px] overflow-y-auto divide-y divide-amber-100">
-                        {extractedItems.map((it, i) => (
-                          <div key={i} className="px-3 py-2 text-[10.5px] flex items-start gap-2">
-                            <span className="font-mono text-amber-500 shrink-0 w-5">{it.seq}.</span>
-                            <div className="flex-1 min-w-0">
-                              <span className="font-semibold text-blk">{it.desc}</span>
-                              {it.mat && <span className="ml-1.5 text-g400 font-mono text-[9px]">[{it.mat}]</span>}
-                            </div>
-                            <span className="shrink-0 text-g600 font-mono text-[10px]">{it.qty} {it.uom}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex gap-2 p-2 bg-amber-50 border-t border-amber-200">
-                        <button type="button" onClick={applyExtractedItems} className="flex-1 py-1.5 bg-blk text-white text-[11px] font-bold rounded-[3px] hover:bg-g700 transition-colors">
-                          Apply to Items Table
-                        </button>
-                        <button type="button" onClick={() => setExtractedItems(null)} className="px-3 py-1.5 bg-white border border-g300 text-[11px] text-g600 font-semibold rounded-[3px] hover:bg-g100 transition-colors">
-                          Discard
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Map columns manually */}
-                  {!extractedItems && !isExtracting && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const pdfDoc = enquiryDocs.find(d => d.file && d.fileName.toLowerCase().endsWith('.pdf'));
-                        if (!pdfDoc?.file) return;
-                        setIsExtracting(true);
-                        try {
-                          const result = await parseRfqPdf(pdfDoc.file);
-                          setMapDialog({ headers: result.rawHeaders, rows: result.rawRows });
-                        } catch { /* ignore */ }
-                        finally { setIsExtracting(false); }
-                      }}
-                      className="mt-2 w-full py-1.5 bg-white border border-amber-300 text-amber-700 text-[10.5px] font-semibold rounded-[3px] hover:bg-amber-50 transition-colors"
-                    >
-                      Map Columns Manually
-                    </button>
-                  )}
-                  {extractedItems && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const pdfDoc = enquiryDocs.find(d => d.file && d.fileName.toLowerCase().endsWith('.pdf'));
-                        if (!pdfDoc?.file) return;
-                        try {
-                          const result = await parseRfqPdf(pdfDoc.file);
-                          setMapDialog({ headers: result.rawHeaders, rows: result.rawRows });
-                        } catch { /* ignore */ }
-                      }}
-                      className="mt-2 w-full py-1.5 bg-white border border-amber-300 text-amber-700 text-[10.5px] font-semibold rounded-[3px] hover:bg-amber-50 transition-colors"
-                    >
-                      Map Columns Manually
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Map dialog */}
-              {mapDialog && (
-                <RfqMapDialog
-                  headers={mapDialog.headers}
-                  rows={mapDialog.rows}
-                  onApply={mapped => { setItems(mapped); setMapDialog(null); setExtractedItems(null); setExtractError(''); markDirty(); }}
-                  onClose={() => setMapDialog(null)}
-                />
-              )}
-            </div>
-
-            <div className="bg-white border border-g200 p-[16px_18px] rounded-[3px]">
-              <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-[12px] pb-[7px] border-b border-g200">Technical Drawings</div>
-              <div className="border-2 border-dashed border-g200 rounded-[3px] p-4 text-center hover:border-red-mrt/30 transition-colors bg-g50 group cursor-pointer relative">
-                <input type="file" multiple onChange={e => handleFileUpload(e, 'drawing')} className="absolute inset-0 opacity-0 cursor-pointer" />
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm border border-g200 group-hover:border-red-mrt group-hover:text-red-mrt transition-colors">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                  </div>
-                  <div className="text-[11px] font-medium text-blk">Upload Drawings (PDF, DWG)</div>
-                </div>
-              </div>
-
-              {drawingDocs.length > 0 && (
-                <div className="mt-3 flex flex-col gap-1">
-                  {drawingDocs.map(a => (
-                    <div key={a.id} className="flex items-center justify-between p-2 bg-g100 rounded-[3px] border border-g200">
-                      <span className="text-[10px] font-medium truncate">{a.fileName}</span>
-                      <button onClick={() => removeAttachment(a.id, 'drawing')} className="text-red-mrt p-1 hover:bg-red-mrt/10 rounded"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
             <div className="bg-g100 border border-g200 p-[16px_18px] rounded-[3px]">
               <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600 mb-[12px] pb-[7px] border-b border-g200">SLA Guidance</div>
               <div className="text-[11.5px] text-g600 leading-[1.8]">
@@ -911,10 +648,10 @@ export function NewEnquiry() {
 
       <div className="flex items-center gap-2 p-[14px_20px] bg-g100 border-t border-g200 sticky bottom-0">
         <Button variant="primary" onClick={() => handleSave(false)} disabled={isSaving}>
-          {isSaving ? 'Uploading...' : 'Save Enquiry'}
+          {isSaving ? 'Saving...' : 'Save Enquiry'}
         </Button>
         <Button variant="dark" onClick={() => handleSave(true)} disabled={isSaving}>
-          {isSaving ? 'Uploading...' : 'Save & Create Quote'}
+          {isSaving ? 'Saving...' : 'Save & Create Quote'}
         </Button>
         <Button variant="secondary" onClick={() => { if (confirmLeave()) navigate('/enquiries'); }} disabled={isSaving}>Cancel</Button>
         <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>
