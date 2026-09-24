@@ -672,7 +672,10 @@ export function NewQuote() {
       else navigate('/quotes');
     } catch (e: any) {
       console.error('Save failed:', e);
-      setErrors({ global: `Failed to save: ${e?.message || e?.details || 'Unknown error — check browser console for details.'}` });
+      const isDupQuote = e?.code === '23505' && String(e?.message || '').includes('quotes_enq_ref_unique');
+      setErrors({ global: isDupQuote
+        ? 'This enquiry was just converted to a quote by someone else. Please refresh the page and edit the existing quote instead.'
+        : `Failed to save: ${e?.message || e?.details || 'Unknown error — check browser console for details.'}` });
     } finally { setIsSaving(false); }
   };
 

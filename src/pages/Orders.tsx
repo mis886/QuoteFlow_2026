@@ -139,6 +139,7 @@ export function Orders() {
       if (qs) {
         const qsNorm = normalizeSearchText(qs);
         const match = normalizeSearchText(o.cust).includes(qsNorm) || o.id.toLowerCase().includes(qs) || o.poNo.toLowerCase().includes(qs) ||
+          (o.quoteRef || '').toLowerCase().includes(qs) ||
           o.items.some(i => i.desc.toLowerCase().includes(qs));
         if (!match) return false;
       }
@@ -256,7 +257,7 @@ export function Orders() {
           <Search size={11} className="text-g400 shrink-0" />
           <input
             type="text"
-            placeholder="Company, item, PO No, Order No..."
+            placeholder="Company, item, PO No, Order No, Quote Ref..."
             value={localSearch}
             onChange={(e) => setLocalSearch(e.target.value)}
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"

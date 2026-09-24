@@ -545,8 +545,11 @@ export function NewOrder() {
       const delayed = await doContactSync();
       if (delayed) setTimeout(() => navigate('/orders'), 4000);
       else navigate('/orders');
-    } catch (err) {
-      setErrors({ global: `Failed to save: ${(err as any)?.message || 'Check connection'}` });
+    } catch (err: any) {
+      const isDupOrder = err?.code === '23505' && String(err?.message || '').includes('orders_quote_ref_root_unique');
+      setErrors({ global: isDupOrder
+        ? 'This quote was just converted to an order by someone else. Please refresh the page and edit the existing order instead.'
+        : `Failed to save: ${err?.message || 'Check connection'}` });
     } finally { setIsSaving(false); }
   };
 
