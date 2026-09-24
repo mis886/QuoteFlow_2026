@@ -1235,25 +1235,11 @@ export function NewOrder() {
                           <td></td>
                         </tr>
                       ))}
-                      {curr === 'INR' && receivedAmount > 0 && (
-                        <tr className="bg-g50/50">
-                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">Advance Received (+)</td>
-                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(Math.round(subTotal - netSubTotal))}</td>
-                          <td></td>
-                        </tr>
-                      )}
                       <tr className="bg-[#1e293b]">
-                        <td colSpan={curr === 'INR' ? 9 : 8} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{formatINR(grandTotal)}</td>
+                        <td colSpan={curr === 'INR' ? 9 : 8} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Balance Due</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{formatINR(grandTotal - Math.round(subTotal - netSubTotal))}</td>
                         <td className="bg-[#1e293b]"></td>
                       </tr>
-                      {curr === 'INR' && receivedAmount > 0 && (
-                        <tr className="bg-g50/50">
-                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g600">Balance Due</td>
-                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(grandTotal - Math.round(subTotal - netSubTotal))}</td>
-                          <td></td>
-                        </tr>
-                      )}
                     </tfoot>
                   </table>
               </div>
@@ -1510,7 +1496,7 @@ export function NewOrder() {
             <div className="bg-white border border-g200 rounded-[3px]">
               <div className="p-[11px_16px] border-b border-g200 flex justify-between items-center">
                 <span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600">{items.length} Line Item{items.length !== 1 ? 's' : ''}</span>
-                <span className="font-mono text-[12px] font-bold text-red-mrt">{formatINR(grandTotal)}</span>
+                <span className="font-mono text-[12px] font-bold text-red-mrt">{formatINR(grandTotal - Math.round(subTotal - netSubTotal))}</span>
               </div>
               <table className="w-full text-[12px]">
                 <tbody>
@@ -1552,9 +1538,7 @@ export function NewOrder() {
                       <span className={`font-mono ${l.amount < 0 ? 'text-red-mrt' : ''}`}>{l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}</span>
                     </div>
                   ))}
-                  {curr === 'INR' && receivedAmount > 0 && <div className="flex justify-between text-g500"><span>Advance Received (+)</span><span className="font-mono">{formatINR(Math.round(subTotal - netSubTotal))}</span></div>}
-                  <div className="flex justify-between font-bold text-blk border-t border-g200 pt-2 text-[14px]"><span>Order Value</span><span className="font-mono text-red-mrt">{formatINR(grandTotal)}</span></div>
-                  {curr === 'INR' && receivedAmount > 0 && <div className="flex justify-between text-g600"><span>Balance Due</span><span className="font-mono">{formatINR(grandTotal - Math.round(subTotal - netSubTotal))}</span></div>}
+                  <div className="flex justify-between font-bold text-blk border-t border-g200 pt-2 text-[14px]"><span>Balance Due</span><span className="font-mono text-red-mrt">{formatINR(grandTotal - Math.round(subTotal - netSubTotal))}</span></div>
                 </div>
               </div>
             </div>
