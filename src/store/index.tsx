@@ -530,6 +530,10 @@ const mapEnquiryToDB = (e: any) => {
       obj.customerTier = o.customer_tier;
       delete obj.customer_tier;
     }
+    if ('received_amount' in o) {
+      obj.receivedAmount = o.received_amount;
+      delete obj.received_amount;
+    }
     if ('management_notes' in o) {
       obj.managementNotes = o.management_notes;
       delete obj.management_notes;
@@ -572,6 +576,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('status' in o) obj.status = o.status;
     if ('value' in o) obj.value = o.value;
     if ('insurance' in o) obj.insurance = o.insurance ?? null;
+    if ('receivedAmount' in o) obj.received_amount = o.receivedAmount ?? 0;
     if ('items' in o) obj.items = o.items;
     if ('inco' in o) obj.inco = o.inco;
     if ('curr' in o) obj.curr = o.curr;

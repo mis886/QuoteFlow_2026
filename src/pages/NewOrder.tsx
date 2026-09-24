@@ -110,6 +110,7 @@ export function NewOrder() {
   const [items, setItems] = useState<OrderItem[]>([]);
   const [adjustments, setAdjustments] = useState<OrderAdjustment[]>([]);
   const [insurance, setInsurance] = useState(0);
+  const [receivedAmount, setReceivedAmount] = useState(0);
   // Dispatch-related fields — capturable here so they're already on the order
   // by the time a dispatch entry gets created for it (NewDispatchEntry.tsx
   // carries these forward as defaults, overridden by the entry's own values).
@@ -205,6 +206,7 @@ export function NewOrder() {
         if (!o.customerTier && o.cust) { const _oc = data.customers.find(x => x.name === o.cust); if (_oc?.tier) setCustomerTier(_oc.tier); }
         setOrderStatus(o.status as OrderStatus); setCustomTerms(parseQuoteTerms(o.terms)); setItems(o.items);
         setInsurance(o.insurance ?? 0);
+        setReceivedAmount(o.receivedAmount ?? 0);
         if (Array.isArray(o.adjustments)) setAdjustments(o.adjustments);
         if (o.unitId) setUnitId(o.unitId);
         if (o.bankAccountId) setBankAccountId(o.bankAccountId);
@@ -392,16 +394,25 @@ export function NewOrder() {
   const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 }))); };
 
   const subTotal = items.reduce((s, i) => s + i.total, 0);
+  // Received Amount (advance/token payment already collected against this
+  // order) is deducted from the goods value before Insurance/GST are
+  // calculated — only the remaining balance still owed gets taxed. Per-item
+  // GST is scaled down proportionally rather than recomputed line by line,
+  // since a lump-sum advance isn't tied to any one product. NOTE: this means
+  // the GST shown is on the outstanding balance, not the full value of goods
+  // supplied — confirm this matches how the business wants GST handled before
+  // relying on this figure for actual tax filing.
+  const netSubTotal = curr === 'INR' ? Math.max(0, subTotal - receivedAmount) : subTotal;
   const ins = curr === 'INR' ? insurance : 0;
-  // GST base = subtotal + insurance (insurance contributes to taxable amount) — mirrors NewQuote.tsx
+  // GST base = remaining balance + insurance (insurance contributes to taxable amount) — mirrors NewQuote.tsx
   const scaledItemGst = curr === 'INR' && subTotal > 0
-    ? items.reduce((s, i) => s + i.total * i.gst / 100, 0) * (subTotal + ins) / subTotal
+    ? items.reduce((s, i) => s + i.total * i.gst / 100, 0) * (netSubTotal + ins) / subTotal
     : 0;
   const maxGstRate = curr === 'INR' ? maxItemGstRate(items) : 0;
-  const adj = resolveAdjustments(adjustments, subTotal, scaledItemGst, maxGstRate);
+  const adj = resolveAdjustments(adjustments, netSubTotal, scaledItemGst, maxGstRate);
   const adjLines = adj.lines;
   const gstTotal = curr === 'INR' ? adj.gstTotal : 0;
-  const grandTotal = Math.round(subTotal + ins + adj.preNet + gstTotal + adj.postNet);
+  const grandTotal = Math.round(netSubTotal + ins + adj.preNet + gstTotal + adj.postNet);
 
   // Adjustment row helpers
   const addAdjustment = (_kind: OrderAdjustmentKind, label = '') => {
@@ -449,6 +460,7 @@ export function NewOrder() {
     status: editOrderId ? orderStatus : 'Processing',
     value: grandTotal,
     insurance: curr === 'INR' ? ins : 0,
+    receivedAmount: curr === 'INR' ? receivedAmount : 0,
     inco: inco === 'OVERRIDE' ? customInco : inco,
     curr,
     ...(pay ? { pay } : {}),
@@ -1131,6 +1143,30 @@ export function NewOrder() {
                         <td></td>
                       </tr>
                       {curr === 'INR' && (
+                        <tr className="bg-g50/50">
+                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">Received Amount</td>
+                          <td className="px-3 py-1 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={receivedAmount === 0 ? '' : receivedAmount}
+                              onChange={e => setReceivedAmount(e.target.value === '' ? 0 : Math.max(0, Math.round(parseFloat(e.target.value) * 100) / 100))}
+                              placeholder="0.00"
+                              className="w-full text-right font-mono text-[12px] font-bold text-blk bg-transparent border-b border-g300 focus:border-blue-500 outline-none py-0.5 pr-0"
+                            />
+                          </td>
+                          <td></td>
+                        </tr>
+                      )}
+                      {curr === 'INR' && receivedAmount > 0 && (
+                        <tr className="border-b border-g200 bg-g50/50">
+                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g600">Balance to Pay (taxed on this)</td>
+                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(netSubTotal)}</td>
+                          <td></td>
+                        </tr>
+                      )}
+                      {curr === 'INR' && (
                         <tr className="border-b border-g200 bg-g50/50">
                           <td colSpan={9} className="px-3 py-2 text-right">
                             <span className="text-[11px] text-g500">Insurance</span>
@@ -1168,7 +1204,7 @@ export function NewOrder() {
                       {curr === 'INR' && (adj.preNet !== 0 || insurance > 0) && (
                         <tr className="bg-g50/50">
                           <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
-                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk border-t border-g100">{formatINR(subTotal + insurance + adj.preNet)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk border-t border-g100">{formatINR(netSubTotal + insurance + adj.preNet)}</td>
                           <td></td>
                         </tr>
                       )}
@@ -1476,6 +1512,8 @@ export function NewOrder() {
               <div className="flex justify-end p-4">
                 <div className="w-[300px] text-[12px] space-y-1.5">
                   <div className="flex justify-between text-g500"><span>Sub-Total</span><span className="font-mono">{formatINR(subTotal)}</span></div>
+                  {curr === 'INR' && receivedAmount > 0 && <div className="flex justify-between text-g500"><span>Received Amount</span><span className="font-mono">−{formatINR(receivedAmount)}</span></div>}
+                  {curr === 'INR' && receivedAmount > 0 && <div className="flex justify-between text-g600"><span>Balance to Pay</span><span className="font-mono">{formatINR(netSubTotal)}</span></div>}
                   {curr === 'INR' && insurance > 0 && <div className="flex justify-between text-g500"><span>Insurance</span><span className="font-mono">{formatINR(insurance)}</span></div>}
                   {adjLines.filter(l => l.taxable).map(l => (
                     <div key={l.id} className="flex justify-between text-g500">
@@ -1483,7 +1521,7 @@ export function NewOrder() {
                       <span className={`font-mono ${l.amount < 0 ? 'text-red-mrt' : ''}`}>{l.amount < 0 ? '−' : ''}{formatINR(Math.abs(l.amount))}</span>
                     </div>
                   ))}
-                  {curr === 'INR' && (adj.preNet !== 0 || insurance > 0) && <div className="flex justify-between text-g600 border-t border-g100 pt-1"><span>Taxable Value</span><span className="font-mono">{formatINR(subTotal + insurance + adj.preNet)}</span></div>}
+                  {curr === 'INR' && (adj.preNet !== 0 || insurance > 0) && <div className="flex justify-between text-g600 border-t border-g100 pt-1"><span>Taxable Value</span><span className="font-mono">{formatINR(netSubTotal + insurance + adj.preNet)}</span></div>}
                   {curr === 'INR' && <div className="flex justify-between text-g500"><span>GST Total</span><span className="font-mono">{formatINR(gstTotal)}</span></div>}
                   {adjLines.filter(l => !l.taxable).map(l => (
                     <div key={l.id} className="flex justify-between text-g500">
