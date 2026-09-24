@@ -400,24 +400,36 @@ export function NewEnquiry() {
               {(() => {
                 const canEditTier = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
                 return (
-                  <div className="mt-3">
-                    <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">
-                      Customer Tier
-                      {!canEditTier && <span className="ml-1 text-g400 font-normal normal-case text-[10px]">(view only)</span>}
-                    </label>
-                    <select
-                      title="Customer Tier"
-                      value={customerTier}
-                      disabled={!canEditTier}
-                      onChange={e => setCustomerTier(e.target.value as CustomerTier | '')}
-                      className={`w-40 font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-60 disabled:cursor-not-allowed`}
-                    >
-                      <option value="">— No tier —</option>
-                      <option>New</option>
-                      <option>Bronze</option>
-                      <option>Silver</option>
-                      <option>Gold</option>
-                    </select>
+                  <div className="flex gap-3 mt-3 items-start">
+                    <div className="w-40 shrink-0">
+                      <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">
+                        Customer Tier
+                        {!canEditTier && <span className="ml-1 text-g400 font-normal normal-case text-[10px]">(view only)</span>}
+                      </label>
+                      <select
+                        title="Customer Tier"
+                        value={customerTier}
+                        disabled={!canEditTier}
+                        onChange={e => setCustomerTier(e.target.value as CustomerTier | '')}
+                        className={`w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-60 disabled:cursor-not-allowed`}
+                      >
+                        <option value="">— No tier —</option>
+                        <option>New</option>
+                        <option>Bronze</option>
+                        <option>Silver</option>
+                        <option>Gold</option>
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Notes from Management</label>
+                      <textarea
+                        placeholder="Any notes from management about this customer..."
+                        value={managementNotes}
+                        onChange={e => setManagementNotes(e.target.value)}
+                        className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none"
+                        rows={2}
+                      />
+                    </div>
                   </div>
                 );
               })()}
@@ -481,15 +493,6 @@ export function NewEnquiry() {
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Email</label>
                   <input type="email" placeholder="contact@company.com" value={email} onChange={e => { setContactManual(true); setEmail(e.target.value); }} className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
                 </div>
-              </div>
-              <div className="mt-3">
-                <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Notes from Management</label>
-                <textarea
-                  placeholder="Any notes from management about this customer..."
-                  value={managementNotes}
-                  onChange={e => setManagementNotes(e.target.value)}
-                  className="w-full min-h-[68px] font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt"
-                />
               </div>
             </div>
 
