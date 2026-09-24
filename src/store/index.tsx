@@ -185,9 +185,21 @@ async function insertWithIdRetry<T extends { id: string }>(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const { error } = await supabase.from(table).insert([mapToDB(current)]);
     if (!error) return { error: null, finalRecord: current };
-    // 23505 = Postgres unique_violation. Only retry on that; anything else
-    // is a real error the caller should surface as-is.
-    if (error.code !== '23505' || attempt === maxAttempts - 1) {
+    // 23505 = Postgres unique_violation. Only retry when the clash is on the
+    // record's own ID — Postgres auto-names a primary key constraint
+    // "<table>_pkey", which covers quotes/orders/enquiries/tickets/
+    // dispatch_entries (id is PRIMARY KEY there). customers is the one
+    // exception: its ID collision guard is the separate
+    // "customers_customer_id_unique" constraint on customer_id, not a
+    // primary key (see the comment above this function). Either of those
+    // is a real ID collision that self-heals by regenerating. A violation
+    // of any OTHER unique constraint (e.g. quotes_enq_ref_unique,
+    // orders_quote_ref_root_unique) means the record itself is a genuine
+    // duplicate; a new ID won't fix that, so surface it immediately
+    // instead of burning retries.
+    const msg = String(error.message || '');
+    const isIdCollision = error.code === '23505' && (msg.includes(`${table}_pkey`) || msg.includes('customers_customer_id_unique'));
+    if (!isIdCollision || attempt === maxAttempts - 1) {
       return { error, finalRecord: current };
     }
     const freshIds = await fetchExistingIds();
