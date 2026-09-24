@@ -863,12 +863,12 @@ export function NewCustomer() {
           </div>
           <div className="bg-white border border-g200 rounded-[3px] p-5 space-y-3">
             <div className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-red-mrt pb-2 border-b border-g200">
-              Internal Notes
+              Notes from Management
             </div>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="Any internal notes about this customer..."
+              placeholder="Any notes from management about this customer..."
               className="w-full font-sans text-sm bg-g50 border border-g300 rounded-[3px] p-2 outline-none focus:border-red-mrt h-24 resize-none transition-all focus:bg-white"
             />
           </div>

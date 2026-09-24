@@ -78,6 +78,7 @@ export function NewEnquiry() {
   const [authPhone, setAuthPhone] = useState('');
   const [reqDate, setReqDate] = useState(localDateStr(new Date(Date.now() + 86400000)));
   const [notes, setNotes] = useState('');
+  const [managementNotes, setManagementNotes] = useState('');
   
   const [urgency, setUrgency] = useState<Urgency>('Normal');
 
@@ -161,6 +162,7 @@ export function NewEnquiry() {
         setAuthDesignation(e.authorizedPerson?.designation || '');
         setAuthPhone(e.authorizedPerson?.phone || '');
         setNotes(e.notes || '');
+        setManagementNotes(e.managementNotes || '');
         setItems(e.items);
         
         // Split existing attachments
@@ -368,6 +370,7 @@ export function NewEnquiry() {
         doer: editId ? (data.enquiries.find(x => x.id === editId)?.doer) : stampName(),
         created_by: editId ? (data.enquiries.find(x => x.id === editId)?.created_by ?? null) : (user?.email ?? null),
         notes,
+        managementNotes: managementNotes.trim() || undefined,
         ...(authName ? { authorizedPerson: { name: authName, designation: authDesignation, phone: authPhone } } : {}),
         ...(customerTier ? { customerTier } : {}),
         ageH: editId ? (data.enquiries.find(x => x.id === editId)?.ageH || 0) : 0,
@@ -593,6 +596,15 @@ export function NewEnquiry() {
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Email</label>
                   <input type="email" placeholder="contact@company.com" value={email} onChange={e => { setContactManual(true); setEmail(e.target.value); }} className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt" />
                 </div>
+              </div>
+              <div className="mt-3">
+                <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Notes from Management</label>
+                <textarea
+                  placeholder="Any notes from management about this customer..."
+                  value={managementNotes}
+                  onChange={e => setManagementNotes(e.target.value)}
+                  className="w-full min-h-[68px] font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt"
+                />
               </div>
             </div>
 

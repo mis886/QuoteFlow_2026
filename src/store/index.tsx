@@ -376,6 +376,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       obj.customerTier = e.customer_tier;
       delete obj.customer_tier;
     }
+    if ('management_notes' in e) {
+      obj.managementNotes = e.management_notes;
+      delete obj.management_notes;
+    }
 
     delete obj.site_id;
     delete obj.contact_id;
@@ -406,6 +410,7 @@ const mapEnquiryToDB = (e: any) => {
   if ('attachments' in e) obj.attachments = e.attachments;
   if ('authorizedPerson' in e) obj.authorized_person = e.authorizedPerson || null;
   if ('customerTier' in e) obj.customer_tier = e.customerTier || null;
+  if ('managementNotes' in e) obj.management_notes = e.managementNotes ?? null;
 
   // Handle snake_case conversions with defaults
   obj.site_id = e.siteId || e.site_id || null;
@@ -434,6 +439,10 @@ const mapEnquiryToDB = (e: any) => {
       obj.customerTier = q.customer_tier;
       delete obj.customer_tier;
     }
+    if ('management_notes' in q) {
+      obj.managementNotes = q.management_notes;
+      delete obj.management_notes;
+    }
     delete obj.enq_ref;
     delete obj.site_id;
     delete obj.contact_id;
@@ -457,6 +466,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('attachments' in q) obj.attachments = q.attachments;
     if ('authorizedPerson' in q) obj.authorized_person = q.authorizedPerson;
     if ('customerTier' in q) obj.customer_tier = q.customerTier || null;
+    if ('managementNotes' in q) obj.management_notes = q.managementNotes ?? null;
     if ('terms' in q) obj.terms = q.terms;
 
     if ('enqRef' in q) obj.enq_ref = q.enqRef || null;
@@ -519,6 +529,10 @@ const mapEnquiryToDB = (e: any) => {
     if ('customer_tier' in o) {
       obj.customerTier = o.customer_tier;
       delete obj.customer_tier;
+    }
+    if ('management_notes' in o) {
+      obj.managementNotes = o.management_notes;
+      delete obj.management_notes;
     }
 
     delete obj.quote_ref;
@@ -604,6 +618,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('bankAccountId' in o) obj.bank_account_id = o.bankAccountId || null;
     if ('authorizedPerson' in o) obj.authorized_person = o.authorizedPerson || null;
     if ('customerTier' in o) obj.customer_tier = o.customerTier || null;
+    if ('managementNotes' in o) obj.management_notes = o.managementNotes ?? null;
     if ('terms' in o) obj.terms = o.terms || null;
     if ('pay' in o) obj.pay = o.pay || null;
     if ('doer' in o) obj.doer = o.doer;

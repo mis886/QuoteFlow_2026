@@ -191,6 +191,7 @@ export function NewQuote() {
   const [pay, setPay] = useState('');
   const [unitId, setUnitId] = useState('');
   const [custEnquiryDocNo, setCustEnquiryDocNo] = useState('');
+  const [managementNotes, setManagementNotes] = useState('');
   // Auto-derived from resolvedSignatory for a new quote, or hydrated
   // read-only from the saved quote / linked enquiry when editing/converting
   // — see the effects below. No longer user-editable.
@@ -296,6 +297,7 @@ export function NewQuote() {
         setQuoteStatus(q.status);
         if (q.unitId) setUnitId(q.unitId);
         if (q.custEnquiryDocNo) setCustEnquiryDocNo(q.custEnquiryDocNo);
+        if (q.managementNotes) setManagementNotes(q.managementNotes);
         if (q.terms) { try { setTnc({ ...defaultTnc(), ...JSON.parse(q.terms) }); } catch { /**/ } }
         setItems(q.items);
         setInsurance(q.insurance ?? 0);
@@ -604,6 +606,7 @@ export function NewQuote() {
       inco: inco === 'OVERRIDE' ? customInco : inco,
       unitId: unitId || undefined,
       custEnquiryDocNo: custEnquiryDocNo.trim() || undefined,
+      managementNotes: managementNotes.trim() || undefined,
       // Preserve original doer on edit; stamp submitter email on new
       doer: editId ? (existing?.doer) : stampName(),
       sent_at,
@@ -996,6 +999,15 @@ export function NewQuote() {
                     </div>
                   );
                 })()}
+                <div className="p-[0_16px_12px]">
+                  <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Notes from Management</label>
+                  <textarea
+                    placeholder="Any notes from management about this customer..."
+                    value={managementNotes}
+                    onChange={e => setManagementNotes(e.target.value)}
+                    className="w-full min-h-[68px] font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt"
+                  />
+                </div>
               </div>
 
               <div className="col-span-4 bg-white border border-g200">

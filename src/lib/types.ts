@@ -118,6 +118,7 @@ export interface Enquiry {
   doer?: string;
   created_by?: string;     // display name of the user who created the enquiry
   notes: string;
+  managementNotes?: string;
   ageH: number;
   qRef: string | null;
   items: LineItem[];
@@ -149,6 +150,7 @@ export interface Quote {
   pay: string;
   items: QuoteItem[];
   notes?: string[];           // numbered notes printed below item table in PDF
+  managementNotes?: string;
   attachments?: Attachment[];
   authorizedPerson?: {
     name: string;
@@ -208,6 +210,7 @@ export interface Order {
   email?: string;
   phone?: string;             // customer contact phone (carried from quote)
   custEnquiryDocNo?: string;  // carried enquiry → quote → order
+  managementNotes?: string;
   poNo: string;
   poDate: string;
   dlvDate: string;

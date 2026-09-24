@@ -91,6 +91,7 @@ export function NewOrder() {
   const [phone, setPhone] = useState('');
   const [phoneAnomaly, setPhoneAnomaly] = useState(false);
   const [custEnquiryDocNo, setCustEnquiryDocNo] = useState('');
+  const [managementNotes, setManagementNotes] = useState('');
   const [contactManual, setContactManual] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
@@ -226,6 +227,7 @@ export function NewOrder() {
         if (o.email) setEmail(o.email);
         if (o.phone) setPhone(o.phone);
         if (o.custEnquiryDocNo) setCustEnquiryDocNo(o.custEnquiryDocNo);
+        if (o.managementNotes) setManagementNotes(o.managementNotes);
         setContactManual(!o.contactId && !!(o.contact || o.email));
       }
     } else if (quoteRef) {
@@ -441,6 +443,7 @@ export function NewOrder() {
     email: email || undefined,
     phone: normalizeIndianPhone(phone).value || undefined,
     custEnquiryDocNo: custEnquiryDocNo.trim() || undefined,
+    managementNotes: managementNotes.trim() || undefined,
     poNo: poNo.trim(), poDate, dlvDate,
     scheduleDate: scheduleDate || undefined,
     status: editOrderId ? orderStatus : 'Processing',
@@ -918,6 +921,15 @@ export function NewOrder() {
                     </div>
                   );
                 })()}
+                <div className="p-[0_16px_12px]">
+                  <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Notes from Management</label>
+                  <textarea
+                    placeholder="Any notes from management about this customer..."
+                    value={managementNotes}
+                    onChange={e => setManagementNotes(e.target.value)}
+                    className="w-full min-h-[68px] font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt"
+                  />
+                </div>
 
                 {/* Dispatch details — captured here so they're already on the order by the time a dispatch entry is created for it */}
                 <div className="p-[0_16px_12px]">
