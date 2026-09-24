@@ -412,7 +412,16 @@ export function NewOrder() {
   const adj = resolveAdjustments(adjustments, netSubTotal, scaledItemGst, maxGstRate);
   const adjLines = adj.lines;
   const gstTotal = curr === 'INR' ? adj.gstTotal : 0;
-  const grandTotal = Math.round(netSubTotal + ins + adj.preNet + gstTotal + adj.postNet);
+  // Order Value = the order's full commercial value — the advance already
+  // collected (receivedAmount) plus the remaining balance (with its own
+  // Insurance/GST calculated on that balance). Adding the advance back in
+  // here keeps saved order values, dashboards, and revenue reports correct —
+  // otherwise an order's recorded value would shrink every time part of it
+  // gets paid in advance, even though that money was still real revenue.
+  // Uses the amount actually deducted (subTotal − netSubTotal), not raw
+  // receivedAmount, so a non-INR order or an advance larger than the
+  // subtotal can't inflate the total.
+  const grandTotal = Math.round(netSubTotal + ins + adj.preNet + gstTotal + adj.postNet + (subTotal - netSubTotal));
 
   // Adjustment row helpers
   const addAdjustment = (_kind: OrderAdjustmentKind, label = '') => {
@@ -1172,7 +1181,7 @@ export function NewOrder() {
                             <span className="text-[11px] text-g500">Insurance</span>
                             <button
                               type="button"
-                              onClick={() => setInsurance(Math.round(subTotal * 0.0015 * 100) / 100)}
+                              onClick={() => setInsurance(Math.round(netSubTotal * 0.0015 * 100) / 100)}
                               className="block ml-auto text-[10px] text-blue-600 hover:text-blue-800 underline underline-offset-2 leading-tight"
                             >Apply 0.15%</button>
                           </td>
