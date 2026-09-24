@@ -427,7 +427,7 @@ export function NewEnquiry() {
                         value={managementNotes}
                         onChange={e => setManagementNotes(e.target.value)}
                         className="w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none"
-                        rows={2}
+                        rows={1}
                       />
                     </div>
                   </div>
