@@ -625,7 +625,7 @@ export function NewOrder() {
                 <span className="font-mono font-bold text-sQ">{quoteRef}</span> has already been converted to order{' '}
                 <span className="font-mono font-bold text-sW">{dupOrderAlert.existingId}</span>.
               </div>
-              <div className="text-[12px] text-g500 mt-2">Would you like to edit the existing order, or create a new one anyway?</div>
+              <div className="text-[12px] text-g500 mt-2">Open the existing order to make changes. A second order can't be created for the same quote.</div>
             </div>
           </div>
           <div className="flex gap-2 mt-5">
@@ -637,40 +637,6 @@ export function NewOrder() {
               setSearchParams({ orderId: id });
             }} className="flex-1">
               Edit {dupOrderAlert.existingId}
-            </Button>
-            <Button variant="secondary" onClick={() => {
-              setDupOrderAlert(null);
-              const q = data.quotes.find(e => e.id === quoteRef);
-              if (q) {
-                hydratedKey.current = `quote:${quoteRef}`;
-                setLinkedQuoteRef(q.id);
-                if (q.enqRef) setLinkedEnqRef(q.enqRef);
-                setOrderId(generateId('ORD', data.orders.map(o => o.id)));
-                setCustName(q.cust);
-                if ((q as any).siteId) {
-                  setSiteId((q as any).siteId);
-                  const qCust2 = data.customers.find(c => c.name === q.cust);
-                  const qSite2 = (qCust2?.sites ?? []).find((s: any) => s.id === (q as any).siteId);
-                  if (qSite2) setShipAddr((qSite2 as any).dispatchAddress || (qSite2 as any).fullAddress || qSite2.address || '');
-                }
-                if (q.contactId) setContactId(q.contactId);
-                if (q.contact) setContact(q.contact);
-                if (q.email) setEmail(q.email);
-                if (q.phone) setPhone(q.phone);
-                if (q.custEnquiryDocNo) setCustEnquiryDocNo(q.custEnquiryDocNo);
-                setContactManual(!q.contactId && !!(q.contact || q.email));
-                // Authorized Signatory: not carried forward here either —
-                // same reasoning as the main init effect above, the
-                // resolvedSignatory effect keeps it in sync since
-                // editOrderId is still unset at this point.
-                if (q.inco) { const _n = normalizeInco(q.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : q.inco); }
-                setCurr(q.curr || 'INR');
-                if (q.pay) setPay(q.pay);
-                setItems(getCurrentQuoteItems(q.items, q.negotiations).map(i => ({ ...i, agreedRate: i.unitPrice })));
-                setInsurance(q.insurance ?? 0);
-              }
-            }} className="flex-1">
-              Create New Anyway
             </Button>
           </div>
           <button type="button" onClick={() => navigate(-1)} className="mt-3 w-full text-center text-[11px] text-g400 hover:text-g600">← Go back</button>

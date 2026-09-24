@@ -750,7 +750,7 @@ export function NewQuote() {
                 <span className="font-mono font-bold text-sQ">{enqRef}</span> has already been converted to quote{' '}
                 <span className="font-mono font-bold text-red-mrt">{dupQuoteAlert.existingId}</span>.
               </div>
-              <div className="text-[12px] text-g500 mt-2">Would you like to edit the existing quote, or create a new one anyway?</div>
+              <div className="text-[12px] text-g500 mt-2">Open the existing quote to make changes. A second quote can't be created for the same enquiry.</div>
             </div>
           </div>
           <div className="flex gap-2 mt-5">
@@ -763,26 +763,6 @@ export function NewQuote() {
               setSearchParams({ id });
             }} className="flex-1">
               Edit {dupQuoteAlert.existingId}
-            </Button>
-            <Button variant="secondary" onClick={() => {
-              setDupQuoteAlert(null);
-              setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
-              const enq = data.enquiries.find(e => e.id === enqRef);
-              if (enq) {
-                setCustName(enq.cust); if (enq.siteId) setSiteId(enq.siteId); if (enq.contactId) setContactId(enq.contactId);
-                setContact(enq.contact); setEmail(enq.email);
-                setContactManual(!enq.contactId && !!(enq.contact || enq.email));
-                const cr = data.customers.find(c => c.name === enq.cust);
-                if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || cr.pay); }
-                setCustomerTier(enq.customerTier || cr?.tier || '');
-                setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
-                // Authorized Signatory: not carried forward here either —
-                // same reasoning as the main init effect above, the
-                // resolvedSignatory effect keeps it in sync since editId is
-                // still unset at this point.
-              }
-            }} className="flex-1">
-              Create New Anyway
             </Button>
           </div>
           <button type="button" onClick={() => navigate(-1)} className="mt-3 w-full text-center text-[11px] text-g400 hover:text-g600">← Go back</button>
