@@ -213,9 +213,9 @@ export function Dispatch() {
   );
 
   const rowCount = tab === 'pending' ? visiblePending.length : visibleEntries.length;
-  // Email Sent adds "Email Sent On" — Dispatched: 11 columns, Email Sent: 12.
+  // Email Sent adds "Email Sent On" — Dispatched: 10 columns, Email Sent: 11.
   const isEmailSentTab = tab === 'emailSent';
-  const entryColCount = isEmailSentTab ? 12 : 11;
+  const entryColCount = isEmailSentTab ? 11 : 10;
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -366,14 +366,13 @@ export function Dispatch() {
                 <col style={{ width: 110 }} />{/* Order Ref */}
                 <col style={{ width: 200 }} />{/* Customer */}
                 <col style={{ width: 120 }} />{/* PO No. */}
-                <col style={{ width: 100 }} />{/* Fulfillment */}
                 <col style={{ width: 90 }} />{/* Items */}
                 <col style={{ width: 120 }} />{/* Value */}
                 <col style={{ width: 150 }} />{/* Transporter */}
                 <col style={{ width: 110 }} />{/* Invoice No. */}
                 <col style={{ width: 115 }} />{/* Dispatched On */}
                 {isEmailSentTab && <col style={{ width: 165 }} />}{/* Email Sent On */}
-                <col style={{ width: 160 }} />{/* Actions */}
+                <col style={{ width: 260 }} />{/* Actions — wide enough for Edit + Delete side by side */}
               </colgroup>
               <thead className="bg-g100">
                 <tr>
@@ -381,7 +380,6 @@ export function Dispatch() {
                   <th className={thCls}>Order Ref</th>
                   <th className={thCls}>Customer</th>
                   <th className={thCls}>PO No.</th>
-                  <th className={thCls}>Fulfillment</th>
                   <th className={thCls}>Items</th>
                   <th className={thRightCls}>Value</th>
                   <th className={thCls}>Transporter</th>
@@ -413,7 +411,6 @@ export function Dispatch() {
                             <div className="font-semibold">{order?.cust || '—'}</div>
                           </td>
                           <td className="px-[13px] py-[10px] align-top font-mono text-[10.5px] break-words">{order?.poNo || '—'}</td>
-                          <td className="px-[13px] py-[10px] align-top">{entry.fulfillmentType === 'self_pickup' ? 'Self Pickup' : 'Delivery'}</td>
                           <td className="px-[13px] py-[10px] align-top whitespace-nowrap">{entry.items?.length ?? 0} item(s)</td>
                           <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold whitespace-nowrap">{formatINR(Math.round(entry.value || 0))}</td>
                           <td className="px-[13px] py-[10px] align-top break-words">{entry.transporter || '—'}</td>
