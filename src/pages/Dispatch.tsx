@@ -199,12 +199,17 @@ export function Dispatch() {
 
   const visibleEntries = useMemo(
     () => activeEntries
-      .filter(e => e.fulfillmentType === subType && orderMatches(orderFor(e), e.orderId))
+      .filter(e => e.fulfillmentType === subType && (orderMatches(orderFor(e), e.orderId) ||
+        (tab === 'dispatched' && (e.invoiceNumber || '').toLowerCase().includes(qs))))
       .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
-    [activeEntries, subType, qs, data.orders],
+    [activeEntries, subType, qs, data.orders, tab],
   );
 
   const rowCount = tab === 'pending' ? visiblePending.length : visibleEntries.length;
+  // Dispatched: 11 columns (Invoice No. replaces the two delivery dates);
+  // Order → Dispatch: 12.
+  const isDispatchedTab = tab === 'dispatched';
+  const entryColCount = isDispatchedTab ? 11 : 12;
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -357,15 +362,23 @@ export function Dispatch() {
                   <th className={thCls}>Items</th>
                   <th className={thRightCls}>Value</th>
                   <th className={thCls}>Transporter</th>
-                  <th className={thCls}>Promised Delivery</th>
-                  <th className={thCls}>Estimated Delivery</th>
+                  {/* Dispatched shows Invoice No. in place of the two delivery
+                      dates (still saved, and visible in the Edit form). */}
+                  {isDispatchedTab ? (
+                    <th className={thCls}>Invoice No.</th>
+                  ) : (
+                    <>
+                      <th className={thCls}>Promised Delivery</th>
+                      <th className={thCls}>Estimated Delivery</th>
+                    </>
+                  )}
                   <th className={thCls}>Dispatched On</th>
                   <th className={thCls}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleEntries.length === 0 ? (
-                  <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">{qs ? 'No matching entries' : `No ${subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries ${tab === 'dispatched' ? 'dispatched yet' : 'yet'}`}</td></tr>
+                  <tr><td colSpan={entryColCount} className="text-center p-8 text-g400 text-[13px]">{qs ? 'No matching entries' : `No ${subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries ${tab === 'dispatched' ? 'dispatched yet' : 'yet'}`}</td></tr>
                 ) : (
                   visibleEntries.map(entry => {
                     const order = orderFor(entry);
@@ -387,8 +400,18 @@ export function Dispatch() {
                           <td className="px-[13px] py-[10px] align-top">{entry.items?.length ?? 0} item(s)</td>
                           <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold">{formatINR(Math.round(entry.value || 0))}</td>
                           <td className="px-[13px] py-[10px] align-top">{entry.transporter || '—'}</td>
-                          <td className="px-[13px] py-[10px] align-top">{fmtDate(entry.promisedDeliveryDate)}</td>
-                          <td className="px-[13px] py-[10px] align-top">{fmtDate(entry.estimatedDeliveryDate)}</td>
+                          {isDispatchedTab ? (
+                            <td className="px-[13px] py-[10px] align-top whitespace-nowrap">
+                              {entry.invoiceNumber
+                                ? <span className="font-mono text-[10.5px] font-semibold">{entry.invoiceNumber}</span>
+                                : <span className="text-g400">—</span>}
+                            </td>
+                          ) : (
+                            <>
+                              <td className="px-[13px] py-[10px] align-top">{fmtDate(entry.promisedDeliveryDate)}</td>
+                              <td className="px-[13px] py-[10px] align-top">{fmtDate(entry.estimatedDeliveryDate)}</td>
+                            </>
+                          )}
                           <td className="px-[13px] py-[10px] align-top">{entry.created_at ? fmtIST(new Date(entry.created_at), 'dd-MMM-yyyy') : '—'}</td>
                           <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
                             <div className="flex flex-col gap-[3px]">
@@ -429,7 +452,7 @@ export function Dispatch() {
 
                         {isExpanded && (
                           <tr className="bg-sW/[0.02] border-b-2 border-sW">
-                            <td colSpan={12} className="p-0">
+                            <td colSpan={entryColCount} className="p-0">
                               <LineItemsPanel title={`Dispatch Line Items -- ${entry.orderId}`} items={lineItems} grand={entry.value || 0} />
                             </td>
                           </tr>
