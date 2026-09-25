@@ -13,7 +13,7 @@ import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabas
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
-// entry's Status is switched to "Dispatch → Sent" (see the sentStatus select
+// entry is being saved as "Dispatch → Sent" (every save is one now — see
 // below). Mirrors the "PO Document" field on the Order form (NewOrder.tsx):
 // a file picked here is only uploaded when the whole form is saved, not
 // immediately on selection. COA is handled separately below (see the COA
@@ -99,11 +99,6 @@ export function NewDispatchEntry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const orderRef = searchParams.get('orderRef');
-  // Set when opened from the Dispatch list's "Dispatch → Sent" button
-  // (?toSent=1) so the Status dropdown below opens pre-switched to
-  // "Dispatch → Sent" and the Documents Attachment / COA section is visible
-  // right away — the entry itself isn't marked sent until Save is clicked.
-  const toSent = searchParams.get('toSent') === '1';
   const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   // This whole page is locked to view-only for isReadOnlyUser (the Bhiwandi
@@ -150,14 +145,11 @@ export function NewDispatchEntry() {
   const [remark, setRemark] = useState('');
   const [promisedDeliveryDate, setPromisedDeliveryDate] = useState('');
   const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState('');
-  // Which of Dispatch.tsx's two tabs this entry shows under — mirrors that
-  // page's own sentAt-based split (see its "Dispatch → Sent" button).
-  // Defaults to 'to_dispatch' for a brand-new entry; hydrated from the
-  // existing entry's sentAt below when editing one.
-  const [sentStatus, setSentStatus] = useState<'to_dispatch' | 'sent'>('to_dispatch');
+  // The old "Order → Dispatch" stage is retired: every save here is a
+  // "Dispatch → Sent" save (sentAt always set — see handleSubmit), so the
+  // Documents Attachment section below is always shown.
 
-  // "Documents Attachment" — only meaningful (and only ever shown) once
-  // sentStatus === 'sent'.
+  // "Documents Attachment".
   // Single-file fields (Supplier Portal, Term Card Attachment) — unchanged
   // from before: docFiles/docLocalUrls hold a freshly-picked, not-yet-
   // uploaded file; existingDocUrls/Names hold what's already saved.
@@ -238,7 +230,6 @@ export function NewDispatchEntry() {
   }, [coaSearch]);
 
   useEffect(() => {
-    if (sentStatus !== 'sent') return;
     const controller = new AbortController();
     setCoaSearchLoading(true);
     let query = supabase.from('coa_document').select('*').order('created_at', { ascending: false }).limit(20).abortSignal(controller.signal);
@@ -250,7 +241,7 @@ export function NewDispatchEntry() {
       setCoaSearchLoading(false);
     });
     return () => controller.abort();
-  }, [coaSearchDebounced, sentStatus]);
+  }, [coaSearchDebounced]);
 
   const selectCoaDoc = (doc: any) => {
     setCoaFiles(prev => [...prev, { url: resolveCoaStorageUrl(doc.storage_path), name: doc.file_name }]);
@@ -379,7 +370,6 @@ export function NewDispatchEntry() {
       setRemark(existing.remark || order.remark || '');
       setPromisedDeliveryDate(existing.promisedDeliveryDate || order.promisedDeliveryDate || '');
       setEstimatedDeliveryDate(existing.estimatedDeliveryDate || order.estimatedDeliveryDate || '');
-      setSentStatus(existing.sentAt || toSent ? 'sent' : 'to_dispatch');
       setExistingDocUrls({
         supplierPortal: existing.supplierPortalUrl,
         termCardAttachment: existing.termCardAttachmentUrl,
@@ -401,10 +391,8 @@ export function NewDispatchEntry() {
       if (typeof existing.insurance === 'number') setInsurance(existing.insurance);
     } else {
       // Brand-new entry (e.g. "Create Dispatch" off the Order Pending for
-      // Dispatch tab, which opens with ?toSent=1): start in Dispatch → Sent
-      // so the Documents Attachment section is visible right away, and fill
-      // any blanks hydrateFromOrder left from the customer/site defaults.
-      if (toSent) setSentStatus('sent');
+      // Dispatch tab): fill any blanks hydrateFromOrder left from the
+      // customer/site defaults.
       const cust = data.customers.find(c => c.name === order.cust);
       if (!order.fulfillmentType) {
         if (cust?.fulfilmentType === 'Delivery') setType('delivery');
@@ -627,12 +615,9 @@ export function NewDispatchEntry() {
       }
       await updateOrder(selectedOrderId, orderUpdates);
 
-      // Preserve the original sentAt timestamp if this entry was already
-      // "sent" and stays that way — only stamp a fresh one the moment it
-      // transitions from Order → Dispatch to Dispatch → Sent here. Going
-      // back to Order → Dispatch clears it (undefined → null via
-      // mapDispatchEntryToDB's `'sentAt' in d` check in store/index.tsx).
-      const sentAt = sentStatus === 'sent' ? (existingEntry?.sentAt || new Date().toISOString()) : undefined;
+      // Every save is a "Dispatch → Sent" save: keep the original sentAt
+      // if this entry already has one, else stamp it now.
+      const sentAt = existingEntry?.sentAt || new Date().toISOString();
 
       // Documents Attachment — upload only the fields the user actually
       // touched this session, only now on Save, exactly like the Order
@@ -709,7 +694,7 @@ export function NewDispatchEntry() {
         await addDispatchEntry(selectedOrderId, type as DispatchFulfillmentType, extra);
       }
       // Land on the tab/pill the saved entry now lives under.
-      navigate(`/dispatch?tab=${existingEntry?.emailSentAt ? 'emailSent' : sentAt ? 'dispatched' : 'toDispatch'}&type=${type}`);
+      navigate(`/dispatch?tab=${existingEntry?.emailSentAt ? 'emailSent' : 'dispatched'}&type=${type}`);
     } catch (err: any) {
       setError(err?.message || 'Could not save — check your connection.');
     } finally {
@@ -732,17 +717,12 @@ export function NewDispatchEntry() {
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
-            {isEditMode && (
-              <div className="flex items-center gap-2">
-                <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
-                <select title="Dispatch status" value={sentStatus} disabled={isReadOnlyUser}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSentStatus(e.target.value as 'to_dispatch' | 'sent')}
-                  className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
-                  <option value="to_dispatch">Order → Dispatch</option>
-                  <option value="sent">Dispatch → Sent</option>
-                </select>
-              </div>
-            )}
+            {/* Fixed status — the old "Order → Dispatch" stage is retired,
+                so every save here is a "Dispatch → Sent" save. */}
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
+              <span className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] bg-g50 text-g700">Dispatch → Sent</span>
+            </div>
             <Button variant="secondary" onClick={() => navigate('/dispatch')}>Back</Button>
           </div>
         </div>
@@ -914,9 +894,9 @@ export function NewDispatchEntry() {
 
           </fieldset>
 
-          {/* Documents Attachment — only once this entry's Status (above) is switched
-              to "Dispatch → Sent". Uploads are deferred to Save, same as PO Document. */}
-          {selectedOrder && sentStatus === 'sent' && (
+          {/* Documents Attachment — always shown now (every save is a "Dispatch →
+              Sent" save). Uploads are deferred to Save, same as PO Document. */}
+          {selectedOrder && (
             <div className="bg-white border border-g200">
               <div className={sectionHeaderCls}>Documents Attachment</div>
               <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-4 gap-[12px]">

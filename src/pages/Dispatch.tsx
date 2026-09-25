@@ -3,11 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
-import { canDeleteRecords, formatINR, fmtDate, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText } from '../lib/utils';
+import { canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText } from '../lib/utils';
 import { Order, OrderItem, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 
 type SubType = DispatchFulfillmentType | 'not_set';
-type DispatchTab = 'pending' | 'dispatched' | 'emailSent' | 'toDispatch';
+type DispatchTab = 'pending' | 'dispatched' | 'emailSent';
 
 const thBase = 'font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] whitespace-nowrap border-b border-g200';
 const thCls = `${thBase} text-left`;
@@ -96,14 +96,15 @@ export function Dispatch() {
   const { data, user, deleteDispatchEntry, ensureSoNumbers } = useAppStore();
   const canDelete = canDeleteRecords(user?.email);
 
-  // Initial tab/pill come from the URL (?tab=pending|dispatched|emailSent|
-  // toDispatch&type=delivery|self_pickup) — NewDispatchEntry.tsx sends the
-  // user back here that way after Save / Email to Client so they land on
-  // the entry they just made.
+  // Initial tab/pill come from the URL (?tab=pending|dispatched|emailSent
+  // &type=delivery|self_pickup) — NewDispatchEntry.tsx sends the user back
+  // here that way after Save / Email to Client so they land on the entry
+  // they just made. Anything else (incl. the retired ?tab=toDispatch)
+  // falls back to Pending.
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<DispatchTab>(() => {
     const t = searchParams.get('tab');
-    return t === 'dispatched' || t === 'emailSent' || t === 'toDispatch' ? t : 'pending';
+    return t === 'dispatched' || t === 'emailSent' ? t : 'pending';
   });
   const [subType, setSubType] = useState<DispatchFulfillmentType>(() =>
     searchParams.get('type') === 'self_pickup' ? 'self_pickup' : 'delivery');
@@ -115,8 +116,8 @@ export function Dispatch() {
   // Order Pending for Dispatch — read-only view of every Order Confirmed
   // order, plus every 'Order Pending for Dispatch' leftover split off a
   // partial dispatch, that has no dispatch entry yet. Once an entry is
-  // created it drops out of here and shows under "Dispatched" (or
-  // "Order → Dispatch"). Nothing here changes an order's status.
+  // created it drops out of here and shows under "Dispatched". Nothing
+  // here changes an order's status.
   const dispatchedOrderIds = useMemo(() => new Set(data.dispatchEntries.map(e => e.orderId)), [data.dispatchEntries]);
   const pendingOrders = useMemo(
     () => data.orders.filter(o => (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && !dispatchedOrderIds.has(o.id)),
@@ -157,15 +158,15 @@ export function Dispatch() {
   }, [missingSoKey]);
 
   const entries = data.dispatchEntries;
-  // Each entry lives in exactly one of the three entry tabs:
-  //   emailSentAt set (Email to Client succeeded)        → Email Sent
-  //   else sentAt set ("Dispatch → Sent" saved)          → Dispatched
-  //   else                                               → Order → Dispatch
-  // All three share the same Delivery/Self Pickup sub-split.
+  // Each entry lives in exactly one of the two entry tabs:
+  //   emailSentAt set (Email to Client succeeded) → Email Sent
+  //   else                                        → Dispatched
+  // (the old "Order → Dispatch" stage is retired — an entry without sentAt
+  // still lands in Dispatched, so no entry is ever hidden). Both share the
+  // same Delivery/Self Pickup sub-split.
   const emailSentEntries = entries.filter(e => e.emailSentAt);
-  const sentEntries = entries.filter(e => !e.emailSentAt && e.sentAt);
-  const toDispatchEntries = entries.filter(e => !e.emailSentAt && !e.sentAt);
-  const activeEntries = tab === 'emailSent' ? emailSentEntries : tab === 'dispatched' ? sentEntries : toDispatchEntries;
+  const sentEntries = entries.filter(e => !e.emailSentAt);
+  const activeEntries = tab === 'emailSent' ? emailSentEntries : sentEntries;
   const deliveryCount = activeEntries.filter(e => e.fulfillmentType === 'delivery').length;
   const selfPickupCount = activeEntries.filter(e => e.fulfillmentType === 'self_pickup').length;
 
@@ -203,8 +204,8 @@ export function Dispatch() {
   const visibleEntries = useMemo(
     () => activeEntries
       .filter(e => e.fulfillmentType === subType && (orderMatches(orderFor(e), e.orderId) ||
-        ((tab === 'dispatched' || tab === 'emailSent') && (e.invoiceNumber || '').toLowerCase().includes(qs))))
-      // Email Sent: newest email first; others: newest entry first.
+        (e.invoiceNumber || '').toLowerCase().includes(qs)))
+      // Email Sent: newest email first; Dispatched: newest entry first.
       .sort((a, b) => tab === 'emailSent'
         ? (b.emailSentAt || '').localeCompare(a.emailSentAt || '')
         : (b.created_at || '').localeCompare(a.created_at || '')),
@@ -212,12 +213,9 @@ export function Dispatch() {
   );
 
   const rowCount = tab === 'pending' ? visiblePending.length : visibleEntries.length;
-  // Dispatched / Email Sent show Invoice No. in place of the two delivery
-  // dates; Email Sent adds "Email Sent On". Dispatched: 11 columns, Email
-  // Sent: 12, Order → Dispatch: 12.
-  const isDispatchedTab = tab === 'dispatched' || tab === 'emailSent';
+  // Email Sent adds "Email Sent On" — Dispatched: 11 columns, Email Sent: 12.
   const isEmailSentTab = tab === 'emailSent';
-  const entryColCount = isEmailSentTab ? 12 : isDispatchedTab ? 11 : 12;
+  const entryColCount = isEmailSentTab ? 12 : 11;
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -243,9 +241,6 @@ export function Dispatch() {
           </div>
           <div onClick={() => switchTab('emailSent')} className={pillCls(tab === 'emailSent')}>
             Email Sent ({emailSentEntries.length})
-          </div>
-          <div onClick={() => switchTab('toDispatch')} className={pillCls(tab === 'toDispatch')}>
-            Order → Dispatch ({toDispatchEntries.length})
           </div>
         </div>
 
@@ -345,7 +340,7 @@ export function Dispatch() {
                           </td>
                           <td className="px-[13px] py-[10px] align-top"><Badge status={o.status} /></td>
                           <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
-                            <Button size="sm" variant="success" className="active:scale-95 transition-transform" onClick={() => navigate(`/dispatch/new?orderRef=${o.id}&toSent=1`)}>Create Dispatch</Button>
+                            <Button size="sm" variant="success" className="active:scale-95 transition-transform" onClick={() => navigate(`/dispatch/new?orderRef=${o.id}`)}>Create Dispatch</Button>
                           </td>
                         </tr>
                         {isExpanded && (
@@ -373,16 +368,9 @@ export function Dispatch() {
                   <th className={thCls}>Items</th>
                   <th className={thRightCls}>Value</th>
                   <th className={thCls}>Transporter</th>
-                  {/* Dispatched shows Invoice No. in place of the two delivery
-                      dates (still saved, and visible in the Edit form). */}
-                  {isDispatchedTab ? (
-                    <th className={thCls}>Invoice No.</th>
-                  ) : (
-                    <>
-                      <th className={thCls}>Promised Delivery</th>
-                      <th className={thCls}>Estimated Delivery</th>
-                    </>
-                  )}
+                  {/* Promised/Estimated Delivery dates stay saved and visible
+                      in the Edit form — this list shows Invoice No. instead. */}
+                  <th className={thCls}>Invoice No.</th>
                   <th className={thCls}>Dispatched On</th>
                   {isEmailSentTab && <th className={thCls}>Email Sent On</th>}
                   <th className={thCls}>Actions</th>
@@ -390,7 +378,7 @@ export function Dispatch() {
               </thead>
               <tbody>
                 {visibleEntries.length === 0 ? (
-                  <tr><td colSpan={entryColCount} className="text-center p-8 text-g400 text-[13px]">{qs ? 'No matching entries' : `No ${subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries ${tab === 'dispatched' ? 'dispatched yet' : tab === 'emailSent' ? 'emailed yet' : 'yet'}`}</td></tr>
+                  <tr><td colSpan={entryColCount} className="text-center p-8 text-g400 text-[13px]">{qs ? 'No matching entries' : `No ${subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries ${tab === 'emailSent' ? 'emailed yet' : 'dispatched yet'}`}</td></tr>
                 ) : (
                   visibleEntries.map(entry => {
                     const order = orderFor(entry);
@@ -412,18 +400,11 @@ export function Dispatch() {
                           <td className="px-[13px] py-[10px] align-top">{entry.items?.length ?? 0} item(s)</td>
                           <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold">{formatINR(Math.round(entry.value || 0))}</td>
                           <td className="px-[13px] py-[10px] align-top">{entry.transporter || '—'}</td>
-                          {isDispatchedTab ? (
-                            <td className="px-[13px] py-[10px] align-top whitespace-nowrap">
-                              {entry.invoiceNumber
-                                ? <span className="font-mono text-[10.5px] font-semibold">{entry.invoiceNumber}</span>
-                                : <span className="text-g400">—</span>}
-                            </td>
-                          ) : (
-                            <>
-                              <td className="px-[13px] py-[10px] align-top">{fmtDate(entry.promisedDeliveryDate)}</td>
-                              <td className="px-[13px] py-[10px] align-top">{fmtDate(entry.estimatedDeliveryDate)}</td>
-                            </>
-                          )}
+                          <td className="px-[13px] py-[10px] align-top whitespace-nowrap">
+                            {entry.invoiceNumber
+                              ? <span className="font-mono text-[10.5px] font-semibold">{entry.invoiceNumber}</span>
+                              : <span className="text-g400">—</span>}
+                          </td>
                           <td className="px-[13px] py-[10px] align-top">{entry.created_at ? fmtIST(new Date(entry.created_at), 'dd-MMM-yyyy') : '—'}</td>
                           {isEmailSentTab && (
                             <td className="px-[13px] py-[10px] align-top whitespace-nowrap">{entry.emailSentAt ? fmtIST(new Date(entry.emailSentAt), 'dd-MMM-yyyy hh:mm a') : '—'}</td>
@@ -431,15 +412,6 @@ export function Dispatch() {
                           <td className="px-[13px] py-[10px] align-top whitespace-nowrap" onClick={ev => ev.stopPropagation()}>
                             <div className="flex flex-col gap-[3px]">
                               <div className="flex items-center gap-1.5 flex-nowrap">
-                                {tab === 'toDispatch' && (
-                                  // Opens the full entry form with the Status dropdown
-                                  // pre-set to "Dispatch → Sent" (and existing data
-                                  // prefilled), instead of marking it sent immediately.
-                                  // The entry only actually moves to the Dispatch → Sent
-                                  // tab once the user fills in the Documents Attachment
-                                  // section there and clicks Save.
-                                  <Button size="sm" variant="success" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}&toSent=1`)}>Dispatch → Sent</Button>
-                                )}
                                 <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}`)}>Edit</Button>
                                 {canDelete && (
                                   <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async () => {
