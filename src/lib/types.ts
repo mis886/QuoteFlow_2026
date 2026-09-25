@@ -512,6 +512,9 @@ export interface DispatchEntry {
   // Sent" (see src/pages/Dispatch.tsx's "Dispatch → Sent" button). Null/
   // undefined = still in Order → Dispatch.
   sentAt?: string;
+  // Set by markDispatchEmailSent() when "Email to Client" succeeds — moves
+  // the entry from Dispatched to Email Sent. Never cleared by a form Save.
+  emailSentAt?: string;
   formFilledBy?: string;
   createdBy?: string;
   // 2026-09-19: who last edited this entry, at the user's request — stamped

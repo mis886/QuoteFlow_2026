@@ -104,7 +104,10 @@ export function NewDispatchEntry() {
   // "Dispatch → Sent" and the Documents Attachment / COA section is visible
   // right away — the entry itself isn't marked sent until Save is clicked.
   const toSent = searchParams.get('toSent') === '1';
-  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder, isReadOnlyUser, isAdmin } = useAppStore();
+  // Set by the Dispatched tab's "Send Email" button (?email=1) — opens the
+  // Email to Client popup automatically once the saved entry has loaded.
+  const autoEmail = searchParams.get('email') === '1';
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   // This whole page is locked to view-only for isReadOnlyUser (the Bhiwandi
   // warehouse login) — see the <fieldset> wraps below — with one deliberate
@@ -305,6 +308,23 @@ export function NewDispatchEntry() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showEmailModal, setShowEmailModal] = useState(false);
+
+  // Email to Client needs a saved entry — its attachments come from saved
+  // documents, and onSent stamps email_sent_at on that entry's id.
+  const openEmailModal = () => {
+    if (!existingEntryId) { setError('Please save the dispatch entry first'); return; }
+    setError('');
+    setShowEmailModal(true);
+  };
+
+  // ?email=1 — open the popup once, as soon as the order (and its saved
+  // entry, set in the same hydration pass) has loaded.
+  const autoEmailDone = useRef(false);
+  useEffect(() => {
+    if (!autoEmail || autoEmailDone.current || !selectedOrderId || isReadOnlyUser) return;
+    autoEmailDone.current = true;
+    openEmailModal();
+  }, [autoEmail, selectedOrderId, existingEntryId, isReadOnlyUser]);
 
   const hydrateFromOrder = (order: Order) => {
     setContact(order.contact || '');
@@ -701,7 +721,7 @@ export function NewDispatchEntry() {
         await addDispatchEntry(selectedOrderId, type as DispatchFulfillmentType, extra);
       }
       // Land on the tab/pill the saved entry now lives under.
-      navigate(`/dispatch?tab=${sentAt ? 'dispatched' : 'toDispatch'}&type=${type}`);
+      navigate(`/dispatch?tab=${existingEntry?.emailSentAt ? 'emailSent' : sentAt ? 'dispatched' : 'toDispatch'}&type=${type}`);
     } catch (err: any) {
       setError(err?.message || 'Could not save — check your connection.');
     } finally {
@@ -1309,7 +1329,12 @@ export function NewDispatchEntry() {
                 other field on this page is locked, so Save can only ever persist
                 an LR change for this user — nothing else can have changed. */}
             <Button variant="dark" disabled={!selectedOrderId || saving} onClick={handleSubmit}>{saving ? 'Saving…' : 'Save'}</Button>
-            <Button variant="dark" disabled={!selectedOrderId || isReadOnlyUser} onClick={() => setShowEmailModal(true)}>
+            <Button
+              variant="dark"
+              disabled={!selectedOrderId || isReadOnlyUser}
+              title={!existingEntryId ? 'Please save the dispatch entry first' : undefined}
+              onClick={openEmailModal}
+            >
               <Mail size={12} />
               Email to Client
             </Button>
@@ -1329,6 +1354,17 @@ export function NewDispatchEntry() {
           settings={data.settings}
           defaultSignatory={data.signatories.find((s: any) => s.is_default)}
           onClose={() => setShowEmailModal(false)}
+          onSent={async () => {
+            // Fires only after the email actually went out — stamps the entry
+            // so it moves to the Email Sent tab. A failed send never gets here.
+            if (!existingEntryId) return;
+            try {
+              await markDispatchEmailSent(existingEntryId);
+              navigate(`/dispatch?tab=emailSent&type=${type || 'delivery'}`);
+            } catch (err: any) {
+              setError(`Email was sent, but it could not be recorded: ${err?.message || 'unknown error'}`);
+            }
+          }}
         />
       )}
     </div>

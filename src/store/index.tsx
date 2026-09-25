@@ -106,6 +106,7 @@ interface AppContextType {
   addDispatchEntry: (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => Promise<void>;
   updateDispatchEntry: (id: string, updates: Partial<DispatchEntry>) => Promise<void>;
   deleteDispatchEntry: (id: string) => Promise<void>;
+  markDispatchEmailSent: (id: string) => Promise<void>;
   addCustomer: (customer: Customer) => Promise<void>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
@@ -669,6 +670,7 @@ const mapEnquiryToDB = (e: any) => {
     promisedDeliveryDate: d.promised_delivery_date || undefined,
     estimatedDeliveryDate: d.estimated_delivery_date || undefined,
     sentAt: d.sent_at || undefined,
+    emailSentAt: d.email_sent_at || undefined,
     formFilledBy: d.form_filled_by || undefined,
     createdBy: d.created_by || undefined,
     updatedBy: d.updated_by || undefined,
@@ -728,6 +730,8 @@ const mapEnquiryToDB = (e: any) => {
     if ('supplierPortalName' in d) obj.supplier_portal_name = d.supplierPortalName || null;
     if ('termCardAttachmentUrl' in d) obj.term_card_attachment_url = d.termCardAttachmentUrl || null;
     if ('termCardAttachmentName' in d) obj.term_card_attachment_name = d.termCardAttachmentName || null;
+    // Only ever written when set — a normal form Save must never clear it.
+    if (d.emailSentAt) obj.email_sent_at = d.emailSentAt;
     obj.updated_at = new Date().toISOString();
     return obj;
   };
@@ -1086,6 +1090,22 @@ const mapEnquiryToDB = (e: any) => {
       console.error('Error updating dispatch entry:', error);
       throw error;
     }
+  };
+
+  // Stamps email_sent_at on ONE dispatch entry after "Email to Client"
+  // succeeds (SendEmailModal's onSent) — moves it to the Email Sent tab in
+  // Dispatch.tsx. Writes only that column; re-sending just refreshes it.
+  const markDispatchEmailSent = async (id: string) => {
+    const emailSentAt = new Date().toISOString();
+    const { error } = await supabase.from('dispatch_entries').update({ email_sent_at: emailSentAt }).eq('id', id);
+    if (error) {
+      console.error('Error marking dispatch email sent:', error);
+      throw error;
+    }
+    setData(prev => ({
+      ...prev,
+      dispatchEntries: prev.dispatchEntries.map(d => d.id === id ? { ...d, emailSentAt } : d)
+    }));
   };
 
   const deleteDispatchEntry = async (id: string) => {
@@ -1963,6 +1983,7 @@ const mapEnquiryToDB = (e: any) => {
         addDispatchEntry,
         updateDispatchEntry,
         deleteDispatchEntry,
+        markDispatchEmailSent,
         addCustomer,
         updateCustomer,
         deleteCustomer,
