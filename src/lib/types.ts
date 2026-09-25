@@ -260,6 +260,10 @@ export interface Order {
   promisedDeliveryDate?: string;
   estimatedDeliveryDate?: string;
   remark?: string;
+  // Sales Order number (SO-YYYY-NNN), auto-assigned once by ensureSoNumbers()
+  // when the order first shows in Dispatch → "Order Pending for Dispatch".
+  // Never changes after that.
+  soNumber?: string;
   // Set on the leftover order automatically created by a partial dispatch —
   // points back to the order it was split off from, for traceability.
   splitFromOrderId?: string;

@@ -100,6 +100,7 @@ interface AppContextType {
   addOrder: (order: Order) => Promise<void>;
   updateOrder: (id: string, updates: Partial<Order>) => Promise<void>;
   deleteOrder: (id: string) => Promise<void>;
+  ensureSoNumbers: (orderIds: string[]) => Promise<void>;
   // Dispatch (Order → Dispatch phase) — see src/pages/Dispatch.tsx. `type`
   // picks Self Pickup or Delivery for the new entry.
   addDispatchEntry: (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => Promise<void>;
@@ -534,6 +535,7 @@ const mapEnquiryToDB = (e: any) => {
     if (o.remark) obj.remark = o.remark;
     if (o.split_from_order_id) obj.splitFromOrderId = o.split_from_order_id;
     if (o.dispatch_finalized) obj.dispatchFinalized = o.dispatch_finalized;
+    if (o.so_number) obj.soNumber = o.so_number;
     if ('authorized_person' in o) {
       obj.authorizedPerson = o.authorized_person;
       delete obj.authorized_person;
@@ -646,6 +648,9 @@ const mapEnquiryToDB = (e: any) => {
     if ('remark' in o) obj.remark = o.remark || null;
     if ('splitFromOrderId' in o) obj.split_from_order_id = o.splitFromOrderId || null;
     if ('dispatchFinalized' in o) obj.dispatch_finalized = !!o.dispatchFinalized;
+    // Only ever written when set — an order edit that doesn't carry soNumber
+    // must never null out an already-assigned SO number.
+    if (o.soNumber) obj.so_number = o.soNumber;
 
     return obj;
   };
@@ -962,6 +967,49 @@ const mapEnquiryToDB = (e: any) => {
     } else {
       console.error('Error updating order:', error);
       throw error;
+    }
+  };
+
+  // Assigns a Sales Order number (SO-YYYY-NNN) to each given order that
+  // doesn't have one yet — oldest first, so older orders get smaller numbers.
+  // Writes ONLY so_number, and only where it's still null (.is null guard),
+  // so an already-assigned number is never overwritten. Numbers are computed
+  // from a fresh DB read (not local state); a 23505 on
+  // orders_so_number_unique means another tab took that number at the same
+  // moment, so re-fetch and retry — same idea as insertWithIdRetry().
+  const ensureSoNumbers = async (orderIds: string[]) => {
+    const targets = data.orders
+      .filter(o => orderIds.includes(o.id) && !o.soNumber)
+      .sort((a, b) => (a.created_at || a.poDate || '').localeCompare(b.created_at || b.poDate || ''));
+    for (const order of targets) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const { data: rows, error: fetchErr } = await supabase.from('orders').select('so_number').not('so_number', 'is', null);
+        if (fetchErr) { console.error('Error fetching SO numbers:', fetchErr); return; }
+        const soNumber = generateId('SO', (rows || []).map((r: any) => r.so_number));
+        const { data: updated, error } = await supabase
+          .from('orders')
+          .update({ so_number: soNumber })
+          .eq('id', order.id)
+          .is('so_number', null)
+          .select('so_number');
+        if (!error) {
+          let finalSo: string | null = updated && updated.length > 0 ? soNumber : null;
+          if (!finalSo) {
+            // Nothing updated — another tab assigned one first; pick up theirs.
+            const { data: cur } = await supabase.from('orders').select('so_number').eq('id', order.id).maybeSingle();
+            finalSo = cur?.so_number || null;
+          }
+          if (finalSo) {
+            setData(prev => ({ ...prev, orders: prev.orders.map(o => o.id === order.id ? { ...o, soNumber: finalSo! } : o) }));
+          }
+          break;
+        }
+        const isSoCollision = error.code === '23505' && String(error.message || '').includes('orders_so_number_unique');
+        if (!isSoCollision || attempt === 2) {
+          console.error('Error assigning SO number:', error);
+          break;
+        }
+      }
     }
   };
 
@@ -1911,6 +1959,7 @@ const mapEnquiryToDB = (e: any) => {
         addOrder,
         updateOrder,
         deleteOrder,
+        ensureSoNumbers,
         addDispatchEntry,
         updateDispatchEntry,
         deleteDispatchEntry,

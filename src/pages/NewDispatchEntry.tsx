@@ -725,8 +725,17 @@ export function NewDispatchEntry() {
           {/* Order selection — Fulfillment Type now lives in the Customer & Contact card below, alongside the rest of the dispatch-specific fields */}
           <div className="bg-white border border-g200">
             <div className={sectionHeaderCls}>Order Selection</div>
-            <div className="p-[14px_16px]">
-              <div>
+            <div className="p-[14px_16px] grid grid-cols-12 gap-[12px]">
+              {/* SO No. — read-only, assigned automatically on the Dispatch page */}
+              <div className="col-span-12 sm:col-span-3">
+                <label className={labelCls}>SO No.</label>
+                <div className="flex items-center border border-g200 rounded-[3px] px-3 h-[38px] bg-g50">
+                  {selectedOrder?.soNumber
+                    ? <span className="font-mono text-[12px] font-bold text-sW">{selectedOrder.soNumber}</span>
+                    : <span className="text-g400 text-[12.5px]">—</span>}
+                </div>
+              </div>
+              <div className="col-span-12 sm:col-span-9">
                 <label className={labelCls}>Order (must be Order Confirmed)</label>
                 {selectedOrder ? (
                   <div className="flex items-center justify-between gap-2 border border-g200 rounded-[3px] px-3 h-[38px] bg-g50">
