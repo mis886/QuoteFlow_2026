@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
@@ -7,6 +7,7 @@ import { canDeleteRecords, formatINR, fmtDate, fmtIST, doerLabel, siteLabel, res
 import { Order, OrderItem, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 
 type SubType = DispatchFulfillmentType | 'not_set';
+type DispatchTab = 'pending' | 'dispatched' | 'toDispatch';
 
 const thBase = 'font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] whitespace-nowrap border-b border-g200';
 const thCls = `${thBase} text-left`;
@@ -93,8 +94,16 @@ export function Dispatch() {
   const { data, user, deleteDispatchEntry, ensureSoNumbers } = useAppStore();
   const canDelete = canDeleteRecords(user?.email);
 
-  const [tab, setTab] = useState<'pending' | 'toDispatch' | 'toSend'>('pending');
-  const [subType, setSubType] = useState<SubType>('delivery');
+  // Initial tab/pill come from the URL (?tab=pending|dispatched|toDispatch
+  // &type=delivery|self_pickup) — NewDispatchEntry.tsx sends the user back
+  // here that way after Save so they land on the entry they just made.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState<DispatchTab>(() => {
+    const t = searchParams.get('tab');
+    return t === 'dispatched' || t === 'toDispatch' ? t : 'pending';
+  });
+  const [subType, setSubType] = useState<DispatchFulfillmentType>(() =>
+    searchParams.get('type') === 'self_pickup' ? 'self_pickup' : 'delivery');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
@@ -103,15 +112,16 @@ export function Dispatch() {
   // Order Pending for Dispatch — read-only view of every Order Confirmed
   // order, plus every 'Order Pending for Dispatch' leftover split off a
   // partial dispatch, that has no dispatch entry yet. Once an entry is
-  // created it drops out of here and shows under "Order → Dispatch"
-  // instead. Nothing here changes an order's status.
+  // created it drops out of here and shows under "Dispatched" (or
+  // "Order → Dispatch"). Nothing here changes an order's status.
   const dispatchedOrderIds = useMemo(() => new Set(data.dispatchEntries.map(e => e.orderId)), [data.dispatchEntries]);
   const pendingOrders = useMemo(
     () => data.orders.filter(o => (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && !dispatchedOrderIds.has(o.id)),
     [data.orders, dispatchedOrderIds],
   );
-  // Order's own fulfillment type first, then the customer's typical pattern,
-  // else "Not Set" so no confirmed order is ever hidden.
+  // Shown in the Fulfillment column only (this tab has no Delivery/Self
+  // Pickup split) — order's own type first, then the customer's typical
+  // pattern, else "Not Set".
   const orderFulfillment = (o: Order): SubType => {
     if (o.fulfillmentType === 'delivery' || o.fulfillmentType === 'self_pickup') return o.fulfillmentType;
     const cf = data.customers.find(c => c.name === o.cust)?.fulfilmentType;
@@ -137,23 +147,25 @@ export function Dispatch() {
   const entries = data.dispatchEntries;
   // "Sent" is tracked purely by sentAt being set (see the "Dispatch → Sent"
   // button below, and the Status dropdown in NewDispatchEntry.tsx) — an
-  // entry lives in exactly one of the two tabs at a time. All tabs share
+  // entry lives in exactly one of the two entry tabs at a time. Both share
   // the same Delivery/Self Pickup sub-split.
   const toDispatchEntries = entries.filter(e => !e.sentAt);
   const sentEntries = entries.filter(e => e.sentAt);
-  const activeEntries = tab === 'toSend' ? sentEntries : toDispatchEntries;
+  const activeEntries = tab === 'dispatched' ? sentEntries : toDispatchEntries;
+  const deliveryCount = activeEntries.filter(e => e.fulfillmentType === 'delivery').length;
+  const selfPickupCount = activeEntries.filter(e => e.fulfillmentType === 'self_pickup').length;
 
-  const pendingCount = (t: SubType) => pendingOrders.filter(o => orderFulfillment(o) === t).length;
-  const deliveryCount = tab === 'pending' ? pendingCount('delivery') : activeEntries.filter(e => e.fulfillmentType === 'delivery').length;
-  const selfPickupCount = tab === 'pending' ? pendingCount('self_pickup') : activeEntries.filter(e => e.fulfillmentType === 'self_pickup').length;
-  const notSetCount = tab === 'pending' ? pendingCount('not_set') : 0;
-
-  // "Not Set" only exists for pending orders — fall back to Delivery when
-  // switching to a tab that doesn't have it.
-  const switchTab = (t: typeof tab) => {
+  // Keep the URL in step so a refresh stays on the same tab/pill.
+  const syncUrl = (t: DispatchTab, type: DispatchFulfillmentType) =>
+    setSearchParams(t === 'pending' ? {} : { tab: t, type }, { replace: true });
+  const switchTab = (t: DispatchTab) => {
     setTab(t);
     setExpandedRow(null);
-    if (t !== 'pending' && subType === 'not_set') setSubType('delivery');
+    syncUrl(t, subType);
+  };
+  const switchSubType = (type: DispatchFulfillmentType) => {
+    setSubType(type);
+    syncUrl(tab, type);
   };
 
   const qs = search.trim().toLowerCase();
@@ -169,9 +181,9 @@ export function Dispatch() {
 
   const visiblePending = useMemo(
     () => pendingOrders
-      .filter(o => orderFulfillment(o) === subType && orderMatches(o, o.id))
+      .filter(o => orderMatches(o, o.id))
       .sort((a, b) => (b.created_at || b.poDate || '').localeCompare(a.created_at || a.poDate || '')),
-    [pendingOrders, subType, qs, data.customers],
+    [pendingOrders, qs],
   );
 
   const visibleEntries = useMemo(
@@ -202,28 +214,27 @@ export function Dispatch() {
           <div onClick={() => switchTab('pending')} className={pillCls(tab === 'pending')}>
             Order Pending for Dispatch ({pendingOrders.length})
           </div>
+          <div onClick={() => switchTab('dispatched')} className={pillCls(tab === 'dispatched')}>
+            Dispatched ({sentEntries.length})
+          </div>
           <div onClick={() => switchTab('toDispatch')} className={pillCls(tab === 'toDispatch')}>
             Order → Dispatch ({toDispatchEntries.length})
           </div>
-          <div onClick={() => switchTab('toSend')} className={pillCls(tab === 'toSend')}>
-            Dispatch → Sent ({sentEntries.length})
-          </div>
         </div>
 
-        <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
-        <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-          <div onClick={() => setSubType('delivery')} className={`flex items-center gap-1.5 ${pillCls(subType === 'delivery')}`}>
-            <span className="w-[7px] h-[7px] rounded-full bg-sN shrink-0" /> Delivery ({deliveryCount})
-          </div>
-          <div onClick={() => setSubType('self_pickup')} className={`flex items-center gap-1.5 ${pillCls(subType === 'self_pickup')}`}>
-            <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup ({selfPickupCount})
-          </div>
-          {tab === 'pending' && (notSetCount > 0 || subType === 'not_set') && (
-            <div onClick={() => setSubType('not_set')} className={`flex items-center gap-1.5 ${pillCls(subType === 'not_set')}`}>
-              <span className="w-[7px] h-[7px] rounded-full bg-g400 shrink-0" /> Not Set ({notSetCount})
+        {tab !== 'pending' && (
+          <>
+            <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
+            <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
+              <div onClick={() => switchSubType('delivery')} className={`flex items-center gap-1.5 ${pillCls(subType === 'delivery')}`}>
+                <span className="w-[7px] h-[7px] rounded-full bg-sN shrink-0" /> Delivery ({deliveryCount})
+              </div>
+              <div onClick={() => switchSubType('self_pickup')} className={`flex items-center gap-1.5 ${pillCls(subType === 'self_pickup')}`}>
+                <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup ({selfPickupCount})
+              </div>
             </div>
-          )}
-        </div>
+          </>
+        )}
 
         <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
         <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[200px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
@@ -265,7 +276,7 @@ export function Dispatch() {
               <tbody>
                 {visiblePending.length === 0 ? (
                   <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">
-                    {qs ? 'No matching orders' : subType === 'not_set' ? 'No confirmed orders without a fulfillment type' : `No confirmed ${fulfillmentLabel(subType)} orders pending for dispatch`}
+                    {qs ? 'No matching orders' : 'No confirmed orders pending for dispatch'}
                   </td></tr>
                 ) : (
                   visiblePending.map(o => {
@@ -307,7 +318,7 @@ export function Dispatch() {
                           </td>
                           <td className="px-[13px] py-[10px] align-top"><Badge status={o.status} /></td>
                           <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
-                            <Button size="sm" variant="success" className="active:scale-95 transition-transform" onClick={() => navigate(`/dispatch/new?orderRef=${o.id}`)}>Create Dispatch</Button>
+                            <Button size="sm" variant="success" className="active:scale-95 transition-transform" onClick={() => navigate(`/dispatch/new?orderRef=${o.id}&toSent=1`)}>Create Dispatch</Button>
                           </td>
                         </tr>
                         {isExpanded && (
@@ -343,7 +354,7 @@ export function Dispatch() {
               </thead>
               <tbody>
                 {visibleEntries.length === 0 ? (
-                  <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">{qs ? 'No matching entries' : `No ${subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries ${tab === 'toSend' ? 'sent yet' : 'yet'}`}</td></tr>
+                  <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">{qs ? 'No matching entries' : `No ${subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries ${tab === 'dispatched' ? 'dispatched yet' : 'yet'}`}</td></tr>
                 ) : (
                   visibleEntries.map(entry => {
                     const order = orderFor(entry);

@@ -376,6 +376,25 @@ export function NewDispatchEntry() {
       // the entry carries its own items/insurance snapshot for exactly this.
       if (existing.items && existing.items.length) setItems(existing.items.map(i => ({ ...i })));
       if (typeof existing.insurance === 'number') setInsurance(existing.insurance);
+    } else {
+      // Brand-new entry (e.g. "Create Dispatch" off the Order Pending for
+      // Dispatch tab, which opens with ?toSent=1): start in Dispatch → Sent
+      // so the Documents Attachment section is visible right away, and fill
+      // any blanks hydrateFromOrder left from the customer/site defaults.
+      if (toSent) setSentStatus('sent');
+      const cust = data.customers.find(c => c.name === order.cust);
+      if (!order.fulfillmentType) {
+        if (cust?.fulfilmentType === 'Delivery') setType('delivery');
+        else if (cust?.fulfilmentType === 'Self Pickup') setType('self_pickup');
+      }
+      if (!order.transporter) {
+        const site = cust?.sites.find(s => s.id === order.siteId);
+        if (site?.transporter) setTransporter(site.transporter);
+      }
+      if (!order.promisedDeliveryDate) {
+        const fallbackDate = order.dlvDate || order.scheduleDate;
+        if (fallbackDate) setPromisedDeliveryDate(fallbackDate.slice(0, 10));
+      }
     }
   }, [orderRef, data.orders, data.dispatchEntries]);
 
@@ -440,7 +459,7 @@ export function NewDispatchEntry() {
 
   const handleSubmit = async () => {
     if (!selectedOrderId || !selectedOrder || saving) return;
-    if (!type) { setError('Please select Fulfilment Type: Delivery or Self Pickup.'); return; }
+    if (!type) { setError('Please select Delivery or Self Pickup'); return; }
     setSaving(true);
     setError('');
     try {
@@ -666,7 +685,8 @@ export function NewDispatchEntry() {
       } else {
         await addDispatchEntry(selectedOrderId, type as DispatchFulfillmentType, extra);
       }
-      navigate('/dispatch');
+      // Land on the tab/pill the saved entry now lives under.
+      navigate(`/dispatch?tab=${sentAt ? 'dispatched' : 'toDispatch'}&type=${type}`);
     } catch (err: any) {
       setError(err?.message || 'Could not save — check your connection.');
     } finally {
