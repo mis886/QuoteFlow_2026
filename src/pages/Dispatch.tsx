@@ -404,7 +404,7 @@ export function Dispatch() {
                         >
                           <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><SoCell soNumber={order?.soNumber} hasOrder={!!order} /></td>
                           <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10px] font-bold text-sQ">{entry.orderId}</span></td>
-                          <td className="px-[13px] py-[10px] align-top">
+                          <td className="px-[13px] py-[10px] align-top min-w-[160px]">
                             <div className="font-semibold">{order?.cust || '—'}</div>
                           </td>
                           <td className="px-[13px] py-[10px] align-top font-mono text-[10.5px]">{order?.poNo || '—'}</td>
@@ -428,9 +428,9 @@ export function Dispatch() {
                           {isEmailSentTab && (
                             <td className="px-[13px] py-[10px] align-top whitespace-nowrap">{entry.emailSentAt ? fmtIST(new Date(entry.emailSentAt), 'dd-MMM-yyyy hh:mm a') : '—'}</td>
                           )}
-                          <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
+                          <td className="px-[13px] py-[10px] align-top whitespace-nowrap" onClick={ev => ev.stopPropagation()}>
                             <div className="flex flex-col gap-[3px]">
-                              <div className="flex gap-1.5 flex-wrap">
+                              <div className="flex items-center gap-1.5 flex-nowrap">
                                 {tab === 'toDispatch' && (
                                   // Opens the full entry form with the Status dropdown
                                   // pre-set to "Dispatch → Sent" (and existing data
