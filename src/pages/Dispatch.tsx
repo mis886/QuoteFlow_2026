@@ -357,7 +357,24 @@ export function Dispatch() {
               </tbody>
             </table>
           ) : (
-            <table className="w-full border-collapse text-[12.5px]">
+            // Fixed layout + fixed column widths so the Delivery and Self
+            // Pickup pills render identically instead of auto-sizing to
+            // whatever rows happen to be showing.
+            <table className="w-full table-fixed border-collapse text-[12.5px]">
+              <colgroup>
+                <col style={{ width: 110 }} />{/* SO No. */}
+                <col style={{ width: 110 }} />{/* Order Ref */}
+                <col style={{ width: 200 }} />{/* Customer */}
+                <col style={{ width: 120 }} />{/* PO No. */}
+                <col style={{ width: 100 }} />{/* Fulfillment */}
+                <col style={{ width: 90 }} />{/* Items */}
+                <col style={{ width: 120 }} />{/* Value */}
+                <col style={{ width: 150 }} />{/* Transporter */}
+                <col style={{ width: 110 }} />{/* Invoice No. */}
+                <col style={{ width: 115 }} />{/* Dispatched On */}
+                {isEmailSentTab && <col style={{ width: 165 }} />}{/* Email Sent On */}
+                <col style={{ width: 160 }} />{/* Actions */}
+              </colgroup>
               <thead className="bg-g100">
                 <tr>
                   <th className={thCls}>SO No.</th>
@@ -392,20 +409,20 @@ export function Dispatch() {
                         >
                           <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><SoCell soNumber={order?.soNumber} hasOrder={!!order} /></td>
                           <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10px] font-bold text-sQ">{entry.orderId}</span></td>
-                          <td className="px-[13px] py-[10px] align-top min-w-[160px]">
+                          <td className="px-[13px] py-[10px] align-top break-words">
                             <div className="font-semibold">{order?.cust || '—'}</div>
                           </td>
-                          <td className="px-[13px] py-[10px] align-top font-mono text-[10.5px]">{order?.poNo || '—'}</td>
+                          <td className="px-[13px] py-[10px] align-top font-mono text-[10.5px] break-words">{order?.poNo || '—'}</td>
                           <td className="px-[13px] py-[10px] align-top">{entry.fulfillmentType === 'self_pickup' ? 'Self Pickup' : 'Delivery'}</td>
-                          <td className="px-[13px] py-[10px] align-top">{entry.items?.length ?? 0} item(s)</td>
-                          <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold">{formatINR(Math.round(entry.value || 0))}</td>
-                          <td className="px-[13px] py-[10px] align-top">{entry.transporter || '—'}</td>
+                          <td className="px-[13px] py-[10px] align-top whitespace-nowrap">{entry.items?.length ?? 0} item(s)</td>
+                          <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold whitespace-nowrap">{formatINR(Math.round(entry.value || 0))}</td>
+                          <td className="px-[13px] py-[10px] align-top break-words">{entry.transporter || '—'}</td>
                           <td className="px-[13px] py-[10px] align-top whitespace-nowrap">
                             {entry.invoiceNumber
-                              ? <span className="font-mono text-[10.5px] font-semibold">{entry.invoiceNumber}</span>
+                              ? <span className="block truncate font-mono text-[10.5px] font-semibold" title={entry.invoiceNumber}>{entry.invoiceNumber}</span>
                               : <span className="text-g400">—</span>}
                           </td>
-                          <td className="px-[13px] py-[10px] align-top">{entry.created_at ? fmtIST(new Date(entry.created_at), 'dd-MMM-yyyy') : '—'}</td>
+                          <td className="px-[13px] py-[10px] align-top whitespace-nowrap">{entry.created_at ? fmtIST(new Date(entry.created_at), 'dd-MMM-yyyy') : '—'}</td>
                           {isEmailSentTab && (
                             <td className="px-[13px] py-[10px] align-top whitespace-nowrap">{entry.emailSentAt ? fmtIST(new Date(entry.emailSentAt), 'dd-MMM-yyyy hh:mm a') : '—'}</td>
                           )}
