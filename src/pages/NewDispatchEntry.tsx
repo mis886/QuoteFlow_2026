@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, generateId } from '../lib/utils';
+import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, generateId, fmtDate } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
@@ -65,6 +65,21 @@ const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt disabled:opacity-60 disabled:cursor-not-allowed";
 const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]";
 const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt p-[11px_16px] border-b border-g200";
+
+// One read-only box in the "Order Details" card — grey '—' when empty,
+// truncated with a tooltip so long values never overflow the box.
+function ReadOnlyBox({ label, value, className = 'text-[12.5px]', children }: { label: string; value?: string | null; className?: string; children?: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <label className={labelCls}>{label}</label>
+      <div className="flex items-center border border-g200 rounded-[3px] px-3 h-[38px] bg-g50 min-w-0" title={value || undefined}>
+        {value
+          ? <span className={`truncate min-w-0 ${className}`}>{children ?? value}</span>
+          : <span className="text-g400 text-[12.5px]">—</span>}
+      </div>
+    </div>
+  );
+}
 
 const INCO_OPTIONS = [
   'EXW', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP', 'FCA',
@@ -744,34 +759,32 @@ export function NewDispatchEntry() {
 
           {/* Order selection — Fulfillment Type now lives in the Customer & Contact card below, alongside the rest of the dispatch-specific fields */}
           <div className="bg-white border border-g200">
-            <div className={sectionHeaderCls}>Order Selection</div>
-            <div className="p-[14px_16px] grid grid-cols-12 gap-[12px]">
-              {/* SO No. — read-only, assigned automatically on the Dispatch page */}
-              <div className="col-span-12 sm:col-span-3">
-                <label className={labelCls}>SO No.</label>
-                <div className="flex items-center border border-g200 rounded-[3px] px-3 h-[38px] bg-g50">
-                  {selectedOrder?.soNumber
-                    ? <span className="font-mono text-[12px] font-bold text-sW">{selectedOrder.soNumber}</span>
-                    : <span className="text-g400 text-[12.5px]">—</span>}
-                </div>
+            <div className={sectionHeaderCls}>Order Details</div>
+            {selectedOrder ? (
+              // Read-only, one box per field — mirrors the header row on
+              // the Edit Order page. Customer lives in the card below.
+              <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-[12px]">
+                {/* SO No. — assigned automatically on the Dispatch page */}
+                <ReadOnlyBox label="SO No." value={selectedOrder.soNumber} className="font-mono text-[12px] font-bold text-sW" />
+                <ReadOnlyBox
+                  label="Order Ref"
+                  value={selectedOrder.quoteRef ? `${selectedOrder.id}  ${selectedOrder.quoteRef}` : selectedOrder.id}
+                  className="text-[12.5px]"
+                >
+                  <span className="font-mono font-bold text-sQ">{selectedOrder.id}</span>
+                  {selectedOrder.quoteRef && <span className="font-mono text-[10px] text-g500 ml-2">{selectedOrder.quoteRef}</span>}
+                </ReadOnlyBox>
+                <ReadOnlyBox label="Enq Reference" value={selectedOrder.enqRef} className="font-mono text-[12px]" />
+                <ReadOnlyBox label="PO Number" value={selectedOrder.poNo} className="font-mono text-[12px]" />
+                <ReadOnlyBox label="PO Date" value={selectedOrder.poDate ? fmtDate(selectedOrder.poDate) : ''} />
+                <ReadOnlyBox label="Required Delivery By" value={selectedOrder.dlvDate ? fmtDate(selectedOrder.dlvDate) : ''} />
+                <ReadOnlyBox label="Schedule Date" value={selectedOrder.scheduleDate ? fmtDate(selectedOrder.scheduleDate) : ''} />
               </div>
-              <div className="col-span-12 sm:col-span-9">
-                <label className={labelCls}>Order (must be Order Confirmed)</label>
-                {selectedOrder ? (
-                  <div className="flex items-center justify-between gap-2 border border-g200 rounded-[3px] px-3 h-[38px] bg-g50">
-                    <div className="min-w-0 text-[13px]">
-                      <span className="font-mono font-bold text-sW mr-2">{selectedOrder.id}</span>
-                      <span className="font-semibold">{selectedOrder.cust}</span>
-                      <span className="text-g500 font-mono ml-2">{selectedOrder.poNo}</span>
-                    </div>
-                  </div>
-                ) : (
-                  // Only visible for a single render tick before the
-                  // redirect effect above sends us back to /dispatch.
-                  <div className="text-g400 text-[12.5px] px-1 py-2">Loading…</div>
-                )}
-              </div>
-            </div>
+            ) : (
+              // Only visible for a single render tick before the
+              // redirect effect above sends us back to /dispatch.
+              <div className="p-[14px_16px] text-g400 text-[12.5px]">Loading…</div>
+            )}
           </div>
 
           {/* Customer & Contact / Delivery & Trading Terms — auto-fetched, editable */}
