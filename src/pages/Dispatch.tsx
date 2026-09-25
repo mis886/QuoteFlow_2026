@@ -101,12 +101,13 @@ export function Dispatch() {
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
 
   // Order Pending for Dispatch — read-only view of every Order Confirmed
-  // order that has no dispatch entry yet. Once an entry is created it drops
-  // out of here and shows under "Order → Dispatch" instead. Nothing here
-  // changes an order's status.
+  // order, plus every 'Order Pending for Dispatch' leftover split off a
+  // partial dispatch, that has no dispatch entry yet. Once an entry is
+  // created it drops out of here and shows under "Order → Dispatch"
+  // instead. Nothing here changes an order's status.
   const dispatchedOrderIds = useMemo(() => new Set(data.dispatchEntries.map(e => e.orderId)), [data.dispatchEntries]);
   const pendingOrders = useMemo(
-    () => data.orders.filter(o => o.status === 'Order Confirmed' && !dispatchedOrderIds.has(o.id)),
+    () => data.orders.filter(o => (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && !dispatchedOrderIds.has(o.id)),
     [data.orders, dispatchedOrderIds],
   );
   // Order's own fulfillment type first, then the customer's typical pattern,
