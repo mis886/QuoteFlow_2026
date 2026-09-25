@@ -5,3 +5,6 @@ node_modules/
 *enqboss ssh.pub
 *enqboss ssh
 
+
+# Local data backups (may contain customer data) — never commit
+backups/
