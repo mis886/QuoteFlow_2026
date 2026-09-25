@@ -440,12 +440,6 @@ export function Dispatch() {
                                   // section there and clicks Save.
                                   <Button size="sm" variant="success" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}&toSent=1`)}>Dispatch → Sent</Button>
                                 )}
-                                {tab === 'dispatched' && (
-                                  // Opens the form with the Email to Client popup
-                                  // auto-opened; a successful send moves the entry
-                                  // to the Email Sent tab.
-                                  <Button size="sm" variant="success" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}&email=1`)}>Send Email</Button>
-                                )}
                                 <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}`)}>Edit</Button>
                                 {canDelete && (
                                   <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async () => {

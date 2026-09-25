@@ -104,9 +104,6 @@ export function NewDispatchEntry() {
   // "Dispatch → Sent" and the Documents Attachment / COA section is visible
   // right away — the entry itself isn't marked sent until Save is clicked.
   const toSent = searchParams.get('toSent') === '1';
-  // Set by the Dispatched tab's "Send Email" button (?email=1) — opens the
-  // Email to Client popup automatically once the saved entry has loaded.
-  const autoEmail = searchParams.get('email') === '1';
   const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   // This whole page is locked to view-only for isReadOnlyUser (the Bhiwandi
@@ -316,15 +313,6 @@ export function NewDispatchEntry() {
     setError('');
     setShowEmailModal(true);
   };
-
-  // ?email=1 — open the popup once, as soon as the order (and its saved
-  // entry, set in the same hydration pass) has loaded.
-  const autoEmailDone = useRef(false);
-  useEffect(() => {
-    if (!autoEmail || autoEmailDone.current || !selectedOrderId || isReadOnlyUser) return;
-    autoEmailDone.current = true;
-    openEmailModal();
-  }, [autoEmail, selectedOrderId, existingEntryId, isReadOnlyUser]);
 
   const hydrateFromOrder = (order: Order) => {
     setContact(order.contact || '');
