@@ -270,6 +270,8 @@ export function SendEmailModal(props: Props) {
     ...initialExtraCCs,
   ]));
   const [customCC, setCustomCC] = useState('');
+  // Dispatch only: set when Send finds an invalid address left in the CC box.
+  const [ccError, setCcError] = useState('');
   const [extraCCs, setExtraCCs] = useState<string[]>(initialExtraCCs);
 
   const [status, setStatus]   = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
@@ -318,14 +320,36 @@ export function SendEmailModal(props: Props) {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    let sendCc = ccString;
+    let toRecipients: string;
     if (isDispatch) {
-      if (toList.length === 0) { setToError('Recipient email is required.'); return; }
+      // Anything still typed in the "Add another To email…" / "Add custom CC
+      // email…" boxes is auto-added on Send (if valid) instead of silently
+      // dropped. The final lists are built locally since state updates
+      // won't land before this send goes out.
+      const pendingTo = customTo.trim();
+      const pendingCc = customCC.trim();
+      if (pendingTo && !EMAIL_RE.test(pendingTo)) { setToError('Enter a valid email address.'); return; }
+      if (pendingCc && !EMAIL_RE.test(pendingCc)) { setCcError('Enter a valid email address.'); return; }
+      const finalTo = [...toList];
+      if (pendingTo && !finalTo.some(t => t.toLowerCase() === pendingTo.toLowerCase())) finalTo.push(pendingTo);
+      if (finalTo.length === 0) { setToError('Recipient email is required.'); return; }
+      const finalToLower = new Set(finalTo.map(t => t.toLowerCase()));
+      const finalCc = [...selectedCC];
+      if (pendingCc && !finalCc.some(c => c.toLowerCase() === pendingCc.toLowerCase())) finalCc.push(pendingCc);
+      sendCc = finalCc.filter(Boolean).filter(c => !finalToLower.has(c.toLowerCase())).join(', ');
+      // Reflect the auto-adds in the UI too.
+      if (pendingTo) { setToList(finalTo); setCustomTo(''); }
+      if (pendingCc) { addCustomCC(); }
+      toRecipients = finalTo.join(', ');
     } else {
       if (!to.trim()) { setToError('Recipient email is required.'); return; }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim())) { setToError('Enter a valid email address.'); return; }
+      if (!EMAIL_RE.test(to.trim())) { setToError('Enter a valid email address.'); return; }
+      toRecipients = to.trim();
     }
-    const toRecipients = isDispatch ? toList.join(', ') : to.trim();
     setToError('');
+    setCcError('');
     setStatus('sending');
     setErrorMsg('');
 
@@ -376,7 +400,7 @@ export function SendEmailModal(props: Props) {
         }
       }
 
-      await sendViaGmailAsUser({ to: toRecipients, cc: ccString, subject, body, attachments, poLink: poSubmitLink || undefined }, senderEmail);
+      await sendViaGmailAsUser({ to: toRecipients, cc: sendCc, subject, body, attachments, poLink: poSubmitLink || undefined }, senderEmail);
 
       setStatus('sent');
       setTimeout(() => { onSent?.(); onClose(); }, 1500);
@@ -508,13 +532,14 @@ export function SendEmailModal(props: Props) {
               <div className="flex gap-2 items-center">
                 <input
                   type="text" value={customCC}
-                  onChange={e => setCustomCC(e.target.value)}
+                  onChange={e => { setCustomCC(e.target.value); setCcError(''); }}
                   onKeyDown={e => { if (e.key === 'Enter') { addCustomCC(); e.preventDefault(); } }}
                   placeholder="Add custom CC email…"
                   className="flex-1 h-8 px-3 bg-g50 border border-g300 rounded-[3px] font-mono text-[11.5px] text-blk focus:border-red-mrt focus:ring-4 focus:ring-red-lt outline-none"
                 />
                 <Button type="button" size="sm" variant="secondary" onClick={addCustomCC}>+ Add</Button>
               </div>
+              {ccError && <p className="mt-1 text-[10.5px] text-red-mrt font-medium">{ccError}</p>}
 
               {/* Summary line */}
               <p className="mt-1.5 text-[10px] text-g400 font-mono truncate">CC: {ccString}</p>
