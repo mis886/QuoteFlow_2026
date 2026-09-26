@@ -305,7 +305,21 @@ export function Orders() {
 
       <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto m-0">
-          <table className="w-full border-collapse text-[12.5px]">
+          {/* Fixed layout + fixed column widths: no big gaps between the
+              narrow columns, and Actions always gets enough room. */}
+          <table className="w-full table-fixed border-collapse text-[12.5px]">
+            <colgroup>
+              <col style={{ width: 110 }} />{/* Order No. */}
+              <col style={{ width: 105 }} />{/* Quote Ref */}
+              <col style={{ width: 210 }} />{/* Customer - Unit */}
+              <col style={{ width: 130 }} />{/* PO Number */}
+              <col style={{ width: 115 }} />{/* Schedule Date */}
+              <col style={{ width: 95 }} />{/* Items */}
+              <col style={{ width: 120 }} />{/* Order Value */}
+              <col style={{ width: 110 }} />{/* Punched At */}
+              <col style={{ width: 170 }} />{/* Status */}
+              <col style={{ width: 290 }} />{/* Actions */}
+            </colgroup>
             <thead className="bg-g100">
               <tr>
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Order No.</th>
@@ -338,14 +352,14 @@ export function Orders() {
                         className={`group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-sW/5 ${isExpanded ? 'bg-sW/5' : ''}`}
                         onClick={() => setExpandedRow(isExpanded ? null : o.id)}
                       >
-                        <td className="px-[13px] py-[10px] align-top"><span className="font-mono text-[10.5px] font-bold text-sW">{o.id}</span></td>
-                        <td className="px-[13px] py-[10px] align-top"><span className="font-mono text-[10px] font-bold text-sQ">{o.quoteRef}</span></td>
-                        <td className="px-[13px] py-[10px] align-top">
+                        <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10.5px] font-bold text-sW">{o.id}</span></td>
+                        <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10px] font-bold text-sQ">{o.quoteRef}</span></td>
+                        <td className="px-[13px] py-[10px] align-top break-words">
                           <div className="font-semibold">{o.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === o.cust), (o as any).siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
                           {(() => { const saved = (o as any).customerTier as string; const t = saved || (() => { const ct = data.customers.find(c => c.name === o.cust)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
                         </td>
-                        <td className="px-[13px] py-[10px] align-top font-mono text-[11px] font-bold text-g700">
-                          <div className="flex items-center gap-1.5">
+                        <td className="px-[13px] py-[10px] align-top font-mono text-[11px] font-bold text-g700 [overflow-wrap:anywhere]">
+                          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                             {o.poNo}
                             {o.poFileName && o.poFileName.startsWith('http') && (
                               <a href={o.poFileName} target="_blank" rel="noopener noreferrer" className="ml-1 text-red-mrt hover:text-red-900">
@@ -373,12 +387,12 @@ export function Orders() {
                         <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
                           {o.scheduleDate ? fmtIST(new Date(o.scheduleDate), 'dd-MMM-yyyy') : '--'}
                         </td>
-                        <td className="px-[13px] py-[10px] align-top">
+                        <td className="px-[13px] py-[10px] align-top whitespace-nowrap">
                           <span className="font-mono text-[10px] font-bold bg-g100 text-g600 px-[7px] py-[2px] rounded-full inline-flex items-center">
                             {o.items.length} item(s)
                           </span>
                         </td>
-                        <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
+                        <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold whitespace-nowrap">{formatINR(Math.round(grandTotal))}</td>
                         {/* <td className="px-[13px] py-[10px] align-top text-[11.5px] whitespace-nowrap">
                           {o.dlvDate ? (() => {
                             // Colour the due date only while the order is still open:
@@ -533,10 +547,11 @@ export function Orders() {
                                 }
                               }}>Delete</Button>
                             )}
-                            {o.authorizedPerson?.name && (
-                              <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{o.authorizedPerson.name}</span>
-                            )}
                           </div>
+                          {/* Doer name on its own line under the buttons */}
+                          {o.authorizedPerson?.name && (
+                            <div className="mt-1 text-[10px] font-mono text-g400 whitespace-nowrap">{o.authorizedPerson.name}</div>
+                          )}
                           {/* // hide temporaryly to prevent unnecessary entries in google sheet otherwise its most useful button */}
                         </td>
                       </tr>
