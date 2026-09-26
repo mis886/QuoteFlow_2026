@@ -404,7 +404,7 @@ export function Orders() {
                                 return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed">Dispatched</Button>;
                               }
                               if (o.sentToDispatchAt) {
-                                return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100" title={o.soNumber ? `In Dispatch — ${o.soNumber}` : 'In Dispatch'}>In Dispatch</Button>;
+                                return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100" title={o.soNumber ? `Already sent to Dispatch — ${o.soNumber}` : 'Already sent to Dispatch'}>Order Pending for Dispatch</Button>;
                               }
                               const eligible = o.status === 'Order Confirmed';
                               const sending = sendingToDispatchId === o.id;
