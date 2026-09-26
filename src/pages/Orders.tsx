@@ -425,15 +425,26 @@ export function Orders() {
                               // Orders only reach Dispatch → Order Pending for Dispatch
                               // once sent from here (sentToDispatchAt). From there on,
                               // "Create Dispatch" in the Dispatch module takes over.
-                              // Has a dispatch entry → nothing here (no "Dispatched" label).
-                              if (hasDispatchEntry) return null;
-                              // Already sent (now in Dispatch → Order Pending for
-                              // Dispatch) → nothing here.
-                              if (o.sentToDispatchAt) return null;
-                              // Green button: only for allowed logins (sales@/mis@/
-                              // shishir@) and only on Order Confirmed orders —
-                              // any other status renders nothing at all.
-                              if (!canSendDispatch || o.status !== 'Order Confirmed') return null;
+                              // Only Order Confirmed orders show anything here — any
+                              // other status renders nothing at all.
+                              if (o.status !== 'Order Confirmed') return null;
+                              // Already sent / dispatched → grey disabled button for
+                              // everyone (status itself stays Order Confirmed).
+                              if (o.sentToDispatchAt || hasDispatchEntry) {
+                                return (
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    disabled
+                                    className="bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100"
+                                    title={o.soNumber ? `Already sent to Dispatch — ${o.soNumber}` : 'Already sent to Dispatch'}
+                                  >
+                                    Order Pending for Dispatch
+                                  </Button>
+                                );
+                              }
+                              // Green button: only for allowed logins (sales@/mis@/shishir@).
+                              if (!canSendDispatch) return null;
                               const sending = sendingToDispatchId === o.id;
                               return (
                                 <Button
