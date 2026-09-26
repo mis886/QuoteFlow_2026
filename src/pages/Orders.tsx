@@ -6,7 +6,7 @@ import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollb
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -41,6 +41,7 @@ export function Orders() {
   const canDelete = canDeleteRecords(user?.email);
   const canConfirmPmt = canConfirmPayment(user?.email);
   const canComplete = canCompleteOrder(user?.email);
+  const canSendDispatch = canSendToDispatch(user?.email);
   const { globalSearchQuery } = store as any;
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
@@ -406,18 +407,20 @@ export function Orders() {
                               if (o.sentToDispatchAt) {
                                 return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100" title={o.soNumber ? `Already sent to Dispatch — ${o.soNumber}` : 'Already sent to Dispatch'}>Order Pending for Dispatch</Button>;
                               }
-                              const eligible = o.status === 'Order Confirmed';
+                              // Green button: only for allowed logins (sales@/mis@/
+                              // shishir@) and only on Order Confirmed orders —
+                              // any other status renders nothing at all.
+                              if (!canSendDispatch || o.status !== 'Order Confirmed') return null;
                               const sending = sendingToDispatchId === o.id;
                               return (
                                 <Button
                                   size="sm"
                                   variant="success"
-                                  disabled={!eligible || sending}
-                                  className={!eligible ? 'bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : 'active:scale-95 transition-transform'}
-                                  title={!eligible ? 'Order must be Order Confirmed first' : undefined}
+                                  disabled={sending}
+                                  className="active:scale-95 transition-transform"
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    if (!eligible || sending) return;
+                                    if (sending) return;
                                     setSendingToDispatchId(o.id);
                                     try {
                                       const so = await sendOrderToDispatch(o.id);

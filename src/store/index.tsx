@@ -3,7 +3,7 @@ import type { Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quo
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { calculateAgeHours, generateId } from '../lib/utils';
+import { calculateAgeHours, generateId, canSendToDispatch } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { User } from '@supabase/supabase-js';
 
@@ -994,6 +994,11 @@ const mapEnquiryToDB = (e: any) => {
   // its SO number via ensureSoNumbers (no-op if it already has one).
   // Returns the order's SO number, read fresh from the DB, for the toast.
   const sendOrderToDispatch = async (orderId: string): Promise<string | null> => {
+    // Same allow-list as the button in Orders.tsx, so it can't be
+    // triggered any other way by someone who isn't allowed.
+    if (!canSendToDispatch(user?.email)) {
+      throw new Error("You don't have permission to send orders to Dispatch.");
+    }
     const sentToDispatchAt = new Date().toISOString();
     const { error } = await supabase.from('orders').update({ sent_to_dispatch_at: sentToDispatchAt }).eq('id', orderId);
     if (error) {

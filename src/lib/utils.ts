@@ -50,6 +50,13 @@ export function normalizePayTerms(raw: string | undefined): string {
 export const canDeleteRecords = (email: string | null | undefined): boolean =>
   ALLOWED_DELETE_EMAILS.includes((email ?? '').toLowerCase());
 
+// Logins allowed to use the "Order Pending for Dispatch" button in Orders
+// (sends a confirmed order to Dispatch). sales@ is the shared login used by
+// Nimisha Pawar and Ruby; anil@ is intentionally NOT included.
+export const SEND_TO_DISPATCH_EMAILS = ['sales@himalayaterpene.com', 'mis@himalayaterpene.com', 'shishir@himalayaterpene.com'];
+export const canSendToDispatch = (email: string | null | undefined): boolean =>
+  SEND_TO_DISPATCH_EMAILS.includes((email ?? '').trim().toLowerCase());
+
 /**
  * Returns a display label for a site — "City — Branch" or just whichever part exists.
  * Pass the customer record + the siteId stored on the doc (quote/order/enquiry).
