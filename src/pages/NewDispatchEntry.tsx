@@ -66,6 +66,20 @@ const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-
 const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]";
 const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-red-mrt p-[11px_16px] border-b border-g200";
 
+// Direct-link guard for creating a NEW dispatch entry: the order must exist,
+// have been sent to Dispatch (sentToDispatchAt — the "Order Pending for
+// Dispatch" button in Orders), and still be in a dispatchable status.
+// Returns the reason it's blocked, or null if allowed. Never applied when
+// editing an existing entry.
+function newDispatchBlockReason(order: Order | undefined, orderRef: string): string | null {
+  if (!order) return 'Order not found.';
+  if (!order.sentToDispatchAt) return `${order.id} hasn't been sent to Dispatch. In the Orders module, click 'Order Pending for Dispatch' first.`;
+  if (order.status !== 'Order Confirmed' && order.status !== 'Order Pending for Dispatch') {
+    return `${order.id || orderRef} is '${order.status}'. Only Order Confirmed orders can be dispatched.`;
+  }
+  return null;
+}
+
 // One read-only box in the "Order Details" card — grey '—' when empty,
 // truncated with a tooltip so long values never overflow the box.
 function ReadOnlyBox({ label, value, className = 'text-[12.5px]', children }: { label: string; value?: string | null; className?: string; children?: React.ReactNode }) {
@@ -416,9 +430,12 @@ export function NewDispatchEntry() {
   // Dispatch list instead of showing anything here. Guarded on `loading` so
   // this doesn't fire prematurely on a fresh page load before data.orders
   // has arrived, which would incorrectly bounce away a valid orderRef.
+  // (A stale/invalid orderRef now shows the "Order not found." card below
+  // instead of bouncing, so only a missing orderRef still redirects.)
   useEffect(() => {
     if (loading) return;
     if (hydratedRef.current) return;
+    if (orderRef) return;
     navigate('/dispatch', { replace: true });
   }, [loading, orderRef, data.orders]);
 
@@ -468,8 +485,22 @@ export function NewDispatchEntry() {
     return { isINR, subTotal, ins, adj, gstTotal, grandTotal };
   }, [selectedOrder, items, curr, insurance]);
 
+  // Direct-link guard (new entries only — editing an existing entry skips
+  // it). Waits for the store to load so the card never flashes while
+  // loading; the form's own "Loading…" shows until then.
+  const isNewEntry = !!orderRef && !data.dispatchEntries.some(e => e.orderId === orderRef);
+  const blockReason = !loading && orderRef && isNewEntry
+    ? newDispatchBlockReason(data.orders.find(o => o.id === orderRef), orderRef)
+    : null;
+
   const handleSubmit = async () => {
     if (!selectedOrderId || !selectedOrder || saving) return;
+    // Re-check at Save time, in case the order's status / sent-to-Dispatch
+    // flag changed while this page was open.
+    if (!existingEntryId) {
+      const reason = newDispatchBlockReason(data.orders.find(o => o.id === selectedOrderId), selectedOrderId);
+      if (reason) { setError(reason); return; }
+    }
     if (!type) { setError('Please select Delivery or Self Pickup'); return; }
     setSaving(true);
     setError('');
@@ -704,6 +735,32 @@ export function NewDispatchEntry() {
       setSaving(false);
     }
   };
+
+  if (blockReason) {
+    return (
+      <div className="flex flex-col h-full animate-in fade-in duration-300">
+        <div className="pt-4 px-5 pb-3 border-b border-g200">
+          <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-0.5">Module 04</div>
+          <h1 className="font-serif text-[22px] text-blk tracking-tight leading-tight">
+            New <em className="italic text-red-mrt">Dispatch Entry</em>
+          </h1>
+        </div>
+        <div className="p-5">
+          <div className="max-w-[560px] bg-white border border-g200">
+            <div className={sectionHeaderCls}>Not available</div>
+            <div className="p-[16px]">
+              <div className="text-[14px] font-semibold text-blk mb-1.5">This order can't be dispatched yet</div>
+              <p className="text-[12.5px] text-g600 leading-relaxed">{blockReason}</p>
+              <div className="flex items-center gap-2 mt-4">
+                <Button variant="dark" onClick={() => navigate('/orders')}>Go to Orders</Button>
+                <Button variant="secondary" onClick={() => navigate('/dispatch')}>Back to Dispatch</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
