@@ -6,7 +6,7 @@ import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollb
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -37,7 +37,7 @@ function punchedAtClass(createdAt: string): { text: string; title?: string } {
 
 export function Orders() {
   const store = useAppStore();
-  const { data, user, updateOrder, deleteOrder, openAttachmentModal, sendOrderToDispatch } = store;
+  const { data, user, updateOrder, deleteOrder, openAttachmentModal, sendOrderToDispatch, isAdmin } = store;
   const canDelete = canDeleteRecords(user?.email);
   const canConfirmPmt = canConfirmPayment(user?.email);
   const canComplete = canCompleteOrder(user?.email);
@@ -114,6 +114,25 @@ export function Orders() {
   const showToast = (type: 'ok'|'warn'|'err', msg: string) => {
     setSheetsToast({ type, msg });
     setTimeout(() => setSheetsToast(null), 5000);
+  };
+
+  // Row-button status changes. A locked order (sent to Dispatch / has a
+  // dispatch entry) only gets here for an admin — non-admins don't see those
+  // buttons — or for Complete after dispatch (allowed without override).
+  // Admins confirm first; the store's updateOrder enforces the lock too.
+  const changeStatus = async (o: Order, status: Order['status']) => {
+    const hasEntry = data.dispatchEntries.some(e => e.orderId === o.id);
+    const needsOverride = isOrderStatusLocked(o, data.dispatchEntries)
+      && status !== o.status && !isLockedStatusChangeAllowed(o.status, status, hasEntry);
+    if (needsOverride) {
+      if (!isAdmin) return;
+      if (!confirm(`This order is in Dispatch${o.soNumber ? ` (${o.soNumber})` : ''}. Change status anyway?`)) return;
+    }
+    try {
+      await updateOrder(o.id, { status }, needsOverride ? { adminOverride: true } : undefined);
+    } catch (err) {
+      showToast('err', (err as Error)?.message || 'Could not change status');
+    }
   };
 
   const handleExportSheets = async (o: Order) => {
@@ -311,6 +330,8 @@ export function Orders() {
                   const itemGst = o.items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
                   const grandTotal = resolveAdjustments(o.adjustments, subTotal, itemGst, maxItemGstRate(o.items)).grand;
                   const isExpanded = expandedRow === o.id;
+                  const hasDispatchEntry = data.dispatchEntries.some(e => e.orderId === o.id);
+                  const statusLocked = isOrderStatusLocked(o, data.dispatchEntries);
 
                   return (
                     <React.Fragment key={o.id}>
@@ -379,7 +400,11 @@ export function Orders() {
                         <td className="px-[13px] py-[10px] align-top"><Badge status={o.status} /></td>
                         <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
                           <div className="flex gap-1.5 flex-wrap">
-                            {o.status !== 'Delivered' && (
+                            {/* Complete (→ Delivered): hidden for a locked order that's
+                                sent but not yet dispatched (it must go through
+                                Dispatch first) — unless admin. Once dispatched it's
+                                allowed again. */}
+                            {o.status !== 'Delivered' && (!statusLocked || hasDispatchEntry || isAdmin) && (
                               <Button
                                 size="sm"
                                 variant="dark"
@@ -389,7 +414,7 @@ export function Orders() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (!canComplete) return;
-                                  updateOrder(o.id, { status: 'Delivered' }).catch(console.error);
+                                  changeStatus(o, 'Delivered');
                                 }}
                               >
                                 Complete
@@ -437,7 +462,9 @@ export function Orders() {
                                 </Button>
                               );
                             })()}
-                            {ADVANCE_PAY.has(o.pay ?? '') && o.status === 'Processing' ? (
+                            {/* Payment Received / OC change status — hidden on a locked
+                                order for non-admins. */}
+                            {(!statusLocked || isAdmin) && (ADVANCE_PAY.has(o.pay ?? '') && o.status === 'Processing' ? (
                               <Button
                                 size="sm"
                                 variant="success"
@@ -447,7 +474,7 @@ export function Orders() {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (!canConfirmPmt) return;
-                                  updateOrder(o.id, { status: 'Order Confirmed' }).catch(console.error);
+                                  changeStatus(o, 'Order Confirmed');
                                 }}
                               >Payment Received</Button>
                             ) : (
@@ -456,9 +483,9 @@ export function Orders() {
                                 variant="secondary"
                                 disabled={ADVANCE_PAY.has(o.pay ?? '')}
                                 className={ADVANCE_PAY.has(o.pay ?? '') ? 'bg-g100 text-g400 cursor-not-allowed' : ''}
-                                onClick={(e) => { e.stopPropagation(); updateOrder(o.id, { status: 'Order Confirmed' }).catch(console.error); }}
+                                onClick={(e) => { e.stopPropagation(); changeStatus(o, 'Order Confirmed'); }}
                               >OC</Button>
-                            )}
+                            ))}
                             <Button
                               size="sm"
                               variant="secondary"

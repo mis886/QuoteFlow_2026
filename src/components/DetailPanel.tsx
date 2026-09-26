@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../store';
-import { fmtIST, canCompleteOrder } from '../lib/utils';
+import { fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -35,7 +35,7 @@ const InfoItem = ({ label, value }: { label: string, value: string }) => (
 const isImageFileName = (name?: string | null): boolean => !!name && /\.(png|jpe?g|webp|gif)$/i.test(name);
 
 export function DetailPanel() {
-  const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, deleteEnquiry, closeFollowUp, updateTicket, stampName } = useAppStore();
+  const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, deleteEnquiry, closeFollowUp, updateTicket, stampName, isAdmin } = useAppStore();
   const navigate = useNavigate();
   const canComplete = canCompleteOrder(user?.email);
   const [downloadingItemId, setDownloadingItemId] = React.useState<string | null>(null);
@@ -671,18 +671,34 @@ export function DetailPanel() {
         </div>
         <div className="p-4 border-t border-g200 flex items-center justify-between bg-g100/30">
           <div className="flex items-center gap-2">
+            {(() => {
+              // Status lock (order sent to Dispatch / has a dispatch entry):
+              // disabled for non-admins; admins confirm, then save with override.
+              const hasEntry = data.dispatchEntries.some(d => d.orderId === o.id);
+              const locked = isOrderStatusLocked(o, data.dispatchEntries);
+              return (
             <select
-              title="Order status"
+              title={locked && !isAdmin ? `Locked — this order was sent to Dispatch${o.soNumber ? ` (${o.soNumber})` : ''}. Status can't be changed.` : 'Order status'}
               value={o.status}
+              disabled={locked && !isAdmin}
               onChange={async (e) => {
-                if (e.target.value === 'Delivered' && !canComplete) return;
-                await updateOrder(o.id, { status: e.target.value as any });
+                const next = e.target.value as any;
+                if (next === 'Delivered' && !canComplete) return;
+                const needsOverride = locked && next !== o.status && !isLockedStatusChangeAllowed(o.status, next, hasEntry);
+                if (needsOverride && !confirm(`This order is in Dispatch${o.soNumber ? ` (${o.soNumber})` : ''}. Change status anyway?`)) return;
+                try {
+                  await updateOrder(o.id, { status: next }, needsOverride ? { adminOverride: true } : undefined);
+                } catch (err: any) {
+                  alert(err?.message || 'Could not change status');
+                }
               }}
-              className="font-sans text-[12px] text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none hover:border-g400"
+              className="font-sans text-[12px] text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none hover:border-g400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <option value="Processing">Order Pending for Payment</option>
               <option value="Delivered" disabled={!canComplete} title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}>Delivered</option>
             </select>
+              );
+            })()}
           </div>
           <div className="flex gap-2">
             <Button variant="primary" onClick={() => {

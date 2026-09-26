@@ -57,6 +57,27 @@ export const SEND_TO_DISPATCH_EMAILS = ['sales@himalayaterpene.com', 'mis@himala
 export const canSendToDispatch = (email: string | null | undefined): boolean =>
   SEND_TO_DISPATCH_EMAILS.includes((email ?? '').trim().toLowerCase());
 
+// An order's status is LOCKED once it's been sent to Dispatch
+// (sentToDispatchAt) or has any dispatch entry. Non-admins can't change the
+// status of a locked order (store's updateOrder enforces it too); admins can,
+// after a confirm. See isLockedStatusChangeAllowed for the exceptions.
+export const isOrderStatusLocked = (
+  o: { id: string; sentToDispatchAt?: string },
+  dispatchEntries: { orderId: string }[],
+): boolean => !!o.sentToDispatchAt || dispatchEntries.some(e => e.orderId === o.id);
+
+// Status moves still allowed on a locked order without an admin override:
+// → 'Delivered' once it actually has a dispatch entry, and the dispatch
+// flow's own leftover flip 'Order Pending for Dispatch' → 'Order Confirmed'
+// (NewDispatchEntry's partial-split save).
+export const isLockedStatusChangeAllowed = (
+  from: string,
+  to: string,
+  hasDispatchEntry: boolean,
+): boolean =>
+  (to === 'Delivered' && hasDispatchEntry) ||
+  (from === 'Order Pending for Dispatch' && to === 'Order Confirmed');
+
 /**
  * Returns a display label for a site — "City — Branch" or just whichever part exists.
  * Pass the customer record + the siteId stored on the doc (quote/order/enquiry).

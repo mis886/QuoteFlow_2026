@@ -3,7 +3,7 @@ import type { Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quo
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { calculateAgeHours, generateId, canSendToDispatch } from '../lib/utils';
+import { calculateAgeHours, generateId, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { User } from '@supabase/supabase-js';
 
@@ -98,7 +98,9 @@ interface AppContextType {
   updateQuote: (id: string, updates: Partial<Quote>) => Promise<void>;
   deleteQuote: (id: string) => Promise<void>;
   addOrder: (order: Order) => Promise<void>;
-  updateOrder: (id: string, updates: Partial<Order>) => Promise<void>;
+  // opts.adminOverride: set by the UI after an admin confirms changing the
+  // status of a locked (sent-to-Dispatch) order; ignored for non-admins.
+  updateOrder: (id: string, updates: Partial<Order>, opts?: { adminOverride?: boolean }) => Promise<void>;
   deleteOrder: (id: string) => Promise<void>;
   ensureSoNumbers: (orderIds: string[]) => Promise<void>;
   sendOrderToDispatch: (orderId: string) => Promise<string | null>;
@@ -961,8 +963,18 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  const updateOrder = async (id: string, updates: Partial<Order>) => {
+  const updateOrder = async (id: string, updates: Partial<Order>, opts?: { adminOverride?: boolean }) => {
     const before = data.orders.find(o => o.id === id);
+    // Status lock: once an order is sent to Dispatch (or has a dispatch
+    // entry) its status can't change — except the moves in
+    // isLockedStatusChangeAllowed, or an admin who confirmed the override.
+    if (before && updates.status && updates.status !== before.status
+        && isOrderStatusLocked(before, data.dispatchEntries)) {
+      const hasEntry = data.dispatchEntries.some(e => e.orderId === id);
+      const allowed = isLockedStatusChangeAllowed(before.status, updates.status, hasEntry)
+        || (isAdmin && !!opts?.adminOverride);
+      if (!allowed) throw new Error("This order was sent to Dispatch — status can't be changed.");
+    }
     const dbUpdates = mapOrderToDB(updates);
     // An order that was sent to Dispatch but not yet dispatched, whose status
     // then moves off Order Confirmed / Order Pending for Dispatch (e.g. back

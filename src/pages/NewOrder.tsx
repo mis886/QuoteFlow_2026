@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems } from '../lib/utils';
+import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -56,7 +56,11 @@ export function NewOrder() {
   const editOrderId = searchParams.get('orderId');
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
-  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory } = useAppStore();
+  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, isAdmin } = useAppStore();
+  // Status lock — see isOrderStatusLocked in utils.ts.
+  const editingOrder = editOrderId ? data.orders.find(o => o.id === editOrderId) : undefined;
+  const editingOrderHasEntry = !!editingOrder && data.dispatchEntries.some(e => e.orderId === editingOrder.id);
+  const statusLocked = !!editingOrder && isOrderStatusLocked(editingOrder, data.dispatchEntries);
   const canComplete = canCompleteOrder(user?.email);
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
@@ -505,7 +509,20 @@ export function NewOrder() {
     }
     const orderPayload: Order = { ...buildOrderData(), poFileName: finalPoFileName };
     if (editOrderId) {
-      await updateOrder(editOrderId, orderPayload);
+      // Status lock (order sent to Dispatch): non-admins can't change it (the
+      // dropdown is disabled; keep the saved status just in case). Admins
+      // confirm first, then save with the override.
+      let adminOverride = false;
+      if (editingOrder && statusLocked && orderPayload.status !== editingOrder.status
+          && !isLockedStatusChangeAllowed(editingOrder.status, orderPayload.status, editingOrderHasEntry)) {
+        if (!isAdmin) {
+          orderPayload.status = editingOrder.status;
+        } else {
+          if (!confirm(`This order is in Dispatch${editingOrder.soNumber ? ` (${editingOrder.soNumber})` : ''}. Change status anyway?`)) return null;
+          adminOverride = true;
+        }
+      }
+      await updateOrder(editOrderId, orderPayload, adminOverride ? { adminOverride: true } : undefined);
     } else {
       await addOrder(orderPayload);
       if (quoteRef) {
@@ -660,11 +677,12 @@ export function NewOrder() {
               <div className="flex items-center gap-2">
                 <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
                 <select title="Order status" value={orderStatus}
+                  disabled={statusLocked && !isAdmin}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                     if (e.target.value === 'Delivered' && !canComplete) return;
                     setOrderStatus(e.target.value as OrderStatus);
                   }}
-                  className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer">
+                  className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
                   <option value="Order Confirmed">Order Confirmed</option>
                   <option value="Processing">Order Pending for Payment</option>
                   <option value="Delivered" disabled={!canComplete} title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}>Delivered</option>
@@ -672,6 +690,13 @@ export function NewOrder() {
                   <option value="Won">Won</option>
                   <option value="Lost">Lost</option>
                 </select>
+                {statusLocked && (
+                  <span className="text-[10px] text-g500 max-w-[260px] leading-snug">
+                    {isAdmin
+                      ? `In Dispatch${editingOrder?.soNumber ? ` (${editingOrder.soNumber})` : ''} — admin: changing status asks for confirmation.`
+                      : `Locked — this order was sent to Dispatch${editingOrder?.soNumber ? ` (${editingOrder.soNumber})` : ''}. Status can't be changed.`}
+                  </span>
+                )}
               </div>
             )}
             <Button variant="secondary" onClick={() => { if (confirmLeave()) navigate('/orders'); }}>Back</Button>
