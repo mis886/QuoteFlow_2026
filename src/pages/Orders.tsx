@@ -429,9 +429,9 @@ export function Orders() {
                               if (dispatched) {
                                 return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed">Dispatched</Button>;
                               }
-                              if (o.sentToDispatchAt) {
-                                return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100" title={o.soNumber ? `Already sent to Dispatch — ${o.soNumber}` : 'Already sent to Dispatch'}>Order Pending for Dispatch</Button>;
-                              }
+                              // Already sent (now in Dispatch → Order Pending for
+                              // Dispatch) → nothing here.
+                              if (o.sentToDispatchAt) return null;
                               // Green button: only for allowed logins (sales@/mis@/
                               // shishir@) and only on Order Confirmed orders —
                               // any other status renders nothing at all.
