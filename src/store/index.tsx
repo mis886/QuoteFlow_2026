@@ -101,6 +101,7 @@ interface AppContextType {
   updateOrder: (id: string, updates: Partial<Order>) => Promise<void>;
   deleteOrder: (id: string) => Promise<void>;
   ensureSoNumbers: (orderIds: string[]) => Promise<void>;
+  sendOrderToDispatch: (orderId: string) => Promise<string | null>;
   // Dispatch (Order → Dispatch phase) — see src/pages/Dispatch.tsx. `type`
   // picks Self Pickup or Delivery for the new entry.
   addDispatchEntry: (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => Promise<void>;
@@ -537,6 +538,7 @@ const mapEnquiryToDB = (e: any) => {
     if (o.split_from_order_id) obj.splitFromOrderId = o.split_from_order_id;
     if (o.dispatch_finalized) obj.dispatchFinalized = o.dispatch_finalized;
     if (o.so_number) obj.soNumber = o.so_number;
+    if (o.sent_to_dispatch_at) obj.sentToDispatchAt = o.sent_to_dispatch_at;
     if ('authorized_person' in o) {
       obj.authorizedPerson = o.authorized_person;
       delete obj.authorized_person;
@@ -652,6 +654,9 @@ const mapEnquiryToDB = (e: any) => {
     // Only ever written when set — an order edit that doesn't carry soNumber
     // must never null out an already-assigned SO number.
     if (o.soNumber) obj.so_number = o.soNumber;
+    // Same rule: only written when set, so a normal order save never clears
+    // it (the one deliberate clear lives in updateOrder below).
+    if (o.sentToDispatchAt) obj.sent_to_dispatch_at = o.sentToDispatchAt;
 
     return obj;
   };
@@ -959,19 +964,49 @@ const mapEnquiryToDB = (e: any) => {
   const updateOrder = async (id: string, updates: Partial<Order>) => {
     const before = data.orders.find(o => o.id === id);
     const dbUpdates = mapOrderToDB(updates);
+    // An order that was sent to Dispatch but not yet dispatched, whose status
+    // then moves off Order Confirmed / Order Pending for Dispatch (e.g. back
+    // to Pending for Payment), leaves Dispatch — clear sent_to_dispatch_at so
+    // it has to be sent again once re-confirmed. Its SO number is kept.
+    const leavesDispatch = !!updates.status
+      && updates.status !== 'Order Confirmed' && updates.status !== 'Order Pending for Dispatch'
+      && !!before?.sentToDispatchAt
+      && !data.dispatchEntries.some(e => e.orderId === id);
+    if (leavesDispatch) dbUpdates.sent_to_dispatch_at = null;
+    const localUpdates: Partial<Order> = leavesDispatch ? { ...updates, sentToDispatchAt: undefined } : updates;
     const { error } = await supabase.from('orders').update(dbUpdates).eq('id', id);
     if (!error) {
       setData(prev => ({
         ...prev,
-        orders: prev.orders.map(o => o.id === id ? { ...o, ...updates } : o)
+        orders: prev.orders.map(o => o.id === id ? { ...o, ...localUpdates } : o)
       }));
-      const after = before ? { ...before, ...updates } : updates;
+      const after = before ? { ...before, ...localUpdates } : localUpdates;
       const orderCust = (after as Order).cust;
       logActivity({ module: 'orders', recordId: id, recordLabel: orderCust || id, action: 'update', before, after });
     } else {
       console.error('Error updating order:', error);
       throw error;
     }
+  };
+
+  // "Order Pending for Dispatch" button in the Orders module: stamps
+  // sent_to_dispatch_at on this ONE order (only that column), then assigns
+  // its SO number via ensureSoNumbers (no-op if it already has one).
+  // Returns the order's SO number, read fresh from the DB, for the toast.
+  const sendOrderToDispatch = async (orderId: string): Promise<string | null> => {
+    const sentToDispatchAt = new Date().toISOString();
+    const { error } = await supabase.from('orders').update({ sent_to_dispatch_at: sentToDispatchAt }).eq('id', orderId);
+    if (error) {
+      console.error('Error sending order to dispatch:', error);
+      throw error;
+    }
+    setData(prev => ({
+      ...prev,
+      orders: prev.orders.map(o => o.id === orderId ? { ...o, sentToDispatchAt } : o)
+    }));
+    await ensureSoNumbers([orderId]);
+    const { data: row } = await supabase.from('orders').select('so_number').eq('id', orderId).maybeSingle();
+    return row?.so_number || null;
   };
 
   // Assigns a Sales Order number (SO-YYYY-NNN) to each given order that
@@ -1980,6 +2015,7 @@ const mapEnquiryToDB = (e: any) => {
         updateOrder,
         deleteOrder,
         ensureSoNumbers,
+        sendOrderToDispatch,
         addDispatchEntry,
         updateDispatchEntry,
         deleteDispatchEntry,

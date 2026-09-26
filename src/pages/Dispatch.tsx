@@ -113,14 +113,15 @@ export function Dispatch() {
 
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
 
-  // Order Pending for Dispatch — read-only view of every Order Confirmed
-  // order, plus every 'Order Pending for Dispatch' leftover split off a
-  // partial dispatch, that has no dispatch entry yet. Once an entry is
-  // created it drops out of here and shows under "Dispatched". Nothing
-  // here changes an order's status.
+  // Order Pending for Dispatch — read-only view of every order that was
+  // sent here (sentToDispatchAt — the "Order Pending for Dispatch" button
+  // in Orders, or automatically for a partial-dispatch leftover), is still
+  // Order Confirmed / Order Pending for Dispatch, and has no dispatch entry
+  // yet. Once an entry is created it drops out of here and shows under
+  // "Dispatched". Nothing here changes an order's status.
   const dispatchedOrderIds = useMemo(() => new Set(data.dispatchEntries.map(e => e.orderId)), [data.dispatchEntries]);
   const pendingOrders = useMemo(
-    () => data.orders.filter(o => (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && !dispatchedOrderIds.has(o.id)),
+    () => data.orders.filter(o => !!o.sentToDispatchAt && (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && !dispatchedOrderIds.has(o.id)),
     [data.orders, dispatchedOrderIds],
   );
   // Shown in the Fulfillment column only (this tab has no Delivery/Self

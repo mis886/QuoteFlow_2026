@@ -264,6 +264,12 @@ export interface Order {
   // when the order first shows in Dispatch → "Order Pending for Dispatch".
   // Never changes after that.
   soNumber?: string;
+  // Set when the user clicks "Order Pending for Dispatch" in the Orders
+  // module (or automatically for a partial-dispatch leftover) — only orders
+  // with this set appear in Dispatch → Order Pending for Dispatch. Cleared
+  // by updateOrder if the order's status leaves Order Confirmed / Order
+  // Pending for Dispatch before it has a dispatch entry.
+  sentToDispatchAt?: string;
   // Set on the leftover order automatically created by a partial dispatch —
   // points back to the order it was split off from, for traceability.
   splitFromOrderId?: string;

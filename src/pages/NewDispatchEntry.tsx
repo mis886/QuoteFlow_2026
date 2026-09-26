@@ -548,6 +548,9 @@ export function NewDispatchEntry() {
           dlvDate: selectedOrder.dlvDate,
           scheduleDate: selectedOrder.scheduleDate,
           status: 'Order Pending for Dispatch',
+          // Leftover goes straight to Dispatch → Order Pending for Dispatch,
+          // no "Order Pending for Dispatch" click needed in Orders.
+          sentToDispatchAt: new Date().toISOString(),
           value: leftoverValue,
           insurance: 0,
           inco: inco || undefined,

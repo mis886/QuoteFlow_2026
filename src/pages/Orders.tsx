@@ -37,7 +37,7 @@ function punchedAtClass(createdAt: string): { text: string; title?: string } {
 
 export function Orders() {
   const store = useAppStore();
-  const { data, user, updateOrder, deleteOrder, openAttachmentModal } = store;
+  const { data, user, updateOrder, deleteOrder, openAttachmentModal, sendOrderToDispatch } = store;
   const canDelete = canDeleteRecords(user?.email);
   const canConfirmPmt = canConfirmPayment(user?.email);
   const canComplete = canCompleteOrder(user?.email);
@@ -65,6 +65,7 @@ export function Orders() {
 
   const [sendModalOrder, setSendModalOrder] = useState<Order | null>(null);
   const [exportingSheets, setExportingSheets] = useState<string | null>(null);
+  const [sendingToDispatchId, setSendingToDispatchId] = useState<string | null>(null);
   const [sheetsToast, setSheetsToast] = useState<{type: "ok"|"warn"|"err"; msg: string} | null>(null);
 
   // A leftover order split off a partial dispatch (splitFromOrderId set) is
@@ -395,26 +396,41 @@ export function Orders() {
                             )}
                             <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); navigate(`/orders/new?orderId=${o.id}`); }}>Edit</Button>
                             {(() => {
-                              // Same pattern as the Quotes register's "Order" button
-                              // (navigate(`/orders/new?quoteRef=...`)) — click Dispatch,
-                              // land on the dispatch form with this order pre-loaded and
-                              // all customer/trading fields auto-filled, then just pick
-                              // Delivery or Self Pickup.
+                              // Orders only reach Dispatch → Order Pending for Dispatch
+                              // once sent from here (sentToDispatchAt). From there on,
+                              // "Create Dispatch" in the Dispatch module takes over.
                               const dispatched = data.dispatchEntries.some(e => e.orderId === o.id);
                               if (dispatched) {
                                 return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed">Dispatched</Button>;
                               }
-                              const eligible = o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch';
+                              if (o.sentToDispatchAt) {
+                                return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100" title={o.soNumber ? `In Dispatch — ${o.soNumber}` : 'In Dispatch'}>In Dispatch</Button>;
+                              }
+                              const eligible = o.status === 'Order Confirmed';
+                              const sending = sendingToDispatchId === o.id;
                               return (
                                 <Button
                                   size="sm"
                                   variant="success"
-                                  disabled={!eligible}
+                                  disabled={!eligible || sending}
                                   className={!eligible ? 'bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : 'active:scale-95 transition-transform'}
-                                  title={!eligible ? 'Order must be Order Confirmed or Order Pending for Dispatch before it can be dispatched' : undefined}
-                                  onClick={(e) => { e.stopPropagation(); navigate(`/dispatch/new?orderRef=${o.id}`); }}
+                                  title={!eligible ? 'Order must be Order Confirmed first' : undefined}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!eligible || sending) return;
+                                    setSendingToDispatchId(o.id);
+                                    try {
+                                      const so = await sendOrderToDispatch(o.id);
+                                      showToast('ok', so ? `Sent to Dispatch — ${so}` : 'Sent to Dispatch');
+                                    } catch (err) {
+                                      showToast('err', 'Could not send to Dispatch: ' + ((err as Error)?.message || 'unknown error'));
+                                    } finally {
+                                      setSendingToDispatchId(null);
+                                    }
+                                  }}
                                 >
-                                  Dispatch
+                                  {sending ? <Loader2 size={11} className="animate-spin" /> : null}
+                                  Order Pending for Dispatch
                                 </Button>
                               );
                             })()}
