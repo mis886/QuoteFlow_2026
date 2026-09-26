@@ -258,7 +258,7 @@ export function Enquiries() {
                   <SortTh col="cust"   label="Customer - Unit" />
                   {/* Source and Product Name columns hidden from the list (data still
                       saved; products show in the expanded row, search still matches them). */}
-                  <thclassName="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
+                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
                   <SortTh col="urg"    label="Urgency" />
                   <SortTh col="status" label="Status" />
                   <SortTh col="age"    label="Age" />
