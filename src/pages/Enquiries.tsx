@@ -86,7 +86,6 @@ export function Enquiries() {
       if (sortCol === 'recv') { av = a.recv; bv = b.recv; }
       else if (sortCol === 'created_at') { av = a.created_at || ''; bv = b.created_at || ''; }
       else if (sortCol === 'cust') { av = a.cust.toLowerCase(); bv = b.cust.toLowerCase(); }
-      else if (sortCol === 'status') { av = a.status; bv = b.status; }
       else if (sortCol === 'urg') { const o = ['Hot','Urgent','Normal','Low']; av = o.indexOf(a.urg); bv = o.indexOf(b.urg); }
       else if (sortCol === 'items') { av = a.items.length; bv = b.items.length; }
       else if (sortCol === 'age') { av = a.ageH; bv = b.ageH; }
@@ -260,7 +259,6 @@ export function Enquiries() {
                       saved; products show in the expanded row, search still matches them). */}
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-right whitespace-nowrap border-b border-g200">Total Qty</th>
                   <SortTh col="urg"    label="Urgency" />
-                  <SortTh col="status" label="Status" />
                   <SortTh col="age"    label="Age" />
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
@@ -268,7 +266,7 @@ export function Enquiries() {
               </thead>
               <tbody>
                 {filteredEnqs.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center p-8 text-g400 text-[13px]">No enquiries match this filter</td></tr>
+                  <tr><td colSpan={9} className="text-center p-8 text-g400 text-[13px]">No enquiries match this filter</td></tr>
                 ) : (
                   filteredEnqs.map(e => {
                     const d = new Date(e.recv); // Assuming ISO string is stored
@@ -304,7 +302,6 @@ export function Enquiries() {
                             })()}
                           </td>
                           <td className="px-[13px] py-[10px] align-top"><Badge status={e.urg} /></td>
-                          <td className="px-[13px] py-[10px] align-top"><Badge status={e.status} /></td>
                           <td className="px-[13px] py-[10px] align-top font-mono text-[10.5px] font-bold">
                             {e.ageH < 1 ? <span className="text-sW"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sW mr-1"></span>Now</span> :
                              e.ageH < 4 ? <span className="text-sW"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sW mr-1"></span>{e.ageH.toFixed(1)}h</span> :
@@ -334,7 +331,7 @@ export function Enquiries() {
                         </tr>
                         {isExpanded && (
                           <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">
-                            <td colSpan={10} className="p-0">
+                            <td colSpan={9} className="p-0">
                               <div className="p-[10px_16px]">
                                 <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-[7px]">Line Items -- {e.id}</div>
                                 <table className="w-full border-collapse text-[11.5px] m-0">
