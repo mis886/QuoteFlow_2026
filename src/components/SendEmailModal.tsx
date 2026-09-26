@@ -291,12 +291,40 @@ export function SendEmailModal(props: Props) {
     setCustomCC('');
   };
 
-  const ccString = [...selectedCC].filter(Boolean).join(', ');
+  // Dispatch mode only: multiple To recipients as removable chips + an
+  // "Add another To email…" input, mirroring the CC section. Quote / Order /
+  // Outward keep the single `to` field above, unchanged.
+  const [toList, setToList] = useState<string[]>(() => (isDispatch && primaryEmail ? [primaryEmail] : []));
+  const [customTo, setCustomTo] = useState('');
+  const toListLower = new Set(toList.map(e => e.toLowerCase()));
+  // An email in To is never also offered/sent as CC.
+  const isInTo = (email: string) => isDispatch ? toListLower.has(email.toLowerCase()) : email === to;
+
+  const addCustomTo = () => {
+    const email = customTo.trim();
+    if (!email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setToError('Enter a valid email address.'); return; }
+    setToError('');
+    if (!toListLower.has(email.toLowerCase())) {
+      setToList(prev => [...prev, email]);
+      setSelectedCC(prev => new Set([...prev].filter(c => c.toLowerCase() !== email.toLowerCase())));
+    }
+    setCustomTo('');
+  };
+  const removeTo = (email: string) => setToList(prev => prev.filter(e => e !== email));
+
+  const ccString = [...selectedCC].filter(Boolean).filter(e => !isDispatch || !isInTo(e)).join(', ');
+  const toDisplay = isDispatch ? toList.join(', ') : to;
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!to.trim()) { setToError('Recipient email is required.'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim())) { setToError('Enter a valid email address.'); return; }
+    if (isDispatch) {
+      if (toList.length === 0) { setToError('Recipient email is required.'); return; }
+    } else {
+      if (!to.trim()) { setToError('Recipient email is required.'); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim())) { setToError('Enter a valid email address.'); return; }
+    }
+    const toRecipients = isDispatch ? toList.join(', ') : to.trim();
     setToError('');
     setStatus('sending');
     setErrorMsg('');
@@ -348,7 +376,7 @@ export function SendEmailModal(props: Props) {
         }
       }
 
-      await sendViaGmailAsUser({ to: to.trim(), cc: ccString, subject, body, attachments, poLink: poSubmitLink || undefined }, senderEmail);
+      await sendViaGmailAsUser({ to: toRecipients, cc: ccString, subject, body, attachments, poLink: poSubmitLink || undefined }, senderEmail);
 
       setStatus('sent');
       setTimeout(() => { onSent?.(); onClose(); }, 1500);
@@ -391,7 +419,7 @@ export function SendEmailModal(props: Props) {
               <svg viewBox="0 0 24 24" width="22" height="22" stroke="#22c55e" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>
             </div>
             <div className="font-semibold text-[15px] text-blk">Email sent successfully</div>
-            <div className="text-[12px] text-g400">{isDispatch ? 'Documents' : 'PDF'} attached and delivered to {to}</div>
+            <div className="text-[12px] text-g400">{isDispatch ? 'Documents' : 'PDF'} attached and delivered to {toDisplay}</div>
           </div>
         ) : (
           <form onSubmit={handleSend} className="flex flex-col flex-1 min-h-0">
@@ -404,16 +432,47 @@ export function SendEmailModal(props: Props) {
               <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1">
                 To <span className="text-red-mrt">*</span>
               </label>
-              <div className="relative">
-                <Mail size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-g400 pointer-events-none" />
-                <input
-                  type="text" value={to}
-                  onChange={e => { setTo(e.target.value); setToError(''); }}
-                  placeholder="customer@company.com"
-                  className={`w-full h-9 pl-8 pr-3 bg-g50 border rounded-[3px] font-mono text-[12px] text-blk focus:ring-4 outline-none ${toError ? 'border-red-mrt focus:ring-red-lt' : 'border-g300 focus:border-red-mrt focus:ring-red-lt'}`}
-                />
-              </div>
-              {toError && <p className="mt-1 text-[10.5px] text-red-mrt font-medium">{toError}</p>}
+              {isDispatch ? (
+                <>
+                  {/* Dispatch: several To recipients — chips + Add, same as CC below */}
+                  {toList.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {toList.map(email => (
+                        <button key={email} type="button" onClick={() => removeTo(email)} className={chipCls(true)} title="Remove from To">
+                          <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>
+                          {email}
+                          <X size={10} className="opacity-70" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text" value={customTo}
+                      onChange={e => { setCustomTo(e.target.value); setToError(''); }}
+                      onKeyDown={e => { if (e.key === 'Enter') { addCustomTo(); e.preventDefault(); } }}
+                      placeholder="Add another To email…"
+                      className={`flex-1 h-8 px-3 bg-g50 border rounded-[3px] font-mono text-[11.5px] text-blk focus:ring-4 outline-none ${toError ? 'border-red-mrt focus:ring-red-lt' : 'border-g300 focus:border-red-mrt focus:ring-red-lt'}`}
+                    />
+                    <Button type="button" size="sm" variant="secondary" onClick={addCustomTo}>+ Add</Button>
+                  </div>
+                  {toError && <p className="mt-1 text-[10.5px] text-red-mrt font-medium">{toError}</p>}
+                  <p className="mt-1.5 text-[10px] text-g400 font-mono truncate">To: {toDisplay}</p>
+                </>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Mail size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-g400 pointer-events-none" />
+                    <input
+                      type="text" value={to}
+                      onChange={e => { setTo(e.target.value); setToError(''); }}
+                      placeholder="customer@company.com"
+                      className={`w-full h-9 pl-8 pr-3 bg-g50 border rounded-[3px] font-mono text-[12px] text-blk focus:ring-4 outline-none ${toError ? 'border-red-mrt focus:ring-red-lt' : 'border-g300 focus:border-red-mrt focus:ring-red-lt'}`}
+                    />
+                  </div>
+                  {toError && <p className="mt-1 text-[10.5px] text-red-mrt font-medium">{toError}</p>}
+                </>
+              )}
             </div>
 
             {/* CC */}
@@ -423,7 +482,7 @@ export function SendEmailModal(props: Props) {
               <div className="flex flex-wrap gap-1.5 mb-2">
 
                 {/* Site contacts (excluding To and any email already shown as an extra CC chip) */}
-                {siteContacts.filter(c => c.email !== to && !extraCCs.includes(c.email)).map(c => (
+                {siteContacts.filter(c => !isInTo(c.email) && !extraCCs.includes(c.email)).map(c => (
                   <button key={c.email} type="button" onClick={() => toggleCC(c.email)} className={chipCls(selectedCC.has(c.email))}>
                     {selectedCC.has(c.email) && <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>}
                     <span className="font-medium">{c.name || c.email}</span>
@@ -437,7 +496,7 @@ export function SendEmailModal(props: Props) {
                 ))}
 
                 {/* Extra manually-added CCs */}
-                {extraCCs.map(email => (
+                {extraCCs.filter(email => !isDispatch || !isInTo(email)).map(email => (
                   <button key={email} type="button" onClick={() => toggleCC(email)} className={chipCls(selectedCC.has(email))}>
                     {selectedCC.has(email) && <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>}
                     {email}
