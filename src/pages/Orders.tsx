@@ -425,10 +425,8 @@ export function Orders() {
                               // Orders only reach Dispatch → Order Pending for Dispatch
                               // once sent from here (sentToDispatchAt). From there on,
                               // "Create Dispatch" in the Dispatch module takes over.
-                              const dispatched = data.dispatchEntries.some(e => e.orderId === o.id);
-                              if (dispatched) {
-                                return <Button size="sm" variant="secondary" disabled className="bg-g100 text-g400 cursor-not-allowed">Dispatched</Button>;
-                              }
+                              // Has a dispatch entry → nothing here (no "Dispatched" label).
+                              if (hasDispatchEntry) return null;
                               // Already sent (now in Dispatch → Order Pending for
                               // Dispatch) → nothing here.
                               if (o.sentToDispatchAt) return null;
