@@ -46,7 +46,7 @@ export function Orders() {
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const [entryDate, setEntryDate] = useState<string | null>(null);
-  const [tab, setTab] = useState<'All' | 'Order Confirmed' | 'Processing' | 'Delivered' | 'Order Pending for Dispatch' | 'Won' | 'Lost'>('All');
+  const [tab, setTab] = useState<'All' | 'Order Confirmed' | 'Processing' | 'Delivered' | 'Won' | 'Lost'>('All');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [downloadingPOId, setDownloadingPOId] = useState<string | null>(null);
   const [siteQuery, setSiteQuery] = useState('');
@@ -90,7 +90,6 @@ export function Orders() {
     'Order Confirmed': visibleOrders.filter(o => o.status === 'Order Confirmed').length,
     Processing: visibleOrders.filter(o => o.status === 'Processing').length,
     Delivered: visibleOrders.filter(o => o.status === 'Delivered').length,
-    'Order Pending for Dispatch': visibleOrders.filter(o => o.status === 'Order Pending for Dispatch').length,
     Won: visibleOrders.filter(o => o.status === 'Won').length,
     Lost: visibleOrders.filter(o => o.status === 'Lost').length,
     All: visibleOrders.length
@@ -266,7 +265,6 @@ export function Orders() {
           <TabSelect current="All" label="All" count={statusCounts.All} />
           <TabSelect current="Order Confirmed" label="Order Confirmed" count={statusCounts['Order Confirmed']} />
           <TabSelect current="Processing" label="Order Pending for Payment" count={statusCounts.Processing} />
-          <TabSelect current="Order Pending for Dispatch" label="Order Pending for Dispatch" count={statusCounts['Order Pending for Dispatch']} />
           <TabSelect current="Delivered" label="Delivered" count={statusCounts.Delivered} />
           <TabSelect current="Won" label="Won" count={statusCounts.Won} />
           <TabSelect current="Lost" label="Lost" count={statusCounts.Lost} />
