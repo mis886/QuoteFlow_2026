@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed } from '../lib/utils';
+import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -59,7 +59,7 @@ export function NewOrder() {
   const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, isAdmin } = useAppStore();
   // Status lock — see isOrderStatusLocked in utils.ts.
   const editingOrder = editOrderId ? data.orders.find(o => o.id === editOrderId) : undefined;
-  const editingOrderHasEntry = !!editingOrder && data.dispatchEntries.some(e => e.orderId === editingOrder.id);
+  const editingOrderFullyDispatched = !!editingOrder && isFullyDispatched(editingOrder, data.dispatchEntries);
   const statusLocked = !!editingOrder && isOrderStatusLocked(editingOrder, data.dispatchEntries);
   const canComplete = canCompleteOrder(user?.email);
   const packingTypeOptions = usePackingTypes();
@@ -514,7 +514,7 @@ export function NewOrder() {
       // confirm first, then save with the override.
       let adminOverride = false;
       if (editingOrder && statusLocked && orderPayload.status !== editingOrder.status
-          && !isLockedStatusChangeAllowed(editingOrder.status, orderPayload.status, editingOrderHasEntry)) {
+          && !isLockedStatusChangeAllowed(editingOrder.status, orderPayload.status, editingOrderFullyDispatched)) {
         if (!isAdmin) {
           orderPayload.status = editingOrder.status;
         } else {

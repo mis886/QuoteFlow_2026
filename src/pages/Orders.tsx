@@ -6,7 +6,7 @@ import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollb
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
+import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -121,9 +121,9 @@ export function Orders() {
   // buttons — or for Complete after dispatch (allowed without override).
   // Admins confirm first; the store's updateOrder enforces the lock too.
   const changeStatus = async (o: Order, status: Order['status']) => {
-    const hasEntry = data.dispatchEntries.some(e => e.orderId === o.id);
+    const fullyDispatched = isFullyDispatched(o, data.dispatchEntries);
     const needsOverride = isOrderStatusLocked(o, data.dispatchEntries)
-      && status !== o.status && !isLockedStatusChangeAllowed(o.status, status, hasEntry);
+      && status !== o.status && !isLockedStatusChangeAllowed(o.status, status, fullyDispatched);
     if (needsOverride) {
       if (!isAdmin) return;
       if (!confirm(`This order is in Dispatch${o.soNumber ? ` (${o.soNumber})` : ''}. Change status anyway?`)) return;
@@ -345,6 +345,7 @@ export function Orders() {
                   const isExpanded = expandedRow === o.id;
                   const hasDispatchEntry = data.dispatchEntries.some(e => e.orderId === o.id);
                   const statusLocked = isOrderStatusLocked(o, data.dispatchEntries);
+                  const fullyDispatched = isFullyDispatched(o, data.dispatchEntries);
 
                   return (
                     <React.Fragment key={o.id}>
@@ -411,10 +412,10 @@ export function Orders() {
                         <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
                           <div className="flex gap-1.5 flex-wrap">
                             {/* Complete (→ Delivered): hidden for a locked order that's
-                                sent but not yet dispatched (it must go through
-                                Dispatch first) — unless admin. Once dispatched it's
-                                allowed again. */}
-                            {o.status !== 'Delivered' && (!statusLocked || hasDispatchEntry || isAdmin) && (
+                                sent but not yet fully dispatched (every line must
+                                go through Dispatch first) — unless admin. Once
+                                nothing remains to dispatch it's allowed again. */}
+                            {o.status !== 'Delivered' && (!statusLocked || fullyDispatched || isAdmin) && (
                               <Button
                                 size="sm"
                                 variant="dark"

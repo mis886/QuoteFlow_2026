@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
-import { canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText } from '../lib/utils';
+import { canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining } from '../lib/utils';
 import { Order, OrderItem, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 
 type SubType = DispatchFulfillmentType | 'not_set';
@@ -124,14 +124,14 @@ export function Dispatch() {
 
   // Order Pending for Dispatch — read-only view of every order that was
   // sent here (sentToDispatchAt — the "Order Pending for Dispatch" button
-  // in Orders, or automatically for a partial-dispatch leftover), is still
-  // Order Confirmed / Order Pending for Dispatch, and has no dispatch entry
-  // yet. Once an entry is created it drops out of here and shows under
-  // "Dispatched". Nothing here changes an order's status.
-  const dispatchedOrderIds = useMemo(() => new Set(data.dispatchEntries.map(e => e.orderId)), [data.dispatchEntries]);
+  // in Orders), is still Order Confirmed (or legacy Order Pending for
+  // Dispatch), and still has barrels left to dispatch (totalRemaining > 0).
+  // A partial dispatch keeps the same order here until every line has gone
+  // out; each dispatch shows under "Dispatched" as its own entry. Nothing
+  // here changes an order's status.
   const pendingOrders = useMemo(
-    () => data.orders.filter(o => !!o.sentToDispatchAt && (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && !dispatchedOrderIds.has(o.id)),
-    [data.orders, dispatchedOrderIds],
+    () => data.orders.filter(o => !!o.sentToDispatchAt && (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && totalRemaining(o, data.dispatchEntries) > 0),
+    [data.orders, data.dispatchEntries],
   );
   // Shown in the Fulfillment column only (this tab has no Delivery/Self
   // Pickup split) — order's own type first, then the customer's typical
@@ -352,7 +352,7 @@ export function Dispatch() {
                           </td>
                           <td className="px-[13px] py-[10px] align-top"><Badge status={o.status} /></td>
                           <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
-                            <Button size="sm" variant="success" className="active:scale-95 transition-transform" onClick={() => navigate(`/dispatch/new?orderRef=${o.id}`)}>Create Dispatch</Button>
+                            <Button size="sm" variant="success" className="active:scale-95 transition-transform" onClick={() => navigate(`/dispatch/new?orderRef=${o.id}&toSent=1`)}>Create Dispatch</Button>
                           </td>
                         </tr>
                         {isExpanded && (
@@ -438,7 +438,7 @@ export function Dispatch() {
                           <td className="px-[13px] py-[10px] align-top whitespace-nowrap" onClick={ev => ev.stopPropagation()}>
                             <div className="flex flex-col gap-[3px]">
                               <div className="flex items-center gap-1.5 flex-nowrap">
-                                <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?orderRef=${entry.orderId}`)}>Edit</Button>
+                                <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?entryId=${entry.id}`)}>Edit</Button>
                                 {canDelete && (
                                   <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async () => {
                                     if (!confirm(`Are you sure you want to delete the dispatch entry for ${entry.orderId}? This action cannot be undone.`)) return;

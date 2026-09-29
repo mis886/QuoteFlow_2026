@@ -495,7 +495,9 @@ export interface DataStore {
 }
 
 // ── Dispatch (Order → Dispatch) ────────────────────────────────────
-// One dispatch_entries row per order, created manually (mirrors the
+// One or more dispatch_entries rows per order — a partial dispatch keeps the
+// same order (Order No. + SO No.), each entry told apart by its Invoice No.
+// Created manually (mirrors the
 // real-world manual Google Form fill for the HTPL Self Pickup FMS / HTPL
 // Delivery FMS). See src/pages/Dispatch.tsx and src/pages/NewDispatchEntry.tsx
 // for the UI.

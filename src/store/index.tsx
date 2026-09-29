@@ -3,7 +3,7 @@ import type { Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quo
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { calculateAgeHours, generateId, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed } from '../lib/utils';
+import { calculateAgeHours, generateId, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { User } from '@supabase/supabase-js';
 
@@ -970,8 +970,8 @@ const mapEnquiryToDB = (e: any) => {
     // isLockedStatusChangeAllowed, or an admin who confirmed the override.
     if (before && updates.status && updates.status !== before.status
         && isOrderStatusLocked(before, data.dispatchEntries)) {
-      const hasEntry = data.dispatchEntries.some(e => e.orderId === id);
-      const allowed = isLockedStatusChangeAllowed(before.status, updates.status, hasEntry)
+      const fullyDispatched = isFullyDispatched(before, data.dispatchEntries);
+      const allowed = isLockedStatusChangeAllowed(before.status, updates.status, fullyDispatched)
         || (isAdmin && !!opts?.adminOverride);
       if (!allowed) throw new Error("This order was sent to Dispatch — status can't be changed.");
     }
@@ -1081,8 +1081,9 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  // Dispatch (Order → Dispatch phase). One dispatch_entries row per order,
-  // created manually via the "+ New Dispatch Entry" flow — mirrors the
+  // Dispatch (Order → Dispatch phase). One or more dispatch_entries rows per
+  // order (partial dispatch keeps the same order), created manually via the
+  // "+ New Dispatch Entry" flow — mirrors the
   // real-world manual Google Form fill for the HTPL Self Pickup FMS / HTPL
   // Delivery FMS.
   const addDispatchEntry = async (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => {

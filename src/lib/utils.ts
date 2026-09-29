@@ -67,16 +67,46 @@ export const isOrderStatusLocked = (
 ): boolean => !!o.sentToDispatchAt || dispatchEntries.some(e => e.orderId === o.id);
 
 // Status moves still allowed on a locked order without an admin override:
-// → 'Delivered' once it actually has a dispatch entry, and the dispatch
-// flow's own leftover flip 'Order Pending for Dispatch' → 'Order Confirmed'
-// (NewDispatchEntry's partial-split save).
+// → 'Delivered' once every line has been dispatched (totalRemaining = 0),
+// and the legacy 'Order Pending for Dispatch' → 'Order Confirmed' flip.
 export const isLockedStatusChangeAllowed = (
   from: string,
   to: string,
-  hasDispatchEntry: boolean,
+  fullyDispatched: boolean,
 ): boolean =>
-  (to === 'Delivered' && hasDispatchEntry) ||
+  (to === 'Delivered' && fullyDispatched) ||
   (from === 'Order Pending for Dispatch' && to === 'Order Confirmed');
+
+// Partial dispatch: one order (one Order No. + SO No.) can have many dispatch
+// entries. Per order line (matched by seq): order qty (No of Barrels) minus
+// that line's qty summed across ALL of the order's entries, floored at 0. A
+// legacy entry saved without its own items counts as the whole order.
+type QtyLine = { seq: number; qty: number };
+export function remainingByLine(
+  order: { id: string; items: QtyLine[] },
+  entries: { orderId: string; items?: QtyLine[] }[],
+): Map<number, number> {
+  const dispatched = new Map<number, number>();
+  for (const e of entries) {
+    if (e.orderId !== order.id) continue;
+    const lines = e.items && e.items.length ? e.items : order.items;
+    for (const l of lines) dispatched.set(l.seq, (dispatched.get(l.seq) || 0) + (Number(l.qty) || 0));
+  }
+  const remaining = new Map<number, number>();
+  for (const l of order.items) remaining.set(l.seq, Math.max(0, (Number(l.qty) || 0) - (dispatched.get(l.seq) || 0)));
+  return remaining;
+}
+
+export const totalRemaining = (
+  order: { id: string; items: QtyLine[] },
+  entries: { orderId: string; items?: QtyLine[] }[],
+): number => [...remainingByLine(order, entries).values()].reduce((s, q) => s + q, 0);
+
+// Has at least one dispatch entry and nothing left to dispatch.
+export const isFullyDispatched = (
+  order: { id: string; items: QtyLine[] },
+  entries: { orderId: string; items?: QtyLine[] }[],
+): boolean => entries.some(e => e.orderId === order.id) && totalRemaining(order, entries) === 0;
 
 /**
  * Returns a display label for a site — "City — Branch" or just whichever part exists.

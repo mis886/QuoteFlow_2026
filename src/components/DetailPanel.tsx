@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../store';
-import { fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed } from '../lib/utils';
+import { fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -674,7 +674,7 @@ export function DetailPanel() {
             {(() => {
               // Status lock (order sent to Dispatch / has a dispatch entry):
               // disabled for non-admins; admins confirm, then save with override.
-              const hasEntry = data.dispatchEntries.some(d => d.orderId === o.id);
+              const fullyDispatched = isFullyDispatched(o, data.dispatchEntries);
               const locked = isOrderStatusLocked(o, data.dispatchEntries);
               return (
             <select
@@ -684,7 +684,7 @@ export function DetailPanel() {
               onChange={async (e) => {
                 const next = e.target.value as any;
                 if (next === 'Delivered' && !canComplete) return;
-                const needsOverride = locked && next !== o.status && !isLockedStatusChangeAllowed(o.status, next, hasEntry);
+                const needsOverride = locked && next !== o.status && !isLockedStatusChangeAllowed(o.status, next, fullyDispatched);
                 if (needsOverride && !confirm(`This order is in Dispatch${o.soNumber ? ` (${o.soNumber})` : ''}. Change status anyway?`)) return;
                 try {
                   await updateOrder(o.id, { status: next }, needsOverride ? { adminOverride: true } : undefined);

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, generateId, fmtDate } from '../lib/utils';
+import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, remainingByLine, totalRemaining } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
@@ -68,16 +68,26 @@ const sectionHeaderCls = "font-mono text-[8.5px] font-bold tracking-[2.5px] uppe
 
 // Direct-link guard for creating a NEW dispatch entry: the order must exist,
 // have been sent to Dispatch (sentToDispatchAt — the "Order Pending for
-// Dispatch" button in Orders), and still be in a dispatchable status.
-// Returns the reason it's blocked, or null if allowed. Never applied when
-// editing an existing entry.
-function newDispatchBlockReason(order: Order | undefined, orderRef: string): string | null {
+// Dispatch" button in Orders), still be in a dispatchable status, and still
+// have barrels left to dispatch. Returns the reason it's blocked, or null if
+// allowed. Never applied when editing an existing entry.
+function newDispatchBlockReason(order: Order | undefined, orderRef: string, entries: DispatchEntry[]): string | null {
   if (!order) return 'Order not found.';
   if (!order.sentToDispatchAt) return `${order.id} hasn't been sent to Dispatch. In the Orders module, click 'Order Pending for Dispatch' first.`;
   if (order.status !== 'Order Confirmed' && order.status !== 'Order Pending for Dispatch') {
     return `${order.id || orderRef} is '${order.status}'. Only Order Confirmed orders can be dispatched.`;
   }
+  if (totalRemaining(order, entries) <= 0) return 'Already fully dispatched.';
   return null;
+}
+
+// A line with its "No of Barrels" set to qty, Amount recomputed the same way
+// as updateItem below.
+function withQty(item: OrderItem, qty: number): OrderItem {
+  const packingNum = parseFloat(item.packing || '') || 0;
+  const totalQty = qty * (packingNum || 1);
+  const conv = Number(item.priceBasisConv) || 1;
+  return { ...item, qty, total: totalQty * conv * Number(item.agreedRate) };
 }
 
 // One read-only box in the "Order Details" card — grey '—' when empty,
@@ -104,16 +114,17 @@ const INCO_OPTIONS = [
 // Full-page "New Dispatch Entry" form — mirrors the page chrome + bordered
 // card sections used by NewOrder.tsx (Customer & Contact / Delivery Terms
 // panels) rather than a small modal, since this form carries the full order
-// summary + line items. Also doubles as the "Edit" flow for an already
-// created dispatch entry: opened as /dispatch/new?orderRef=<orderId>, it
-// preloads that order (skipping the search step) and, if a dispatch entry
-// already exists for it, preloads that entry's saved fields too and saves
-// via updateDispatchEntry instead of addDispatchEntry.
+// summary + line items. Two entry points:
+//   /dispatch/new?orderRef=<ORD>&toSent=1 — ALWAYS a new dispatch entry for
+//     that order (an order can have many; a partial dispatch keeps the same
+//     Order No. + SO No.), lines pre-filled with what's still left to dispatch.
+//   /dispatch/new?entryId=<DSP> — edits exactly that entry (updateDispatchEntry).
 export function NewDispatchEntry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const orderRef = searchParams.get('orderRef');
-  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, addOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent } = useAppStore();
+  const entryIdParam = searchParams.get('entryId');
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   // This whole page is locked to view-only for isReadOnlyUser (the Bhiwandi
   // warehouse login) — see the <fieldset> wraps below — with one deliberate
@@ -356,25 +367,27 @@ export function NewDispatchEntry() {
   };
 
   // Unlike NewOrder.tsx's removeItem, this deliberately does NOT renumber the
-  // remaining items' `seq` after a removal — handleSubmit's leftover-split
-  // calc below matches edited items back to baselineItems by seq, and this
-  // form (unlike NewOrder.tsx) never adds new lines, only removes existing
-  // ones. Renumbering would shift a later item onto an earlier item's seq,
-  // making the calc compare the wrong pair and misattribute quantities.
+  // remaining items' `seq` after a removal — each line's seq is the ORDER's
+  // line seq, which remainingByLine and handleSubmit's remaining-qty check
+  // match on. This form (unlike NewOrder.tsx) never adds new lines, only
+  // removes existing ones; renumbering would shift a later item onto an
+  // earlier line's seq and misattribute quantities.
   const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx)); };
 
-  // Preload from ?orderRef= — used both when the order/customer picker
-  // hasn't run yet, and for the "Edit" flow off an existing dispatch entry.
-  // Guarded to run once so it never clobbers in-progress edits.
+  // Preload from ?entryId= (edit that exact entry) or ?orderRef= (new entry
+  // for that order). Waits for the store to load so remaining quantities are
+  // computed off every saved entry. Guarded to run once so it never
+  // clobbers in-progress edits.
   const hydratedRef = useRef(false);
   useEffect(() => {
-    if (hydratedRef.current || !orderRef) return;
-    const order = data.orders.find(o => o.id === orderRef);
+    if (hydratedRef.current || loading) return;
+    const existing = entryIdParam ? data.dispatchEntries.find(e => e.id === entryIdParam) : undefined;
+    if (entryIdParam && !existing) return;
+    const order = data.orders.find(o => o.id === (existing ? existing.orderId : orderRef));
     if (!order) return;
     hydratedRef.current = true;
     setSelectedOrderId(order.id);
     hydrateFromOrder(order);
-    const existing = data.dispatchEntries.find(e => e.orderId === order.id);
     if (existing) {
       setExistingEntryId(existing.id);
       // Entry's own saved value wins; fall back to what hydrateFromOrder just
@@ -405,8 +418,17 @@ export function NewDispatchEntry() {
       if (typeof existing.insurance === 'number') setInsurance(existing.insurance);
     } else {
       // Brand-new entry (e.g. "Create Dispatch" off the Order Pending for
-      // Dispatch tab): fill any blanks hydrateFromOrder left from the
+      // Dispatch tab): each line's No of Barrels starts at what's still left
+      // to dispatch across all of this order's entries; fully dispatched
+      // lines are hidden. Then fill any blanks hydrateFromOrder left from the
       // customer/site defaults.
+      const remaining = remainingByLine(order, data.dispatchEntries);
+      setItems(order.items
+        .filter(i => (remaining.get(i.seq) || 0) > 0)
+        .map(i => withQty({ ...i }, remaining.get(i.seq) || 0)));
+      // Insurance is charged once, on the order's first dispatch — same as
+      // the old leftover orders, which always carried insurance 0.
+      if (data.dispatchEntries.some(e => e.orderId === order.id)) setInsurance(0);
       const cust = data.customers.find(c => c.name === order.cust);
       if (!order.fulfillmentType) {
         if (cust?.fulfilmentType === 'Delivery') setType('delivery');
@@ -421,23 +443,20 @@ export function NewDispatchEntry() {
         if (fallbackDate) setPromisedDeliveryDate(fallbackDate.slice(0, 10));
       }
     }
-  }, [orderRef, data.orders, data.dispatchEntries]);
+  }, [loading, orderRef, entryIdParam, data.orders, data.dispatchEntries]);
 
-  // This page only ever supports the ?orderRef= entry point now (the
+  // This page only supports the ?orderRef= / ?entryId= entry points (the
   // standalone "search any order" mode has been removed) — once the store
-  // has finished loading, if hydration above didn't find a real order to
-  // work with (no orderRef, or a stale/invalid one), bounce back to the
-  // Dispatch list instead of showing anything here. Guarded on `loading` so
-  // this doesn't fire prematurely on a fresh page load before data.orders
-  // has arrived, which would incorrectly bounce away a valid orderRef.
-  // (A stale/invalid orderRef now shows the "Order not found." card below
-  // instead of bouncing, so only a missing orderRef still redirects.)
+  // has finished loading, with neither param present, bounce back to the
+  // Dispatch list. Guarded on `loading` so this doesn't fire prematurely on
+  // a fresh page load. (A stale/invalid orderRef or entryId shows the
+  // "not found" card below instead of bouncing.)
   useEffect(() => {
     if (loading) return;
     if (hydratedRef.current) return;
-    if (orderRef) return;
+    if (orderRef || entryIdParam) return;
     navigate('/dispatch', { replace: true });
-  }, [loading, orderRef, data.orders]);
+  }, [loading, orderRef, entryIdParam, data.orders]);
 
   const selectedOrder = selectedOrderId ? data.orders.find(o => o.id === selectedOrderId) : null;
   const isEditMode = !!existingEntryId;
@@ -488,144 +507,54 @@ export function NewDispatchEntry() {
   // Direct-link guard (new entries only — editing an existing entry skips
   // it). Waits for the store to load so the card never flashes while
   // loading; the form's own "Loading…" shows until then.
-  const isNewEntry = !!orderRef && !data.dispatchEntries.some(e => e.orderId === orderRef);
-  const blockReason = !loading && orderRef && isNewEntry
-    ? newDispatchBlockReason(data.orders.find(o => o.id === orderRef), orderRef)
-    : null;
+  // Skipped while saving so the card never flashes in the moment between a
+  // new entry landing in the store (which can bring remaining to 0) and the
+  // navigate away.
+  const entryParamOrder = entryIdParam
+    ? data.orders.find(o => o.id === data.dispatchEntries.find(e => e.id === entryIdParam)?.orderId)
+    : undefined;
+  const blockReason = loading || saving ? null
+    : entryIdParam
+      ? (!data.dispatchEntries.some(e => e.id === entryIdParam) ? 'Dispatch entry not found.' : !entryParamOrder ? 'Order not found.' : null)
+      : orderRef
+        ? newDispatchBlockReason(data.orders.find(o => o.id === orderRef), orderRef, data.dispatchEntries)
+        : null;
 
   const handleSubmit = async () => {
     if (!selectedOrderId || !selectedOrder || saving) return;
     // Re-check at Save time, in case the order's status / sent-to-Dispatch
-    // flag changed while this page was open.
+    // flag / remaining qty changed while this page was open.
     if (!existingEntryId) {
-      const reason = newDispatchBlockReason(data.orders.find(o => o.id === selectedOrderId), selectedOrderId);
+      const reason = newDispatchBlockReason(data.orders.find(o => o.id === selectedOrderId), selectedOrderId, data.dispatchEntries);
       if (reason) { setError(reason); return; }
     }
     if (!type) { setError('Please select Delivery or Self Pickup'); return; }
+    const existingEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : null;
+    // Each line's No of Barrels can't exceed what's still left to dispatch
+    // for that order line across ALL of the order's entries — plus, when
+    // editing, this entry's own saved qty (already counted in that total).
+    const remaining = remainingByLine(selectedOrder, data.dispatchEntries);
+    const ownSaved = new Map<number, number>();
+    if (existingEntry) {
+      const ownLines = existingEntry.items && existingEntry.items.length ? existingEntry.items : selectedOrder.items;
+      for (const l of ownLines) ownSaved.set(l.seq, (ownSaved.get(l.seq) || 0) + (Number(l.qty) || 0));
+    }
+    for (const i of items) {
+      const qty = Number(i.qty) || 0;
+      const allowed = (remaining.get(i.seq) || 0) + (ownSaved.get(i.seq) || 0);
+      if (qty < 0) { setError(`${i.desc || 'Item'}: No of Barrels can't be negative.`); return; }
+      if (qty > allowed) { setError(`${i.desc || 'Item'}: only ${allowed} left to dispatch.`); return; }
+    }
+    if (!items.some(i => (Number(i.qty) || 0) > 0)) { setError('Enter No of Barrels for at least one line.'); return; }
     setSaving(true);
     setError('');
     try {
-      // Detect a partial dispatch: if the user has edited any line's "No of
-      // Barrels" down from what's actually being dispatched here, the
-      // undispatched remainder must not be lost — split it off into a new
-      // order (status "Order Pending for Dispatch", linked back via
-      // splitFromOrderId) so it stays visible in the Orders module and can
-      // be dispatched later, potentially split further.
-      //
-      // The comparison baseline is what THIS dispatch action has already
-      // accounted for — the dispatch entry's own saved items when editing an
-      // existing one, or the order's full confirmed items on a fresh
-      // dispatch — never the order's own items directly. The order's items
-      // are never rewritten by a dispatch (see the updateOrder call below),
-      // so "Order Confirmed" always keeps showing what was actually
-      // confirmed, however many times it's since been split.
-      const existingEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : null;
-      const baselineItems = (existingEntry?.items && existingEntry.items.length) ? existingEntry.items : selectedOrder.items;
-      // Iterate the BASELINE items, not the edited `items` — a line fully
-      // removed from `items` (via the delete-row button) has no seq to look
-      // up there, so iterating `items` would silently drop its entire
-      // original quantity instead of carrying it into the leftover order.
-      // A baseline line missing from `items` is treated as 0 dispatched.
-      const editedBySeq = new Map(items.map(i => [i.seq, i]));
-      const leftoverItemsRaw: OrderItem[] = [];
-      baselineItems.forEach(orig => {
-        const edited = editedBySeq.get(orig.seq);
-        const editedQty = edited ? Number(edited.qty) : 0;
-        const remainderQty = Number(orig.qty) - editedQty;
-        if (remainderQty > 0) {
-          const packingNum = parseFloat(orig.packing || '') || 0;
-          const totalQty = remainderQty * (packingNum || 1);
-          const conv = Number(orig.priceBasisConv) || 1;
-          const total = totalQty * conv * Number(orig.agreedRate);
-          leftoverItemsRaw.push({ ...orig, qty: remainderQty, total });
-        }
-      });
-      const leftoverItems = leftoverItemsRaw.map((it, i) => ({ ...it, seq: i + 1 }));
-
-      if (leftoverItems.length > 0) {
-        const summary = leftoverItems.map(i => `${i.desc || '(item)'} — ${i.qty} left`).join(', ');
-        const proceed = window.confirm(
-          `This dispatch covers only part of the order (${summary}). The undispatched remainder will be split into a new order under "Order Pending for Dispatch" so it isn't lost. Continue?`
-        );
-        if (!proceed) { setSaving(false); return; }
-
-        // Leftover order recomputes its own Subtotal → GST → Order Value from
-        // its own (smaller) item quantities. Insurance and any fixed-amount
-        // ('value'-mode) taxes/charges stay on the original dispatched order
-        // only; percentage-mode adjustments are carried over and recomputed
-        // proportionally here off the leftover subtotal.
-        const isINR = (curr || 'INR') === 'INR';
-        const leftoverSubTotal = leftoverItems.reduce((s, i) => s + i.total, 0);
-        const leftoverItemGst = leftoverItems.reduce((s, i) => s + (i.total * i.gst / 100), 0);
-        const leftoverMaxGstRate = isINR ? maxItemGstRate(leftoverItems) : 0;
-        const leftoverPercentAdjustments = (selectedOrder.adjustments || []).filter(a => a.mode === 'percent');
-        const leftoverAdj = resolveAdjustments(leftoverPercentAdjustments, leftoverSubTotal, isINR ? leftoverItemGst : 0, leftoverMaxGstRate);
-        const leftoverGstTotal = isINR ? leftoverAdj.gstTotal : 0;
-        const leftoverValue = Math.round(leftoverSubTotal + leftoverAdj.preNet + leftoverGstTotal + leftoverAdj.postNet);
-
-        const newOrder: Order = {
-          id: generateId('ORD', data.orders.map(o => o.id)),
-          quoteRef: selectedOrder.quoteRef,
-          enqRef: selectedOrder.enqRef,
-          cust: selectedOrder.cust,
-          siteId: selectedOrder.siteId,
-          contactId: selectedOrder.contactId,
-          contact: contact || undefined,
-          email: email || undefined,
-          phone: phone || undefined,
-          custEnquiryDocNo: custEnquiryDocNo || undefined,
-          poNo: selectedOrder.poNo,
-          poDate: selectedOrder.poDate,
-          dlvDate: selectedOrder.dlvDate,
-          scheduleDate: selectedOrder.scheduleDate,
-          status: 'Order Pending for Dispatch',
-          // Leftover goes straight to Dispatch → Order Pending for Dispatch,
-          // no "Order Pending for Dispatch" click needed in Orders.
-          sentToDispatchAt: new Date().toISOString(),
-          value: leftoverValue,
-          insurance: 0,
-          inco: inco || undefined,
-          curr: curr || undefined,
-          pay: pay || undefined,
-          items: leftoverItems,
-          adjustments: leftoverPercentAdjustments,
-          authorizedPerson: selectedOrder.authorizedPerson,
-          customerTier: customerTier || undefined,
-          terms: selectedOrder.terms,
-          bankingDetails: selectedOrder.bankingDetails,
-          unitId: selectedOrder.unitId,
-          bankAccountId: selectedOrder.bankAccountId,
-          priceBasis: selectedOrder.priceBasis,
-          countryOfOrigin: selectedOrder.countryOfOrigin,
-          eximCode: selectedOrder.eximCode,
-          customPoint: selectedOrder.customPoint,
-          pan: selectedOrder.pan,
-          hsn: selectedOrder.hsn,
-          shipToAddress: shipAddr || undefined,
-          doer: selectedOrder.doer,
-          // Dispatch-specific fields (Transporter, Promised/Estimated Delivery
-          // Date, Fulfillment Type) are deliberately left blank on the
-          // leftover order — they describe *this* dispatch, not the
-          // still-undispatched remainder, which gets its own fresh values
-          // when it's eventually dispatched.
-          splitFromOrderId: selectedOrder.id,
-        };
-        await addOrder(newOrder);
-      }
-
-      // Persist corrections made to the order's own trading/contact details
-      // only — NOT items/insurance/value. The order keeps showing exactly
-      // what was confirmed, for as long as it exists, regardless of how much
-      // of it has since been dispatched; what's actually being dispatched
-      // now lives on the dispatch entry itself (below), and any undispatched
-      // remainder lives on the leftover order split off above.
-      //
-      // A leftover order (status "Order Pending for Dispatch") that's now
-      // getting its own dispatch entry — whether fully dispatched here or
-      // partially (splitting off yet another remainder above) — is done
-      // being "pending"; flip it back to "Order Confirmed" so it drops out
-      // of that tab. Orders that started as Order Confirmed/Processing/
-      // Delivered are left untouched.
+      // A dispatch never creates an order or changes an order's items or
+      // status — a partial dispatch keeps the same order (Order No. + SO No.)
+      // and whatever's left stays in Dispatch → Order Pending for Dispatch
+      // (see totalRemaining). Only corrections made to the order's own
+      // trading/contact details are persisted — what's actually being
+      // dispatched now lives on the dispatch entry itself (below).
       const orderUpdates: Partial<Order> = {
         contact: contact || undefined,
         phone: phone || undefined,
@@ -637,16 +566,6 @@ export function NewDispatchEntry() {
         shipToAddress: shipAddr || undefined,
         custEnquiryDocNo: custEnquiryDocNo || undefined,
       };
-      if (selectedOrder.status === 'Order Pending for Dispatch') {
-        orderUpdates.status = 'Order Confirmed';
-      }
-      // Permanent marker for a split order once it's ever been dispatched —
-      // unlike the status flip above, this is never reset, so the order
-      // stays hidden from the Orders module (see isRetiredSplitOrder in
-      // Orders.tsx) even after this dispatch entry is later deleted.
-      if (selectedOrder.splitFromOrderId) {
-        orderUpdates.dispatchFinalized = true;
-      }
       await updateOrder(selectedOrderId, orderUpdates);
 
       // Every save is a "Dispatch → Sent" save: keep the original sentAt
@@ -656,6 +575,10 @@ export function NewDispatchEntry() {
       // Documents Attachment — upload only the fields the user actually
       // touched this session, only now on Save, exactly like the Order
       // form's PO Document field.
+      // A new entry has no id yet, and an order can now have several entries —
+      // give each new entry its own folder so a same-named file never
+      // overwrites another entry's upload (uploadPublicFile upserts).
+      const uploadPrefix = existingEntryId || `${selectedOrderId}/${Date.now()}`;
       const docUpdates: Partial<DispatchEntry> = {};
       // Single-file fields (Supplier Portal, Term Card Attachment) —
       // unchanged: a freshly-picked file uploads and records its public URL
@@ -666,7 +589,7 @@ export function NewDispatchEntry() {
         const file = docFiles[field.key];
         if (file) {
           const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const pathPrefix = existingEntryId || selectedOrderId;
+          const pathPrefix = uploadPrefix;
           const { data: publicUrl, error: uploadError } = await uploadPublicFile('dispatch-documents', `${pathPrefix}/${field.slug}/${safeName}`, file);
           if (uploadError || !publicUrl) throw uploadError || new Error(`Could not upload ${field.label}`);
           (docUpdates as any)[field.urlKey] = publicUrl;
@@ -691,7 +614,7 @@ export function NewDispatchEntry() {
             files.push({ url: slot.url, name: slot.name });
           } else {
             const safeName = slot.file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const pathPrefix = existingEntryId || selectedOrderId;
+            const pathPrefix = uploadPrefix;
             const { data: publicUrl, error: uploadError } = await uploadPublicFile('dispatch-documents', `${pathPrefix}/${field.slug}/${slot.id}-${safeName}`, slot.file);
             if (uploadError || !publicUrl) throw uploadError || new Error(`Could not upload ${field.label}`);
             files.push({ url: publicUrl, name: slot.file.name });
@@ -716,7 +639,7 @@ export function NewDispatchEntry() {
         sentAt,
         // This dispatch's own line items/insurance/value — what's actually
         // being dispatched right now, independent of the order's own totals.
-        items,
+        items: items.filter(i => (Number(i.qty) || 0) > 0),
         insurance: curr === 'INR' ? insurance : 0,
         value: orderTotals ? orderTotals.grandTotal : selectedOrder.value,
         ...docUpdates,
