@@ -1,10 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Search, List, Columns3 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining } from '../lib/utils';
 import { Order, OrderItem, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
+import { buildBoard, BoardCard, DONE_COLUMN } from '../lib/dispatchFlow';
+import { DispatchBoard, AutoTag } from '../components/DispatchBoard';
 
 type SubType = DispatchFulfillmentType | 'not_set';
 type DispatchTab = 'pending' | 'dispatched' | 'emailSent';
@@ -120,6 +122,20 @@ export function Dispatch() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
+  // Table (this page as it always was) vs the Kanban Board view — kept in
+  // the URL as ?view=board so a refresh stays on the board.
+  const [view, setView] = useState<'table' | 'board'>(() => searchParams.get('view') === 'board' ? 'board' : 'table');
+  const [boardFilter, setBoardFilter] = useState<'all' | 'delayed' | 'hold'>('all');
+  const [boardType, setBoardType] = useState<'both' | DispatchFulfillmentType>('both');
+  // Board timers ("Due in 12 min", "Late by 1h 20m") re-evaluate every minute.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (view !== 'board') return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, [view]);
+
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
 
   // Order Pending for Dispatch — read-only view of every order that was
@@ -182,9 +198,9 @@ export function Dispatch() {
   const deliveryCount = activeEntries.filter(e => e.fulfillmentType === 'delivery').length;
   const selfPickupCount = activeEntries.filter(e => e.fulfillmentType === 'self_pickup').length;
 
-  // Keep the URL in step so a refresh stays on the same tab/pill.
-  const syncUrl = (t: DispatchTab, type: DispatchFulfillmentType) =>
-    setSearchParams(t === 'pending' ? {} : { tab: t, type }, { replace: true });
+  // Keep the URL in step so a refresh stays on the same tab/pill/view.
+  const syncUrl = (t: DispatchTab, type: DispatchFulfillmentType, v: 'table' | 'board' = view) =>
+    setSearchParams({ ...(t === 'pending' ? {} : { tab: t, type }), ...(v === 'board' ? { view: 'board' } : {}) }, { replace: true });
   const switchTab = (t: DispatchTab) => {
     setTab(t);
     setExpandedRow(null);
@@ -193,6 +209,10 @@ export function Dispatch() {
   const switchSubType = (type: DispatchFulfillmentType) => {
     setSubType(type);
     syncUrl(tab, type);
+  };
+  const switchView = (v: 'table' | 'board') => {
+    setView(v);
+    syncUrl(tab, subType, v);
   };
 
   const qs = search.trim().toLowerCase();
@@ -229,6 +249,35 @@ export function Dispatch() {
   const isEmailSentTab = tab === 'emailSent';
   const entryColCount = isEmailSentTab ? 11 : 10;
 
+  // ── Board view ──────────────────────────────────────────────────────────
+  const boardCards = useMemo(
+    () => view === 'board' ? buildBoard(data.orders, data.dispatchEntries, [], orderFulfillment, now) : [],
+    [view, data.orders, data.dispatchEntries, data.customers, now],
+  );
+  const boardSearchMatch = (c: BoardCard) => {
+    if (!qs) return true;
+    const o = c.order;
+    return (o?.soNumber || '').toLowerCase().includes(qs)
+      || (c.kind === 'order' ? c.order.id : c.entry.orderId).toLowerCase().includes(qs)
+      || (!!o && normalizeSearchText(o.cust).includes(normalizeSearchText(qs)))
+      || (c.kind === 'entry' && (c.entry.invoiceNumber || '').toLowerCase().includes(qs));
+  };
+  // Type + search narrow everything; the All/Delayed/On hold pills then
+  // filter what's left (their counts are shown before that last step).
+  const boardBase = boardCards.filter(c => (boardType === 'both' || c.fulfillment === boardType) && boardSearchMatch(c));
+  const boardDelayedCount = boardBase.filter(c => c.state === 'late').length;
+  const boardHoldCount = boardBase.filter(c => c.state === 'hold').length;
+  const boardVisible = boardFilter === 'delayed' ? boardBase.filter(c => c.state === 'late')
+    : boardFilter === 'hold' ? boardBase.filter(c => c.state === 'hold')
+    : boardBase;
+  // Header count boxes — whole board, ignoring filters/search.
+  const headerCounts = {
+    inProgress: boardCards.filter(c => c.column !== DONE_COLUMN).length,
+    delayed: boardCards.filter(c => c.state === 'late').length,
+    onHold: boardCards.filter(c => c.state === 'hold').length,
+    emailSent: boardCards.filter(c => c.column === DONE_COLUMN).length,
+  };
+
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
       <div className="pt-5 px-6">
@@ -240,10 +289,71 @@ export function Dispatch() {
             </h1>
             <p className="text-xs text-g500 mt-1 font-light">Every confirmed order, stage by stage — split by how it leaves the warehouse.</p>
           </div>
+          {view === 'board' && (
+            <div className="flex items-stretch gap-2 shrink-0">
+              {([
+                ['In progress', headerCounts.inProgress, 'bg-white text-blk'],
+                ['Delayed', headerCounts.delayed, 'bg-[#FFEBEE] text-[#9A0000]'],
+                ['On hold', headerCounts.onHold, 'bg-white text-blk'],
+                ['Email sent', headerCounts.emailSent, 'bg-[#E8F5E9] text-[#0B5C2A]'],
+              ] as const).map(([label, count, cls]) => (
+                <div key={label} className={`border border-g200 rounded-[6px] px-3 py-1.5 min-w-[92px] ${cls}`}>
+                  <div className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase opacity-80">{label}</div>
+                  <div className="text-[22px] font-bold leading-tight">{count}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="flex items-center gap-2 px-6 py-2.5 mt-4 bg-white border-b border-g200 flex-wrap">
+        <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
+          <div onClick={() => switchView('table')} className={`flex items-center gap-1.5 ${pillCls(view === 'table')}`}>
+            <List size={12} /> Table
+          </div>
+          <div onClick={() => switchView('board')} className={`flex items-center gap-1.5 ${pillCls(view === 'board')}`}>
+            <Columns3 size={12} /> Board
+          </div>
+        </div>
+        <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
+
+        {view === 'board' ? (
+          <>
+            <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
+              <div onClick={() => setBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardBase.length})</div>
+              <div onClick={() => setBoardFilter('delayed')} className={pillCls(boardFilter === 'delayed')}>Delayed ({boardDelayedCount})</div>
+              <div onClick={() => setBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
+            </div>
+            <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
+            <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
+              <div onClick={() => setBoardType('both')} className={pillCls(boardType === 'both')}>Both</div>
+              <div onClick={() => setBoardType('delivery')} className={`flex items-center gap-1.5 ${pillCls(boardType === 'delivery')}`}>
+                <span className="w-[7px] h-[7px] rounded-full bg-[#2563EB] shrink-0" /> Delivery
+              </div>
+              <div onClick={() => setBoardType('self_pickup')} className={`flex items-center gap-1.5 ${pillCls(boardType === 'self_pickup')}`}>
+                <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup
+              </div>
+            </div>
+            <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
+            <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[220px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
+              <Search size={11} className="text-g400 shrink-0" />
+              <input
+                type="text"
+                placeholder="SO No, Order Ref, company, invoice…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
+              />
+            </div>
+            <div className="ml-auto flex items-center gap-3 text-[11px] text-g600 whitespace-nowrap">
+              <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#107E3E]" />On time</span>
+              <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#E9730C]" />Due within 1h</span>
+              <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#BB0000]" />Delayed</span>
+              <span className="inline-flex items-center gap-1"><AutoTag /> Moves by itself</span>
+            </div>
+          </>
+        ) : (<>
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <div onClick={() => switchTab('pending')} className={pillCls(tab === 'pending')}>
             Order Pending for Dispatch ({pendingOrders.length})
@@ -285,8 +395,12 @@ export function Dispatch() {
         <div className="ml-auto font-mono text-[10px] text-g500">
           {tab === 'pending' ? `${rowCount} order(s)` : `${rowCount} entr${rowCount === 1 ? 'y' : 'ies'}`}
         </div>
+        </>)}
       </div>
 
+      {view === 'board' ? (
+        <DispatchBoard cards={boardVisible} now={now} />
+      ) : (
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
           {tab === 'pending' ? (
@@ -479,6 +593,7 @@ export function Dispatch() {
           )}
         </div>
       </div>
+      )}
 
     </div>
   );
