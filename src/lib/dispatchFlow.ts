@@ -309,12 +309,68 @@ export interface EntryPosition {
 export function entryPosition(e: DispatchEntry): EntryPosition {
   const invoiceMissing = !e.invoiceNumber;
   if (e.emailSentAt) return { column: 11, invoiceMissing };
+  if (invoiceMissing) return { column: 8, plannedAt: entryStepPlanned(e, 8), invoiceMissing };
+  if (e.fulfillmentType !== 'self_pickup' && !entryHasLr(e)) return { column: 9, plannedAt: entryStepPlanned(e, 9), invoiceMissing };
+  return { column: 10, plannedAt: entryStepPlanned(e, 10), invoiceMissing };
+}
+
+/** Planned time of an entry's own step 8 (invoice no.), 9 (LR) or 10 (email). */
+export function entryStepPlanned(e: DispatchEntry, stepNo: 8 | 9 | 10): string | undefined {
   const legacy = isBeforeGoLive(e.created_at);
-  if (invoiceMissing) return { column: 8, plannedAt: plannedAtFor(goLiveFloor(e.created_at, legacy), 8), invoiceMissing };
+  const start = stepNo === 10 && e.fulfillmentType !== 'self_pickup' ? (e.updated_at || e.created_at) : e.created_at;
+  return plannedAtFor(goLiveFloor(start, legacy), stepNo);
+}
+
+/**
+ * The drawer's 10-row step list for one order: steps 1–4 from round 1
+ * (once per order), steps 5–7 from the latest round, and steps 8–10 from
+ * the dispatch entry that closed that round (or still to come if the
+ * order card is open).
+ */
+export function drawerSteps(
+  order: Order,
+  orderEntries: DispatchEntry[],
+  records: DispatchStepRecord[],
+  fulfillment: DispatchFulfillmentType | 'not_set',
+  openPosition: OrderPosition | undefined,
+): OrderStepHistory[] {
+  const rounds = orderRounds(order, orderEntries, records, fulfillment, !!openPosition);
+  if (!rounds.length) return [];
+  const first = rounds[0];
+  const focus = rounds[rounds.length - 1];
+  const steps: OrderStepHistory[] = [
+    ...first.history.filter(h => h.stepNo <= 4),
+    ...focus.history.filter(h => h.stepNo >= 5),
+  ];
+  const lastDone = latestIso(steps.filter(h => h.state === 'done').map(h => h.doneAt));
+  const e = focus.entry;
+  if (!e) {
+    const selfPickup = fulfillment === 'self_pickup';
+    steps.push(openPosition?.step === 8
+      ? { stepNo: 8, state: 'current', plannedAt: openPosition.plannedAt }
+      : { stepNo: 8, state: 'upcoming' });
+    steps.push({ stepNo: 9, state: selfPickup ? 'skipped' : 'upcoming' });
+    steps.push({ stepNo: 10, state: 'upcoming' });
+    return steps;
+  }
+  const legacy = isBeforeGoLive(order.sentToDispatchAt);
+  const pos = entryPosition(e);
   const selfPickup = e.fulfillmentType === 'self_pickup';
-  if (!selfPickup && !entryHasLr(e)) return { column: 9, plannedAt: plannedAtFor(goLiveFloor(e.created_at, legacy), 9), invoiceMissing };
-  const start = selfPickup ? e.created_at : (e.updated_at || e.created_at);
-  return { column: 10, plannedAt: plannedAtFor(goLiveFloor(start, legacy), 10), invoiceMissing };
+  steps.push(pos.column === 8
+    ? { stepNo: 8, state: 'current', plannedAt: pos.plannedAt, remark: 'Invoice no. missing' }
+    : { stepNo: 8, state: 'done', plannedAt: plannedAtFor(goLiveFloor(lastDone, legacy), 8), doneAt: e.created_at, doneBy: e.createdBy, remark: pos.invoiceMissing ? 'Invoice no. missing' : undefined });
+  steps.push(selfPickup
+    ? { stepNo: 9, state: 'skipped' }
+    : entryHasLr(e)
+      ? { stepNo: 9, state: 'done', plannedAt: entryStepPlanned(e, 9), remark: 'LR uploaded' }
+      : pos.column === 9 ? { stepNo: 9, state: 'current', plannedAt: pos.plannedAt }
+      : pos.column === 11 ? { stepNo: 9, state: 'not_recorded' }
+      : { stepNo: 9, state: 'upcoming' });
+  steps.push(e.emailSentAt
+    ? { stepNo: 10, state: 'done', plannedAt: entryStepPlanned(e, 10), doneAt: e.emailSentAt }
+    : pos.column === 10 ? { stepNo: 10, state: 'current', plannedAt: pos.plannedAt }
+    : { stepNo: 10, state: 'upcoming' });
+  return steps;
 }
 
 // ── Time bar ──────────────────────────────────────────────────────────────

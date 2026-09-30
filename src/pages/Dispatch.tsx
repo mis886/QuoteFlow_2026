@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, List, Columns3 } from 'lucide-react';
 import { useAppStore } from '../store';
@@ -7,6 +7,7 @@ import { canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjus
 import { Order, OrderItem, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 import { buildBoard, mapStepFromDB, stepDef, BoardCard, BoardOrderCard, DispatchStepRecord, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
 import { DispatchBoard, AutoTag, StepActionButtons } from '../components/DispatchBoard';
+import { DispatchDrawer } from '../components/DispatchDrawer';
 import { supabase } from '../lib/supabase';
 import { logActivity } from '../lib/activityLog';
 
@@ -213,6 +214,12 @@ export function Dispatch() {
   const renderBoardActions = (card: BoardCard) => canActOnBoard && card.kind === 'order'
     ? <StepActionButtons card={card} busy={busyCardKey === card.key} onAction={runStepAction} onResume={resumeHold} />
     : null;
+
+  // Detail drawer — opened by clicking an SO No. on any board card (order
+  // or entry card); always shows the whole order.
+  const [drawerOrderId, setDrawerOrderId] = useState<string | null>(null);
+  const openDrawer = (card: BoardCard) => setDrawerOrderId(card.kind === 'order' ? card.order.id : card.entry.orderId);
+  const closeDrawer = useCallback(() => setDrawerOrderId(null), []);
 
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
 
@@ -477,7 +484,7 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard cards={boardVisible} now={now} renderActions={renderBoardActions} />
+        <DispatchBoard cards={boardVisible} now={now} onOpen={openDrawer} renderActions={renderBoardActions} />
       ) : (
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
@@ -673,6 +680,29 @@ export function Dispatch() {
       </div>
       )}
 
+      {view === 'board' && drawerOrderId && (() => {
+        const o = data.orders.find(x => x.id === drawerOrderId);
+        if (!o) return null;
+        // Unfiltered board, so the drawer still finds the order card when
+        // the current filter/search hides it.
+        const orderCard = boardCards.find((c): c is BoardOrderCard => c.kind === 'order' && c.order.id === o.id);
+        return (
+          <DispatchDrawer
+            order={o}
+            entries={data.dispatchEntries.filter(e => e.orderId === o.id)}
+            records={stepRecords.filter(r => r.orderId === o.id)}
+            fulfillment={orderCard?.fulfillment ?? orderFulfillment(o)}
+            orderCard={orderCard}
+            now={now}
+            roster={data.roster}
+            canAct={canActOnBoard}
+            busy={!!orderCard && busyCardKey === orderCard.key}
+            onAction={runStepAction}
+            onResume={resumeHold}
+            onClose={closeDrawer}
+          />
+        );
+      })()}
     </div>
   );
 }
