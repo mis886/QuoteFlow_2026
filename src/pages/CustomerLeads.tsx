@@ -218,7 +218,22 @@ export function CustomerLeads() {
       {/* Table */}
       <div className="px-6 pb-7 pt-[14px] flex-1 min-h-0 flex flex-col">
         <div className="bg-white border border-g200 overflow-auto flex-1 min-h-0">
-          <table className="min-w-full border-collapse text-[12.5px]">
+          {/* Fixed layout so the table fits its box (no sideways scroll at
+              1366px+). The small columns get fixed widths (796px total);
+              Company and Contact have none, so they split whatever is left
+              (~150px each at 1366, ~277px at 1600) — long names wrap, long
+              emails truncate. */}
+          <table className="w-full table-fixed border-collapse text-[12.5px]">
+            <colgroup>
+              <col />{/* Company */}
+              <col />{/* Contact */}
+              <col style={{ width: 116 }} />{/* Mobile (+91XXXXXXXXXX) */}
+              <col style={{ width: 116 }} />{/* City / State */}
+              <col style={{ width: 106 }} />{/* Enq / Orders */}
+              <col style={{ width: 152 }} />{/* Order Value (Total) */}
+              <col style={{ width: 76 }} />{/* CRM */}
+              <col style={{ width: 230 }} />{/* Actions — Promote + Profile + edit on one line */}
+            </colgroup>
             <thead>
               <tr>
                 {COLUMNS.map(label => (
@@ -243,14 +258,14 @@ export function CustomerLeads() {
                     <td className="px-[13px] py-[11px] align-middle">
                       <div className="flex items-center gap-2.5">
                         <InitialAvatar name={c.name} />
-                        <div>
-                          <div className="font-semibold text-blk leading-snug">{c.name}</div>
+                        <div className="min-w-0">
+                          <div className="font-semibold text-blk leading-snug [overflow-wrap:anywhere]">{c.name}</div>
                           <TierBadge tier={c.tier} />
                         </div>
                       </div>
                     </td>
                     {/* Contact */}
-                    <td className="px-[13px] py-[11px] align-middle max-w-[170px]">
+                    <td className="px-[13px] py-[11px] align-middle">
                       {contact?.name ? (
                         <div className="min-w-0">
                           <div className="font-medium text-blk truncate">{contact.name}</div>
@@ -260,7 +275,7 @@ export function CustomerLeads() {
                     </td>
                     {/* Mobile */}
                     <td className="px-[13px] py-[11px] align-middle">
-                      {contact?.phone ? <span className="font-mono text-[11px] text-g600">{contact.phone}</span> : <span className="text-g300">—</span>}
+                      {contact?.phone ? <span className="block truncate font-mono text-[11px] text-g600" title={contact.phone}>{contact.phone}</span> : <span className="text-g300">—</span>}
                     </td>
                     {/* City / State */}
                     <td className="px-[13px] py-[11px] align-middle text-g600">
@@ -271,7 +286,7 @@ export function CustomerLeads() {
                       {st.enquiries} / {st.orders}
                     </td>
                     {/* Order Value (Total) + progress to ₹1L */}
-                    <td className="px-[13px] py-[11px] align-middle min-w-[140px]">
+                    <td className="px-[13px] py-[11px] align-middle">
                       <div className={`font-mono text-[11.5px] font-bold ${ready ? 'text-sW' : 'text-blk'}`}>{formatINR(Math.round(st.orderValue))}</div>
                       <div className="h-[4px] bg-g200 rounded-full mt-1 overflow-hidden" title={`${Math.round(pct * 100)}% of ₹1,00,000`}>
                         <div className={`h-full rounded-full ${ready ? 'bg-sW' : 'bg-lead'}`} style={{ width: `${pct * 100}%` }} />
@@ -281,19 +296,18 @@ export function CustomerLeads() {
                     <td className="px-[13px] py-[11px] align-middle text-g600">{c.crm || '—'}</td>
                     {/* Actions */}
                     <td className="px-[13px] py-[11px] align-middle" onClick={e => e.stopPropagation()}>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex gap-1.5">
-                          <Button size="sm" variant="secondary" onClick={() => setSelectedLead(c)}>Profile</Button>
-                          <Button size="sm" variant="secondary" title="Edit lead" onClick={() => navigate(`/customers/leads/new?id=${c.id}`)}>
-                            <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          </Button>
-                        </div>
+                      {/* One line: Promote, Profile, edit — all the same 26px height. */}
+                      <div className="flex items-center gap-[6px] flex-nowrap whitespace-nowrap">
                         {/* On every lead; filled green once it has crossed ₹1 lakh. */}
                         <Button size="sm" variant="secondary"
-                          className={`gap-1 justify-center border-sW hover:border-sW ${ready ? 'bg-sW text-white hover:bg-sW/90' : 'bg-white text-sW hover:bg-sW/10'}`}
+                          className={`h-[26px] gap-1 border-sW hover:border-sW ${ready ? 'bg-sW text-white hover:bg-sW/90' : 'bg-white text-sW hover:bg-sW/10'}`}
                           title={ready ? 'Crossed ₹1 lakh — ready to promote' : 'Move to Customer Master'}
                           onClick={() => setPromoteTarget(c)}>
                           <ArrowUp size={10} className="stroke-[2.5]" /> Promote
+                        </Button>
+                        <Button size="sm" variant="secondary" className="h-[26px]" onClick={() => setSelectedLead(c)}>Profile</Button>
+                        <Button size="sm" variant="secondary" className="h-[26px] w-[26px] px-0 justify-center" title="Edit lead" onClick={() => navigate(`/customers/leads/new?id=${c.id}`)}>
+                          <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </Button>
                       </div>
                     </td>
