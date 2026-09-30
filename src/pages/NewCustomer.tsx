@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { Customer, Site, Contact, NextOrder } from '../lib/types';
-import { generateId, PAY_OPTIONS, normalizePayTerms, ENQUIRY_SOURCES } from '../lib/utils';
+import { generateId, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { normalizeIndianPhone } from '../lib/phone';
 import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
@@ -223,11 +223,6 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [parsePreview, setParsePreview] = useState<Record<number, ReturnType<typeof parseMixedAddress> | null>>({});
   const [existingAudit, setExistingAudit] = useState<{ createdBy: string; createdDate: string; modifiedBy: string; modifiedDate: string } | null>(null);
-  // Lead mode only — "Lead Source" card.
-  const [leadSource, setLeadSource] = useState('IndiaMART');
-  const [firstEnquiryDate, setFirstEnquiryDate] = useState('');
-  const [linkedEnquiryId, setLinkedEnquiryId] = useState('');
-  const [productInterest, setProductInterest] = useState('');
   // Name as loaded — orders/enquiries/quotes link by company NAME, so renaming
   // a lead that already has records would orphan them (see the warning below).
   const [originalName, setOriginalName] = useState('');
@@ -264,12 +259,6 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         setCrossSellOpportunities(cust.crossSellOpportunities || '');
         setNotes(cust.notes || '');
         setOriginalName(cust.name);
-        if (isLeadMode) {
-          setLeadSource(cust.leadSource || 'IndiaMART');
-          setFirstEnquiryDate(cust.firstEnquiryDate || '');
-          setLinkedEnquiryId(cust.linkedEnquiryId || '');
-          setProductInterest(cust.productInterest || '');
-        }
         setExistingAudit({
           createdBy: cust.createdBy || '',
           createdDate: cust.createdDate || '',
@@ -417,7 +406,6 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     if (isLeadMode) {
       if (!primaryContact?.name?.trim()) e.contactName = 'Contact person is required';
       if (!primaryContact?.phone?.trim()) e.contactPhone = 'Mobile is required';
-      if (!leadSource) e.leadSource = 'Source is required';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -437,25 +425,32 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         extraEmails: (ct.extraEmails ?? []).filter(e => e.trim()),
       })),
     }));
-    const cust: Customer = {
+    const base = {
       id, code: code.trim().toUpperCase(), name: name.trim(),
       seg, customerType, inco, curr, pay, gstin: gstin.trim().toUpperCase(), pan: pan.trim().toUpperCase() || undefined, sites: normalizedSites,
       crm: crm.trim() || undefined,
       tier: (tier || undefined) as Customer['tier'],
-      creditLimit: creditLimit !== '' ? Number(creditLimit) : undefined,
-      nextOrder1: nextOrder1.product ? nextOrder1 : undefined,
-      nextOrder2: nextOrder2.product ? nextOrder2 : undefined,
-      crossSellOpportunities: crossSellOpportunities.trim() || undefined,
-      notes: notes.trim() || undefined,
-      ...(isLeadMode ? {
-        customerStatus: 'lead' as const,
-        creditLimit: 0,   // leads get no credit
-        leadSource,
-        firstEnquiryDate: firstEnquiryDate || undefined,
-        linkedEnquiryId: linkedEnquiryId.trim() || undefined,
-        productInterest: productInterest.trim() || undefined,
-      } : {}),
     };
+    // mapCustomerToDB only writes fields that are PRESENT on the object, so
+    // lead mode leaves out every field the lead form doesn't show (next
+    // orders, cross-sell, notes, and the lead-source details) — saving a lead
+    // never blanks them. lead_source is set once, to IndiaMART, on a new lead
+    // only; editing an existing lead leaves it as it is.
+    const cust: Customer = isLeadMode
+      ? {
+          ...base,
+          customerStatus: 'lead',
+          creditLimit: 0,   // leads get no credit
+          ...(editId ? {} : { leadSource: 'IndiaMART' }),
+        }
+      : {
+          ...base,
+          creditLimit: creditLimit !== '' ? Number(creditLimit) : undefined,
+          nextOrder1: nextOrder1.product ? nextOrder1 : undefined,
+          nextOrder2: nextOrder2.product ? nextOrder2 : undefined,
+          crossSellOpportunities: crossSellOpportunities.trim() || undefined,
+          notes: notes.trim() || undefined,
+        };
     if (isLeadMode) {
       setSaving(true);
       try {
@@ -480,16 +475,6 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
 
   const inputCls = 'w-full font-sans text-sm bg-white border border-g300 rounded-[3px] p-2 outline-none focus:border-red-mrt focus:ring-4 focus:ring-red-lt transition-all';
   const labelCls = 'block text-[10px] font-bold text-g600 uppercase tracking-wide mb-1';
-
-  // Lead mode "Linked Enquiry" suggestions: this company's enquiries first,
-  // then everyone else's, newest first (capped so the list stays quick).
-  const leadNameKey = name.trim().toLowerCase();
-  const linkedEnquiryOptions = isLeadMode
-    ? [...data.enquiries]
-        .sort((a, b) => Number((b.cust || '').toLowerCase() === leadNameKey) - Number((a.cust || '').toLowerCase() === leadNameKey)
-          || (b.recv || '').localeCompare(a.recv || ''))
-        .slice(0, 300)
-    : [];
 
   // Shared between modes — customer mode shows it next to GSTIN/PAN, lead
   // mode in Tier's slot (leads have no tier).
@@ -660,45 +645,8 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
             </div>
           </div>
 
-          {/* Right column: (lead mode) Lead Source, then Commercial Terms */}
-          <div className="col-span-4 space-y-[14px]">
-          {isLeadMode && (
-            <div className="bg-white border border-g200 rounded-[3px] p-5 space-y-4">
-              <div className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-lead-text pb-2 border-b border-g200">
-                Lead Source
-              </div>
-              <div>
-                <label className={labelCls}>Source <span className="text-red-mrt">*</span></label>
-                <select title="Source" value={leadSource} onChange={e => setLeadSource(e.target.value)} className={inputCls + (errors.leadSource ? ' border-red-mrt' : '')}>
-                  {leadSource && !(ENQUIRY_SOURCES as readonly string[]).includes(leadSource) && <option value={leadSource}>{leadSource}</option>}
-                  {ENQUIRY_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                {errors.leadSource && <p className="text-red-mrt text-[10px] mt-1">{errors.leadSource}</p>}
-              </div>
-              <div>
-                <label className={labelCls}>First Enquiry Date</label>
-                <input type="date" value={firstEnquiryDate} onChange={e => setFirstEnquiryDate(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>Linked Enquiry <span className="normal-case font-normal text-g400">(optional)</span></label>
-                <input type="text" list="lead-enquiry-options" value={linkedEnquiryId}
-                  onChange={e => setLinkedEnquiryId(e.target.value.split(' · ')[0])}
-                  className={inputCls + ' font-mono'} placeholder="Search ENQ no. or company…" />
-                <datalist id="lead-enquiry-options">
-                  {linkedEnquiryOptions.map(e => (
-                    <option key={e.id} value={e.id}>{`${e.id} · ${e.cust}`}</option>
-                  ))}
-                </datalist>
-              </div>
-              <div>
-                <label className={labelCls}>Product Interested In</label>
-                <input type="text" value={productInterest} onChange={e => setProductInterest(e.target.value)} className={inputCls} placeholder="e.g. Pine Oil, Camphor Powder" />
-              </div>
-            </div>
-          )}
-
           {/* Commercial Terms */}
-          <div className="bg-white border border-g200 rounded-[3px] p-5 space-y-4">
+          <div className="col-span-4 bg-white border border-g200 rounded-[3px] p-5 space-y-4">
             <div className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-red-mrt pb-2 border-b border-g200">
               Commercial Terms
             </div>
@@ -744,7 +692,6 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                 />
               )}
             </div>
-          </div>
           </div>
         </div>
 
@@ -1004,6 +951,8 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
           </div>
         </div>
 
+        {/* Rows 3–4 (Next Expected Orders, Cross-Sell, Notes) — Customer Master only; the Lead form doesn't show or save them. */}
+        {!isLeadMode && (<>
         {/* Row 3: Next Expected Orders */}
         <div className="bg-white border border-g200 rounded-[3px] p-5 space-y-4">
           <div className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-red-mrt pb-2 border-b border-g200">
@@ -1065,6 +1014,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
             />
           </div>
         </div>
+        </>)}
 
       </div>
 
