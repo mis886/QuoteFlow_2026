@@ -31,7 +31,7 @@ interface LeadStats { enquiries: number; orders: number; countedOrders: number; 
 
 export function CustomerLeads() {
   const navigate = useNavigate();
-  const { data, user, addCustomer, updateCustomer, deleteLead, globalSearchQuery } = useAppStore() as any;
+  const { data, user, addCustomer, deleteLead, globalSearchQuery } = useAppStore() as any;
   // Same delete permission as Enquiries / Quotes / Orders.
   const canDelete = canDeleteRecords(user?.email);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
@@ -41,8 +41,6 @@ export function CustomerLeads() {
   const [crmFilter, setCrmFilter] = useState('');
   const [importing, setImporting] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Customer | null>(null);
-  const [promoteTarget, setPromoteTarget] = useState<Customer | null>(null);
-  const [promoting, setPromoting] = useState(false);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
 
   // Seed/sync local search from the global Topbar query, same as Customer Master.
@@ -123,32 +121,6 @@ export function CustomerLeads() {
       },
     });
   };
-
-  // Promote (available on every lead — the user decides when): same row,
-  // same id (enquiries / quotes / orders stay linked), the LEAD- code is kept,
-  // nothing is copied. updateCustomer logs it to activity_log like any other
-  // customer change (module customers, record = id, label = company name,
-  // customerStatus lead → customer). Then straight into the normal Edit
-  // Customer form to fill what leads don't have; the promotion is already
-  // saved, so Cancel there still leaves it in Customer Master.
-  const handlePromote = async () => {
-    if (!promoteTarget) return;
-    const { id, name } = promoteTarget;
-    setPromoting(true);
-    try {
-      await updateCustomer(id, { customerStatus: 'customer', promotedAt: new Date().toISOString() });
-    } catch (err: any) {
-      setPromoting(false);
-      showToast('err', `Promote failed: ${err?.message || 'unknown error'}`);
-      return;
-    }
-    setPromoting(false);
-    setPromoteTarget(null);
-    navigate(`/customers/new?id=${encodeURIComponent(id)}`, {
-      state: { toast: `${name} moved to Customer Master. Please complete the remaining details.` },
-    });
-  };
-
   // Delete (admins only): deleteLead removes the row ONLY if it's still a
   // lead, throws on any failure (FK / permission / nothing deleted) and logs
   // to activity_log like a customer delete. Linked enquiries / quotes /
@@ -320,11 +292,12 @@ export function CustomerLeads() {
                     <td className="px-[13px] py-[10px] align-middle" onClick={e => e.stopPropagation()}>
                       {/* One line: Promote, Profile, edit, Delete (admins) — all 26px tall. */}
                       <div className="flex items-center gap-[6px] flex-nowrap whitespace-nowrap">
-                        {/* On every lead; filled green once it has crossed ₹1 lakh. */}
+                        {/* On every lead; filled green once it has crossed ₹1 lakh. Opens the
+                            customer form in promote mode — nothing changes until Save & Promote. */}
                         <Button size="sm" variant="secondary"
                           className={`h-[26px] gap-1 border-sW hover:border-sW ${ready ? 'bg-sW text-white hover:bg-sW/90' : 'bg-white text-sW hover:bg-sW/10'}`}
                           title={ready ? 'Crossed ₹1 lakh — ready to promote' : 'Move to Customer Master'}
-                          onClick={() => setPromoteTarget(c)}>
+                          onClick={() => navigate(`/customers/new?id=${encodeURIComponent(c.id)}&promote=1`)}>
                           <ArrowUp size={10} className="stroke-[2.5]" /> Promote
                         </Button>
                         <Button size="sm" variant="secondary" className="h-[26px]" onClick={() => setSelectedLead(c)}>Profile</Button>
@@ -375,18 +348,6 @@ export function CustomerLeads() {
         );
       })()}
 
-      {promoteTarget && (
-        <ConfirmDialog
-          title={`Move ${promoteTarget.name} to Customer Master?`}
-          tone="success"
-          confirmLabel="Promote"
-          busy={promoting}
-          onConfirm={handlePromote}
-          onCancel={() => setPromoteTarget(null)}
-        >
-          You can fill the remaining customer details on the next screen.
-        </ConfirmDialog>
-      )}
 
       {toast && (
         <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white animate-in slide-in-from-bottom-2 ${toast.type === 'ok' ? 'bg-sW' : 'bg-red-mrt'}`}>

@@ -3,7 +3,7 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { DuplicateReviewPanel } from '../components/DuplicateReviewPanel';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Customer, Contact, CustomerTier, CustomerStatus, FollowUpLog } from '../lib/types';
 import { formatINR, fmtIST, generateId, canDeleteRecords, nameTier, normalizeSearchText, isLead } from '../lib/utils';
 import { parseISO } from 'date-fns';
@@ -841,6 +841,17 @@ export function Customers() {
   const [bulkFixes, setBulkFixes] = useState<SiteFix[] | null>(null);
   const [bulkApplying, setBulkApplying] = useState(false);
   const [bulkDone, setBulkDone] = useState(false);
+
+  // One-off success toast from "Save & Promote" on the Promote to Customer
+  // form (router state). Cleared from history so a refresh won't repeat it.
+  const location = useLocation();
+  const [arrivalToast, setArrivalToast] = useState<string | null>(() => (location.state as { toast?: string } | null)?.toast ?? null);
+  useEffect(() => {
+    if (!arrivalToast) return;
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    const t = setTimeout(() => setArrivalToast(null), 5000);
+    return () => clearTimeout(t);
+  }, []);
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const toggleSort = (key: SortKey) => {
@@ -1171,6 +1182,13 @@ export function Customers() {
           </table>
         </div>
       </div>
+
+      {arrivalToast && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white bg-sW animate-in slide-in-from-bottom-2">
+          <CheckCircle2 size={14} />
+          {arrivalToast}
+        </div>
+      )}
 
       {/* Customer profile panel */}
       {selectedCustomer && (

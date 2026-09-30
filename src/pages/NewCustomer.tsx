@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
@@ -7,7 +7,7 @@ import { Customer, Site, Contact, NextOrder } from '../lib/types';
 import { generateId, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { normalizeIndianPhone } from '../lib/phone';
-import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
 
 const INCO_OPTIONS_CUST = [
   'EXW', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP', 'FCA',
@@ -181,21 +181,20 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const editId = searchParams.get('id');
   const navigate = useNavigate();
   const { data, user, addCustomer, updateCustomer } = useAppStore();
-  // Lead mode always returns to the Customer Lead list; customer mode goes
-  // back wherever it came from, as before.
-  const goBack = () => { if (isLeadMode) navigate('/customers/leads'); else navigate(-1); };
 
-  // One-off success toast handed over by the Customer Lead page's Promote
-  // (navigate state) — this form then opens in normal customer mode to fill
-  // what leads don't have. Cleared from history so a refresh won't repeat it.
-  const location = useLocation();
-  const [arrivalToast, setArrivalToast] = useState<string | null>(() => (location.state as { toast?: string } | null)?.toast ?? null);
-  useEffect(() => {
-    if (!arrivalToast) return;
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-    const t = setTimeout(() => setArrivalToast(null), 6000);
-    return () => clearTimeout(t);
-  }, []);
+  // Promote mode (/customers/new?id=<LEAD-id>&promote=1, from the Customer
+  // Lead page): the full customer form for a record that is STILL a lead.
+  // Nothing changes in the database until Save & Promote, which saves the
+  // form AND flips customer_status to 'customer' in one update. Set once when
+  // the record loads, and only if it really is a lead — without the flag
+  // (or for an existing customer) this is the normal Edit Customer form.
+  const promoteFlag = !isLeadMode && searchParams.get('promote') === '1';
+  const [isPromote, setIsPromote] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Lead mode and promote mode return to the Customer Lead list; customer
+  // mode goes back wherever it came from, as before.
+  const goBack = () => { if (isLeadMode || isPromote) navigate('/customers/leads'); else navigate(-1); };
   useEffect(() => {
     if (!editId) return;
     supabase
@@ -271,6 +270,18 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         setCrossSellOpportunities(cust.crossSellOpportunities || '');
         setNotes(cust.notes || '');
         setOriginalName(cust.name);
+        if (promoteFlag && cust.customerStatus === 'lead') {
+          // Promoting: keep everything the lead has (company, contacts, Main
+          // Office, commercial terms, segment, type, CRM, GSTIN/PAN) and start
+          // the customer-only fields empty for the user to fill.
+          setIsPromote(true);
+          setTier('');
+          setCreditLimit('');
+          setNextOrder1({ product: '' });
+          setNextOrder2({ product: '' });
+          setCrossSellOpportunities('');
+          setNotes('');
+        }
         setExistingAudit({
           createdBy: cust.createdBy || '',
           createdDate: cust.createdDate || '',
@@ -425,8 +436,9 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
 
   const handleSave = async () => {
     if (!validate()) return;
-    // Lead renamed while records still use the old name → confirm first.
-    if (isLeadMode && hasLinkedToOldName && !renameConfirmOpen) { setRenameConfirmOpen(true); return; }
+    // Lead renamed (in the lead form, or while promoting) while records still
+    // use the old name → confirm first.
+    if ((isLeadMode || isPromote) && hasLinkedToOldName && !renameConfirmOpen) { setRenameConfirmOpen(true); return; }
     setRenameConfirmOpen(false);
     const normalizedSites = sites.map(site => ({
       ...site,
@@ -460,6 +472,30 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
           crossSellOpportunities: crossSellOpportunities.trim() || undefined,
           notes: notes.trim() || undefined,
         };
+    if (isPromote && editId) {
+      // ONE update on the same row (same LEAD- id, so linked enquiries /
+      // quotes / orders stay connected): every form field + the move to
+      // Customer Master. updateCustomer logs it (customerStatus lead →
+      // customer). On failure it's still a lead — stay here with the error.
+      setSaving(true);
+      try {
+        await updateCustomer(editId, {
+          ...cust,
+          customerStatus: 'customer',
+          promotedAt: new Date().toISOString(),
+          modifiedBy: user?.email ?? undefined,
+          modifiedDate: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        setSaving(false);
+        setToast(`Promote failed: ${err?.message || 'could not save — check your connection.'}`);
+        setTimeout(() => setToast(null), 6000);
+        return;
+      }
+      setSaving(false);
+      navigate('/customers', { state: { toast: `${name.trim()} moved to Customer Master.` } });
+      return;
+    }
     if (isLeadMode) {
       setSaving(true);
       try {
@@ -508,13 +544,21 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
             <h2 className="font-serif text-2xl text-blk tracking-tight leading-tight">
               {isLeadMode
                 ? <>{editId ? 'Edit' : 'Add'} <em className="italic text-lead-text">Lead</em></>
-                : <>{editId ? 'Edit' : 'Add'} <em className="italic text-red-mrt">Customer</em></>}
+                : isPromote
+                  ? <>Promote to <em className="italic text-red-mrt">Customer</em></>
+                  : <>{editId ? 'Edit' : 'Add'} <em className="italic text-red-mrt">Customer</em></>}
             </h2>
+            {isPromote ? (
+              <div className="mt-1.5 text-[11.5px] text-lead-text bg-lead-bg border border-lead/50 rounded-[3px] px-2.5 py-1.5 max-w-[640px] leading-snug">
+                Promoting lead <strong>{originalName}</strong> ({code}) — fill the remaining details and click Save to move it to Customer Master.
+              </div>
+            ) : (
             <p className="text-xs text-g500 mt-1">
               {isLeadMode
                 ? (editId ? `Updating lead ${code}` : 'Small-order / IndiaMART buyer — promote to Customer Master once orders cross ₹1 lakh.')
                 : (editId ? `Updating corporate record ${code}` : 'Create a new hierarchical customer master record.')}
             </p>
+            )}
             {editId && existingAudit && (existingAudit.createdBy || existingAudit.modifiedBy) && (
               <div className="text-[10.5px] text-g400 mt-1 space-y-0.5">
                 {existingAudit.createdBy && (
@@ -531,7 +575,9 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
             <Button variant="secondary" onClick={goBack}>Cancel</Button>
             {isLeadMode
               ? <Button variant="primary" className="bg-lead hover:bg-lead-strong hover:shadow-none" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Lead'}</Button>
-              : <Button variant="primary" onClick={handleSave}>Save Record</Button>}
+              : isPromote
+                ? <Button variant="primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save & Promote'}</Button>
+                : <Button variant="primary" onClick={handleSave}>Save Record</Button>}
           </div>
         </div>
       </div>
@@ -561,7 +607,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                 placeholder="e.g. Aditya Birla Chemicals"
               />
               {errors.name && <p className="text-red-mrt text-[10px] mt-1">{errors.name}</p>}
-              {isLeadMode && hasLinkedToOldName && (
+              {(isLeadMode || isPromote) && hasLinkedToOldName && (
                 <div className="mt-1.5 text-[11px] text-lead-text bg-lead-bg border border-lead/50 rounded-[3px] px-2.5 py-1.5 leading-snug">
                   {linkedSummary} still use the old name "<strong>{originalName}</strong>". They won't be renamed, so this lead's order total may stop adding up.
                 </div>
@@ -1027,10 +1073,10 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
 
       </div>
 
-      {arrivalToast && (
-        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white bg-sW animate-in slide-in-from-bottom-2">
-          <CheckCircle2 size={14} />
-          {arrivalToast}
+      {/* Promote-mode save error (the record stays a lead). */}
+      {toast && (
+        <div className="fixed bottom-5 right-5 z-50 max-w-[420px] px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white bg-red-mrt animate-in slide-in-from-bottom-2">
+          {toast}
         </div>
       )}
 
