@@ -240,14 +240,14 @@ export function DispatchBoard({ cards, now, onOpen, renderActions }: {
       </div>
 
       {/* Columns */}
-      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
+      <div className="board-scroll-x flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
         <div className="flex gap-3 h-full w-max">
           {DISPATCH_STEPS.map(step => {
             const list = byColumn.get(step.no) || [];
             return (
               <div key={step.no} className="w-[268px] shrink-0 h-full flex flex-col bg-g100 border border-g200 rounded-[6px] min-h-0">
                 <ColumnHeader step={step} count={list.length} />
-                <div className="flex-1 min-h-0 overflow-y-auto p-[8px] flex flex-col gap-[8px]">
+                <div className="board-scroll-y flex-1 min-h-0 overflow-y-auto p-[8px] flex flex-col gap-[8px]">
                   {list.length === 0 ? (
                     <div className="border border-dashed border-g300 rounded-[6px] text-center text-[11.5px] text-g400 py-6">No orders at this step</div>
                   ) : list.map(card => (

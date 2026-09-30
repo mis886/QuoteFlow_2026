@@ -107,6 +107,27 @@ body {
 .email-modal-body::-webkit-scrollbar-thumb:hover { background: var(--color-red-mrt); }
 .email-modal-body { scrollbar-width: auto; scrollbar-color: var(--color-g400) var(--color-g100); }
 
+/* Dispatch → Board (DispatchBoard.tsx) — big, easy-to-grab pill scrollbars:
+   .board-scroll-x = the columns row (horizontal, 25px), .board-scroll-y =
+   each column's card list (vertical, 14px). Board only — every other
+   scrollbar keeps the thin 4px style above. Theme variables only, so it
+   follows the site's colours. */
+.board-scroll-x { padding-bottom: 8px; }
+.board-scroll-x::-webkit-scrollbar { height: 25px; }
+.board-scroll-x::-webkit-scrollbar-track { background: var(--color-g100); border-radius: 25px; }
+.board-scroll-x::-webkit-scrollbar-thumb { background: var(--color-g400); border-radius: 25px; border: 5px solid var(--color-g100); }
+.board-scroll-x::-webkit-scrollbar-thumb:hover { background: var(--color-red-mrt); }
+.board-scroll-y::-webkit-scrollbar { width: 14px; }
+.board-scroll-y::-webkit-scrollbar-track { background: var(--color-g100); border-radius: 14px; }
+.board-scroll-y::-webkit-scrollbar-thumb { background: var(--color-g400); border-radius: 14px; border: 3px solid var(--color-g100); }
+.board-scroll-y::-webkit-scrollbar-thumb:hover { background: var(--color-red-mrt); }
+/* Firefox only: Chrome/Edge 121+ ignore every ::-webkit-scrollbar rule on an
+   element that also sets scrollbar-width/scrollbar-color, which would shrink
+   the 25px bar back to the browser default — so these stay behind @supports. */
+@supports not selector(::-webkit-scrollbar) {
+  .board-scroll-x, .board-scroll-y { scrollbar-width: auto; scrollbar-color: var(--color-g400) var(--color-g100); }
+}
+
 /* Reusable styled select — avoids inline backgroundImage */
 .select-filter {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
