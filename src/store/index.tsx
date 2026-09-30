@@ -114,6 +114,7 @@ interface AppContextType {
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
+  removeOrderFromDispatch: (orderId: string) => Promise<any[]>;
   addFollowUpLog: (quoteId: string, log: FollowUpLog, nextDate?: string | null, nextTime?: string | null, owner?: string, stageOverride?: string | null) => Promise<void>;
   addFollowUpLogBulk: (quoteIds: string[], log: FollowUpLog, nextDate?: string | null, nextTime?: string | null) => Promise<void>;
   closeFollowUp: (quoteId: string, outcome?: PipelineOutcome) => Promise<void>;
@@ -1462,6 +1463,33 @@ const mapEnquiryToDB = (e: any) => {
     logActivity({ module: 'customers', recordId: id, recordLabel: before?.name || id, action: 'delete', before });
   };
 
+  // Dispatch Board "Delete" on an ORDER card (admins): takes the order OFF
+  // the board — never deletes it. Clears sent_to_dispatch_at (so the Orders
+  // "Order Pending for Dispatch" button is clickable again; status untouched)
+  // and deletes its dispatch_steps rows. Refused if the order has any
+  // dispatch entries. If the steps delete fails, sent_to_dispatch_at is put
+  // back so nothing is left half-changed. Returns the deleted step rows.
+  const removeOrderFromDispatch = async (orderId: string): Promise<any[]> => {
+    const before = data.orders.find(o => o.id === orderId);
+    const entryCount = data.dispatchEntries.filter(e => e.orderId === orderId).length;
+    if (entryCount > 0) throw new Error(`This order has ${entryCount} dispatch entr${entryCount === 1 ? 'y' : 'ies'}. Delete those entries first.`);
+    const { data: updated, error } = await supabase.from('orders').update({ sent_to_dispatch_at: null }).eq('id', orderId).select('id');
+    if (error) throw error;
+    if (!updated || updated.length === 0) throw new Error("Nothing was changed — the order wasn't found or you don't have permission.");
+    const { data: deletedSteps, error: stepsError } = await supabase.from('dispatch_steps').delete().eq('order_id', orderId).select('*');
+    if (stepsError) {
+      await supabase.from('orders').update({ sent_to_dispatch_at: before?.sentToDispatchAt ?? null }).eq('id', orderId);
+      throw stepsError;
+    }
+    setData(prev => ({ ...prev, orders: prev.orders.map(o => o.id === orderId ? { ...o, sentToDispatchAt: undefined } : o) }));
+    logActivity({
+      module: 'dispatch_steps', recordId: orderId,
+      recordLabel: `${before?.soNumber || orderId} · Removed from Dispatch board`,
+      action: 'delete', before: { sent_to_dispatch_at: before?.sentToDispatchAt ?? null, steps: deletedSteps ?? [] },
+    });
+    return deletedSteps ?? [];
+  };
+
   // Map real follow-up log count → pipeline stage (excludes quote-sent entries).
   const stageFromLogCount = (count: number): PipelineStage => {
     if (count <= 0) return 'Sent Quotation';
@@ -2068,6 +2096,7 @@ const mapEnquiryToDB = (e: any) => {
         updateCustomer,
         deleteCustomer,
         deleteLead,
+        removeOrderFromDispatch,
         addFollowUpLog,
         addFollowUpLogBulk,
         closeFollowUp,

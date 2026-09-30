@@ -181,6 +181,20 @@ export const STEP_ACTIONS: Partial<Record<StepNo, StepAction[]>> = {
   7: [{ label: 'Picked up ✓', primary: true, writes: [{ stepNo: 7, status: 'done' }] }],
 };
 
+/**
+ * Statuses a step's row may have — exactly what the step buttons above can
+ * write for it (e.g. step 3: done / skipped / hold; step 6: done). Used by
+ * the drawer's ✎ step editor. The row's current status is always allowed.
+ */
+export function allowedStepStatuses(stepNo: number, current?: StepRecordStatus): StepRecordStatus[] {
+  const set = new Set<StepRecordStatus>();
+  for (const actions of Object.values(STEP_ACTIONS)) {
+    for (const a of actions || []) for (const w of a.writes) if (w.stepNo === stepNo) set.add(w.status);
+  }
+  if (current) set.add(current);
+  return (['done', 'skipped', 'hold'] as StepRecordStatus[]).filter(s => set.has(s));
+}
+
 // ── Order cards ───────────────────────────────────────────────────────────
 export interface OrderStepHistory {
   stepNo: StepNo;
@@ -190,6 +204,10 @@ export interface OrderStepHistory {
   doneBy?: string;
   remark?: string;
   onHold?: boolean;
+  // The dispatch_steps row behind this step (done / skipped, or the open
+  // hold) — what the drawer's ✎ edits. Undefined for auto-skips, steps
+  // 8–10 and anything not recorded.
+  record?: DispatchStepRecord;
 }
 
 export interface OrderPosition {
@@ -244,7 +262,7 @@ function walkRound(
     }
     if (finished) {
       if (finished.status === 'skipped') skipped.push(stepNo);
-      history.push({ stepNo, state: finished.status === 'skipped' ? 'skipped' : 'done', plannedAt: finished.plannedAt || plannedAt, doneAt: finished.doneAt, doneBy: finished.doneBy, remark });
+      history.push({ stepNo, state: finished.status === 'skipped' ? 'skipped' : 'done', plannedAt: finished.plannedAt || plannedAt, doneAt: finished.doneAt, doneBy: finished.doneBy, remark, record: finished });
       prevDone = finished.doneAt || prevDone;
       continue;
     }
@@ -258,7 +276,7 @@ function walkRound(
       continue;
     }
     const openHold = recs.find(r => r.status === 'hold' && !r.doneAt);
-    history.push({ stepNo, state: 'current', plannedAt, remark, onHold: !!openHold });
+    history.push({ stepNo, state: 'current', plannedAt, remark, onHold: !!openHold, record: openHold });
     position = {
       round, step: stepNo, plannedAt, skipped: [...skipped],
       hold: openHold ? { record: openHold, reason: HOLD_REASONS[stepNo] || 'on hold' } : undefined,

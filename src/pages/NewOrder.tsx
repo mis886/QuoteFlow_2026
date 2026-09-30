@@ -54,6 +54,9 @@ export function NewOrder() {
   const [searchParams, setSearchParams] = useSearchParams();
   const quoteRef = searchParams.get('quoteRef');
   const editOrderId = searchParams.get('orderId');
+  // Opened from the Dispatch Board drawer's Edit (&from=board) → Save / Back
+  // return to the board instead of the Orders list.
+  const ordersHome = searchParams.get('from') === 'board' ? '/dispatch?view=board' : '/orders';
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
   const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, isAdmin } = useAppStore();
@@ -554,8 +557,8 @@ export function NewOrder() {
       if (!payload) return;
       setDirty(false);
       const delayed = await doContactSync();
-      if (delayed) setTimeout(() => navigate('/orders'), 4000);
-      else navigate('/orders');
+      if (delayed) setTimeout(() => navigate(ordersHome), 4000);
+      else navigate(ordersHome);
     } catch (err: any) {
       const isDupOrder = err?.code === '23505' && String(err?.message || '').includes('orders_quote_ref_root_unique');
       setErrors({ global: isDupOrder
@@ -699,7 +702,7 @@ export function NewOrder() {
                 )}
               </div>
             )}
-            <Button variant="secondary" onClick={() => { if (confirmLeave()) navigate('/orders'); }}>Back</Button>
+            <Button variant="secondary" onClick={() => { if (confirmLeave()) navigate(ordersHome); }}>Back</Button>
           </div>
         </div>
       </div>
@@ -1584,7 +1587,7 @@ export function NewOrder() {
                 Email to Client
               </button>
               <div className="h-5 w-px bg-g200" />
-              <button type="button" onClick={() => { if (confirmLeave()) navigate('/orders'); }} disabled={isSaving} className="bg-white border border-g300 text-g600 font-mono text-[10px] font-bold tracking-widest uppercase px-[16px] py-[9px] rounded-[3px] hover:bg-g50 disabled:opacity-50">
+              <button type="button" onClick={() => { if (confirmLeave()) navigate(ordersHome); }} disabled={isSaving} className="bg-white border border-g300 text-g600 font-mono text-[10px] font-bold tracking-widest uppercase px-[16px] py-[9px] rounded-[3px] hover:bg-g50 disabled:opacity-50">
                 Cancel
               </button>
             </>

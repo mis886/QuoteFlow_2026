@@ -1,13 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, List, Columns3 } from 'lucide-react';
+import { Search, List, Columns3, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, OrderItem, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 import { buildBoard, mapStepFromDB, stepDef, lastStepClick, describeStepClick,BoardCard, BoardOrderCard, DispatchStepRecord, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
 import { DispatchBoard, AutoTag, StepActionButtons } from '../components/DispatchBoard';
-import { DispatchDrawer } from '../components/DispatchDrawer';
+import { DispatchDrawer, StepEditPatch } from '../components/DispatchDrawer';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { friendlyDeleteError } from '../lib/cascadeDelete';
 import { supabase } from '../lib/supabase';
 import { logActivity } from '../lib/activityLog';
 
@@ -107,7 +109,7 @@ function LineItemsPanel({ title, items, grand }: { title: string; items: OrderIt
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, isAdmin } = useAppStore();
+  const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, isAdmin, removeOrderFromDispatch } = useAppStore();
   const canDelete = canDeleteRecords(user?.email);
 
   // Initial tab/pill come from the URL (?tab=pending|dispatched|emailSent
@@ -257,10 +259,73 @@ export function Dispatch() {
   };
 
   // Detail drawer — opened by clicking an SO No. on any board card (order
-  // or entry card); always shows the whole order.
-  const [drawerOrderId, setDrawerOrderId] = useState<string | null>(null);
-  const openDrawer = (card: BoardCard) => setDrawerOrderId(card.kind === 'order' ? card.order.id : card.entry.orderId);
-  const closeDrawer = useCallback(() => setDrawerOrderId(null), []);
+  // or entry card); always shows the whole order. The clicked card is kept
+  // because the drawer's Edit / Delete act on it (the order, or that entry).
+  const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
+  const drawerOrderId = drawerCard ? (drawerCard.kind === 'order' ? drawerCard.order.id : drawerCard.entry.orderId) : null;
+  const openDrawer = (card: BoardCard) => setDrawerCard(card);
+  const closeDrawer = useCallback(() => setDrawerCard(null), []);
+
+  const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  const showToast = (type: 'ok' | 'err', msg: string) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  // ✎ Step edit (all users) — one dispatch_steps row: status, actual time
+  // (done_at) and remark. Planned is always recalculated, never stored here.
+  // The board, drawer and step counts all recalculate from stepRecords.
+  const saveStepEdit = async (order: Order, rec: DispatchStepRecord, patch: StepEditPatch) => {
+    const row = { status: patch.status, done_at: patch.doneAt, remark: patch.remark };
+    const { data: updated, error } = await supabase.from('dispatch_steps').update(row).eq('id', rec.id).select('*');
+    if (error) throw error;
+    if (!updated || updated.length === 0) throw new Error("Nothing was saved — the step may have been removed, or you don't have permission.");
+    setStepRecords(prev => prev.map(r => r.id === rec.id ? mapStepFromDB(updated[0]) : r));
+    logActivity({
+      module: 'dispatch_steps', recordId: order.id, recordLabel: stepLogLabel(order, rec.stepNo, 'Edited'),
+      action: 'update',
+      before: { status: rec.status, done_at: rec.doneAt ?? null, remark: rec.remark ?? null },
+      after: row,
+    });
+    showToast('ok', `Step ${rec.stepNo} updated.`);
+  };
+
+  // DELETE (admins only — same canDeleteRecords as Enquiries / Quotes /
+  // Orders). Order card → taken off the board (never deleted from Orders);
+  // entry card → that one dispatch entry. Never touches orders' status.
+  const [deleteCard, setDeleteCard] = useState<BoardCard | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const requestDelete = (card: BoardCard) => {
+    if (!canDelete) return;
+    if (card.kind === 'order') {
+      const n = data.dispatchEntries.filter(e => e.orderId === card.order.id).length;
+      if (n > 0) { showToast('err', `This order has ${n} dispatch entr${n === 1 ? 'y' : 'ies'}. Delete those entries first.`); return; }
+    }
+    setDeleteCard(card);
+  };
+  const confirmDelete = async () => {
+    if (!deleteCard || !canDelete) return;
+    setDeleting(true);
+    try {
+      if (deleteCard.kind === 'order') {
+        const o = deleteCard.order;
+        await removeOrderFromDispatch(o.id);
+        setStepRecords(prev => prev.filter(r => r.orderId !== o.id));
+        showToast('ok', `${o.soNumber || o.id} removed from the Dispatch board. It stays in Orders.`);
+      } else {
+        const e = deleteCard.entry;
+        await deleteDispatchEntry(e.id);
+        showToast('ok', `Dispatch entry ${e.invoiceNumber || e.id} deleted.`);
+      }
+      setDeleteCard(null);
+      setDrawerCard(null);
+    } catch (err) {
+      setDeleteCard(null);
+      showToast('err', `Delete failed: ${friendlyDeleteError(err)}`);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
 
@@ -525,7 +590,7 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard cards={boardVisible} now={now} onOpen={openDrawer} renderActions={renderBoardActions} />
+        <DispatchBoard cards={boardVisible} now={now} onOpen={openDrawer} renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
       ) : (
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
@@ -743,10 +808,45 @@ export function Dispatch() {
             canUndo={canUndoOnBoard}
             undoBusy={undoBusy}
             onUndo={() => undoLastStep(o)}
+            openedFrom={boardCards.find(c => c.key === drawerCard?.key) ?? drawerCard!}
+            canDelete={canDelete}
+            onSaveStep={(rec, patch) => saveStepEdit(o, rec, patch)}
+            onDelete={requestDelete}
             onClose={closeDrawer}
           />
         );
       })()}
+
+      {deleteCard && (
+        deleteCard.kind === 'order' ? (
+          <ConfirmDialog
+            title={`Remove ${deleteCard.order.soNumber || deleteCard.order.id} – ${deleteCard.order.cust} from the Dispatch board?`}
+            confirmLabel="Remove"
+            busy={deleting}
+            onConfirm={confirmDelete}
+            onCancel={() => setDeleteCard(null)}
+          >
+            The order stays in Orders and can be sent to Dispatch again.
+          </ConfirmDialog>
+        ) : (
+          <ConfirmDialog
+            title={`Delete dispatch entry ${deleteCard.entry.invoiceNumber || deleteCard.entry.id} for ${deleteCard.order?.cust || deleteCard.entry.orderId}?`}
+            confirmLabel="Delete"
+            busy={deleting}
+            onConfirm={confirmDelete}
+            onCancel={() => setDeleteCard(null)}
+          >
+            This cannot be undone. The quantity will go back to Order Pending for Dispatch.
+          </ConfirmDialog>
+        )
+      )}
+
+      {toast && (
+        <div className={`fixed bottom-5 right-5 z-[60] max-w-[440px] flex items-center gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white animate-in slide-in-from-bottom-2 ${toast.type === 'ok' ? 'bg-sW' : 'bg-red-mrt'}`}>
+          {toast.type === 'ok' && <CheckCircle2 size={14} className="shrink-0" />}
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }

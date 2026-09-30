@@ -1,13 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, CircleDashed, Undo2, X } from 'lucide-react';
+import { Check, CircleDashed, Pencil, Undo2, X } from 'lucide-react';
 import { fmtIST, doerLabel } from '../lib/utils';
 import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
-  BoardOrderCard, DispatchStepRecord, OrderStepHistory, StepAction,
-  drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastStepClick, describeStepClick,
+  BoardCard, BoardOrderCard, DispatchStepRecord, OrderStepHistory, StepAction, StepRecordStatus,
+  drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastStepClick, describeStepClick, allowedStepStatuses,
 } from '../lib/dispatchFlow';
 import { StepActionButtons, TimeBar, TypeDot } from './DispatchBoard';
+import { ConfirmDialog } from './ConfirmDialog';
+import { Button } from './ui';
+
+// <input type="datetime-local"> works in the browser's local time.
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const toLocalInput = (iso?: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+const STATUS_LABEL: Record<StepRecordStatus, string> = { done: 'Done', skipped: 'Skipped', hold: 'Hold' };
+
+export interface StepEditPatch { status: StepRecordStatus; doneAt: string | null; remark: string | null; }
 
 // Right-side drawer opened by clicking an SO No. on the Dispatch Board:
 // order info, steps 1–10 with Planned / Actual / Delay, every dispatch entry
@@ -31,7 +45,7 @@ function StepIcon({ step, late }: { step: OrderStepHistory; late: boolean }) {
   return <span className="w-[18px] h-[18px] rounded-full border-2 border-g300 bg-white inline-block" />;
 }
 
-function StepRow({ step, now, roster }: { step: OrderStepHistory; now: number; roster: TeamMember[] }) {
+function StepRow({ step, now, roster, onEdit }: { step: OrderStepHistory; now: number; roster: TeamMember[]; onEdit?: () => void }) {
   const def = stepDef(step.stepNo);
   const planned = ms(step.plannedAt);
   const actual = ms(step.doneAt);
@@ -61,6 +75,14 @@ function StepRow({ step, now, roster }: { step: OrderStepHistory; now: number; r
           <span className="font-mono text-[9px] font-bold tracking-[1.5px] text-red-mrt">STEP {String(step.stepNo).padStart(2, '0')}</span>
           <span className={`text-[12.5px] font-semibold truncate ${step.state === 'skipped' || step.state === 'upcoming' || step.state === 'not_recorded' ? 'text-g500' : 'text-blk'}`}>{def.title}</span>
           {stateLabel && <span className={`ml-auto text-[10px] font-semibold shrink-0 ${step.state === 'current' ? 'text-red-mrt' : 'text-g400'}`}>{stateLabel}</span>}
+          {/* ✎ — only on steps backed by a saved row (done / skipped / hold);
+              never on auto-skips or the automatic steps 8–10. */}
+          {onEdit && step.record && (
+            <button type="button" onClick={onEdit} title="Edit this step"
+              className={`${stateLabel ? '' : 'ml-auto'} shrink-0 p-0.5 text-g400 hover:text-red-mrt transition-colors`}>
+              <Pencil size={12} />
+            </button>
+          )}
         </div>
         {(step.state === 'done' || step.state === 'current') && (
           <div className="grid grid-cols-3 gap-2 mt-1 text-[11px]">
@@ -82,7 +104,7 @@ function StepRow({ step, now, roster }: { step: OrderStepHistory; now: number; r
 
 export function DispatchDrawer({
   order, entries, records, fulfillment, orderCard, now, roster, canAct, busy, onAction, onResume,
-  canUndo, undoBusy, onUndo, onClose,
+  canUndo, undoBusy, onUndo, openedFrom, canDelete, onSaveStep, onDelete, onClose,
 }: {
   order: Order;
   entries: DispatchEntry[];            // this order's entries
@@ -98,16 +120,62 @@ export function DispatchDrawer({
   canUndo: boolean;                    // ADMIN_EMAILS only
   undoBusy: boolean;
   onUndo: () => void;
+  // The card that was clicked — Edit / Delete act on it (the order for an
+  // order card, that one dispatch entry for an entry card).
+  openedFrom: BoardCard;
+  canDelete: boolean;                  // canDeleteRecords (admins) only
+  onSaveStep: (record: DispatchStepRecord, patch: StepEditPatch) => Promise<void>;
+  onDelete: (card: BoardCard) => void;
   onClose: () => void;
 }) {
   const navigate = useNavigate();
   const [remark, setRemark] = useState('');
 
+  // ✎ step editor (all users): Actual (done_at), Status, Remark of one row.
+  const [editing, setEditing] = useState<{ step: OrderStepHistory; record: DispatchStepRecord } | null>(null);
+  const [editStatus, setEditStatus] = useState<StepRecordStatus>('done');
+  const [editDoneAt, setEditDoneAt] = useState('');
+  const [editRemark, setEditRemark] = useState('');
+  const [editError, setEditError] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const openStepEditor = (step: OrderStepHistory) => {
+    if (!step.record) return;
+    setEditing({ step, record: step.record });
+    setEditStatus(step.record.status);
+    setEditDoneAt(toLocalInput(step.record.doneAt));
+    setEditRemark(step.record.remark || '');
+    setEditError('');
+  };
+  const saveStepEdit = async () => {
+    if (!editing) return;
+    // A hold's done_at is "resumed at" — empty means still on hold. Done /
+    // skipped always need a time.
+    if (editStatus !== 'hold' && !editDoneAt) { setEditError('Enter the actual date & time.'); return; }
+    const doneAtIso = editDoneAt ? new Date(editDoneAt).toISOString() : null;
+    setEditSaving(true);
+    try {
+      await onSaveStep(editing.record, { status: editStatus, doneAt: doneAtIso, remark: editRemark.trim() || null });
+      setEditing(null);
+    } catch (err: any) {
+      setEditError(err?.message || 'Could not save — check your connection.');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  // EDIT (all users): the order card opens Edit Order, an entry card opens
+  // that dispatch entry — both come back to the board afterwards.
+  const openEdit = () => {
+    if (openedFrom.kind === 'entry') navigate(`/dispatch/new?entryId=${encodeURIComponent(openedFrom.entry.id)}&from=board`);
+    else navigate(`/orders/new?orderId=${encodeURIComponent(order.id)}&from=board`);
+  };
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    // While the ✎ step editor is open, Escape closes only that popup.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !editing) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, editing]);
   useEffect(() => { setRemark(''); }, [order.id]);
 
   const steps = drawerSteps(order, entries, records, fulfillment, orderCard?.position);
@@ -168,15 +236,27 @@ export function DispatchDrawer({
           <div className="px-4 py-3 border-b border-g200">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt">Steps</div>
-              {canUndo && lastClick && (
-                <button type="button" onClick={onUndo} disabled={undoBusy}
-                  title={`Admins only — takes back: ${describeStepClick(lastClick)}`}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-mrt border border-red-mrt/40 rounded-[4px] px-2 py-[3px] hover:bg-red-lt transition-colors disabled:opacity-50 disabled:cursor-wait">
-                  <Undo2 size={11} /> Undo last step
-                </button>
-              )}
+              <div className="flex items-center gap-1.5 flex-nowrap">
+                {canUndo && lastClick && (
+                  <button type="button" onClick={onUndo} disabled={undoBusy}
+                    title={`Admins only — takes back: ${describeStepClick(lastClick)}`}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-mrt border border-red-mrt/40 rounded-[4px] px-2 py-[3px] hover:bg-red-lt transition-colors disabled:opacity-50 disabled:cursor-wait">
+                    <Undo2 size={11} /> Undo last step
+                  </button>
+                )}
+                <Button size="sm" variant="secondary" className="h-[24px]" onClick={openEdit}
+                  title={openedFrom.kind === 'entry' ? 'Edit this dispatch entry' : 'Edit this order'}>
+                  Edit
+                </Button>
+                {canDelete && (
+                  <Button size="sm" variant="ghost" className="h-[24px] text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => onDelete(openedFrom)}
+                    title={openedFrom.kind === 'entry' ? 'Delete this dispatch entry' : 'Remove this order from the Dispatch board'}>
+                    Delete
+                  </Button>
+                )}
+              </div>
             </div>
-            {steps.map(s => <StepRow key={s.stepNo} step={s} now={now} roster={roster} />)}
+            {steps.map(s => <StepRow key={s.stepNo} step={s} now={now} roster={roster} onEdit={() => openStepEditor(s)} />)}
           </div>
 
           {/* Dispatch entries */}
@@ -227,6 +307,46 @@ export function DispatchDrawer({
           </div>
         )}
       </div>
+
+      {/* ✎ Edit one step's row. Planned is calculated, so it's shown, not edited. */}
+      {editing && (() => {
+        const statuses = allowedStepStatuses(editing.record.stepNo, editing.record.status);
+        const labelCls = 'block font-mono text-[8.5px] font-bold uppercase tracking-[1.5px] text-g500 mb-1';
+        const inputCls = 'w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[3px] p-[6px_8px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt';
+        return (
+          <ConfirmDialog
+            title={`Edit Step ${String(editing.record.stepNo).padStart(2, '0')} · ${stepDef(editing.record.stepNo as OrderStepHistory['stepNo']).title}`}
+            confirmLabel="Save"
+            busy={editSaving}
+            onConfirm={saveStepEdit}
+            onCancel={() => setEditing(null)}
+          >
+            <div className="flex flex-col gap-3 mt-1">
+              <div className="text-[11.5px] text-g500">Planned: <span className="text-g700 font-medium">{fmtWhen(editing.step.plannedAt)}</span> <span className="text-g400">(calculated)</span></div>
+              <div>
+                <label className={labelCls}>Status</label>
+                <div className="flex gap-1.5">
+                  {statuses.map(s => (
+                    <button key={s} type="button" onClick={() => setEditStatus(s)}
+                      className={`px-3 py-1 rounded-[3px] border text-[11.5px] font-semibold transition-colors ${editStatus === s ? 'bg-blk text-white border-blk' : 'bg-white text-g700 border-g300 hover:bg-g100'}`}>
+                      {STATUS_LABEL[s]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>{editStatus === 'hold' ? 'Resumed at (leave empty while still on hold)' : 'Actual date & time'}</label>
+                <input type="datetime-local" value={editDoneAt} onChange={e => { setEditDoneAt(e.target.value); setEditError(''); }} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Remark</label>
+                <textarea value={editRemark} onChange={e => setEditRemark(e.target.value)} rows={2} className={inputCls + ' resize-none'} />
+              </div>
+              {editError && <div className="text-[11.5px] text-red-mrt font-medium">{editError}</div>}
+            </div>
+          </ConfirmDialog>
+        );
+      })()}
     </div>
   );
 }

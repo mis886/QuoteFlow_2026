@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, Pause, Play } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
+import { Button } from './ui';
 import {
   DISPATCH_STEPS, DISPATCH_DOER_NAME, STEP_ACTIONS, BoardCard, BoardOrderCard, ColumnNo, StepAction, StepDef, fmtDuration, TimeState,
 } from '../lib/dispatchFlow';
@@ -112,10 +113,11 @@ const itemSummary =(lines: { desc: string; qty: number }[]) => {
 
 const stepLabel = (no: ColumnNo) => no === 11 ? 'DONE' : `STEP ${String(no).padStart(2, '0')}`;
 
-function Card({ card, now, onOpen, renderActions }: {
+function Card({ card, now, onOpen, renderActions, onDelete }: {
   card: BoardCard; now: number;
   onOpen?: (card: BoardCard) => void;
   renderActions?: (card: BoardCard) => React.ReactNode;
+  onDelete?: (card: BoardCard) => void;
 }) {
   const navigate = useNavigate();
   const order = card.order;
@@ -172,6 +174,16 @@ function Card({ card, now, onOpen, renderActions }: {
       {card.kind === 'entry' && card.column === 10 && (
         <RedButton onClick={() => navigate(`/dispatch/new?entryId=${card.entry.id}&from=board`)}>Email to Client →</RedButton>
       )}
+      {/* Admins only (the page passes onDelete only for canDeleteRecords). */}
+      {onDelete && (
+        <div className="flex justify-end -mt-0.5">
+          <Button size="sm" variant="ghost" className="h-[22px] px-2 text-red-500 hover:text-red-700 hover:bg-red-50"
+            title={card.kind === 'order' ? 'Remove this order from the Dispatch board' : 'Delete this dispatch entry'}
+            onClick={() => onDelete(card)}>
+            Delete
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -200,11 +212,12 @@ function ColumnHeader({ step, count }: { step: StepDef; count: number }) {
   );
 }
 
-export function DispatchBoard({ cards, now, onOpen, renderActions }: {
+export function DispatchBoard({ cards, now, onOpen, renderActions, onDelete }: {
   cards: BoardCard[];
   now: number;
   onOpen?: (card: BoardCard) => void;
   renderActions?: (card: BoardCard) => React.ReactNode;
+  onDelete?: (card: BoardCard) => void;   // admins only
 }) {
   const byColumn = new Map<ColumnNo, BoardCard[]>();
   for (const c of cards) {
@@ -251,7 +264,7 @@ export function DispatchBoard({ cards, now, onOpen, renderActions }: {
                   {list.length === 0 ? (
                     <div className="border border-dashed border-g300 rounded-[6px] text-center text-[11.5px] text-g400 py-6">No orders at this step</div>
                   ) : list.map(card => (
-                    <Card key={card.key} card={card} now={now} onOpen={onOpen} renderActions={renderActions} />
+                    <Card key={card.key} card={card} now={now} onOpen={onOpen} renderActions={renderActions} onDelete={onDelete} />
                   ))}
                 </div>
               </div>
