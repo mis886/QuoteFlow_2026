@@ -34,6 +34,9 @@ const MODULE_LABELS: Record<string, string> = {
   team_roster: 'Team Roster',
   company_units: 'Company Units',
   bank_accounts: 'Bank Accounts',
+  // Dispatch Board step clicks (Done / Skip / Hold / Resume) — record_id is
+  // the order's ORD-… number (see runStepAction in src/pages/Dispatch.tsx).
+  dispatch_steps: 'Dispatch Board',
 };
 const moduleLabel = (m: string) => MODULE_LABELS[m] ?? m;
 
@@ -52,7 +55,7 @@ const CRM_MODULES = Object.keys(MODULE_LABELS);
 // in CRM_MODULES, record_id is an internal key (a raw id, or for team_roster
 // a composite "email::role::name") that isn't meant for display, so the
 // Module No. column is left blank there instead of showing something ugly.
-const MODULE_NO_MODULES = new Set(['enquiries', 'quotes', 'orders', 'followups']);
+const MODULE_NO_MODULES = new Set(['enquiries', 'quotes', 'orders', 'followups', 'dispatch_steps']);
 const moduleNo = (row: Pick<ActivityLogRow, 'module' | 'record_id'>) =>
   MODULE_NO_MODULES.has(row.module) ? row.record_id : '—';
 

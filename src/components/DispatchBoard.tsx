@@ -1,9 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Pause } from 'lucide-react';
+import { Clock, Pause, Play } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
 import {
-  DISPATCH_STEPS, DISPATCH_DOER_NAME, BoardCard, ColumnNo, StepDef, fmtDuration, TimeState,
+  DISPATCH_STEPS, DISPATCH_DOER_NAME, STEP_ACTIONS, BoardCard, BoardOrderCard, ColumnNo, StepAction, StepDef, fmtDuration, TimeState,
 } from '../lib/dispatchFlow';
 
 // Kanban "Board view" of the Dispatch module: a step strip + one 268px column
@@ -70,7 +70,41 @@ const RedButton = ({ children, onClick }: { children: React.ReactNode; onClick: 
   </button>
 );
 
-const itemSummary = (lines: { desc: string; qty: number }[]) => {
+/**
+ * Step 1–7 buttons for an order card (black = manual Done, white = second
+ * choice), or a single Resume button while the card is on hold. Only
+ * rendered for logins allowed to act (see canActOnDispatchBoard).
+ */
+export function StepActionButtons({ card, busy, onAction, onResume }: {
+  card: BoardOrderCard;
+  busy: boolean;
+  onAction: (card: BoardOrderCard, action: StepAction) => void;
+  onResume: (card: BoardOrderCard) => void;
+}) {
+  if (card.column > 7) return null;
+  const base = 'text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[6px] transition-colors disabled:opacity-50 disabled:cursor-wait';
+  if (card.position.hold) {
+    return (
+      <button type="button" disabled={busy} onClick={() => onResume(card)}
+        className={`${base} w-full inline-flex items-center justify-center gap-1.5 bg-blk text-white hover:bg-dark`}>
+        <Play size={11} /> Resume
+      </button>
+    );
+  }
+  const actions = STEP_ACTIONS[card.position.step] || [];
+  return (
+    <div className="flex gap-1.5">
+      {actions.map(a => (
+        <button key={a.label} type="button" disabled={busy} onClick={() => onAction(card, a)}
+          className={`${base} ${a.primary ? 'flex-1 bg-blk text-white hover:bg-dark' : 'bg-white text-blk border border-g300 hover:bg-g100'}`}>
+          {a.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const itemSummary =(lines: { desc: string; qty: number }[]) => {
   if (!lines.length) return '—';
   const first = `${(lines[0].desc || 'Item').trim()} × ${lines[0].qty}`;
   return lines.length > 1 ? `${first} +${lines.length - 1} more` : first;
@@ -127,16 +161,16 @@ function Card({ card, now, onOpen, renderActions }: {
       )}
       {renderActions?.(card)}
       {card.kind === 'order' && card.column === 8 && (
-        <RedButton onClick={() => navigate(`/dispatch/new?orderRef=${card.order.id}&toSent=1`)}>Create Dispatch Entry →</RedButton>
+        <RedButton onClick={() => navigate(`/dispatch/new?orderRef=${card.order.id}&toSent=1&from=board`)}>Create Dispatch Entry →</RedButton>
       )}
       {card.kind === 'entry' && card.column === 8 && (
-        <RedButton onClick={() => navigate(`/dispatch/new?entryId=${card.entry.id}`)}>Open entry →</RedButton>
+        <RedButton onClick={() => navigate(`/dispatch/new?entryId=${card.entry.id}&from=board`)}>Open entry →</RedButton>
       )}
       {card.kind === 'entry' && card.column === 9 && (
-        <RedButton onClick={() => navigate(`/dispatch/new?entryId=${card.entry.id}`)}>Upload LR →</RedButton>
+        <RedButton onClick={() => navigate(`/dispatch/new?entryId=${card.entry.id}&from=board`)}>Upload LR →</RedButton>
       )}
       {card.kind === 'entry' && card.column === 10 && (
-        <RedButton onClick={() => navigate(`/dispatch/new?entryId=${card.entry.id}`)}>Email to Client →</RedButton>
+        <RedButton onClick={() => navigate(`/dispatch/new?entryId=${card.entry.id}&from=board`)}>Email to Client →</RedButton>
       )}
     </div>
   );

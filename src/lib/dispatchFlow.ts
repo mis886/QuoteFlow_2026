@@ -10,7 +10,7 @@
 //     data (invoice no., LR files, email sent) in steps 8–10 / Done.
 // Nothing here ever changes an order's status.
 import type { DispatchEntry, DispatchFulfillmentType, Order } from './types';
-import { remainingByLine, totalRemaining } from './utils';
+import { remainingByLine, totalRemaining, BOARD_GO_LIVE_AT } from './utils';
 
 export type StepNo = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 /** Board column: steps 1–10, or 11 = Done. */
@@ -94,8 +94,60 @@ export const needsPaymentCheck = (pay: string | undefined) => /advance/i.test(pa
 
 export const entryHasLr = (e: DispatchEntry) => (e.lrFiles?.length ?? 0) > 0 || !!e.lrUrl;
 
+// Timestamps arrive in more than one format (Supabase's "2026-09-26
+// 05:27:07+00" vs JS's "…Z"), so always compare them as real times.
+const ms = (iso: string | undefined) => (iso ? new Date(iso).getTime() : NaN);
+const byTime = (a: string | undefined, b: string | undefined) => (ms(a) || 0) - (ms(b) || 0);
 const latestIso = (values: (string | undefined)[]): string | undefined =>
-  values.filter(Boolean).sort().pop();
+  values.filter((v): v is string => !!v && !Number.isNaN(ms(v))).sort(byTime).pop();
+
+/** Anything that started before the board went live starts its timer at go-live. */
+const isBeforeGoLive = (iso: string | undefined) => !!iso && ms(iso) < ms(BOARD_GO_LIVE_AT);
+const goLiveFloor = (startIso: string | undefined, legacy: boolean) =>
+  legacy ? latestIso([startIso, BOARD_GO_LIVE_AT]) : startIso;
+
+export const mapStepFromDB = (r: any): DispatchStepRecord => ({
+  id: r.id,
+  orderId: r.order_id,
+  round: r.round ?? 1,
+  stepNo: r.step_no,
+  status: r.status,
+  plannedAt: r.planned_at ?? undefined,
+  doneAt: r.done_at ?? undefined,
+  doneBy: r.done_by ?? undefined,
+  remark: r.remark ?? undefined,
+  createdAt: r.created_at ?? undefined,
+});
+
+// ── Step 1–7 buttons ──────────────────────────────────────────────────────
+// Each button writes one or more dispatch_steps rows for the card's current
+// round. 'hold' puts the card on hold at that step (Resume brings it back).
+export interface StepAction {
+  label: string;
+  primary: boolean;   // black button (manual Done); else white (second choice)
+  writes: { stepNo: StepNo; status: StepRecordStatus }[];
+}
+export const STEP_ACTIONS: Partial<Record<StepNo, StepAction[]>> = {
+  1: [
+    { label: 'Payment received ✓', primary: true, writes: [{ stepNo: 1, status: 'done' }] },
+    { label: 'Not received', primary: false, writes: [{ stepNo: 1, status: 'hold' }] },
+  ],
+  2: [
+    { label: 'No overdue ✓', primary: true, writes: [{ stepNo: 2, status: 'done' }, { stepNo: 3, status: 'skipped' }, { stepNo: 4, status: 'skipped' }] },
+    { label: 'Overdue found', primary: false, writes: [{ stepNo: 2, status: 'done' }] },
+  ],
+  3: [
+    { label: 'Mgmt says Yes', primary: true, writes: [{ stepNo: 3, status: 'done' }] },
+    { label: 'Mgmt says No', primary: false, writes: [{ stepNo: 3, status: 'hold' }] },
+  ],
+  4: [{ label: 'Payment received ✓', primary: true, writes: [{ stepNo: 4, status: 'done' }] }],
+  5: [
+    { label: 'Available ✓', primary: true, writes: [{ stepNo: 5, status: 'done' }] },
+    { label: 'Not available', primary: false, writes: [{ stepNo: 5, status: 'hold' }] },
+  ],
+  6: [{ label: 'DO issued ✓', primary: true, writes: [{ stepNo: 6, status: 'done' }] }],
+  7: [{ label: 'Picked up ✓', primary: true, writes: [{ stepNo: 7, status: 'done' }] }],
+};
 
 // ── Order cards ───────────────────────────────────────────────────────────
 export interface OrderStepHistory {
@@ -105,6 +157,7 @@ export interface OrderStepHistory {
   doneAt?: string;
   doneBy?: string;
   remark?: string;
+  onHold?: boolean;
 }
 
 export interface OrderPosition {
@@ -115,10 +168,83 @@ export interface OrderPosition {
   skipped: StepNo[];          // skipped steps in the current round
 }
 
+const autoSkips = (order: Order, stepNo: StepNo, fulfillment: DispatchFulfillmentType | 'not_set') =>
+  (stepNo === 1 && !needsPaymentCheck(order.pay)) || (stepNo === 6 && fulfillment === 'self_pickup');
+
+interface RoundWalk {
+  history: OrderStepHistory[];
+  position: OrderPosition;
+}
+
 /**
- * Where an ORDER card sits. Round 1 runs steps 1→8; every later round (the
- * remaining qty after a partial dispatch) restarts at step 5 with a fresh
- * timer from the latest dispatch entry — steps 1–4 are once per order.
+ * Walks steps 1–7 of ONE round (round 1 starts at step 1; later rounds —
+ * the qty left after a partial dispatch — start at step 5, since steps 1–4
+ * are once per order). `closed` = a dispatch entry already ended this round,
+ * so any step without a record is "not_recorded" rather than current.
+ */
+function walkRound(
+  order: Order,
+  round: number,
+  roundStart: string | undefined,
+  records: DispatchStepRecord[],
+  fulfillment: DispatchFulfillmentType | 'not_set',
+  closed: boolean,
+): RoundWalk {
+  const legacy = isBeforeGoLive(order.sentToDispatchAt);
+  const history: OrderStepHistory[] = [];
+  const skipped: StepNo[] = [];
+  let prevDone = roundStart;
+  let position: OrderPosition | null = null;
+
+  for (let s = round === 1 ? 1 : 5; s <= 7; s++) {
+    const stepNo = s as StepNo;
+    const recs = records.filter(r => r.round === round && r.stepNo === stepNo);
+    const finished = recs.filter(r => r.status === 'done' || r.status === 'skipped')
+      .sort((a, b) => byTime(a.doneAt, b.doneAt)).pop();
+    const remark = [...recs].sort((a, b) => byTime(a.createdAt, b.createdAt)).map(r => r.remark).filter(Boolean).pop();
+    const lastResume = latestIso(recs.filter(r => r.status === 'hold' && r.doneAt).map(r => r.doneAt));
+    const plannedAt = plannedAtFor(goLiveFloor(latestIso([prevDone, lastResume]), legacy), stepNo);
+
+    if (position) {
+      // Already found the current step — the rest are still to come.
+      history.push({ stepNo, state: autoSkips(order, stepNo, fulfillment) ? 'skipped' : 'upcoming' });
+      continue;
+    }
+    if (finished) {
+      if (finished.status === 'skipped') skipped.push(stepNo);
+      history.push({ stepNo, state: finished.status === 'skipped' ? 'skipped' : 'done', plannedAt: finished.plannedAt || plannedAt, doneAt: finished.doneAt, doneBy: finished.doneBy, remark });
+      prevDone = finished.doneAt || prevDone;
+      continue;
+    }
+    if (autoSkips(order, stepNo, fulfillment)) {
+      skipped.push(stepNo);
+      history.push({ stepNo, state: 'skipped' });
+      continue;
+    }
+    if (closed) {
+      history.push({ stepNo, state: 'not_recorded', remark });
+      continue;
+    }
+    const openHold = recs.find(r => r.status === 'hold' && !r.doneAt);
+    history.push({ stepNo, state: 'current', plannedAt, remark, onHold: !!openHold });
+    position = {
+      round, step: stepNo, plannedAt, skipped: [...skipped],
+      hold: openHold ? { record: openHold, reason: HOLD_REASONS[stepNo] || 'on hold' } : undefined,
+    };
+  }
+  return {
+    history,
+    position: position || { round, step: 8, plannedAt: plannedAtFor(goLiveFloor(prevDone, legacy), 8), skipped },
+  };
+}
+
+const realEntriesOf = (orderEntries: DispatchEntry[]) =>
+  orderEntries.filter(e => !isImportedEntry(e)).sort((a, b) => byTime(a.created_at, b.created_at));
+
+/**
+ * Where an ORDER card sits. Round 1 runs steps 1→8 from the "Order Pending
+ * for Dispatch" click; every later round restarts at step 5 with a fresh
+ * timer from the latest dispatch entry.
  */
 export function orderPosition(
   order: Order,
@@ -126,80 +252,41 @@ export function orderPosition(
   records: DispatchStepRecord[],
   fulfillment: DispatchFulfillmentType | 'not_set',
 ): OrderPosition {
-  const realEntries = orderEntries.filter(e => !isImportedEntry(e));
-  const round = realEntries.length + 1;
-  const roundRecords = records.filter(r => r.round === round);
-  const firstStep: StepNo = round === 1 ? 1 : 5;
-  let prevDone: string | undefined = round === 1
-    ? order.sentToDispatchAt
-    : latestIso(realEntries.map(e => e.created_at));
-  const skipped: StepNo[] = [];
+  const real = realEntriesOf(orderEntries);
+  const round = real.length + 1;
+  const start = round === 1 ? order.sentToDispatchAt : real[real.length - 1].created_at;
+  return walkRound(order, round, start, records, fulfillment, false).position;
+}
 
-  for (let s = firstStep; s <= 7; s++) {
-    const stepNo = s as StepNo;
-    const recs = roundRecords.filter(r => r.stepNo === stepNo);
-    const finished = recs.filter(r => r.status === 'done' || r.status === 'skipped')
-      .sort((a, b) => (a.doneAt || '').localeCompare(b.doneAt || '')).pop();
-    const autoSkip = (stepNo === 1 && !needsPaymentCheck(order.pay))
-      || (stepNo === 6 && fulfillment === 'self_pickup');
-    if (finished) {
-      if (finished.status === 'skipped') skipped.push(stepNo);
-      prevDone = finished.doneAt || prevDone;
-      continue;
-    }
-    if (autoSkip) { skipped.push(stepNo); continue; }
-    // Current step. A resumed hold restarts the timer from the resume time.
-    const openHold = recs.find(r => r.status === 'hold' && !r.doneAt);
-    const lastResume = latestIso(recs.filter(r => r.status === 'hold' && r.doneAt).map(r => r.doneAt));
-    const start = latestIso([prevDone, lastResume]);
-    return {
-      round, step: stepNo, plannedAt: plannedAtFor(start, stepNo), skipped,
-      hold: openHold ? { record: openHold, reason: HOLD_REASONS[stepNo] || 'on hold' } : undefined,
-    };
-  }
-  return { round, step: 8, plannedAt: plannedAtFor(prevDone, 8), skipped };
+export interface OrderRound {
+  round: number;
+  history: OrderStepHistory[];
+  entry?: DispatchEntry;    // the dispatch entry that ended this round
+  open: boolean;            // the round the order card is on now
 }
 
 /**
- * Step-by-step history for the drawer (steps 1–7 of one round). Steps before
- * the card's current step that have no record — e.g. a dispatch entry was
- * created from Table view before anyone pressed Done — are "not_recorded".
+ * Every round of an order, for the drawer: steps 1–7 with planned / actual,
+ * plus the dispatch entry that closed each finished round. Steps nobody
+ * pressed Done on before an entry was saved (e.g. created from Table view)
+ * show as "not_recorded" — never as an error.
  */
-export function orderStepHistory(
+export function orderRounds(
   order: Order,
-  round: number,
-  roundStartIso: string | undefined,
+  orderEntries: DispatchEntry[],
   records: DispatchStepRecord[],
-  current: StepNo | null,
   fulfillment: DispatchFulfillmentType | 'not_set',
-): OrderStepHistory[] {
-  const out: OrderStepHistory[] = [];
-  let prevDone = roundStartIso;
-  const firstStep = round === 1 ? 1 : 5;
-  for (let s = firstStep; s <= 7; s++) {
-    const stepNo = s as StepNo;
-    const recs = records.filter(r => r.round === round && r.stepNo === stepNo);
-    const finished = recs.filter(r => r.status === 'done' || r.status === 'skipped')
-      .sort((a, b) => (a.doneAt || '').localeCompare(b.doneAt || '')).pop();
-    const autoSkip = (stepNo === 1 && !needsPaymentCheck(order.pay))
-      || (stepNo === 6 && fulfillment === 'self_pickup');
-    const lastResume = latestIso(recs.filter(r => r.status === 'hold' && r.doneAt).map(r => r.doneAt));
-    const plannedAt = plannedAtFor(latestIso([prevDone, lastResume]), stepNo);
-    const remark = [...recs].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '')).map(r => r.remark).filter(Boolean).pop();
-    if (finished) {
-      out.push({ stepNo, state: finished.status === 'skipped' ? 'skipped' : 'done', plannedAt, doneAt: finished.doneAt, doneBy: finished.doneBy, remark });
-      prevDone = finished.doneAt || prevDone;
-    } else if (autoSkip) {
-      out.push({ stepNo, state: 'skipped' });
-    } else if (current === null || stepNo < current) {
-      out.push({ stepNo, state: 'not_recorded', remark });
-    } else if (stepNo === current) {
-      out.push({ stepNo, state: 'current', plannedAt, remark });
-    } else {
-      out.push({ stepNo, state: 'upcoming' });
-    }
+  stillOpen: boolean,
+): OrderRound[] {
+  const real = realEntriesOf(orderEntries);
+  const rounds: OrderRound[] = [];
+  const total = real.length + (stillOpen ? 1 : 0);
+  for (let r = 1; r <= total; r++) {
+    const start = r === 1 ? order.sentToDispatchAt : real[r - 2].created_at;
+    const open = r === real.length + 1;
+    rounds.push({ round: r, history: walkRound(order, r, start, records, fulfillment, !open).history, entry: real[r - 1], open });
   }
-  return out;
+  return rounds;
 }
 
 // ── Entry cards ───────────────────────────────────────────────────────────
@@ -211,20 +298,23 @@ export interface EntryPosition {
 
 /**
  * Where an ENTRY card sits, from the entry's own data:
+ *   email sent                             → Done (still flagged if the invoice no. is missing)
  *   no invoice no.                         → step 8 (flagged "Invoice no. missing")
  *   invoice, Delivery, no LR               → step 9
  *   LR uploaded, or Self Pickup            → step 10 until emailed
- *   email sent                             → Done
  * Step 10's timer starts at the LR upload. The entry doesn't store when the
- * LR was uploaded, so its last save (updated_at) stands in for it.
+ * LR was uploaded, so its last save (updated_at) stands in for it. Entries
+ * saved before the board went live start their timer at go-live.
  */
 export function entryPosition(e: DispatchEntry): EntryPosition {
-  if (!e.invoiceNumber) return { column: 8, plannedAt: plannedAtFor(e.created_at, 8), invoiceMissing: true };
-  if (e.emailSentAt) return { column: 11, invoiceMissing: false };
+  const invoiceMissing = !e.invoiceNumber;
+  if (e.emailSentAt) return { column: 11, invoiceMissing };
+  const legacy = isBeforeGoLive(e.created_at);
+  if (invoiceMissing) return { column: 8, plannedAt: plannedAtFor(goLiveFloor(e.created_at, legacy), 8), invoiceMissing };
   const selfPickup = e.fulfillmentType === 'self_pickup';
-  if (!selfPickup && !entryHasLr(e)) return { column: 9, plannedAt: plannedAtFor(e.created_at, 9), invoiceMissing: false };
+  if (!selfPickup && !entryHasLr(e)) return { column: 9, plannedAt: plannedAtFor(goLiveFloor(e.created_at, legacy), 9), invoiceMissing };
   const start = selfPickup ? e.created_at : (e.updated_at || e.created_at);
-  return { column: 10, plannedAt: plannedAtFor(start, 10), invoiceMissing: false };
+  return { column: 10, plannedAt: plannedAtFor(goLiveFloor(start, legacy), 10), invoiceMissing };
 }
 
 // ── Time bar ──────────────────────────────────────────────────────────────
@@ -240,8 +330,8 @@ export function timeState(plannedAt: string | undefined, now: number, onHold: bo
 }
 
 /** "1h 20m", "2d 3h", "12 min". */
-export function fmtDuration(ms: number): string {
-  const mins = Math.max(0, Math.round(ms / 60000));
+export function fmtDuration(durationMs: number): string {
+  const mins = Math.max(0, Math.round(durationMs / 60000));
   if (mins < 60) return `${mins} min`;
   const h = Math.floor(mins / 60), m = mins % 60;
   if (h < 24) return m ? `${h}h ${m}m` : `${h}h`;

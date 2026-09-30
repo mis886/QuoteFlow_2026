@@ -3,10 +3,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, List, Columns3 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
-import { canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining } from '../lib/utils';
+import { canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, OrderItem, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, BoardCard, DONE_COLUMN } from '../lib/dispatchFlow';
-import { DispatchBoard, AutoTag } from '../components/DispatchBoard';
+import { buildBoard, mapStepFromDB, stepDef, BoardCard, BoardOrderCard, DispatchStepRecord, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
+import { DispatchBoard, AutoTag, StepActionButtons } from '../components/DispatchBoard';
+import { supabase } from '../lib/supabase';
+import { logActivity } from '../lib/activityLog';
 
 type SubType = DispatchFulfillmentType | 'not_set';
 type DispatchTab = 'pending' | 'dispatched' | 'emailSent';
@@ -104,7 +106,7 @@ function LineItemsPanel({ title, items, grand }: { title: string; items: OrderIt
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, deleteDispatchEntry, ensureSoNumbers } = useAppStore();
+  const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser } = useAppStore();
   const canDelete = canDeleteRecords(user?.email);
 
   // Initial tab/pill come from the URL (?tab=pending|dispatched|emailSent
@@ -135,6 +137,82 @@ export function Dispatch() {
     const t = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(t);
   }, [view]);
+
+  // Board step history (dispatch_steps — steps 1–7 only; 8–10 come from the
+  // dispatch entries themselves). Loaded when the board opens and refreshed
+  // on the same 1-minute tick, so clicks made by someone else show up
+  // without a page reload.
+  const [stepRecords, setStepRecords] = useState<DispatchStepRecord[]>([]);
+  useEffect(() => {
+    if (view !== 'board') return;
+    supabase.from('dispatch_steps').select('*').then(({ data: rows, error }) => {
+      if (error) { console.error('Error loading dispatch steps:', error); return; }
+      setStepRecords((rows || []).map(mapStepFromDB));
+    });
+  }, [view, now]);
+
+  // Done / Hold / Resume on steps 1–7: Samata (mum@) + ADMIN_EMAILS only;
+  // everyone else sees the board read-only. Never changes an order's status.
+  const canActOnBoard = canActOnDispatchBoard(user?.email) && !isReadOnlyUser;
+  const [busyCardKey, setBusyCardKey] = useState<string | null>(null);
+  const stepLogLabel = (o: Order, stepNo: number, what: string) =>
+    `${o.soNumber || o.id} · Step ${stepNo} ${stepDef(stepNo as StepNo).title} · ${what}`;
+
+  const runStepAction = async (card: BoardOrderCard, action: StepAction, remark?: string) => {
+    if (!canActOnBoard || busyCardKey) return;
+    setBusyCardKey(card.key);
+    try {
+      const nowIso = new Date().toISOString();
+      const rows = action.writes.map((w, i) => ({
+        order_id: card.order.id,
+        round: card.position.round,
+        step_no: w.stepNo,
+        status: w.status,
+        planned_at: w.stepNo === card.position.step ? card.position.plannedAt ?? null : null,
+        // A hold's done_at is filled in later, when it's resumed.
+        done_at: w.status === 'hold' ? null : nowIso,
+        done_by: user?.email ?? null,
+        remark: i === 0 && remark?.trim() ? remark.trim() : null,
+      }));
+      const { data: inserted, error } = await supabase.from('dispatch_steps').insert(rows).select('*');
+      if (error) throw error;
+      setStepRecords(prev => [...prev, ...(inserted || []).map(mapStepFromDB)]);
+      for (const row of inserted || []) {
+        const what = row.status === 'done' ? `Done (${action.label})` : row.status === 'skipped' ? 'Skipped' : 'On hold';
+        logActivity({ module: 'dispatch_steps', recordId: card.order.id, recordLabel: stepLogLabel(card.order, row.step_no, what), action: 'insert', after: row });
+      }
+    } catch (err: any) {
+      alert(`Could not save: ${err?.message || JSON.stringify(err)}`);
+    } finally {
+      setBusyCardKey(null);
+    }
+  };
+
+  const resumeHold = async (card: BoardOrderCard, remark?: string) => {
+    const hold = card.position.hold?.record;
+    if (!canActOnBoard || busyCardKey || !hold) return;
+    setBusyCardKey(card.key);
+    try {
+      const resumedAt = new Date().toISOString();
+      const patch: Record<string, any> = { done_at: resumedAt, done_by: user?.email ?? null };
+      if (remark?.trim()) patch.remark = [hold.remark, remark.trim()].filter(Boolean).join(' · ');
+      const { error } = await supabase.from('dispatch_steps').update(patch).eq('id', hold.id);
+      if (error) throw error;
+      setStepRecords(prev => prev.map(r => r.id === hold.id ? { ...r, doneAt: resumedAt, doneBy: patch.done_by ?? undefined, remark: patch.remark ?? r.remark } : r));
+      logActivity({
+        module: 'dispatch_steps', recordId: card.order.id, recordLabel: stepLogLabel(card.order, hold.stepNo, 'Resumed'),
+        action: 'update', before: { status: 'hold', resumed_at: null }, after: { status: 'resumed', resumed_at: resumedAt },
+      });
+    } catch (err: any) {
+      alert(`Could not resume: ${err?.message || JSON.stringify(err)}`);
+    } finally {
+      setBusyCardKey(null);
+    }
+  };
+
+  const renderBoardActions = (card: BoardCard) => canActOnBoard && card.kind === 'order'
+    ? <StepActionButtons card={card} busy={busyCardKey === card.key} onAction={runStepAction} onResume={resumeHold} />
+    : null;
 
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
 
@@ -251,8 +329,8 @@ export function Dispatch() {
 
   // ── Board view ──────────────────────────────────────────────────────────
   const boardCards = useMemo(
-    () => view === 'board' ? buildBoard(data.orders, data.dispatchEntries, [], orderFulfillment, now) : [],
-    [view, data.orders, data.dispatchEntries, data.customers, now],
+    () => view === 'board' ? buildBoard(data.orders, data.dispatchEntries, stepRecords, orderFulfillment, now) : [],
+    [view, data.orders, data.dispatchEntries, data.customers, stepRecords, now],
   );
   const boardSearchMatch = (c: BoardCard) => {
     if (!qs) return true;
@@ -399,7 +477,7 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard cards={boardVisible} now={now} />
+        <DispatchBoard cards={boardVisible} now={now} renderActions={renderBoardActions} />
       ) : (
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">

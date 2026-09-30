@@ -124,6 +124,10 @@ export function NewDispatchEntry() {
   const [searchParams] = useSearchParams();
   const orderRef = searchParams.get('orderRef');
   const entryIdParam = searchParams.get('entryId');
+  // Opened from a Dispatch Board button (&from=board) → Save / Email /
+  // Back return to the Board view instead of the Table.
+  const fromBoard = searchParams.get('from') === 'board';
+  const dispatchHome = fromBoard ? '/dispatch?view=board' : '/dispatch';
   const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   // This whole page is locked to view-only for isReadOnlyUser (the Bhiwandi
@@ -651,7 +655,7 @@ export function NewDispatchEntry() {
         await addDispatchEntry(selectedOrderId, type as DispatchFulfillmentType, extra);
       }
       // Land on the tab/pill the saved entry now lives under.
-      navigate(`/dispatch?tab=${existingEntry?.emailSentAt ? 'emailSent' : 'dispatched'}&type=${type}`);
+      navigate(fromBoard ? dispatchHome : `/dispatch?tab=${existingEntry?.emailSentAt ? 'emailSent' : 'dispatched'}&type=${type}`);
     } catch (err: any) {
       setError(err?.message || 'Could not save — check your connection.');
     } finally {
@@ -676,7 +680,7 @@ export function NewDispatchEntry() {
               <p className="text-[12.5px] text-g600 leading-relaxed">{blockReason}</p>
               <div className="flex items-center gap-2 mt-4">
                 <Button variant="dark" onClick={() => navigate('/orders')}>Go to Orders</Button>
-                <Button variant="secondary" onClick={() => navigate('/dispatch')}>Back to Dispatch</Button>
+                <Button variant="secondary" onClick={() => navigate(dispatchHome)}>Back to Dispatch</Button>
               </div>
             </div>
           </div>
@@ -706,7 +710,7 @@ export function NewDispatchEntry() {
               <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
               <span className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] bg-g50 text-g700">Dispatch → Sent</span>
             </div>
-            <Button variant="secondary" onClick={() => navigate('/dispatch')}>Back</Button>
+            <Button variant="secondary" onClick={() => navigate(dispatchHome)}>Back</Button>
           </div>
         </div>
       </div>
@@ -1290,7 +1294,7 @@ export function NewDispatchEntry() {
               Email to Client
             </Button>
             <div className="h-5 w-px bg-g200 mx-1" />
-            <Button variant="secondary" onClick={() => navigate('/dispatch')}>Cancel</Button>
+            <Button variant="secondary" onClick={() => navigate(dispatchHome)}>Cancel</Button>
           </div>
         </div>
       </div>
@@ -1311,7 +1315,7 @@ export function NewDispatchEntry() {
             if (!existingEntryId) return;
             try {
               await markDispatchEmailSent(existingEntryId);
-              navigate(`/dispatch?tab=emailSent&type=${type || 'delivery'}`);
+              navigate(fromBoard ? dispatchHome : `/dispatch?tab=emailSent&type=${type || 'delivery'}`);
             } catch (err: any) {
               setError(`Email was sent, but it could not be recorded: ${err?.message || 'unknown error'}`);
             }

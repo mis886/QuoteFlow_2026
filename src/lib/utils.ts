@@ -57,6 +57,20 @@ export const SEND_TO_DISPATCH_EMAILS = ['sales@himalayaterpene.com', 'mis@himala
 export const canSendToDispatch = (email: string | null | undefined): boolean =>
   SEND_TO_DISPATCH_EMAILS.includes((email ?? '').trim().toLowerCase());
 
+// Dispatch Board (Kanban): logins allowed to press Done / Hold / Resume on
+// steps 1–7 — Samata (mum@) plus the ADMIN_EMAILS logins in
+// store/index.tsx. Everyone else sees the board read-only. The Bhiwandi
+// read-only login (isReadOnlyUser) stays locked regardless.
+export const DISPATCH_BOARD_EMAILS = ['mum@himalayaterpene.com', 'mis@himalayaterpene.com', 'shishir@himalayaterpene.com', 'anil@himalayaterpene.com'];
+export const canActOnDispatchBoard = (email: string | null | undefined): boolean =>
+  DISPATCH_BOARD_EMAILS.includes((email ?? '').trim().toLowerCase());
+
+// When the Dispatch Board's step buttons went live (30 Sep 2026, 11:30 AM
+// IST). Orders sent to Dispatch before this (and entries saved before it)
+// start their current step's timer from here instead of from the original
+// send time, so the board didn't open with everything already late.
+export const BOARD_GO_LIVE_AT = '2026-09-30T06:00:00Z';
+
 // An order's status is LOCKED once it's been sent to Dispatch
 // (sentToDispatchAt) or has any dispatch entry. Non-admins can't change the
 // status of a locked order (store's updateOrder enforces it too); admins can,
