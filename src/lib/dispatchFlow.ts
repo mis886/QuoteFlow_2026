@@ -119,6 +119,38 @@ export const mapStepFromDB = (r: any): DispatchStepRecord => ({
   createdAt: r.created_at ?? undefined,
 });
 
+// ── Undo last step (admins) ───────────────────────────────────────────────
+// The most recent click on an order's steps 1–7. One click can write several
+// rows in one insert (e.g. "No overdue ✓" = step 2 done + 3, 4 skipped) —
+// they share one created_at, so they're undone together. A Resume is an
+// update (a hold row's done_at), timed by that done_at; undoing it just
+// clears done_at again so the card goes back on hold.
+export type LastStepClick =
+  | { kind: 'delete'; rows: DispatchStepRecord[]; at: string }
+  | { kind: 'unresume'; row: DispatchStepRecord; at: string };
+
+export function lastStepClick(orderRecords: DispatchStepRecord[]): LastStepClick | null {
+  const rows = orderRecords.filter(r => r.stepNo >= 1 && r.stepNo <= 7);
+  let best: LastStepClick | null = null;
+  const later = (at: string | undefined) => !!at && (!best || ms(at) > ms(best.at));
+  for (const r of rows) {
+    if (later(r.createdAt)) best = { kind: 'delete', rows: [r], at: r.createdAt! };
+    if (r.status === 'hold' && r.doneAt && later(r.doneAt)) best = { kind: 'unresume', row: r, at: r.doneAt };
+  }
+  if (best?.kind === 'delete') {
+    const at = best.at;
+    best = { kind: 'delete', at, rows: rows.filter(r => r.createdAt && ms(r.createdAt) === ms(at)).sort((a, b) => a.stepNo - b.stepNo) };
+  }
+  return best;
+}
+
+/** "Step 2 Overdue Check — Done, Step 3 … — Skipped" for the confirm box / log. */
+export function describeStepClick(click: LastStepClick): string {
+  const one = (r: DispatchStepRecord, what: string) => `Step ${r.stepNo} ${stepDef(r.stepNo as StepNo).title} — ${what}`;
+  if (click.kind === 'unresume') return one(click.row, 'Resume');
+  return click.rows.map(r => one(r, r.status === 'done' ? 'Done' : r.status === 'skipped' ? 'Skipped' : 'On hold')).join(', ');
+}
+
 // ── Step 1–7 buttons ──────────────────────────────────────────────────────
 // Each button writes one or more dispatch_steps rows for the card's current
 // round. 'hold' puts the card on hold at that step (Resume brings it back).

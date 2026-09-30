@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, CircleDashed, X } from 'lucide-react';
+import { Check, CircleDashed, Undo2, X } from 'lucide-react';
 import { fmtIST, doerLabel } from '../lib/utils';
 import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
   BoardOrderCard, DispatchStepRecord, OrderStepHistory, StepAction,
-  drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef,
+  drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastStepClick, describeStepClick,
 } from '../lib/dispatchFlow';
 import { StepActionButtons, TimeBar, TypeDot } from './DispatchBoard';
 
@@ -81,7 +81,8 @@ function StepRow({ step, now, roster }: { step: OrderStepHistory; now: number; r
 }
 
 export function DispatchDrawer({
-  order, entries, records, fulfillment, orderCard, now, roster, canAct, busy, onAction, onResume, onClose,
+  order, entries, records, fulfillment, orderCard, now, roster, canAct, busy, onAction, onResume,
+  canUndo, undoBusy, onUndo, onClose,
 }: {
   order: Order;
   entries: DispatchEntry[];            // this order's entries
@@ -94,6 +95,9 @@ export function DispatchDrawer({
   busy: boolean;
   onAction: (card: BoardOrderCard, action: StepAction, remark?: string) => Promise<void> | void;
   onResume: (card: BoardOrderCard, remark?: string) => Promise<void> | void;
+  canUndo: boolean;                    // ADMIN_EMAILS only
+  undoBusy: boolean;
+  onUndo: () => void;
   onClose: () => void;
 }) {
   const navigate = useNavigate();
@@ -107,6 +111,7 @@ export function DispatchDrawer({
   useEffect(() => { setRemark(''); }, [order.id]);
 
   const steps = drawerSteps(order, entries, records, fulfillment, orderCard?.position);
+  const lastClick = lastStepClick(records);
   const realEntries = entries.filter(e => !isImportedEntry(e))
     .sort((a, b) => (ms(a.created_at) || 0) - (ms(b.created_at) || 0));
   const items = orderCard
@@ -161,7 +166,16 @@ export function DispatchDrawer({
 
           {/* Steps 1–10 */}
           <div className="px-4 py-3 border-b border-g200">
-            <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt mb-1">Steps</div>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt">Steps</div>
+              {canUndo && lastClick && (
+                <button type="button" onClick={onUndo} disabled={undoBusy}
+                  title={`Admins only — takes back: ${describeStepClick(lastClick)}`}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-mrt border border-red-mrt/40 rounded-[4px] px-2 py-[3px] hover:bg-red-lt transition-colors disabled:opacity-50 disabled:cursor-wait">
+                  <Undo2 size={11} /> Undo last step
+                </button>
+              )}
+            </div>
             {steps.map(s => <StepRow key={s.stepNo} step={s} now={now} roster={roster} />)}
           </div>
 

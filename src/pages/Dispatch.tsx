@@ -5,7 +5,7 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, OrderItem, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, stepDef, BoardCard, BoardOrderCard, DispatchStepRecord, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, stepDef, lastStepClick, describeStepClick,BoardCard, BoardOrderCard, DispatchStepRecord, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
 import { DispatchBoard, AutoTag, StepActionButtons } from '../components/DispatchBoard';
 import { DispatchDrawer } from '../components/DispatchDrawer';
 import { supabase } from '../lib/supabase';
@@ -107,7 +107,7 @@ function LineItemsPanel({ title, items, grand }: { title: string; items: OrderIt
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser } = useAppStore();
+  const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, isAdmin } = useAppStore();
   const canDelete = canDeleteRecords(user?.email);
 
   // Initial tab/pill come from the URL (?tab=pending|dispatched|emailSent
@@ -214,6 +214,47 @@ export function Dispatch() {
   const renderBoardActions = (card: BoardCard) => canActOnBoard && card.kind === 'order'
     ? <StepActionButtons card={card} busy={busyCardKey === card.key} onAction={runStepAction} onResume={resumeHold} />
     : null;
+
+  // Admin-only "Undo last step" (drawer): takes back the order's most recent
+  // step 1–7 click — deletes that click's dispatch_steps rows, or un-resumes
+  // a resumed hold. Only dispatch_steps is touched; never dispatch entries,
+  // the order, or its status.
+  const canUndoOnBoard = isAdmin && !isReadOnlyUser;
+  const [undoBusy, setUndoBusy] = useState(false);
+  const undoLastStep = async (order: Order) => {
+    if (!canUndoOnBoard || undoBusy) return;
+    const click = lastStepClick(stepRecords.filter(r => r.orderId === order.id));
+    if (!click) return;
+    const what = describeStepClick(click);
+    const by = click.kind === 'delete' ? click.rows[0].doneBy : click.row.doneBy;
+    const when = fmtIST(new Date(click.at), 'dd MMM, hh:mm a');
+    if (!confirm(`Undo the last step for ${order.soNumber || order.id}?\n\n${what}\n(${when}${by ? ` by ${doerLabel(by, data.roster)}` : ''})\n\nThe card moves back to where it was. Dispatch entries and the order's status are not changed.`)) return;
+    setUndoBusy(true);
+    try {
+      const label = `${order.soNumber || order.id} · Undo · ${what}`;
+      if (click.kind === 'delete') {
+        const ids = click.rows.map(r => r.id);
+        const { data: deleted, error } = await supabase.from('dispatch_steps').delete().in('id', ids).select('id');
+        if (error) throw error;
+        if ((deleted || []).length !== ids.length) throw new Error('The step could not be removed (it may already have been undone). Refresh and try again.');
+        setStepRecords(prev => prev.filter(r => !ids.includes(r.id)));
+        logActivity({ module: 'dispatch_steps', recordId: order.id, recordLabel: label, action: 'delete', before: { undone: click.rows } });
+      } else {
+        const { data: updated, error } = await supabase.from('dispatch_steps').update({ done_at: null }).eq('id', click.row.id).select('id');
+        if (error) throw error;
+        if ((updated || []).length !== 1) throw new Error('The resume could not be undone. Refresh and try again.');
+        setStepRecords(prev => prev.map(r => r.id === click.row.id ? { ...r, doneAt: undefined } : r));
+        logActivity({
+          module: 'dispatch_steps', recordId: order.id, recordLabel: label,
+          action: 'update', before: { status: 'resumed', resumed_at: click.at }, after: { status: 'hold', resumed_at: null },
+        });
+      }
+    } catch (err: any) {
+      alert(`Undo failed: ${err?.message || JSON.stringify(err)}`);
+    } finally {
+      setUndoBusy(false);
+    }
+  };
 
   // Detail drawer — opened by clicking an SO No. on any board card (order
   // or entry card); always shows the whole order.
@@ -699,6 +740,9 @@ export function Dispatch() {
             busy={!!orderCard && busyCardKey === orderCard.key}
             onAction={runStepAction}
             onResume={resumeHold}
+            canUndo={canUndoOnBoard}
+            undoBusy={undoBusy}
+            onUndo={() => undoLastStep(o)}
             onClose={closeDrawer}
           />
         );
