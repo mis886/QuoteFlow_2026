@@ -4,7 +4,8 @@ import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { Customer, Site, Contact, NextOrder } from '../lib/types';
-import { generateId, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
+import { generateId, PAY_OPTIONS, normalizePayTerms, ENQUIRY_SOURCES } from '../lib/utils';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { normalizeIndianPhone } from '../lib/phone';
 import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
 
@@ -171,11 +172,18 @@ function parseMixedAddress(raw: string): {
   };
 }
 
-export function NewCustomer() {
+// mode="lead" = the Add / Edit Lead form (/customers/leads/new) — same form,
+// saved into the same customers table with customer_status 'lead'. Every
+// lead-only difference below is behind isLeadMode; customer mode is unchanged.
+export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' } = {}) {
+  const isLeadMode = mode === 'lead';
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
   const navigate = useNavigate();
   const { data, user, addCustomer, updateCustomer } = useAppStore();
+  // Lead mode always returns to the Customer Lead list; customer mode goes
+  // back wherever it came from, as before.
+  const goBack = () => { if (isLeadMode) navigate('/customers/leads'); else navigate(-1); };
   useEffect(() => {
     if (!editId) return;
     supabase
@@ -215,6 +223,16 @@ export function NewCustomer() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [parsePreview, setParsePreview] = useState<Record<number, ReturnType<typeof parseMixedAddress> | null>>({});
   const [existingAudit, setExistingAudit] = useState<{ createdBy: string; createdDate: string; modifiedBy: string; modifiedDate: string } | null>(null);
+  // Lead mode only — "Lead Source" card.
+  const [leadSource, setLeadSource] = useState('IndiaMART');
+  const [firstEnquiryDate, setFirstEnquiryDate] = useState('');
+  const [linkedEnquiryId, setLinkedEnquiryId] = useState('');
+  const [productInterest, setProductInterest] = useState('');
+  // Name as loaded — orders/enquiries/quotes link by company NAME, so renaming
+  // a lead that already has records would orphan them (see the warning below).
+  const [originalName, setOriginalName] = useState('');
+  const [renameConfirmOpen, setRenameConfirmOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Load the form ONCE per record. Keyed on editId only (not data.customers) so
   // a background refreshData() — e.g. a Supabase token refresh fired on tab
@@ -245,6 +263,13 @@ export function NewCustomer() {
         setNextOrder2({ product: cust.nextOrder2?.product || '', qty: cust.nextOrder2?.qty || '', date: cust.nextOrder2?.date || '' });
         setCrossSellOpportunities(cust.crossSellOpportunities || '');
         setNotes(cust.notes || '');
+        setOriginalName(cust.name);
+        if (isLeadMode) {
+          setLeadSource(cust.leadSource || 'IndiaMART');
+          setFirstEnquiryDate(cust.firstEnquiryDate || '');
+          setLinkedEnquiryId(cust.linkedEnquiryId || '');
+          setProductInterest(cust.productInterest || '');
+        }
         setExistingAudit({
           createdBy: cust.createdBy || '',
           createdDate: cust.createdDate || '',
@@ -254,8 +279,18 @@ export function NewCustomer() {
       }
     } else if (loadedFor.current !== '__new__') {
       loadedFor.current = '__new__';
-      setId(generateId('CUST', data.customers.map(c => c.id)));
-      setCode(generateId('CUS', data.customers.map(c => c.code)));
+      if (isLeadMode) {
+        // LEAD-YYYY-NNN, counting only LEAD- ids. This IS the saved
+        // customer_id, and it's kept as-is if the lead is later promoted.
+        const leadId = generateId('LEAD', data.customers.map(c => c.id));
+        setId(leadId);
+        setCode(leadId);
+        setPay('100% Advance');
+        setCreditLimit('0');
+      } else {
+        setId(generateId('CUST', data.customers.map(c => c.id)));
+        setCode(generateId('CUS', data.customers.map(c => c.code)));
+      }
     }
   }, [editId, data.customers]);
 
@@ -343,15 +378,56 @@ export function NewCustomer() {
     return true;
   };
 
+  // Lead mode: Contact Person / Mobile / Email in Company Profile are the Main
+  // Office's primary contact — the same data the Main Office card shows.
+  const primaryContactIdx = Math.max(0, sites[0]?.contacts.findIndex(c => c.isPrimary) ?? 0);
+  const primaryContact = sites[0]?.contacts[primaryContactIdx];
+  const setPrimaryContactField = (field: 'name' | 'phone' | 'email', value: string) => {
+    if (!sites[0]) {
+      setSites([{ id: 'S1', name: 'Main Office', city: '', contacts: [{ id: 'C1', name: '', role: 'Purchase', email: '', isPrimary: true, [field]: value }] }]);
+      return;
+    }
+    if (!sites[0].contacts.length) {
+      const s = [...sites];
+      s[0] = { ...s[0], contacts: [{ id: 'C1', name: '', role: 'Purchase', email: '', isPrimary: true, [field]: value }] };
+      setSites(s);
+      return;
+    }
+    updateContact(0, primaryContactIdx, field, value);
+  };
+
+  // Records still pointing at the loaded name (orders/enquiries/quotes link by
+  // company NAME, not id). Only matters when an existing lead is renamed.
+  const nameChanged = !!editId && !!originalName && name.trim() !== originalName.trim();
+  const linkedToOldName = nameChanged ? {
+    enquiries: data.enquiries.filter(e => e.cust === originalName).length,
+    quotes: data.quotes.filter(q => q.cust === originalName).length,
+    orders: data.orders.filter(o => o.cust === originalName).length,
+  } : { enquiries: 0, quotes: 0, orders: 0 };
+  const hasLinkedToOldName = linkedToOldName.enquiries + linkedToOldName.quotes + linkedToOldName.orders > 0;
+  const linkedSummary = [
+    linkedToOldName.enquiries && `${linkedToOldName.enquiries} enquir${linkedToOldName.enquiries === 1 ? 'y' : 'ies'}`,
+    linkedToOldName.quotes && `${linkedToOldName.quotes} quote${linkedToOldName.quotes === 1 ? '' : 's'}`,
+    linkedToOldName.orders && `${linkedToOldName.orders} order${linkedToOldName.orders === 1 ? '' : 's'}`,
+  ].filter(Boolean).join(', ');
+
   const validate = () => {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = 'Company name is required';
+    if (isLeadMode) {
+      if (!primaryContact?.name?.trim()) e.contactName = 'Contact person is required';
+      if (!primaryContact?.phone?.trim()) e.contactPhone = 'Mobile is required';
+      if (!leadSource) e.leadSource = 'Source is required';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   const handleSave = async () => {
     if (!validate()) return;
+    // Lead renamed while records still use the old name → confirm first.
+    if (isLeadMode && hasLinkedToOldName && !renameConfirmOpen) { setRenameConfirmOpen(true); return; }
+    setRenameConfirmOpen(false);
     const normalizedSites = sites.map(site => ({
       ...site,
       contacts: site.contacts.map(ct => ({
@@ -371,7 +447,29 @@ export function NewCustomer() {
       nextOrder2: nextOrder2.product ? nextOrder2 : undefined,
       crossSellOpportunities: crossSellOpportunities.trim() || undefined,
       notes: notes.trim() || undefined,
+      ...(isLeadMode ? {
+        customerStatus: 'lead' as const,
+        creditLimit: 0,   // leads get no credit
+        leadSource,
+        firstEnquiryDate: firstEnquiryDate || undefined,
+        linkedEnquiryId: linkedEnquiryId.trim() || undefined,
+        productInterest: productInterest.trim() || undefined,
+      } : {}),
     };
+    if (isLeadMode) {
+      setSaving(true);
+      try {
+        if (editId) await updateCustomer(editId, { ...cust, modifiedBy: user?.email ?? undefined, modifiedDate: new Date().toISOString() });
+        else await addCustomer({ ...cust, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
+      } catch (err: any) {
+        setSaving(false);
+        setErrors(prev => ({ ...prev, save: err?.message || 'Could not save — check your connection.' }));
+        return;
+      }
+      setSaving(false);
+      goBack();
+      return;
+    }
     if (editId) {
       await updateCustomer(editId, { ...cust, modifiedBy: user?.email ?? undefined, modifiedDate: new Date().toISOString() });
     } else {
@@ -383,6 +481,29 @@ export function NewCustomer() {
   const inputCls = 'w-full font-sans text-sm bg-white border border-g300 rounded-[3px] p-2 outline-none focus:border-red-mrt focus:ring-4 focus:ring-red-lt transition-all';
   const labelCls = 'block text-[10px] font-bold text-g600 uppercase tracking-wide mb-1';
 
+  // Lead mode "Linked Enquiry" suggestions: this company's enquiries first,
+  // then everyone else's, newest first (capped so the list stays quick).
+  const leadNameKey = name.trim().toLowerCase();
+  const linkedEnquiryOptions = isLeadMode
+    ? [...data.enquiries]
+        .sort((a, b) => Number((b.cust || '').toLowerCase() === leadNameKey) - Number((a.cust || '').toLowerCase() === leadNameKey)
+          || (b.recv || '').localeCompare(a.recv || ''))
+        .slice(0, 300)
+    : [];
+
+  // Shared between modes — customer mode shows it next to GSTIN/PAN, lead
+  // mode in Tier's slot (leads have no tier).
+  const crmField = (
+    <div>
+      <label className={labelCls}>CRM</label>
+      <select title="CRM" value={crm} onChange={e => setCrm(e.target.value)} className={inputCls}>
+        <option value=""></option>
+        {crm && !CRM_OPTIONS.includes(crm) && <option value={crm}>{crm}</option>}
+        {CRM_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
 
@@ -391,10 +512,14 @@ export function NewCustomer() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-serif text-2xl text-blk tracking-tight leading-tight">
-              {editId ? 'Edit' : 'Add'} <em className="italic text-red-mrt">Customer</em>
+              {isLeadMode
+                ? <>{editId ? 'Edit' : 'Add'} <em className="italic text-lead-text">Lead</em></>
+                : <>{editId ? 'Edit' : 'Add'} <em className="italic text-red-mrt">Customer</em></>}
             </h2>
             <p className="text-xs text-g500 mt-1">
-              {editId ? `Updating corporate record ${code}` : 'Create a new hierarchical customer master record.'}
+              {isLeadMode
+                ? (editId ? `Updating lead ${code}` : 'Small-order / IndiaMART buyer — promote to Customer Master once orders cross ₹1 lakh.')
+                : (editId ? `Updating corporate record ${code}` : 'Create a new hierarchical customer master record.')}
             </p>
             {editId && existingAudit && (existingAudit.createdBy || existingAudit.modifiedBy) && (
               <div className="text-[10.5px] text-g400 mt-1 space-y-0.5">
@@ -408,8 +533,11 @@ export function NewCustomer() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => navigate(-1)}>Cancel</Button>
-            <Button variant="primary" onClick={handleSave}>Save Record</Button>
+            {errors.save && <span className="text-red-mrt text-[11px] max-w-[260px]">{errors.save}</span>}
+            <Button variant="secondary" onClick={goBack}>Cancel</Button>
+            {isLeadMode
+              ? <Button variant="primary" className="bg-lead hover:bg-lead-strong hover:shadow-none" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Lead'}</Button>
+              : <Button variant="primary" onClick={handleSave}>Save Record</Button>}
           </div>
         </div>
       </div>
@@ -427,7 +555,7 @@ export function NewCustomer() {
             </div>
 
             <div>
-              <label className={labelCls}>Customer Code</label>
+              <label className={labelCls}>{isLeadMode ? 'Lead Code' : 'Customer Code'}</label>
               <div className="bg-g100 border border-g200 rounded-[3px] p-2 text-xs font-mono font-bold text-g500">{code}</div>
             </div>
 
@@ -439,7 +567,34 @@ export function NewCustomer() {
                 placeholder="e.g. Aditya Birla Chemicals"
               />
               {errors.name && <p className="text-red-mrt text-[10px] mt-1">{errors.name}</p>}
+              {isLeadMode && hasLinkedToOldName && (
+                <div className="mt-1.5 text-[11px] text-lead-text bg-lead-bg border border-lead/50 rounded-[3px] px-2.5 py-1.5 leading-snug">
+                  {linkedSummary} still use the old name "<strong>{originalName}</strong>". They won't be renamed, so this lead's order total may stop adding up.
+                </div>
+              )}
             </div>
+
+            {isLeadMode && (
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className={labelCls}>Contact Person <span className="text-red-mrt">*</span></label>
+                  <input type="text" value={primaryContact?.name || ''} onChange={e => setPrimaryContactField('name', e.target.value)}
+                    className={inputCls + (errors.contactName ? ' border-red-mrt' : '')} placeholder="e.g. Ramesh Patel" />
+                  {errors.contactName && <p className="text-red-mrt text-[10px] mt-1">{errors.contactName}</p>}
+                </div>
+                <div>
+                  <label className={labelCls}>Mobile <span className="text-red-mrt">*</span></label>
+                  <input type="tel" value={primaryContact?.phone || ''} onChange={e => setPrimaryContactField('phone', e.target.value)}
+                    className={inputCls + ' font-mono' + (errors.contactPhone ? ' border-red-mrt' : '')} placeholder="98XXXXXXXX" />
+                  {errors.contactPhone && <p className="text-red-mrt text-[10px] mt-1">{errors.contactPhone}</p>}
+                </div>
+                <div>
+                  <label className={labelCls}>Email</label>
+                  <input type="email" value={primaryContact?.email || ''} onChange={e => setPrimaryContactField('email', e.target.value)}
+                    className={inputCls} placeholder="buyer@company.com" />
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-3 gap-3">
               <div>
@@ -458,29 +613,24 @@ export function NewCustomer() {
                   <option value="End User">End User</option>
                 </select>
               </div>
-              <div>
-                <label className={labelCls}>Tier</label>
-                <select title="Tier" value={tier} onChange={e => setTier(e.target.value)} className={inputCls}>
-                  <option value=""></option>
-                  <option value="Bronze">Bronze</option>
-                  <option value="Silver">Silver</option>
-                  <option value="Gold">Gold</option>
-                </select>
-              </div>
+              {isLeadMode ? crmField : (
+                <div>
+                  <label className={labelCls}>Tier</label>
+                  <select title="Tier" value={tier} onChange={e => setTier(e.target.value)} className={inputCls}>
+                    <option value=""></option>
+                    <option value="Bronze">Bronze</option>
+                    <option value="Silver">Silver</option>
+                    <option value="Gold">Gold</option>
+                  </select>
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className={labelCls}>CRM</label>
-                <select title="CRM" value={crm} onChange={e => setCrm(e.target.value)} className={inputCls}>
-                  <option value=""></option>
-                  {crm && !CRM_OPTIONS.includes(crm) && <option value={crm}>{crm}</option>}
-                  {CRM_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+            <div className={`grid ${isLeadMode ? 'grid-cols-2' : 'grid-cols-3'} gap-3`}>
+              {!isLeadMode && crmField}
 
               <div>
-                <label className={labelCls}>Company GSTIN</label>
+                <label className={labelCls}>Company GSTIN{isLeadMode && <span className="normal-case font-normal text-g400"> (optional)</span>}</label>
                 <input
                   type="text" value={gstin}
                   onChange={e => {
@@ -499,7 +649,7 @@ export function NewCustomer() {
               </div>
 
               <div>
-                <label className={labelCls}>PAN No.</label>
+                <label className={labelCls}>PAN No.{isLeadMode && <span className="normal-case font-normal text-g400"> (optional)</span>}</label>
                 <input
                   type="text" value={pan} onChange={e => setPan(e.target.value.toUpperCase())}
                   className={inputCls + ' font-mono'}
@@ -510,8 +660,45 @@ export function NewCustomer() {
             </div>
           </div>
 
+          {/* Right column: (lead mode) Lead Source, then Commercial Terms */}
+          <div className="col-span-4 space-y-[14px]">
+          {isLeadMode && (
+            <div className="bg-white border border-g200 rounded-[3px] p-5 space-y-4">
+              <div className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-lead-text pb-2 border-b border-g200">
+                Lead Source
+              </div>
+              <div>
+                <label className={labelCls}>Source <span className="text-red-mrt">*</span></label>
+                <select title="Source" value={leadSource} onChange={e => setLeadSource(e.target.value)} className={inputCls + (errors.leadSource ? ' border-red-mrt' : '')}>
+                  {leadSource && !(ENQUIRY_SOURCES as readonly string[]).includes(leadSource) && <option value={leadSource}>{leadSource}</option>}
+                  {ENQUIRY_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {errors.leadSource && <p className="text-red-mrt text-[10px] mt-1">{errors.leadSource}</p>}
+              </div>
+              <div>
+                <label className={labelCls}>First Enquiry Date</label>
+                <input type="date" value={firstEnquiryDate} onChange={e => setFirstEnquiryDate(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Linked Enquiry <span className="normal-case font-normal text-g400">(optional)</span></label>
+                <input type="text" list="lead-enquiry-options" value={linkedEnquiryId}
+                  onChange={e => setLinkedEnquiryId(e.target.value.split(' · ')[0])}
+                  className={inputCls + ' font-mono'} placeholder="Search ENQ no. or company…" />
+                <datalist id="lead-enquiry-options">
+                  {linkedEnquiryOptions.map(e => (
+                    <option key={e.id} value={e.id}>{`${e.id} · ${e.cust}`}</option>
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className={labelCls}>Product Interested In</label>
+                <input type="text" value={productInterest} onChange={e => setProductInterest(e.target.value)} className={inputCls} placeholder="e.g. Pine Oil, Camphor Powder" />
+              </div>
+            </div>
+          )}
+
           {/* Commercial Terms */}
-          <div className="col-span-4 bg-white border border-g200 rounded-[3px] p-5 space-y-4">
+          <div className="bg-white border border-g200 rounded-[3px] p-5 space-y-4">
             <div className="font-mono text-[9px] font-bold tracking-[2px] uppercase text-red-mrt pb-2 border-b border-g200">
               Commercial Terms
             </div>
@@ -548,11 +735,16 @@ export function NewCustomer() {
 
             <div>
               <label className={labelCls}>Credit Limit (₹)</label>
-              <input
-                type="number" value={creditLimit} onChange={e => setCreditLimit(e.target.value)}
-                className={inputCls} placeholder="e.g. 500000" min="0"
-              />
+              {isLeadMode ? (
+                <div className="bg-g100 border border-g200 rounded-[3px] p-2 text-sm text-g500">0 · not allowed</div>
+              ) : (
+                <input
+                  type="number" value={creditLimit} onChange={e => setCreditLimit(e.target.value)}
+                  className={inputCls} placeholder="e.g. 500000" min="0"
+                />
+              )}
             </div>
+          </div>
           </div>
         </div>
 
@@ -875,6 +1067,19 @@ export function NewCustomer() {
         </div>
 
       </div>
+
+      {renameConfirmOpen && (
+        <ConfirmDialog
+          title={`Rename "${originalName}"?`}
+          tone="lead"
+          confirmLabel="Save anyway"
+          busy={saving}
+          onConfirm={handleSave}
+          onCancel={() => setRenameConfirmOpen(false)}
+        >
+          {linkedSummary} use the old name "<strong>{originalName}</strong>". They link to this lead by company name and will <strong>not</strong> be renamed, so this lead's order total may stop adding up.
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

@@ -59,6 +59,24 @@
   --color-p-row:    #F3F3F3;   /* table row border */
   --color-p-hover:  #EEF4FF;   /* row hover */
   --color-p-idle:   #C0C0C0;   /* idle status dots */
+
+  /* ── Customer Lead accent (src/pages/CustomerLeads.tsx) — amber replaces
+     red. Light values here; dark values below. ── */
+  --color-lead:        #ff9f1c;   /* accent: borders, bars, italic title */
+  --color-lead-text:   #9a5b00;   /* amber text / outlined-button text */
+  --color-lead-bg:     #fff4e0;   /* very light amber fill */
+  --color-lead-strong: #e08600;   /* filled button hover */
+}
+
+/* Customer Lead amber in dark mode. The app has no dark theme of its own —
+   a dark screen comes from the browser. Dark Reader marks <html> with
+   data-darkreader-scheme="dark", so switch the amber tokens to their
+   dark-mode values there. (Chrome's built-in auto-dark recolours the light
+   values by itself; the OS dark setting alone is NOT used, since the app
+   stays light then.) */
+html[data-darkreader-scheme="dark"] {
+  --color-lead-text: #ffb347;
+  --color-lead-bg:   #3d2600;
 }
 
 /* Progress bar fill driven by --progress-w CSS custom property */

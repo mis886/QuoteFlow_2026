@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Phone, Mail, MessageCircle, MapPin, Star, ChevronRight, ExternalLink, FileText, Paperclip } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Customer, Contact, CustomerTier, Quote, Order, Enquiry, FollowUpLog } from '../lib/types';
-import { formatINR, fmtIST } from '../lib/utils';
+import { formatINR, fmtIST, isLead } from '../lib/utils';
 import { cn } from '../lib/utils';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { generateQuotePDF } from '../lib/pdfGenerator';
@@ -538,7 +538,9 @@ export function IntelligenceBoard() {
   const [sortKey, setSortKey] = useState<SortKey>('pipeline');
   const [selId, setSelId] = useState<string | null>(null);
 
-  const allStats = useCustomerStats(data.customers, data.enquiries, data.quotes, data.orders);
+  // Customer Master only — Customer Leads (small / IndiaMART buyers) are left out.
+  const masterCustomers = useMemo(() => data.customers.filter(c => !isLead(c)), [data.customers]);
+  const allStats = useCustomerStats(masterCustomers, data.enquiries, data.quotes, data.orders);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();

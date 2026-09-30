@@ -13,6 +13,7 @@ import { Dispatch } from './pages/Dispatch';
 import { NewDispatchEntry } from './pages/NewDispatchEntry';
 import { Customers } from './pages/Customers';
 import { NewCustomer } from './pages/NewCustomer';
+import { CustomerLeads } from './pages/CustomerLeads';
 import { Analytics } from './pages/Analytics';
 import { Blueprint } from './pages/Blueprint';
 import { Settings } from './pages/Settings';
@@ -105,6 +106,8 @@ export default function App() {
                   <Route path="dispatch/new" element={<NewDispatchEntry />} />
                   <Route path="customers" element={<Customers />} />
                   <Route path="customers/new" element={<NewCustomer />} />
+                  <Route path="customers/leads" element={<CustomerLeads />} />
+                  <Route path="customers/leads/new" element={<NewCustomer key="lead-form" mode="lead" />} />
                   <Route path="tickets" element={<Tickets />} />
                   <Route path="analytics" element={<Analytics />} />
                   <Route path="doer-kpi" element={<DoerKPI />} />

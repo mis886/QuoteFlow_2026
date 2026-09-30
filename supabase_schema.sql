@@ -32,6 +32,21 @@ CREATE TABLE IF NOT EXISTS public.customers (
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Customer Lead fields (2026-09-30 — supabase/migrations/20260930150000_customers_add_lead_fields.sql).
+-- NOTE: the CREATE TABLE above is older than the live table (live uses
+-- customer_id / company_name / flat contact + site columns, customer_type, crm…);
+-- these ALTERs describe the live columns added for Customer Lead.
+ALTER TABLE public.customers
+  ADD COLUMN IF NOT EXISTS customer_status TEXT NOT NULL DEFAULT 'customer'
+  CHECK (customer_status IN ('customer', 'lead'));
+ALTER TABLE public.customers
+  ADD COLUMN IF NOT EXISTS lead_source        TEXT,
+  ADD COLUMN IF NOT EXISTS first_enquiry_date DATE,
+  ADD COLUMN IF NOT EXISTS linked_enquiry_id  TEXT,
+  ADD COLUMN IF NOT EXISTS product_interest   TEXT,
+  ADD COLUMN IF NOT EXISTS promoted_at        TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_customers_status ON public.customers (customer_status);
+
 -- ── 2. enquiries ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.enquiries (
     id              TEXT PRIMARY KEY,

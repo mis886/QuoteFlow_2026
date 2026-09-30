@@ -119,7 +119,13 @@ export function CustomerSearch({ customers, value, onChange, error, placeholder 
                   className={`px-3 py-2 cursor-pointer flex items-center justify-between gap-3 ${idx === activeIdx ? 'bg-red-lt/40' : 'hover:bg-g50'}`}
                 >
                   <div className="min-w-0">
-                    <div className="text-[12.5px] font-semibold text-blk truncate">{c.name}</div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-[12.5px] font-semibold text-blk truncate">{c.name}</span>
+                      {/* Customer Lead (small / IndiaMART buyer) — still pickable so its orders count toward ₹1 lakh */}
+                      {c.customerStatus === 'lead' && (
+                        <span className="shrink-0 px-1.5 py-[1px] rounded-[3px] border border-lead/60 bg-lead-bg text-lead-text font-mono text-[8.5px] font-bold uppercase tracking-wide">Lead</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className="font-mono text-[10px] text-g500">{c.code}</span>
                       {city && <span className="text-[10px] text-g400">{city}</span>}

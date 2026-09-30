@@ -342,7 +342,18 @@ export interface Customer {
   customerType?: string; // customer_type
   crm?: string; // crm (DB column) — name of the person/CRM owner handling this customer
   fulfilmentType?: string; // fulfilment_type — customer's typical pattern: 'Self Pickup' | 'Delivery' | 'Both', derived from order history. Used to default Order/Dispatch fulfillment type + transporter.
+  // Customer Master vs Customer Lead (small / IndiaMART buyers, orders below
+  // ₹1 lakh). Same table, same id — promoting a lead just flips this to
+  // 'customer' (see src/pages/CustomerLeads.tsx). Undefined = 'customer'.
+  customerStatus?: CustomerStatus;
+  leadSource?: string;        // lead_source — same options as enquiries.src (ENQUIRY_SOURCES)
+  firstEnquiryDate?: string;  // first_enquiry_date (YYYY-MM-DD)
+  linkedEnquiryId?: string;   // linked_enquiry_id
+  productInterest?: string;   // product_interest
+  promotedAt?: string;        // promoted_at — when the lead was moved to Customer Master
 }
+
+export type CustomerStatus = 'customer' | 'lead';
 
 export interface FollowUpLog {
   ts: string;

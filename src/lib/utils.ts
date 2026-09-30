@@ -57,6 +57,17 @@ export const SEND_TO_DISPATCH_EMAILS = ['sales@himalayaterpene.com', 'mis@himala
 export const canSendToDispatch = (email: string | null | undefined): boolean =>
   SEND_TO_DISPATCH_EMAILS.includes((email ?? '').trim().toLowerCase());
 
+// Enquiry "Source" options (enquiries.src) — also the Lead Source options on
+// the Customer Lead form, so the two lists never drift apart.
+export const ENQUIRY_SOURCES = [
+  'Email', 'Phone', 'WhatsApp', 'Exhibition', 'Website', 'Walk-in', 'Referral', 'IndiaMART', 'Meta Ads', 'LinkedIn',
+] as const;
+
+// Customer Lead (small / IndiaMART buyers): a lead can be promoted to
+// Customer Master once its total order value reaches this (₹1 lakh).
+export const LEAD_PROMOTE_THRESHOLD = 100000;
+export const isLead = (c: { customerStatus?: string } | null | undefined): boolean => c?.customerStatus === 'lead';
+
 // Dispatch Board (Kanban): logins allowed to press Done / Hold / Resume on
 // steps 1–7 — Samata (mum@) plus the ADMIN_EMAILS logins in
 // store/index.tsx. Everyone else sees the board read-only. The Bhiwandi

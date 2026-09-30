@@ -50,7 +50,8 @@ export function GlobalSearchResults({ query, onNavigate }: { query: string; onNa
 
     const customerRows: ResultRow[] = data.customers
       .filter(c => matches(c.name) || matches(c.id))
-      .map(c => ({ id: c.id, title: c.name, subtitle: c.id, tier: rank(c.name, [c.id]), path: `/customers/new?id=${c.id}` }))
+      // A Customer Lead opens the Lead form instead of the Customer form.
+      .map(c => ({ id: c.id, title: c.name, subtitle: c.customerStatus === 'lead' ? `${c.id} · Lead` : c.id, tier: rank(c.name, [c.id]), path: c.customerStatus === 'lead' ? `/customers/leads/new?id=${c.id}` : `/customers/new?id=${c.id}` }))
       .sort((a, b) => a.tier - b.tier)
       .slice(0, MAX_PER_GROUP);
 

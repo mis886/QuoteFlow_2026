@@ -4,8 +4,8 @@ import { Button } from '../components/ui';
 import { DuplicateReviewPanel } from '../components/DuplicateReviewPanel';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Customer, Contact, CustomerTier, FollowUpLog } from '../lib/types';
-import { formatINR, fmtIST, generateId, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
+import { Customer, Contact, CustomerTier, CustomerStatus, FollowUpLog } from '../lib/types';
+import { formatINR, fmtIST, generateId, canDeleteRecords, nameTier, normalizeSearchText, isLead } from '../lib/utils';
 import { parseISO } from 'date-fns';
 import Papa from 'papaparse';
 
@@ -193,7 +193,7 @@ function detectAllFixes(customers: Customer[]): SiteFix[] {
   return fixes;
 }
 
-function getPrimaryContact(c: Customer): Contact | undefined {
+export function getPrimaryContact(c: Customer): Contact | undefined {
   for (const s of c.sites ?? []) {
     const found = (s.contacts ?? []).find(ct => ct.isPrimary) ?? (s.contacts ?? [])[0];
     if (found) return found;
@@ -210,7 +210,7 @@ function getTierStyle(tier: CustomerTier | undefined) {
   }
 }
 
-function TierBadge({ tier }: { tier: CustomerTier | undefined }) {
+export function TierBadge({ tier }: { tier: CustomerTier | undefined }) {
   const t = tier ?? 'New';
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${getTierStyle(t)}`}>
@@ -231,7 +231,7 @@ function StarRating({ score }: { score: number }) {
   );
 }
 
-function InitialAvatar({ name }: { name: string }) {
+export function InitialAvatar({ name }: { name: string }) {
   const initials = name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
   const colors = ['bg-blue-600', 'bg-indigo-600', 'bg-violet-600', 'bg-emerald-600', 'bg-teal-600', 'bg-rose-600'];
   const col = colors[name.charCodeAt(0) % colors.length];
@@ -260,7 +260,7 @@ const CHANNEL_ICON: Record<string, React.ReactNode> = {
 
 // ── CustomerPanel ─────────────────────────────────────────────────────────────
 
-function CustomerPanel({ customer, onClose }: { customer: Customer; onClose: () => void }) {
+export function CustomerPanel({ customer, onClose }: { customer: Customer; onClose: () => void }) {
   const { data, updateCustomer } = useAppStore();
   const navigate = useNavigate();
 
@@ -619,7 +619,7 @@ function CustomerPanel({ customer, onClose }: { customer: Customer; onClose: () 
           <Button variant="primary" size="sm" onClick={() => navigate(`/quotes/new?cust=${encodeURIComponent(customer.name)}`)} className="flex-1">
             New Quote
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => navigate(`/customers/new?id=${customer.id}`)} className="flex-1">
+          <Button variant="secondary" size="sm" onClick={() => navigate(isLead(customer) ? `/customers/leads/new?id=${customer.id}` : `/customers/new?id=${customer.id}`)} className="flex-1">
             Edit
           </Button>
         </div>
@@ -659,6 +659,168 @@ function sortValue(c: Customer, key: SortKey): string | number {
     case 'turnover':  return c.turnover ?? 0;
     case 'nextOrder': return (c.nextOrders ?? [])[0]?.toLowerCase() ?? '';
   }
+}
+
+// ── CSV import (shared by Customer Master and Customer Lead) ─────────────────
+
+// Parses customer CSV rows (grouped by company name; names that already
+// exist — customer or lead — are skipped) and saves each company. With
+// status 'lead' they're saved as Customer Leads (LEAD-… ids).
+export async function importCustomerCsvRows(
+  rows: Record<string, string>[],
+  opts: { customers: Customer[]; addCustomer: (c: Customer) => Promise<void>; status: CustomerStatus },
+): Promise<{ imported: number; skipped: number }> {
+  // Flexible column accessor — case-insensitive, trimmed, first match wins
+  const col = (row: Record<string, string>, ...keys: string[]): string => {
+    for (const k of keys) {
+      const found = Object.keys(row).find(h => h.trim().toLowerCase() === k.toLowerCase());
+      if (found && row[found]?.trim()) return row[found].trim();
+    }
+    return '';
+  };
+
+  const uid = () => `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
+
+  // Build one site from a row, appending extra fields into fullAddress
+  const buildSite = (row: Record<string, string>, isPrimary: boolean) => {
+    const address = col(row, 'Address');
+    const extras: string[] = [];
+    const transport = col(row, 'Transport');
+    if (transport) extras.push(`Transport: ${transport}`);
+    const plant = col(row, 'Plant Name', 'Plant');
+    if (plant) extras.push(`Plant: ${plant}`);
+    const lead = col(row, 'Avg transport lead time', 'Lead time');
+    if (lead) extras.push(`Lead time: ${lead} days`);
+    const remarks = col(row, 'Remarks');
+    if (remarks) extras.push(`Remarks: ${remarks}`);
+    const fullAddress = [address, ...extras].filter(Boolean).join('\n');
+
+    // Extract city from first line of address
+    const city = address.split(/[\n,]/)[0].trim() || col(row, 'City', 'city');
+
+    // Build contacts for this site
+    const contacts: any[] = [];
+    const purchaseName = col(row, 'Purchase Id', 'Purchase Name');
+    const purchasePhone = col(row, 'Purchase Ph.', 'Purchase Phone');
+    if (purchaseName || purchasePhone) {
+      contacts.push({
+        id: uid(), name: purchaseName || 'Purchase Contact',
+        role: 'Purchase', email: '', phone: purchasePhone,
+        isPrimary: contacts.length === 0,
+      });
+    }
+    const storePerson = col(row, 'Store Contact Person', 'Store Contact');
+    const storeEmail = col(row, 'Store Email');
+    const storePhone = col(row, 'Store Ph.', 'Store Phone');
+    if (storePerson || storeEmail || storePhone) {
+      contacts.push({
+        id: uid(), name: storePerson || 'Store Contact',
+        role: 'Store', email: storeEmail, phone: storePhone,
+        isPrimary: contacts.length === 0,
+      });
+    }
+    const dispatchEmail = col(row, 'Email for dispatch intimation', 'Dispatch Email');
+    if (dispatchEmail) {
+      contacts.push({
+        id: uid(), name: 'Dispatch',
+        role: 'Dispatch', email: dispatchEmail, phone: '',
+        isPrimary: contacts.length === 0,
+      });
+    }
+    // Generic contact fallback
+    const contactName = col(row, 'Contact Name', 'contact_name');
+    if (contactName && contacts.length === 0) {
+      contacts.push({
+        id: uid(), name: contactName,
+        role: col(row, 'contact_role') || 'Contact',
+        email: col(row, 'Contact Email', 'contact_email'),
+        phone: col(row, 'Contact Phone', 'contact_phone'),
+        isPrimary: true,
+      });
+    }
+
+    const siteId = col(row, 'Customer ID', 'customer id')
+      ? `SITE_${col(row, 'Customer ID', 'customer id').replace(/[^A-Z0-9]/gi, '')}_${uid()}`
+      : `SITE_${uid()}`;
+
+    return {
+      id: siteId,
+      name: col(row, 'Unit', 'Site Name', 'site_name') || 'Head Office',
+      city,
+      address,
+      fullAddress,
+      gstin: col(row, 'GST No.', 'GST No', 'GSTIN', 'gstin'),
+      isPrimary,
+      contacts,
+    };
+  };
+
+  // Group rows by company name (case-insensitive)
+  const groups = new Map<string, Record<string, string>[]>();
+  for (const row of rows) {
+    const companyName = col(row, 'Company Name', 'company name', 'Company', 'name', 'Name');
+    if (!companyName) continue;
+    const key = companyName.toLowerCase().trim();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(row);
+  }
+
+  const existingNames = new Set(opts.customers.map(c => c.name.toLowerCase().trim()));
+  const existingIds   = opts.customers.map(c => c.id);
+  const existingCodes = opts.customers.map(c => c.code);
+  const asLead = opts.status === 'lead';
+
+  let imported = 0;
+  let skipped = 0;
+
+  for (const [, groupRows] of groups) {
+    const firstRow = groupRows[0];
+    const companyName = col(firstRow, 'Company Name', 'company name', 'Company', 'name', 'Name');
+
+    // Dedup — skip if already exists
+    if (existingNames.has(companyName.toLowerCase().trim())) {
+      skipped++;
+      continue;
+    }
+
+    // Use sheet's Customer ID if valid, else generate
+    const sheetId = col(firstRow, 'Customer ID', 'customer id', 'CUST ID');
+    // Leads always get a fresh LEAD-YYYY-NNN id (the sheet's id is only used for customers).
+    const custId = asLead
+      ? generateId('LEAD', existingIds)
+      : (sheetId && !existingIds.includes(sheetId))
+        ? sheetId
+        : generateId('CUST', [...existingIds, ...Array.from({length: imported}, (_, i) => `CUST-0-${i}`)]);
+    const custCode = generateId('CUS', [...existingCodes, ...Array.from({length: imported}, (_, i) => `CUS-0-${i}`)]);
+
+    const sites = groupRows.map((row, idx) => buildSite(row, idx === 0));
+
+    const customer: Customer = {
+      id: custId,
+      code: custCode,
+      name: companyName,
+      seg: col(firstRow, 'Segment', 'seg', 'Seg') || 'General',
+      gstin: col(firstRow, 'GST No.', 'GST No', 'GSTIN', 'gstin'),
+      inco: col(firstRow, 'Incoterms', 'inco') || 'FOR',
+      curr: col(firstRow, 'Currency', 'curr') || 'INR',
+      pay: col(firstRow, 'Payment Terms', 'Payment', 'pay') || '',
+      tier: 'New',
+      sites,
+      ...(asLead ? {
+        customerStatus: 'lead' as const,
+        leadSource: col(firstRow, 'Lead Source', 'Source') || 'IndiaMART',
+        pay: col(firstRow, 'Payment Terms', 'Payment', 'pay') || '100% Advance',
+        creditLimit: 0,
+      } : {}),
+    };
+
+    await opts.addCustomer(customer);
+    existingIds.push(custId);
+    existingCodes.push(custCode);
+    existingNames.add(companyName.toLowerCase().trim());
+    imported++;
+  }
+  return { imported, skipped };
 }
 
 // ── Main Customers page ───────────────────────────────────────────────────────
@@ -721,147 +883,7 @@ export function Customers() {
       complete: async (results) => {
         try {
           const rows = results.data as Record<string, string>[];
-
-          // Flexible column accessor — case-insensitive, trimmed, first match wins
-          const col = (row: Record<string, string>, ...keys: string[]): string => {
-            for (const k of keys) {
-              const found = Object.keys(row).find(h => h.trim().toLowerCase() === k.toLowerCase());
-              if (found && row[found]?.trim()) return row[found].trim();
-            }
-            return '';
-          };
-
-          const uid = () => `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`.toUpperCase();
-
-          // Build one site from a row, appending extra fields into fullAddress
-          const buildSite = (row: Record<string, string>, isPrimary: boolean) => {
-            const address = col(row, 'Address');
-            const extras: string[] = [];
-            const transport = col(row, 'Transport');
-            if (transport) extras.push(`Transport: ${transport}`);
-            const plant = col(row, 'Plant Name', 'Plant');
-            if (plant) extras.push(`Plant: ${plant}`);
-            const lead = col(row, 'Avg transport lead time', 'Lead time');
-            if (lead) extras.push(`Lead time: ${lead} days`);
-            const remarks = col(row, 'Remarks');
-            if (remarks) extras.push(`Remarks: ${remarks}`);
-            const fullAddress = [address, ...extras].filter(Boolean).join('\n');
-
-            // Extract city from first line of address
-            const city = address.split(/[\n,]/)[0].trim() || col(row, 'City', 'city');
-
-            // Build contacts for this site
-            const contacts: any[] = [];
-            const purchaseName = col(row, 'Purchase Id', 'Purchase Name');
-            const purchasePhone = col(row, 'Purchase Ph.', 'Purchase Phone');
-            if (purchaseName || purchasePhone) {
-              contacts.push({
-                id: uid(), name: purchaseName || 'Purchase Contact',
-                role: 'Purchase', email: '', phone: purchasePhone,
-                isPrimary: contacts.length === 0,
-              });
-            }
-            const storePerson = col(row, 'Store Contact Person', 'Store Contact');
-            const storeEmail = col(row, 'Store Email');
-            const storePhone = col(row, 'Store Ph.', 'Store Phone');
-            if (storePerson || storeEmail || storePhone) {
-              contacts.push({
-                id: uid(), name: storePerson || 'Store Contact',
-                role: 'Store', email: storeEmail, phone: storePhone,
-                isPrimary: contacts.length === 0,
-              });
-            }
-            const dispatchEmail = col(row, 'Email for dispatch intimation', 'Dispatch Email');
-            if (dispatchEmail) {
-              contacts.push({
-                id: uid(), name: 'Dispatch',
-                role: 'Dispatch', email: dispatchEmail, phone: '',
-                isPrimary: contacts.length === 0,
-              });
-            }
-            // Generic contact fallback
-            const contactName = col(row, 'Contact Name', 'contact_name');
-            if (contactName && contacts.length === 0) {
-              contacts.push({
-                id: uid(), name: contactName,
-                role: col(row, 'contact_role') || 'Contact',
-                email: col(row, 'Contact Email', 'contact_email'),
-                phone: col(row, 'Contact Phone', 'contact_phone'),
-                isPrimary: true,
-              });
-            }
-
-            const siteId = col(row, 'Customer ID', 'customer id')
-              ? `SITE_${col(row, 'Customer ID', 'customer id').replace(/[^A-Z0-9]/gi, '')}_${uid()}`
-              : `SITE_${uid()}`;
-
-            return {
-              id: siteId,
-              name: col(row, 'Unit', 'Site Name', 'site_name') || 'Head Office',
-              city,
-              address,
-              fullAddress,
-              gstin: col(row, 'GST No.', 'GST No', 'GSTIN', 'gstin'),
-              isPrimary,
-              contacts,
-            };
-          };
-
-          // Group rows by company name (case-insensitive)
-          const groups = new Map<string, Record<string, string>[]>();
-          for (const row of rows) {
-            const companyName = col(row, 'Company Name', 'company name', 'Company', 'name', 'Name');
-            if (!companyName) continue;
-            const key = companyName.toLowerCase().trim();
-            if (!groups.has(key)) groups.set(key, []);
-            groups.get(key)!.push(row);
-          }
-
-          const existingNames = new Set(data.customers.map(c => c.name.toLowerCase().trim()));
-          const existingIds   = data.customers.map(c => c.id);
-          const existingCodes = data.customers.map(c => c.code);
-
-          let imported = 0;
-          let skipped = 0;
-
-          for (const [, groupRows] of groups) {
-            const firstRow = groupRows[0];
-            const companyName = col(firstRow, 'Company Name', 'company name', 'Company', 'name', 'Name');
-
-            // Dedup — skip if already exists
-            if (existingNames.has(companyName.toLowerCase().trim())) {
-              skipped++;
-              continue;
-            }
-
-            // Use sheet's Customer ID if valid, else generate
-            const sheetId = col(firstRow, 'Customer ID', 'customer id', 'CUST ID');
-            const custId = (sheetId && !existingIds.includes(sheetId))
-              ? sheetId
-              : generateId('CUST', [...existingIds, ...Array.from({length: imported}, (_, i) => `CUST-0-${i}`)]);
-            const custCode = generateId('CUS', [...existingCodes, ...Array.from({length: imported}, (_, i) => `CUS-0-${i}`)]);
-
-            const sites = groupRows.map((row, idx) => buildSite(row, idx === 0));
-
-            const customer: Customer = {
-              id: custId,
-              code: custCode,
-              name: companyName,
-              seg: col(firstRow, 'Segment', 'seg', 'Seg') || 'General',
-              gstin: col(firstRow, 'GST No.', 'GST No', 'GSTIN', 'gstin'),
-              inco: col(firstRow, 'Incoterms', 'inco') || 'FOR',
-              curr: col(firstRow, 'Currency', 'curr') || 'INR',
-              pay: col(firstRow, 'Payment Terms', 'Payment', 'pay') || '',
-              tier: 'New',
-              sites,
-            };
-
-            await addCustomer(customer);
-            existingIds.push(custId);
-            existingCodes.push(custCode);
-            existingNames.add(companyName.toLowerCase().trim());
-            imported++;
-          }
+          const { imported, skipped } = await importCustomerCsvRows(rows, { customers: data.customers, addCustomer, status: 'customer' });
 
           alert(`Import complete: ${imported} customers added, ${skipped} skipped (already exist).`);
         } catch (err) {
@@ -874,7 +896,13 @@ export function Customers() {
     });
   };
 
-  const filteredCustomers = data.customers.filter(c => {
+  // Customer Master = customer_status 'customer' only. Leads (small /
+  // IndiaMART buyers) have their own page at /customers/leads — they're
+  // left out of every count, filter and tool here except Find Duplicates.
+  const masters: Customer[] = data.customers.filter((c: Customer) => !isLead(c));
+  const leadCount = data.customers.length - masters.length;
+
+  const filteredCustomers = masters.filter(c => {
     if (searchQuery) {
       const q = normalizeSearchText(searchQuery);
       if (!normalizeSearchText(c.name ?? '').includes(q)) return false;
@@ -894,7 +922,7 @@ export function Customers() {
   // Kept separate from the column sort above so the column order is preserved as the within-tier tiebreaker.
   if (searchQuery) filteredCustomers.sort((a, b) => nameTier(a.name ?? '', searchQuery) - nameTier(b.name ?? '', searchQuery));
 
-  const segments = Array.from(new Set(data.customers.map(c => c.seg).filter(Boolean))).sort();
+  const segments = Array.from(new Set(masters.map(c => c.seg).filter(Boolean))).sort();
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -907,13 +935,17 @@ export function Customers() {
             <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">
               Customer <em className="italic text-red-mrt">Master</em>
             </h1>
-            <p className="text-xs text-g500 mt-1 font-light">{data.customers.length} customers · Click a row to view profile & history</p>
+            <p className="text-xs text-g500 mt-1 font-light">{masters.length} customers · Click a row to view profile & history</p>
           </div>
           <div className="flex items-center gap-2 mt-1 shrink-0">
+            <Button variant="secondary" className="gap-2 border-lead bg-lead-bg text-lead-text hover:border-lead hover:bg-lead/15" onClick={() => navigate('/customers/leads')}>
+              Customer Lead
+              <span className="min-w-[18px] h-[16px] px-1 rounded-full bg-lead text-white text-[9px] leading-none inline-flex items-center justify-center tracking-normal">{leadCount}</span>
+            </Button>
             <Button variant="secondary" className="gap-2" onClick={() => setShowDuplicates(true)}>
               <Copy size={14} className="stroke-2" /> Find Duplicates
             </Button>
-            <Button variant="secondary" className="gap-2" onClick={() => { setBulkDone(false); setBulkFixes(detectAllFixes(data.customers)); }}>
+            <Button variant="secondary" className="gap-2" onClick={() => { setBulkDone(false); setBulkFixes(detectAllFixes(masters)); }}>
               <Wand2 size={14} className="stroke-2" /> Fix All Addresses
             </Button>
             <Button variant="dark" className="gap-2 relative" disabled={importing}>
