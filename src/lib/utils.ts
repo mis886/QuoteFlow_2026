@@ -66,6 +66,10 @@ export const ENQUIRY_SOURCES = [
 // Customer Lead (small / IndiaMART buyers): a lead can be promoted to
 // Customer Master once its total order value reaches this (₹1 lakh).
 export const LEAD_PROMOTE_THRESHOLD = 100000;
+// Orders that don't count toward a lead's total / "ordered at least once".
+// 'Lost' is the only dead-order status in OrderStatus (there is no
+// Cancelled / Rejected for orders).
+export const LEAD_EXCLUDED_ORDER_STATUSES: readonly string[] = ['Lost'];
 export const isLead = (c: { customerStatus?: string } | null | undefined): boolean => c?.customerStatus === 'lead';
 
 // Dispatch Board (Kanban): logins allowed to press Done / Hold / Resume on

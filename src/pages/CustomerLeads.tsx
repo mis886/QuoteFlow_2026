@@ -6,7 +6,7 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Customer } from '../lib/types';
-import { formatINR, isLead, LEAD_PROMOTE_THRESHOLD, normalizeSearchText, nameTier } from '../lib/utils';
+import { formatINR, isLead, LEAD_PROMOTE_THRESHOLD, LEAD_EXCLUDED_ORDER_STATUSES, normalizeSearchText, nameTier } from '../lib/utils';
 import { CustomerPanel, InitialAvatar, TierBadge, getPrimaryContact, importCustomerCsvRows } from './Customers';
 
 // Customer Lead — small / not-qualified buyers (mostly IndiaMART, orders
@@ -20,7 +20,10 @@ const COLUMNS = ['Company', 'Contact', 'Mobile', 'Source', 'City / State', 'Enq 
 
 const selectCls = 'select-filter font-sans text-xs text-blk bg-white border border-g200 rounded py-1 pl-2 pr-6 cursor-pointer outline-none appearance-none';
 
-interface LeadStats { enquiries: number; orders: number; orderValue: number; }
+// orders = every order (Enq / Orders column); countedOrders + orderValue skip
+// Lost orders (LEAD_EXCLUDED_ORDER_STATUSES) — they drive the ₹1L bar,
+// "Ordered at least once" and "Ready to Promote".
+interface LeadStats { enquiries: number; orders: number; countedOrders: number; orderValue: number; }
 
 export function CustomerLeads() {
   const navigate = useNavigate();
@@ -50,15 +53,22 @@ export function CustomerLeads() {
     const m = new Map<string, LeadStats>();
     const get = (name: string) => {
       let s = m.get(name);
-      if (!s) { s = { enquiries: 0, orders: 0, orderValue: 0 }; m.set(name, s); }
+      if (!s) { s = { enquiries: 0, orders: 0, countedOrders: 0, orderValue: 0 }; m.set(name, s); }
       return s;
     };
     const leadNames = new Set(leads.map(l => l.name));
     for (const e of data.enquiries) if (leadNames.has(e.cust)) get(e.cust).enquiries++;
-    for (const o of data.orders) if (leadNames.has(o.cust)) { const s = get(o.cust); s.orders++; s.orderValue += Number(o.value) || 0; }
+    for (const o of data.orders) {
+      if (!leadNames.has(o.cust)) continue;
+      const s = get(o.cust);
+      s.orders++;
+      if (LEAD_EXCLUDED_ORDER_STATUSES.includes(o.status)) continue;
+      s.countedOrders++;
+      s.orderValue += Number(o.value) || 0;
+    }
     return m;
   }, [leads, data.enquiries, data.orders]);
-  const statsFor = (c: Customer): LeadStats => statsByName.get(c.name) ?? { enquiries: 0, orders: 0, orderValue: 0 };
+  const statsFor = (c: Customer): LeadStats => statsByName.get(c.name) ?? { enquiries: 0, orders: 0, countedOrders: 0, orderValue: 0 };
 
   const sources = Array.from(new Set(leads.map(l => l.leadSource).filter(Boolean) as string[])).sort();
   const states = Array.from(new Set(leads.map(l => l.sites?.[0]?.state?.trim()).filter(Boolean) as string[])).sort();
@@ -84,7 +94,7 @@ export function CustomerLeads() {
   const stats = {
     total: leads.length,
     indiamart: leads.filter(l => (l.leadSource || '').toLowerCase() === 'indiamart').length,
-    ordered: leads.filter(l => statsFor(l).orders > 0).length,
+    ordered: leads.filter(l => statsFor(l).countedOrders > 0).length,
     ready: leads.filter(l => statsFor(l).orderValue >= LEAD_PROMOTE_THRESHOLD).length,
   };
   const hasFilters = !!(searchQuery || sourceFilter || stateFilter || crmFilter);
