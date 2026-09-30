@@ -113,6 +113,7 @@ interface AppContextType {
   addCustomer: (customer: Customer) => Promise<void>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
+  deleteLead: (id: string) => Promise<void>;
   addFollowUpLog: (quoteId: string, log: FollowUpLog, nextDate?: string | null, nextTime?: string | null, owner?: string, stageOverride?: string | null) => Promise<void>;
   addFollowUpLogBulk: (quoteIds: string[], log: FollowUpLog, nextDate?: string | null, nextTime?: string | null) => Promise<void>;
   closeFollowUp: (quoteId: string, outcome?: PipelineOutcome) => Promise<void>;
@@ -1444,6 +1445,23 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
+  // Customer Lead page's Delete (admin only). Unlike deleteCustomer it can
+  // only ever remove a LEAD row (customer_status = 'lead' is part of the
+  // delete itself), and it throws on failure — including a delete that
+  // removed nothing (RLS / no longer a lead) — so the page can show it.
+  // Logged exactly like a customer delete.
+  const deleteLead = async (id: string) => {
+    const before = data.customers.find(c => c.id === id);
+    const { data: rows, error } = await supabase
+      .from('customers').delete()
+      .eq('customer_id', id).eq('customer_status', 'lead')
+      .select('customer_id');
+    if (error) throw error;
+    if (!rows || rows.length === 0) throw new Error('Nothing was deleted — this record is no longer a lead, or you don\'t have permission.');
+    setData(prev => ({ ...prev, customers: prev.customers.filter(c => c.id !== id) }));
+    logActivity({ module: 'customers', recordId: id, recordLabel: before?.name || id, action: 'delete', before });
+  };
+
   // Map real follow-up log count → pipeline stage (excludes quote-sent entries).
   const stageFromLogCount = (count: number): PipelineStage => {
     if (count <= 0) return 'Sent Quotation';
@@ -2049,6 +2067,7 @@ const mapEnquiryToDB = (e: any) => {
         addCustomer,
         updateCustomer,
         deleteCustomer,
+        deleteLead,
         addFollowUpLog,
         addFollowUpLogBulk,
         closeFollowUp,
