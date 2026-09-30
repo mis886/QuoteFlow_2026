@@ -1293,10 +1293,6 @@ const mapEnquiryToDB = (e: any) => {
       crm: c.crm || '',
       fulfilmentType: c.fulfilment_type || '',
       customerStatus: c.customer_status === 'lead' ? 'lead' : 'customer',
-      leadSource: c.lead_source || undefined,
-      firstEnquiryDate: c.first_enquiry_date || undefined,
-      linkedEnquiryId: c.linked_enquiry_id || undefined,
-      productInterest: c.product_interest || undefined,
       promotedAt: c.promoted_at || undefined,
       sites: [primarySite],
     };
@@ -1335,11 +1331,7 @@ const mapEnquiryToDB = (e: any) => {
     // Customer Lead fields — only written when present on the object, so a
     // plain customer save never sends them (and never touches customer_status).
     if ('customerStatus' in c && c.customerStatus) obj.customer_status = c.customerStatus;
-    if ('leadSource' in c)       obj.lead_source        = c.leadSource || null;
-    if ('firstEnquiryDate' in c) obj.first_enquiry_date = c.firstEnquiryDate || null;
-    if ('linkedEnquiryId' in c)  obj.linked_enquiry_id  = c.linkedEnquiryId || null;
-    if ('productInterest' in c)  obj.product_interest   = c.productInterest || null;
-    if ('promotedAt' in c)       obj.promoted_at        = c.promotedAt || null;
+    if ('promotedAt' in c) obj.promoted_at = c.promotedAt || null;
 
     // Primary site → flat address columns
     if (primarySite) {

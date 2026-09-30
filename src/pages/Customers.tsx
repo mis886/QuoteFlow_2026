@@ -808,7 +808,6 @@ export async function importCustomerCsvRows(
       sites,
       ...(asLead ? {
         customerStatus: 'lead' as const,
-        leadSource: col(firstRow, 'Lead Source', 'Source') || 'IndiaMART',
         pay: col(firstRow, 'Payment Terms', 'Payment', 'pay') || '100% Advance',
         creditLimit: 0,
       } : {}),

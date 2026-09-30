@@ -57,8 +57,7 @@ export const SEND_TO_DISPATCH_EMAILS = ['sales@himalayaterpene.com', 'mis@himala
 export const canSendToDispatch = (email: string | null | undefined): boolean =>
   SEND_TO_DISPATCH_EMAILS.includes((email ?? '').trim().toLowerCase());
 
-// Enquiry "Source" options (enquiries.src) — also the Lead Source options on
-// the Customer Lead form, so the two lists never drift apart.
+// Enquiry "Source" options (enquiries.src) — New Enquiry's Source dropdown.
 export const ENQUIRY_SOURCES = [
   'Email', 'Phone', 'WhatsApp', 'Exhibition', 'Website', 'Walk-in', 'Referral', 'IndiaMART', 'Meta Ads', 'LinkedIn',
 ] as const;

@@ -16,7 +16,7 @@ import { CustomerPanel, InitialAvatar, TierBadge, getPrimaryContact, importCusto
 // ₹1,00,000 a lead can be promoted — same row, same id, status → 'customer'.
 // Same look as Customer Master (Customers.tsx) with amber instead of red.
 
-const COLUMNS = ['Company', 'Contact', 'Mobile', 'Source', 'City / State', 'Enq / Orders', 'Order Value (Total)', 'CRM', 'Actions'];
+const COLUMNS = ['Company', 'Contact', 'Mobile', 'City / State', 'Enq / Orders', 'Order Value (Total)', 'CRM', 'Actions'];
 
 const selectCls = 'select-filter font-sans text-xs text-blk bg-white border border-g200 rounded py-1 pl-2 pr-6 cursor-pointer outline-none appearance-none';
 
@@ -29,7 +29,6 @@ export function CustomerLeads() {
   const navigate = useNavigate();
   const { data, addCustomer, updateCustomer, globalSearchQuery } = useAppStore() as any;
   const [searchQuery, setSearchQuery] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [crmFilter, setCrmFilter] = useState('');
   const [importing, setImporting] = useState(false);
@@ -70,7 +69,6 @@ export function CustomerLeads() {
   }, [leads, data.enquiries, data.orders]);
   const statsFor = (c: Customer): LeadStats => statsByName.get(c.name) ?? { enquiries: 0, orders: 0, countedOrders: 0, orderValue: 0 };
 
-  const sources = Array.from(new Set(leads.map(l => l.leadSource).filter(Boolean) as string[])).sort();
   const states = Array.from(new Set(leads.map(l => l.sites?.[0]?.state?.trim()).filter(Boolean) as string[])).sort();
   const crms = Array.from(new Set(leads.map(l => l.crm).filter(Boolean) as string[])).sort();
 
@@ -84,7 +82,6 @@ export function CustomerLeads() {
         || (phoneQ.length >= 3 && (contact?.phone ?? '').replace(/\D/g, '').includes(phoneQ));
       if (!hit) return false;
     }
-    if (sourceFilter && (c.leadSource || '') !== sourceFilter) return false;
     if (stateFilter && (c.sites?.[0]?.state?.trim() || '') !== stateFilter) return false;
     if (crmFilter && (c.crm || '') !== crmFilter) return false;
     return true;
@@ -93,11 +90,10 @@ export function CustomerLeads() {
 
   const stats = {
     total: leads.length,
-    indiamart: leads.filter(l => (l.leadSource || '').toLowerCase() === 'indiamart').length,
     ordered: leads.filter(l => statsFor(l).countedOrders > 0).length,
     ready: leads.filter(l => statsFor(l).orderValue >= LEAD_PROMOTE_THRESHOLD).length,
   };
-  const hasFilters = !!(searchQuery || sourceFilter || stateFilter || crmFilter);
+  const hasFilters = !!(searchQuery || stateFilter || crmFilter);
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -120,21 +116,29 @@ export function CustomerLeads() {
     });
   };
 
-  // Promote: same row, same id (enquiries / quotes / orders stay linked), the
-  // LEAD- code is kept. updateCustomer logs it to activity_log like any other
-  // customer change (module customers, record = id, label = company name).
+  // Promote (available on every lead — the user decides when): same row,
+  // same id (enquiries / quotes / orders stay linked), the LEAD- code is kept,
+  // nothing is copied. updateCustomer logs it to activity_log like any other
+  // customer change (module customers, record = id, label = company name,
+  // customerStatus lead → customer). Then straight into the normal Edit
+  // Customer form to fill what leads don't have; the promotion is already
+  // saved, so Cancel there still leaves it in Customer Master.
   const handlePromote = async () => {
     if (!promoteTarget) return;
+    const { id, name } = promoteTarget;
     setPromoting(true);
     try {
-      await updateCustomer(promoteTarget.id, { customerStatus: 'customer', promotedAt: new Date().toISOString() });
-      showToast('ok', `${promoteTarget.name} moved to Customer Master.`);
-      setPromoteTarget(null);
+      await updateCustomer(id, { customerStatus: 'customer', promotedAt: new Date().toISOString() });
     } catch (err: any) {
-      showToast('err', `Promote failed: ${err?.message || 'unknown error'}`);
-    } finally {
       setPromoting(false);
+      showToast('err', `Promote failed: ${err?.message || 'unknown error'}`);
+      return;
     }
+    setPromoting(false);
+    setPromoteTarget(null);
+    navigate(`/customers/new?id=${encodeURIComponent(id)}`, {
+      state: { toast: `${name} moved to Customer Master. Please complete the remaining details.` },
+    });
   };
 
   return (
@@ -167,10 +171,9 @@ export function CustomerLeads() {
         </div>
 
         {/* Stat boxes */}
-        <div className="grid grid-cols-4 gap-3 mt-4">
+        <div className="grid grid-cols-3 gap-3 mt-4">
           {([
             ['Total Leads', stats.total, 'text-blk'],
-            ['From IndiaMART', stats.indiamart, 'text-lead-text'],
             ['Ordered at least once', stats.ordered, 'text-blk'],
             ['Ready to Promote (≥ ₹1L)', stats.ready, 'text-sW'],
           ] as const).map(([label, value, cls]) => (
@@ -195,10 +198,6 @@ export function CustomerLeads() {
             </button>
           )}
         </div>
-        <select title="Filter by source" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} className={selectCls}>
-          <option value="">All Sources</option>
-          {sources.map(s => <option key={s}>{s}</option>)}
-        </select>
         <select title="Filter by state" value={stateFilter} onChange={e => setStateFilter(e.target.value)} className={selectCls}>
           <option value="">All States</option>
           {states.map(s => <option key={s}>{s}</option>)}
@@ -208,7 +207,7 @@ export function CustomerLeads() {
           {crms.map(s => <option key={s}>{s}</option>)}
         </select>
         {hasFilters && (
-          <button type="button" onClick={() => { setSearchQuery(''); setSourceFilter(''); setStateFilter(''); setCrmFilter(''); }}
+          <button type="button" onClick={() => { setSearchQuery(''); setStateFilter(''); setCrmFilter(''); }}
             className="flex items-center gap-1 font-mono text-[10px] text-g500 hover:text-lead-text border border-g200 hover:border-lead rounded px-2 h-7 transition-colors whitespace-nowrap">
             <X size={10} /> Clear filters
           </button>
@@ -238,7 +237,6 @@ export function CustomerLeads() {
                 const pct = Math.min(1, st.orderValue / LEAD_PROMOTE_THRESHOLD);
                 const ready = st.orderValue >= LEAD_PROMOTE_THRESHOLD;
                 const site = c.sites?.[0];
-                const isIndiaMart = (c.leadSource || '').toLowerCase() === 'indiamart';
                 return (
                   <tr key={c.id} className="transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-lead/5" onClick={() => setSelectedLead(c)}>
                     {/* Company */}
@@ -263,14 +261,6 @@ export function CustomerLeads() {
                     {/* Mobile */}
                     <td className="px-[13px] py-[11px] align-middle">
                       {contact?.phone ? <span className="font-mono text-[11px] text-g600">{contact.phone}</span> : <span className="text-g300">—</span>}
-                    </td>
-                    {/* Source */}
-                    <td className="px-[13px] py-[11px] align-middle">
-                      {c.leadSource ? (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold whitespace-nowrap ${isIndiaMart ? 'bg-lead-bg text-lead-text border-lead/50' : 'bg-g100 text-g600 border-g200'}`}>
-                          {c.leadSource}
-                        </span>
-                      ) : <span className="text-g300">—</span>}
                     </td>
                     {/* City / State */}
                     <td className="px-[13px] py-[11px] align-middle text-g600">
@@ -298,11 +288,13 @@ export function CustomerLeads() {
                             <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                           </Button>
                         </div>
-                        {ready && (
-                          <Button size="sm" variant="secondary" className="border-sW text-sW bg-white hover:bg-sW/10 hover:border-sW gap-1 justify-center" onClick={() => setPromoteTarget(c)}>
-                            <ArrowUp size={10} className="stroke-[2.5]" /> Promote
-                          </Button>
-                        )}
+                        {/* On every lead; filled green once it has crossed ₹1 lakh. */}
+                        <Button size="sm" variant="secondary"
+                          className={`gap-1 justify-center border-sW hover:border-sW ${ready ? 'bg-sW text-white hover:bg-sW/90' : 'bg-white text-sW hover:bg-sW/10'}`}
+                          title={ready ? 'Crossed ₹1 lakh — ready to promote' : 'Move to Customer Master'}
+                          onClick={() => setPromoteTarget(c)}>
+                          <ArrowUp size={10} className="stroke-[2.5]" /> Promote
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -331,7 +323,7 @@ export function CustomerLeads() {
           onConfirm={handlePromote}
           onCancel={() => setPromoteTarget(null)}
         >
-          Total orders {formatINR(Math.round(statsFor(promoteTarget).orderValue))}. It keeps its code <span className="font-mono">{promoteTarget.id}</span>, and all its enquiries, quotes and orders stay linked.
+          You can fill the remaining customer details on the next screen.
         </ConfirmDialog>
       )}
 

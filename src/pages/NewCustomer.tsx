@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
@@ -7,7 +7,7 @@ import { Customer, Site, Contact, NextOrder } from '../lib/types';
 import { generateId, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { normalizeIndianPhone } from '../lib/phone';
-import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
+import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2, CheckCircle2 } from 'lucide-react';
 
 const INCO_OPTIONS_CUST = [
   'EXW', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP', 'FCA',
@@ -184,6 +184,18 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   // Lead mode always returns to the Customer Lead list; customer mode goes
   // back wherever it came from, as before.
   const goBack = () => { if (isLeadMode) navigate('/customers/leads'); else navigate(-1); };
+
+  // One-off success toast handed over by the Customer Lead page's Promote
+  // (navigate state) — this form then opens in normal customer mode to fill
+  // what leads don't have. Cleared from history so a refresh won't repeat it.
+  const location = useLocation();
+  const [arrivalToast, setArrivalToast] = useState<string | null>(() => (location.state as { toast?: string } | null)?.toast ?? null);
+  useEffect(() => {
+    if (!arrivalToast) return;
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    const t = setTimeout(() => setArrivalToast(null), 6000);
+    return () => clearTimeout(t);
+  }, []);
   useEffect(() => {
     if (!editId) return;
     supabase
@@ -433,15 +445,12 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     };
     // mapCustomerToDB only writes fields that are PRESENT on the object, so
     // lead mode leaves out every field the lead form doesn't show (next
-    // orders, cross-sell, notes, and the lead-source details) — saving a lead
-    // never blanks them. lead_source is set once, to IndiaMART, on a new lead
-    // only; editing an existing lead leaves it as it is.
+    // orders, cross-sell, notes) — saving a lead never blanks them.
     const cust: Customer = isLeadMode
       ? {
           ...base,
           customerStatus: 'lead',
           creditLimit: 0,   // leads get no credit
-          ...(editId ? {} : { leadSource: 'IndiaMART' }),
         }
       : {
           ...base,
@@ -1017,6 +1026,13 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         </>)}
 
       </div>
+
+      {arrivalToast && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white bg-sW animate-in slide-in-from-bottom-2">
+          <CheckCircle2 size={14} />
+          {arrivalToast}
+        </div>
+      )}
 
       {renameConfirmOpen && (
         <ConfirmDialog
