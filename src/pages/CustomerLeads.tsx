@@ -109,8 +109,10 @@ export function CustomerLeads() {
       skipEmptyLines: true,
       complete: async (results) => {
         try {
-          const { imported, skipped } = await importCustomerCsvRows(results.data as Record<string, string>[], { customers: data.customers, addCustomer, status: 'lead' });
+          const { imported, skipped, invalidGstins } = await importCustomerCsvRows(results.data as Record<string, string>[], { customers: data.customers, addCustomer, status: 'lead' });
           showToast('ok', `Import complete: ${imported} lead${imported === 1 ? '' : 's'} added, ${skipped} skipped (already exist).`);
+          // Too long for a toast — the list has to stay on screen until read.
+          if (invalidGstins.length) alert(`${invalidGstins.length} invalid GSTIN${invalidGstins.length === 1 ? '' : 's'} imported BLANK — please correct in the lead form:\n${invalidGstins.join('\n')}`);
         } catch (err) {
           showToast('err', 'Import failed: ' + (err as Error).message);
         } finally {

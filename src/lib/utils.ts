@@ -142,15 +142,69 @@ export const activeSites = <S extends { isActive?: boolean }>(sites: S[] | undef
 
 // ── GSTIN ────────────────────────────────────────────────────────────────────
 const GSTIN_RX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
-// A real 15-character GSTIN (spaces ignored, any case).
-export const isValidGstin = (s: string | null | undefined): boolean => GSTIN_RX.test((s ?? '').replace(/\s+/g, '').toUpperCase());
-// Only a VALID GSTIN is ever compared — "URP", "NA", "N/A", "-", "NIL",
-// "UNREGISTERED" etc. become '' so they never block a save or count as a
-// GSTIN / PAN match.
-const normGstin = (s: string | null | undefined): string => {
-  const g = (s ?? '').replace(/\s+/g, '').toUpperCase();
-  return GSTIN_RX.test(g) ? g : '';
+const GSTIN_14_RX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z$/;
+const GSTIN_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+// Greek / Cyrillic capitals that look exactly like Latin ones — they arrive
+// via copy-paste from PDFs / WhatsApp and make a GSTIN that looks right but
+// never matches anything.
+const LOOKALIKES: Record<string, string> = {
+  // Greek
+  'Α': 'A', 'Β': 'B', 'Ε': 'E', 'Ζ': 'Z', 'Η': 'H', 'Ι': 'I', 'Κ': 'K', 'Μ': 'M', 'Ν': 'N', 'Ο': 'O', 'Ρ': 'P', 'Τ': 'T', 'Υ': 'Y', 'Χ': 'X',
+  // Cyrillic
+  'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M', 'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T', 'Х': 'X',
 };
+// Clean a typed / pasted / imported GSTIN or PAN: uppercase, look-alike
+// letters → Latin, then drop everything that isn't A–Z / 0–9 (spaces, dots,
+// dashes, …). Used on every GSTIN field and before every save.
+export function cleanGstin(raw: string | null | undefined): string {
+  return (raw ?? '')
+    .toUpperCase()
+    .replace(/[^\x00-\x7F]/g, ch => LOOKALIKES[ch] ?? ch)
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+// The 15th character of a GSTIN, computed from its first 14.
+export function gstinCheckChar(first14: string): string {
+  let sum = 0;
+  for (let i = 0; i < 14; i++) {
+    const p = GSTIN_CHARS.indexOf(first14[i]) * (i % 2 === 1 ? 2 : 1);
+    sum += Math.floor(p / 36) + (p % 36);
+  }
+  return GSTIN_CHARS[(36 - (sum % 36)) % 36];
+}
+
+// A real GSTIN: 15-character format, a valid GST state code, and a correct
+// check digit (after cleanGstin, so spaces / case don't matter).
+export function isValidGstin(s: string | null | undefined): boolean {
+  const g = cleanGstin(s);
+  return GSTIN_RX.test(g) && g.slice(0, 2) in GST_STATE_CODES && gstinCheckChar(g) === g[14];
+}
+
+// What's wrong with a GSTIN field's value. Blank and "URP" are fine.
+//   incomplete — 14 characters, last one missing → `suggestion` is the full GSTIN
+//   invalid    — bad format / state code / check digit → blocks saving
+export function gstinProblem(value: string | null | undefined): { kind: 'ok' | 'incomplete' | 'invalid'; message: string; suggestion?: string } {
+  const g = cleanGstin(value);
+  if (!g || g === 'URP') return { kind: 'ok', message: '' };
+  if (GSTIN_14_RX.test(g) && g.slice(0, 2) in GST_STATE_CODES) {
+    const suggestion = g + gstinCheckChar(g);
+    return { kind: 'incomplete', suggestion, message: `GSTIN looks incomplete — last character missing. Did you mean ${suggestion}?` };
+  }
+  if (!GSTIN_RX.test(g)) return { kind: 'invalid', message: 'Not a valid 15-character GSTIN (leave blank or enter URP if unregistered).' };
+  if (!(g.slice(0, 2) in GST_STATE_CODES)) return { kind: 'invalid', message: `GSTIN state code ${g.slice(0, 2)} is not a valid GST state code.` };
+  if (gstinCheckChar(g) !== g[14]) return { kind: 'invalid', message: 'GSTIN check digit is wrong — please re-check the number' };
+  return { kind: 'ok', message: '' };
+}
+
+// PAN = GSTIN characters 3–12. '' when the GSTIN isn't valid.
+export const panFromGstin = (gstin: string | null | undefined): string => isValidGstin(gstin) ? cleanGstin(gstin).slice(2, 12) : '';
+export const isValidPan = (s: string | null | undefined): boolean => /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(cleanGstin(s));
+
+// Only a VALID GSTIN is ever compared — "URP", "NA", "N/A", "-", "NIL",
+// "UNREGISTERED", a wrong check digit etc. become '' so they never block a
+// save or count as a GSTIN / PAN match.
+const normGstin = (s: string | null | undefined): string => isValidGstin(s) ? cleanGstin(s) : '';
 
 // First two digits of a GSTIN = GST state code.
 export const GST_STATE_CODES: Record<string, string> = {
@@ -158,24 +212,25 @@ export const GST_STATE_CODES: Record<string, string> = {
   '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim',
   '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya',
   '18': 'Assam', '19': 'West Bengal', '20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh',
-  '24': 'Gujarat', '26': 'Dadra and Nagar Haveli and Daman and Diu', '27': 'Maharashtra', '29': 'Karnataka', '30': 'Goa',
+  '24': 'Gujarat', '25': 'Daman and Diu', '26': 'Dadra and Nagar Haveli and Daman and Diu', '27': 'Maharashtra',
+  '28': 'Andhra Pradesh', '29': 'Karnataka', '30': 'Goa',
   '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu', '34': 'Puducherry', '35': 'Andaman and Nicobar Islands',
   '36': 'Telangana', '37': 'Andhra Pradesh', '38': 'Ladakh',
+  // Valid codes with no single state: 97 = Other Territory, 99 = Centre Jurisdiction.
+  '97': '', '99': '',
 };
 export const gstinState = (gstin: string | null | undefined): string =>
-  isValidGstin(gstin) ? (GST_STATE_CODES[(gstin ?? '').replace(/\s+/g, '').slice(0, 2)] ?? '') : '';
+  isValidGstin(gstin) ? (GST_STATE_CODES[cleanGstin(gstin).slice(0, 2)] ?? '') : '';
 // Loose state-name compare ("Maharashtra" vs "MAHARASHTRA ", "Orissa" vs "Odisha").
 const stateKey = (s: string) => {
   const k = s.toLowerCase().replace(/[^a-z]/g, '').replace(/and/g, '');
   return k === 'orissa' ? 'odisha' : k === 'uttaranchal' ? 'uttarakhand' : k === 'newdelhi' ? 'delhi' : k === 'pondicherry' ? 'puducherry' : k;
 };
-// '' = fine. Otherwise the message to show under a site's GSTIN field.
-export function gstinFieldWarning(gstin: string | null | undefined, state: string | null | undefined): string {
-  const g = (gstin ?? '').replace(/\s+/g, '').toUpperCase();
-  if (!g || g === 'URP') return '';
-  if (!GSTIN_RX.test(g)) return 'Not a valid 15-character GSTIN (leave blank or enter URP if unregistered).';
-  const st = GST_STATE_CODES[g.slice(0, 2)];
-  if (st && state?.trim() && stateKey(state) !== stateKey(st)) return `GSTIN state code ${g.slice(0, 2)} is ${st}, but State says ${state.trim()}.`;
+// Amber, never blocks: a valid GSTIN whose state code disagrees with the
+// State typed for that site. '' = fine.
+export function gstinStateWarning(gstin: string | null | undefined, state: string | null | undefined): string {
+  const st = gstinState(gstin);
+  if (st && state?.trim() && stateKey(state) !== stateKey(st)) return `GSTIN state code ${cleanGstin(gstin).slice(0, 2)} is ${st}, but State says ${state.trim()}.`;
   return '';
 }
 // Last 10 digits; '' when there are fewer than 10 (not a usable mobile).

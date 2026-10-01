@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { Customer, Site, Contact, NextOrder } from '../lib/types';
-import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead, activeSites, gstinFieldWarning, gstinState } from '../lib/utils';
+import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead, activeSites, cleanGstin, gstinProblem, gstinState, gstinStateWarning, panFromGstin, isValidPan } from '../lib/utils';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { normalizeIndianPhone } from '../lib/phone';
 import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
@@ -260,9 +260,10 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
         setPay(normalizePayTerms(cust.pay) || cust.pay);
-        const loadedGstin = cust.gstin || '';
+        const loadedGstin = cleanGstin(cust.gstin);
         setGstin(loadedGstin);
-        setPan(cust.pan || (loadedGstin.length === 15 ? loadedGstin.substring(2, 12) : ''));
+        // A valid GSTIN always decides the PAN (see derivedPan); the stored PAN is only used without one.
+        setPan(cleanGstin(cust.pan));
         // Main Office + active extra sites (cloned — the form edits them in place).
         setSites(activeSites(cust.sites).map(s => ({ ...s, contacts: (s.contacts ?? []).map(ct => ({ ...ct })) })));
         setCreditLimit(cust.creditLimit != null ? String(cust.creditLimit) : '');
@@ -449,6 +450,50 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const [promoteDupOpen, setPromoteDupOpen] = useState(false);
   const promoteDupOk = useRef(false);
 
+  // PAN always comes from a valid Company GSTIN (characters 3–12); '' = no
+  // valid GSTIN, so the PAN field is typed by hand.
+  const derivedPan = panFromGstin(gstin);
+  // GSTIN fields: clean as typed / pasted (case, spaces, dots, dashes,
+  // look-alike Greek / Cyrillic letters) and fill an empty State from a valid
+  // GSTIN's state code.
+  const setCompanyGstin = (raw: string) => {
+    const val = cleanGstin(raw).slice(0, 15);
+    setGstin(val);
+    const st = gstinState(val);
+    if (st && sites[0] && !sites[0].state?.trim()) updateSite(0, 'state', st);
+  };
+  const setSiteGstin = (sIdx: number, raw: string) => {
+    const val = cleanGstin(raw).slice(0, 15);
+    updateSite(sIdx, 'gstin', val);
+    const st = gstinState(val);
+    if (st && !sites[sIdx].state?.trim()) updateSite(sIdx, 'state', st);
+  };
+  // Red error (with [Use this] when only the last character is missing) or
+  // the amber state-mismatch warning under a GSTIN field.
+  const gstinHint = (value: string | undefined, state: string | undefined, apply: (v: string) => void) => {
+    const p = gstinProblem(value);
+    // Still being typed — a quiet counter instead of a red error (saving is
+    // blocked either way until it is blank, URP or a valid GSTIN).
+    if (p.kind === 'invalid' && cleanGstin(value).length < 14) {
+      return <p className="text-g400 text-[10.5px] mt-1">{cleanGstin(value).length}/15 characters</p>;
+    }
+    if (p.kind !== 'ok') {
+      return (
+        <p className="text-red-mrt text-[10.5px] mt-1 flex items-center gap-2 flex-wrap">
+          <span>{p.message}</span>
+          {p.suggestion && (
+            <button type="button" onClick={() => apply(p.suggestion!)}
+              className="font-bold text-[10px] uppercase tracking-wide border border-current rounded-[3px] px-2 py-0.5 bg-white hover:opacity-80">
+              Use this
+            </button>
+          )}
+        </p>
+      );
+    }
+    const warn = gstinStateWarning(value, state);
+    return warn ? <p className="text-amber-700 text-[10.5px] mt-1">{warn}</p> : null;
+  };
+
   const validate = () => {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = 'Company name is required';
@@ -458,8 +503,12 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     }
     // Site GSTIN: blank, "URP" or a valid 15-character GSTIN. (A state that
     // doesn't match the GSTIN's state code is only a warning.)
-    const badSite = sites.find(s => gstinFieldWarning(s.gstin, '') !== '');
-    if (badSite) e.save = `Site "${badSite.name || 'unnamed'}": GSTIN is not valid — leave it blank or enter URP.`;
+    // An incomplete GSTIN or a wrong check digit blocks the save.
+    const badSite = sites.find(s => gstinProblem(s.gstin).kind !== 'ok');
+    if (badSite) e.save = `Site "${badSite.name || 'unnamed'}": ${gstinProblem(badSite.gstin).message}`;
+    if (gstinProblem(gstin).kind !== 'ok') e.save = `Company GSTIN: ${gstinProblem(gstin).message}`;
+    // PAN comes from a valid GSTIN; typed by hand only when there is none.
+    if (!derivedPan && pan.trim() && !isValidPan(pan)) e.save = 'PAN is not valid — 5 letters, 4 digits, 1 letter (e.g. AABCM1234A).';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -481,7 +530,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
       ...site,
       // Extra sites are customer_sites rows (SITE-… ids); Main Office is S1.
       id: idx > 0 && !site.id.startsWith('SITE-') ? 'SITE-' + Math.random().toString(36).slice(2, 10) : site.id,
-      gstin: (site.gstin ?? '').replace(/\s+/g, '').toUpperCase(),
+      gstin: cleanGstin(site.gstin),
       contacts: site.contacts.map(ct => ({
         ...ct,
         phone: ct.phone ? normalizeIndianPhone(ct.phone).value : ct.phone,
@@ -491,7 +540,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     }));
     const base = {
       id, code: code.trim().toUpperCase(), name: name.trim(),
-      seg, customerType, inco, curr, pay, gstin: gstin.trim().toUpperCase(), pan: pan.trim().toUpperCase() || undefined, sites: normalizedSites,
+      seg, customerType, inco, curr, pay, gstin: cleanGstin(gstin), pan: derivedPan || cleanGstin(pan) || undefined, sites: normalizedSites,
       crm: crm.trim() || undefined,
       tier: (tier || undefined) as Customer['tier'],
     };
@@ -741,29 +790,27 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                 <label className={labelCls}>Company GSTIN{isLeadMode && <span className="normal-case font-normal text-g400"> (optional)</span>}</label>
                 <input
                   type="text" value={gstin}
-                  onChange={e => {
-                    const val = e.target.value.toUpperCase();
-                    setGstin(val);
-                    if (val.length === 15) {
-                      setPan(val.slice(2, 12));
-                    } else {
-                      setPan('');
-                    }
-                  }}
+                  onChange={e => setCompanyGstin(e.target.value)}
                   className={inputCls + ' font-mono uppercase'}
                   placeholder="27AABCF5171D1ZW"
-                  maxLength={15}
                 />
+                {gstinHint(gstin, sites[0]?.state, setCompanyGstin)}
               </div>
 
               <div>
-                <label className={labelCls}>PAN No.{isLeadMode && <span className="normal-case font-normal text-g400"> (optional)</span>}</label>
+                <label className={labelCls}>PAN No.{derivedPan
+                  ? <span className="normal-case font-normal text-g400"> (from GSTIN)</span>
+                  : isLeadMode && <span className="normal-case font-normal text-g400"> (optional)</span>}</label>
                 <input
-                  type="text" value={pan} onChange={e => setPan(e.target.value.toUpperCase())}
-                  className={inputCls + ' font-mono'}
+                  type="text" value={derivedPan || pan}
+                  readOnly={!!derivedPan}
+                  onChange={e => setPan(cleanGstin(e.target.value).slice(0, 10))}
+                  className={inputCls + ' font-mono' + (derivedPan ? ' bg-g100 text-g500 cursor-not-allowed' : '')}
                   placeholder="AABCM1234A"
-                  maxLength={10}
                 />
+                {!derivedPan && pan.trim() && !isValidPan(pan) && (
+                  <p className="text-red-mrt text-[10.5px] mt-1">PAN should be 5 letters, 4 digits, 1 letter (e.g. AABCM1234A).</p>
+                )}
               </div>
             </div>
           </div>
@@ -875,15 +922,11 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                     <label className={labelCls}>Site GSTIN <span className="normal-case font-normal text-g400">(optional — blank or URP if unregistered)</span></label>
                     <input
                       type="text" value={site.gstin || ''}
-                      onChange={e => updateSite(sIdx, 'gstin', e.target.value.toUpperCase())}
-                      onBlur={() => { const st = gstinState(site.gstin); if (st && !site.state?.trim()) updateSite(sIdx, 'state', st); }}
+                      onChange={e => setSiteGstin(sIdx, e.target.value)}
                       placeholder="27AABCF5171D1ZW"
-                      maxLength={15}
                       className="w-56 font-mono uppercase text-xs bg-white border border-g300 rounded-[3px] p-2 outline-none focus:border-red-mrt"
                     />
-                    {gstinFieldWarning(site.gstin, site.state) && (
-                      <p className="text-amber-700 text-[10.5px] mt-1">{gstinFieldWarning(site.gstin, site.state)}</p>
-                    )}
+                    {gstinHint(site.gstin, site.state, v => setSiteGstin(sIdx, v))}
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">

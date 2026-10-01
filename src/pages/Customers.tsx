@@ -6,7 +6,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Customer, Contact, CustomerTier, CustomerStatus, FollowUpLog } from '../lib/types';
-import { formatINR, fmtIST, generateId, groupDocsByCustomer, isDocOfCustomer, canDeleteRecords, nameTier, normalizeSearchText, isLead } from '../lib/utils';
+import { formatINR, fmtIST, generateId, cleanGstin, isValidGstin, panFromGstin, groupDocsByCustomer, isDocOfCustomer, canDeleteRecords, nameTier, normalizeSearchText, isLead } from '../lib/utils';
 import { parseISO } from 'date-fns';
 import Papa from 'papaparse';
 
@@ -670,13 +670,25 @@ function sortValue(c: Customer, key: SortKey): string | number {
 export async function importCustomerCsvRows(
   rows: Record<string, string>[],
   opts: { customers: Customer[]; addCustomer: (c: Customer) => Promise<unknown>; status: CustomerStatus },
-): Promise<{ imported: number; skipped: number }> {
+): Promise<{ imported: number; skipped: number; invalidGstins: string[] }> {
   // Flexible column accessor — case-insensitive, trimmed, first match wins
   const col = (row: Record<string, string>, ...keys: string[]): string => {
     for (const k of keys) {
       const found = Object.keys(row).find(h => h.trim().toLowerCase() === k.toLowerCase());
       if (found && row[found]?.trim()) return row[found].trim();
     }
+    return '';
+  };
+
+  // GSTIN from the sheet: cleaned (case, spaces, dots, dashes, look-alike
+  // letters). Blank / URP / a valid GSTIN is kept; anything else is imported
+  // BLANK and reported in the import summary.
+  const invalidGstins = new Set<string>();
+  const importGstin = (row: Record<string, string>): string => {
+    const raw = col(row, 'GST No.', 'GST No', 'GSTIN', 'gstin');
+    const g = cleanGstin(raw);
+    if (!g || g === 'URP' || isValidGstin(g)) return g;
+    invalidGstins.add(`${col(row, 'Company Name', 'company name', 'Company', 'name', 'Name') || '(no name)'}: ${raw}`);
     return '';
   };
 
@@ -750,7 +762,7 @@ export async function importCustomerCsvRows(
       city,
       address,
       fullAddress,
-      gstin: col(row, 'GST No.', 'GST No', 'GSTIN', 'gstin'),
+      gstin: importGstin(row),
       isPrimary,
       contacts,
     };
@@ -801,7 +813,8 @@ export async function importCustomerCsvRows(
       code: custCode,
       name: companyName,
       seg: col(firstRow, 'Segment', 'seg', 'Seg') || 'General',
-      gstin: col(firstRow, 'GST No.', 'GST No', 'GSTIN', 'gstin'),
+      gstin: importGstin(firstRow),
+      pan: panFromGstin(importGstin(firstRow)) || undefined,
       inco: col(firstRow, 'Incoterms', 'inco') || 'FOR',
       curr: col(firstRow, 'Currency', 'curr') || 'INR',
       pay: col(firstRow, 'Payment Terms', 'Payment', 'pay') || '',
@@ -820,7 +833,7 @@ export async function importCustomerCsvRows(
     existingNames.add(companyName.toLowerCase().trim());
     imported++;
   }
-  return { imported, skipped };
+  return { imported, skipped, invalidGstins: Array.from(invalidGstins) };
 }
 
 // ── Main Customers page ───────────────────────────────────────────────────────
@@ -902,9 +915,12 @@ export function Customers() {
       complete: async (results) => {
         try {
           const rows = results.data as Record<string, string>[];
-          const { imported, skipped } = await importCustomerCsvRows(rows, { customers: data.customers, addCustomer, status: 'customer' });
+          const { imported, skipped, invalidGstins } = await importCustomerCsvRows(rows, { customers: data.customers, addCustomer, status: 'customer' });
 
-          alert(`Import complete: ${imported} customers added, ${skipped} skipped (already exist).`);
+          const gstinNote = invalidGstins.length
+            ? `\n\n${invalidGstins.length} invalid GSTIN${invalidGstins.length === 1 ? '' : 's'} imported BLANK — please correct in the customer form:\n${invalidGstins.join('\n')}`
+            : '';
+          alert(`Import complete: ${imported} customers added, ${skipped} skipped (already exist).${gstinNote}`);
         } catch (err) {
           alert('Import failed: ' + (err as Error).message);
         } finally {
