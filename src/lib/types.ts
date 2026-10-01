@@ -355,6 +355,10 @@ export interface Customer {
   // columns exist in the DB but are no longer used by the app.)
   customerStatus?: CustomerStatus;
   promotedAt?: string;        // promoted_at — when the lead was moved to Customer Master
+  // Review mode KEEP (admins): reviewed and deliberately left in Customer
+  // Master. Both empty = not reviewed.
+  reviewedAt?: string;        // reviewed_at
+  reviewedBy?: string;        // reviewed_by (email)
 }
 
 export type CustomerStatus = 'customer' | 'lead';

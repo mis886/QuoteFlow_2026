@@ -660,7 +660,6 @@ const REVIEW_OPTIONS: { key: Exclude<ReviewKey, ''>; label: string }[] = [
 ];
 const REVIEW_OPEN_ENQ = ['New', 'In Review', 'Quoted', 'Sample'];
 const REVIEW_CLOSED_ENQ = ['Not Qualified', 'Lost', 'Parked'];
-const REVIEW_KEPT_KEY = 'customerReviewKept';
 
 // Returns a comparable value for a given customer + sort key.
 function sortValue(c: Customer, key: SortKey): string | number {
@@ -876,15 +875,12 @@ export function Customers() {
   const [review, setReviewState] = useState<ReviewKey>('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const setReview = (v: ReviewKey) => { setReviewState(v); setSelectedIds(new Set()); };
-  // KEEP = "reviewed, leave it in Customer Master". There is no database
-  // column for it, so the ids live in this browser only (localStorage).
-  const [keptIds, setKeptIds] = useState<Set<string>>(() => {
-    try { return new Set<string>(JSON.parse(localStorage.getItem(REVIEW_KEPT_KEY) || '[]')); } catch { return new Set<string>(); }
-  });
-  const saveKept = (next: Set<string>) => {
-    setKeptIds(next);
-    try { localStorage.setItem(REVIEW_KEPT_KEY, JSON.stringify(Array.from(next))); } catch { /* storage unavailable — kept for this visit only */ }
-  };
+  // KEEP = "reviewed, leave it in Customer Master" — saved on the customer
+  // itself (customers.reviewed_at / reviewed_by), so every admin sees it.
+  const isKept = (c: Customer) => !!c.reviewedAt;
+  const [keeping, setKeeping] = useState(false);
+  // The earlier per-browser list is no longer used — clear it if it's there.
+  useEffect(() => { try { localStorage.removeItem('customerReviewKept'); } catch { /* storage unavailable */ } }, []);
   const [showKept, setShowKept] = useState(false);
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
   // Samples aren't part of the store's data — loaded here for the Review
@@ -1005,10 +1001,10 @@ export function Customers() {
     return oldId ? 'E' : null;
   };
   const inReview = (c: Customer, key: ReviewKey) =>
-    isInactive(c) && (showKept || !keptIds.has(c.id)) && (key === 'all' || reviewGroupOf(c) === key);
+    isInactive(c) && (showKept || !isKept(c)) && (key === 'all' || reviewGroupOf(c) === key);
   const reviewCounts: Record<string, number> = {};
   if (canDelete) for (const o of REVIEW_OPTIONS) reviewCounts[o.key] = masters.filter(c => inReview(c, o.key)).length;
-  const keptInactiveCount = canDelete ? masters.filter(c => keptIds.has(c.id) && isInactive(c)).length : 0;
+  const keptInactiveCount = canDelete ? masters.filter(c => isKept(c) && isInactive(c)).length : 0;
 
   const toggleSelected = (id: string) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -1017,13 +1013,30 @@ export function Customers() {
   });
   const selectedCustomers = masters.filter(c => selectedIds.has(c.id));
 
-  // KEEP / un-keep the ticked rows (this browser only).
-  const handleKeep = (keep: boolean) => {
-    const next = new Set(keptIds);
-    for (const c of selectedCustomers) { if (keep) next.add(c.id); else next.delete(c.id); }
-    saveKept(next);
-    showToast('ok', keep ? `${selectedCustomers.length} kept in Customer Master — hidden from Review.` : `${selectedCustomers.length} back in Review.`);
+  // KEEP / Un-keep the ticked rows: reviewed_at + reviewed_by set (or both
+  // cleared) on each customer, nothing else touched. One at a time so each
+  // gets its own History Log entry (updateCustomer logs it).
+  const handleKeep = async (keep: boolean) => {
+    if (!canDelete || keeping) return;
+    const targets = selectedCustomers.filter(c => isKept(c) !== keep);
+    setKeeping(true);
+    const failed: string[] = [];
+    let done = 0;
+    for (const c of targets) {
+      try {
+        await updateCustomer(c.id, keep
+          ? { reviewedAt: new Date().toISOString(), reviewedBy: user?.email ?? undefined }
+          : { reviewedAt: undefined, reviewedBy: undefined });
+        done++;
+      } catch (err) {
+        console.error('Keep failed:', c.id, err);
+        failed.push(c.name);
+      }
+    }
+    setKeeping(false);
     setSelectedIds(new Set());
+    const msg = keep ? `${done} kept in Customer Master — hidden from Review.` : `${done} back in Review.`;
+    showToast(failed.length ? 'err' : 'ok', failed.length ? `${msg} Failed — ${failed.join(', ')}` : msg, failed.length ? 12000 : 4000);
   };
 
   // Bulk MOVE TO LEAD: the same update as the single button, one at a time,
@@ -1168,7 +1181,7 @@ export function Customers() {
           </select>
         )}
         {reviewOn && (
-          <label className="flex items-center gap-1.5 font-sans text-xs text-g600 cursor-pointer whitespace-nowrap" title="Customers you marked KEEP in this browser">
+          <label className="flex items-center gap-1.5 font-sans text-xs text-g600 cursor-pointer whitespace-nowrap" title="Customers marked KEEP (reviewed)">
             <input type="checkbox" checked={showKept} onChange={e => { setShowKept(e.target.checked); setSelectedIds(new Set()); }} />
             Show kept ({keptInactiveCount})
           </label>
@@ -1250,7 +1263,7 @@ export function Customers() {
                         <InitialAvatar name={c.name} />
                         <div>
                           <div className="font-semibold text-blk leading-snug">{c.name}
-                            {reviewOn && keptIds.has(c.id) && <span className="ml-1.5 px-1.5 py-[1px] rounded-[3px] border border-g300 bg-g100 text-g500 font-mono text-[8.5px] font-bold uppercase tracking-wide align-middle">Kept</span>}
+                            {reviewOn && isKept(c) && <span className="ml-1.5 px-1.5 py-[1px] rounded-[3px] border border-g300 bg-g100 text-g500 font-mono text-[8.5px] font-bold uppercase tracking-wide align-middle">Kept</span>}
                           </div>
                           <TierBadge tier={c.tier} />
                         </div>
@@ -1422,11 +1435,11 @@ export function Customers() {
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-blk text-white rounded-[4px] shadow-2xl px-4 py-2.5 animate-in slide-in-from-bottom-2">
           <span className="text-[12.5px] font-medium whitespace-nowrap">{selectedCustomers.length} selected —</span>
           <Button size="sm" variant="secondary" className="border-lead bg-lead text-white hover:bg-lead-strong hover:border-lead" onClick={() => setBulkMoveOpen(true)}>Move to Lead</Button>
-          {selectedCustomers.some(c => !keptIds.has(c.id)) && (
-            <Button size="sm" variant="secondary" title="Reviewed — leave in Customer Master and hide from Review (this browser)" onClick={() => handleKeep(true)}>Keep</Button>
+          {selectedCustomers.some(c => !isKept(c)) && (
+            <Button size="sm" variant="secondary" title="Reviewed — leave in Customer Master and hide from Review" disabled={keeping} onClick={() => handleKeep(true)}>{keeping ? "Saving…" : "Keep"}</Button>
           )}
-          {selectedCustomers.some(c => keptIds.has(c.id)) && (
-            <Button size="sm" variant="secondary" title="Put back into Review" onClick={() => handleKeep(false)}>Un-keep</Button>
+          {selectedCustomers.some(c => isKept(c)) && (
+            <Button size="sm" variant="secondary" title="Put back into Review" disabled={keeping} onClick={() => handleKeep(false)}>Un-keep</Button>
           )}
           <button type="button" onClick={() => setSelectedIds(new Set())} className="font-mono text-[10px] uppercase tracking-[1px] text-white/70 hover:text-white">Clear</button>
         </div>

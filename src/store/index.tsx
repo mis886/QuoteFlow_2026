@@ -1372,6 +1372,8 @@ const mapEnquiryToDB = (e: any) => {
       fulfilmentType: c.fulfilment_type || '',
       customerStatus: c.customer_status === 'lead' ? 'lead' : 'customer',
       promotedAt: c.promoted_at || undefined,
+      reviewedAt: c.reviewed_at || undefined,
+      reviewedBy: c.reviewed_by || undefined,
       // Main Office (S1, the customers row itself) + extra sites (customer_sites).
       sites: [primarySite, ...extraSites],
     };
@@ -1411,6 +1413,9 @@ const mapEnquiryToDB = (e: any) => {
     // plain customer save never sends them (and never touches customer_status).
     if ('customerStatus' in c && c.customerStatus) obj.customer_status = c.customerStatus;
     if ('promotedAt' in c) obj.promoted_at = c.promotedAt || null;
+    // Review mode KEEP / Un-keep — only written when present.
+    if ('reviewedAt' in c) obj.reviewed_at = c.reviewedAt || null;
+    if ('reviewedBy' in c) obj.reviewed_by = c.reviewedBy || null;
 
     // Primary site → flat address columns
     if (primarySite) {
