@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { Customer, Site, Contact, NextOrder } from '../lib/types';
-import { generateId, PAY_OPTIONS, normalizePayTerms } from '../lib/utils';
+import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead } from '../lib/utils';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { normalizeIndianPhone } from '../lib/phone';
 import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
@@ -423,6 +423,24 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     linkedToOldName.orders && `${linkedToOldName.orders} order${linkedToOldName.orders === 1 ? '' : 's'}`,
   ].filter(Boolean).join(', ');
 
+  // Duplicate check against BOTH customers and leads (never the record being
+  // edited): same GSTIN (blocks a NEW record), same PAN under another GSTIN
+  // (info only), or same normalised name / mobile / email (amber warning).
+  const similarCustomers = useMemo(() => {
+    const contacts = sites.flatMap(s => s.contacts ?? []);
+    return findSimilarCustomers({
+      name,
+      gstins: [gstin, ...sites.map(s => s.gstin)],
+      phones: contacts.flatMap(ct => [ct.phone, ...(ct.extraPhones ?? [])]),
+      emails: contacts.flatMap(ct => [ct.email, ...(ct.extraEmails ?? [])]),
+    }, data.customers, editId || undefined);
+  }, [name, gstin, sites, data.customers, editId]);
+  const gstinDuplicate = similarCustomers.find(s => s.kind === 'gstin');
+  // Save & Promote: an existing CUSTOMER that looks like this lead → confirm.
+  const similarMaster = similarCustomers.find(s => s.kind !== 'pan' && !isLead(s.customer));
+  const [promoteDupOpen, setPromoteDupOpen] = useState(false);
+  const promoteDupOk = useRef(false);
+
   const validate = () => {
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = 'Company name is required';
@@ -436,6 +454,13 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
 
   const handleSave = async () => {
     if (!validate()) return;
+    // A NEW record can't reuse a GSTIN that already exists (customer or lead).
+    // Editing an existing record only shows the warning.
+    if (!editId && gstinDuplicate) {
+      setErrors(prev => ({ ...prev, save: gstinDuplicate.message }));
+      return;
+    }
+    if (isPromote && similarMaster && !promoteDupOk.current) { setPromoteDupOpen(true); return; }
     // Lead renamed (in the lead form, or while promoting) while records still
     // use the old name → confirm first.
     if ((isLeadMode || isPromote) && hasLinkedToOldName && !renameConfirmOpen) { setRenameConfirmOpen(true); return; }
@@ -607,6 +632,22 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                 placeholder="e.g. Aditya Birla Chemicals"
               />
               {errors.name && <p className="text-red-mrt text-[10px] mt-1">{errors.name}</p>}
+              {similarCustomers.map(s => (
+                <div key={s.customer.id} className={`mt-1.5 flex items-center justify-between gap-3 text-[11px] rounded-[3px] px-2.5 py-1.5 leading-snug border ${
+                  s.kind === 'gstin' ? 'text-red-mrt bg-red-lt border-red-mrt/30'
+                    : s.kind === 'pan' ? 'text-g600 bg-g100 border-g200'
+                    : 'text-amber-800 bg-amber-50 border-amber-300'}`}>
+                  <span>{s.message}{s.kind === 'gstin' && !editId ? ' — a new record with this GSTIN cannot be saved.' : ''}</span>
+                  {/* New record only: open the existing one instead of creating a duplicate. */}
+                  {!editId && s.kind !== 'pan' && (
+                    <button type="button"
+                      onClick={() => navigate(isLead(s.customer) ? `/customers/leads/new?id=${encodeURIComponent(s.customer.id)}` : `/customers/new?id=${encodeURIComponent(s.customer.id)}`, { replace: true })}
+                      className="shrink-0 font-bold text-[10px] uppercase tracking-wide border border-current rounded-[3px] px-2 py-0.5 bg-white hover:opacity-80">
+                      Use this
+                    </button>
+                  )}
+                </div>
+              ))}
               {(isLeadMode || isPromote) && hasLinkedToOldName && (
                 <div className="mt-1.5 text-[11px] text-lead-text bg-lead-bg border border-lead/50 rounded-[3px] px-2.5 py-1.5 leading-snug">
                   {linkedSummary} still use the old name "<strong>{originalName}</strong>". They won't be renamed, so this lead's order total may stop adding up.
@@ -1078,6 +1119,17 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         <div className="fixed bottom-5 right-5 z-50 max-w-[420px] px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white bg-red-mrt animate-in slide-in-from-bottom-2">
           {toast}
         </div>
+      )}
+
+      {promoteDupOpen && similarMaster && (
+        <ConfirmDialog
+          title="Promote anyway?"
+          confirmLabel="Promote anyway"
+          onConfirm={() => { promoteDupOk.current = true; setPromoteDupOpen(false); handleSave(); }}
+          onCancel={() => setPromoteDupOpen(false)}
+        >
+          Looks like existing customer <strong>{similarMaster.customer.name}</strong> ({similarMaster.customer.id}). Promote anyway?
+        </ConfirmDialog>
       )}
 
       {renameConfirmOpen && (

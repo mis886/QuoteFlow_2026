@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { DuplicateReviewPanel } from '../components/DuplicateReviewPanel';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Customer, Contact, CustomerTier, CustomerStatus, FollowUpLog } from '../lib/types';
@@ -841,6 +842,14 @@ export function Customers() {
   const [bulkFixes, setBulkFixes] = useState<SiteFix[] | null>(null);
   const [bulkApplying, setBulkApplying] = useState(false);
   const [bulkDone, setBulkDone] = useState(false);
+  const [noActivityOnly, setNoActivityOnly] = useState(false);
+  const [moveTarget, setMoveTarget] = useState<Customer | null>(null);
+  const [moving, setMoving] = useState(false);
+  const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  const showToast = (type: 'ok' | 'err', msg: string) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   // One-off success toast from "Save & Promote" on the Promote to Customer
   // form (router state). Cleared from history so a refresh won't repeat it.
@@ -912,7 +921,42 @@ export function Customers() {
   const masters: Customer[] = data.customers.filter((c: Customer) => !isLead(c));
   const leadCount = data.customers.length - masters.length;
 
+  // Clean-up tools (admins only — canDeleteRecords). Quotes / orders link to a
+  // customer by company NAME (trimmed, case-insensitive), like the rest of the app.
+  const nameKey = (s: string | undefined | null) => (s ?? '').trim().toLowerCase();
+  const countByName = (rows: { cust: string }[]) => {
+    const m = new Map<string, number>();
+    for (const r of rows) m.set(nameKey(r.cust), (m.get(nameKey(r.cust)) ?? 0) + 1);
+    return m;
+  };
+  const quotesByName = countByName(data.quotes);
+  const ordersByName = countByName(data.orders);
+  const quoteCountOf = (c: Customer) => quotesByName.get(nameKey(c.name)) ?? 0;
+  const orderCountOf = (c: Customer) => ordersByName.get(nameKey(c.name)) ?? 0;
+  const hasNoActivity = (c: Customer) => quoteCountOf(c) === 0 && orderCountOf(c) === 0;
+  const noActivityCount = masters.filter(hasNoActivity).length;
+
+  // MOVE TO LEAD: the SAME row goes back to Customer Lead — customer_status
+  // 'lead', promoted_at cleared, nothing else touched, never deleted.
+  // updateCustomer records it in the History Log (customerStatus customer → lead).
+  const handleMoveToLead = async () => {
+    if (!moveTarget || !canDelete) return;
+    const { id, name } = moveTarget;
+    setMoving(true);
+    try {
+      await updateCustomer(id, { customerStatus: 'lead', promotedAt: undefined });
+      if (selectedCustomer?.id === id) setSelectedCustomer(null);
+      showToast('ok', `${name} moved to Customer Lead.`);
+    } catch (err: any) {
+      showToast('err', `Move failed: ${err?.message || 'could not save — check your connection.'}`);
+    } finally {
+      setMoving(false);
+      setMoveTarget(null);
+    }
+  };
+
   const filteredCustomers = masters.filter(c => {
+    if (noActivityOnly && canDelete && !hasNoActivity(c)) return false;
     if (searchQuery) {
       const q = normalizeSearchText(searchQuery);
       if (!normalizeSearchText(c.name ?? '').includes(q)) return false;
@@ -996,8 +1040,17 @@ export function Customers() {
           {(['New','Bronze','Silver','Gold'] as CustomerTier[]).map(t => <option key={t}>{t}</option>)}
         </select>
 
-        {(searchQuery || segFilter || tierFilter) && (
-          <button type="button" onClick={() => { setParams({}, { replace: true }); setSearchQuery(''); }}
+        {canDelete && (
+          <button type="button" onClick={() => setNoActivityOnly(v => !v)} aria-pressed={noActivityOnly}
+            title="Customers with no quotes and no orders"
+            className={`flex items-center gap-1.5 font-sans text-xs border rounded px-2 h-7 transition-colors whitespace-nowrap ${noActivityOnly ? 'border-lead bg-lead-bg text-lead-text font-semibold' : 'border-g200 bg-white text-blk hover:border-lead'}`}>
+            No quotes &amp; no orders
+            <span className={`min-w-[18px] h-[16px] px-1 rounded-full text-[9px] leading-none inline-flex items-center justify-center ${noActivityOnly ? 'bg-lead text-white' : 'bg-g200 text-g600'}`}>{noActivityCount}</span>
+          </button>
+        )}
+
+        {(searchQuery || segFilter || tierFilter || noActivityOnly) && (
+          <button type="button" onClick={() => { setParams({}, { replace: true }); setSearchQuery(''); setNoActivityOnly(false); }}
             className="flex items-center gap-1 font-mono text-[10px] text-g500 hover:text-red-mrt border border-g200 hover:border-red-lt rounded px-2 h-7 transition-colors whitespace-nowrap">
             <X size={10} /> Clear filters
           </button>
@@ -1121,6 +1174,10 @@ export function Customers() {
                           {canDelete && (
                             <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); handleDeleteCustomer(c); }}>Delete</Button>
                           )}
+                          {/* Admins only: send a not-yet-qualified record back to Customer Lead. */}
+                          {canDelete && (
+                            <Button size="sm" variant="secondary" className="border-lead text-lead-text bg-white hover:border-lead hover:bg-lead/10 whitespace-nowrap" title="Move to Customer Lead" onClick={() => setMoveTarget(c)}>Move to Lead</Button>
+                          )}
                         </div>
                         {(c.modifiedBy || c.createdBy) && (
                           <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{c.modifiedBy || c.createdBy}</span>
@@ -1189,6 +1246,35 @@ export function Customers() {
           {arrivalToast}
         </div>
       )}
+
+      {toast && (
+        <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white animate-in slide-in-from-bottom-2 ${toast.type === 'ok' ? 'bg-sW' : 'bg-red-mrt'}`}>
+          {toast.type === 'ok' && <CheckCircle2 size={14} />}
+          {toast.msg}
+        </div>
+      )}
+
+      {moveTarget && (() => {
+        const nq = quoteCountOf(moveTarget);
+        const no = orderCountOf(moveTarget);
+        return (
+          <ConfirmDialog
+            title={`Move ${moveTarget.name} to Customer Lead?`}
+            tone="lead"
+            confirmLabel="Move to Lead"
+            busy={moving}
+            onConfirm={handleMoveToLead}
+            onCancel={() => setMoveTarget(null)}
+          >
+            It will no longer appear in Customer Master.
+            {nq + no > 0 && (
+              <div className="mt-2 text-[12px] text-lead-text bg-lead-bg border border-lead/50 rounded-[3px] px-2.5 py-1.5">
+                This customer has {nq} quote{nq === 1 ? '' : 's'} / {no} order{no === 1 ? '' : 's'}.
+              </div>
+            )}
+          </ConfirmDialog>
+        );
+      })()}
 
       {/* Customer profile panel */}
       {selectedCustomer && (

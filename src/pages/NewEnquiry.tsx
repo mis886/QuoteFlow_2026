@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, localDateStr, localDateTimeStr, ENQUIRY_SOURCES } from '../lib/utils';
+import { generateId, localDateStr, localDateTimeStr, ENQUIRY_SOURCES, findCustomerByName, findSimilarCustomers, buildLeadRecord } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { Enquiry, LineItem, Urgency, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -11,7 +11,8 @@ import { OptionSearch } from '../components/OptionSearch';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 
-import { syncContactToCustomer } from '../lib/contactSync';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useContactSyncPrompt } from '../components/ContactSyncPrompt';
 
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
 
@@ -24,6 +25,10 @@ export function NewEnquiry() {
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
   const [isSaving, setIsSaving] = useState(false);
   const [contactSyncMsg, setContactSyncMsg] = useState<string | null>(null);
+  const contactSync = useContactSyncPrompt();
+  // "Save as new lead anyway?" — shown on save when a new company looks like
+  // an existing customer / lead.
+  const [dupConfirm, setDupConfirm] = useState<{ andQuote: boolean } | null>(null);
   useEffect(() => {
     if (!contactSyncMsg) return;
     const t = setTimeout(() => setContactSyncMsg(null), 6000);
@@ -195,6 +200,22 @@ export function NewEnquiry() {
     }
   }, [custName, siteId, contactId, contactManual, data.customers]);
 
+  // New company = a typed name that is neither a customer nor a lead (trimmed,
+  // case-insensitive). Saving a NEW enquiry for it creates a Lead; possible
+  // duplicates (name / mobile / email) are shown first with [Use this].
+  const isNewCompany = !editId && !!custName.trim() && !findCustomerByName(custName, data.customers);
+  const similarCustomers = useMemo(
+    () => isNewCompany ? findSimilarCustomers({ name: custName, phones: [phone], emails: [email] }, data.customers) : [],
+    [isNewCompany, custName, phone, email, data.customers],
+  );
+  // [Use this] — switch to the existing record, keeping what was typed.
+  const pickExistingCustomer = (name: string) => {
+    setCustName(name); setSiteId(''); setContactId('');
+    setCustomerTier(data.customers.find(c => c.name === name)?.tier || '');
+    setErrors(prev => ({ ...prev, custName: '' }));
+    markDirty();
+  };
+
   const updateItem = (index: number, field: keyof LineItem, value: any) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
@@ -207,7 +228,7 @@ export function NewEnquiry() {
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 })));
 
-  const handleSave = async (andQuote = false) => {
+  const handleSave = async (andQuote = false, dupOk = false) => {
     const newErrors: Record<string, string> = {};
     if (!src) newErrors.src = 'Source is required';
     if (!custName) newErrors.custName = 'Customer is required';
@@ -228,8 +249,11 @@ export function NewEnquiry() {
     setErrors(newErrors);
 
     if (Object.keys(newErrors).length > 0) {
-      return; 
+      return;
     }
+
+    // New company that looks like an existing customer / lead → ask first.
+    if (isNewCompany && similarCustomers.length > 0 && !dupOk) { setDupConfirm({ andQuote }); return; }
 
     setIsSaving(true);
     
@@ -270,38 +294,26 @@ export function NewEnquiry() {
         await addEnquiry(enqData);
       }
 
-      // Auto-create customer if it doesn't exist
-      if (!data.customers.find(c => c.name.toLowerCase() === custName.toLowerCase())) {
+      // New enquiry for a company that is neither a customer nor a lead →
+      // create a LEAD (never a Customer Master record). Editing an existing
+      // enquiry never creates anything.
+      if (!editId && !findCustomerByName(custName, data.customers)) {
         await addCustomer({
-          id: generateId('CUST', data.customers.map(c => c.id)),
-          code: generateId('CUS', data.customers.map(c => c.code)),
-          name: custName,
-          seg: 'General',
-          gstin: '',
-          inco: 'Ex-Works',
-          curr: 'INR',
-          pay: '30 days',
-          sites: [
-            {
-              id: 'SITE-' + Math.random().toString(36).substr(2, 5),
-              name: 'Head Office',
-              city: '',
-              contacts: [
-                { id: 'CONT-' + Math.random().toString(36).substr(2, 5), name: contact, role: 'Contact', email: email, phone: phone, isPrimary: true }
-              ]
-            }
-          ]
+          ...buildLeadRecord(custName, data.customers, { name: contact, phone: normalizeIndianPhone(phone).value, email }),
+          createdBy: user?.email ?? undefined,
+          createdDate: new Date().toISOString(),
         });
       }
 
       setDirty(false);   // persisted — no longer unsaved
       await refreshData();
 
-      // Background contact sync — silently update customer profile
+      // Contact sync — silent for a lead; for a customer it asks first
+      // ("Add contact …? [Add] [Skip]") and waits for the answer.
       let contactFull = false;
       try {
-        const syncResult = await syncContactToCustomer(custName, contact, phone, email, data.customers);
-        if (syncResult.action === 'full') { setContactSyncMsg(syncResult.message); contactFull = true; }
+        const fullMsg = await contactSync.run(custName, contact, phone, email);
+        if (fullMsg) { setContactSyncMsg(fullMsg); contactFull = true; }
       } catch (e) { console.error('Contact sync failed:', e); }
 
       if (andQuote) navigate(`/quotes/new?enqRef=${enqId}`);
@@ -369,7 +381,11 @@ export function NewEnquiry() {
                     value={custName}
                     onChange={name => { setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({...errors, custName: ''}); const _cust = data.customers.find(c => c.name === name); setCustomerTier(_cust?.tier || ''); }}
                     error={!!errors.custName}
+                    onCreateNew={editId ? undefined : name => { setCustName(name); setSiteId(''); setContactId(''); setCustomerTier(''); setErrors({ ...errors, custName: '' }); markDirty(); }}
                   />
+                  {isNewCompany && (
+                    <div className="mt-1 text-[10px] font-medium text-lead-text">New company — will be saved as a Lead</div>
+                  )}
                   {errors.custName && <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.custName}</div>}
                 </div>
                 <div>
@@ -421,6 +437,19 @@ export function NewEnquiry() {
                   );
                 })()}
               </div>
+              {similarCustomers.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {similarCustomers.map(s => (
+                    <div key={s.customer.id} className="flex items-center justify-between gap-3 text-[11.5px] text-amber-800 bg-amber-50 border border-amber-300 rounded-[3px] px-2.5 py-1.5">
+                      <span>{s.message}</span>
+                      <button type="button" onClick={() => pickExistingCustomer(s.customer.name)}
+                        className="shrink-0 font-bold text-[10.5px] uppercase tracking-wide text-amber-800 border border-amber-400 rounded-[3px] px-2 py-0.5 bg-white hover:bg-amber-100">
+                        Use this
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-3 mt-3">
                 <div ref={contactRef} className="relative">
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Contact Person</label>
@@ -431,9 +460,9 @@ export function NewEnquiry() {
                       <>
                         <input
                           type="text"
-                          placeholder={siteId ? 'Type or search contact...' : 'Select site first'}
+                          placeholder={siteId ? 'Type or search contact...' : isNewCompany ? 'Contact person...' : 'Select site first'}
                           value={contact}
-                          disabled={!siteId}
+                          disabled={!siteId && !isNewCompany}
                           onChange={e => { setContact(e.target.value); setContactId(''); setContactManual(true); setContactOpen(true); }}
                           onFocus={() => { if (siteId) setContactOpen(true); }}
                           onBlur={() => setTimeout(() => setContactOpen(false), 150)}
@@ -657,6 +686,31 @@ export function NewEnquiry() {
         <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>
         {errors.global && <div className="ml-4 text-red-mrt text-[11px] font-bold">{errors.global}</div>}
       </div>
+
+      {contactSync.dialog}
+
+      {dupConfirm && (
+        <ConfirmDialog
+          title="Possible duplicate"
+          tone="lead"
+          confirmLabel="Save as new lead"
+          onConfirm={() => { const { andQuote } = dupConfirm; setDupConfirm(null); handleSave(andQuote, true); }}
+          onCancel={() => setDupConfirm(null)}
+        >
+          "<strong>{custName}</strong>" looks like a company that already exists:
+          <div className="mt-2 space-y-1">
+            {similarCustomers.map(s => (
+              <div key={s.customer.id} className="flex items-center justify-between gap-3 text-[11.5px] text-amber-800 bg-amber-50 border border-amber-300 rounded-[3px] px-2.5 py-1.5">
+                <span>{s.message}</span>
+                <button type="button" onClick={() => { pickExistingCustomer(s.customer.name); setDupConfirm(null); }}
+                  className="shrink-0 font-bold text-[10.5px] uppercase tracking-wide text-amber-800 border border-amber-400 rounded-[3px] px-2 py-0.5 bg-white hover:bg-amber-100">
+                  Use this
+                </button>
+              </div>
+            ))}
+          </div>
+        </ConfirmDialog>
+      )}
 
       {/* Contact sync — Case 3 toast (all slots full) */}
       {contactSyncMsg && (

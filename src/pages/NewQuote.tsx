@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals, getCurrentQuoteItems } from '../lib/utils';
+import { generateId, leadForUnknownCompany, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals, getCurrentQuoteItems } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { QuoteItem, Quote, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
@@ -16,7 +16,7 @@ import { SendEmailModal } from '../components/SendEmailModal';
 import { NegotiationRoundDetail, NegotiationRoundForm } from '../components/NegotiationRounds';
 import { QuoteTotalsFooter } from '../components/QuoteTotalsFooter';
 import { Copy, Upload, X, AlertCircle, Plus } from 'lucide-react';
-import { syncContactToCustomer } from '../lib/contactSync';
+import { useContactSyncPrompt } from '../components/ContactSyncPrompt';
 
 const STEPS = ['Form', 'Preview'];
 
@@ -238,6 +238,7 @@ export function NewQuote() {
   const [isSaving, setIsSaving] = useState(false);
   const [savedQuote, setSavedQuote] = useState<Quote | null>(null);
   const [contactSyncMsg, setContactSyncMsg] = useState<string | null>(null);
+  const contactSync = useContactSyncPrompt();
   useEffect(() => {
     if (!contactSyncMsg) return;
     const t = setTimeout(() => setContactSyncMsg(null), 6000);
@@ -643,9 +644,10 @@ export function NewQuote() {
     } else {
       await addQuote(qData);
       if (qData.enqRef) await updateEnquiry(qData.enqRef, { status: 'Quoted', qRef: quoteId });
-    }
-    if (!data.customers.find(c => c.name.toLowerCase() === custName.toLowerCase())) {
-      await addCustomer({ id: generateId('CUST', data.customers.map(c => c.id)), code: generateId('CUS', data.customers.map(c => c.code)), name: custName, seg: 'General', gstin: '', inco: 'Ex-Works', curr: 'INR', pay: '30 days', sites: [] });
+      // NEW quote for a company that isn't a customer or a lead (and doesn't
+      // look like one) → create a LEAD, never a Customer Master record.
+      const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email });
+      if (lead) await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
     }
     return qData;
   };
@@ -654,8 +656,8 @@ export function NewQuote() {
   // Returns true if navigation should be delayed (case 3 shown).
   const doContactSync = async (): Promise<boolean> => {
     try {
-      const r = await syncContactToCustomer(custName, contact, phone, email, data.customers);
-      if (r.action === 'full') { setContactSyncMsg(r.message); return true; }
+      const fullMsg = await contactSync.run(custName, contact, phone, email);
+      if (fullMsg) { setContactSyncMsg(fullMsg); return true; }
     } catch (e) { console.error('Contact sync failed:', e); }
     return false;
   };
@@ -1623,6 +1625,8 @@ export function NewQuote() {
           }}
         />
       )}
+
+      {contactSync.dialog}
 
       {/* Contact sync — Case 3 toast (all slots full) */}
       {contactSyncMsg && (

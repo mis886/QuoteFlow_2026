@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
+import { generateId, leadForUnknownCompany, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -15,7 +15,7 @@ import { downloadPIDOCX } from '../lib/quoteDocx';
 import { uploadPublicFile } from '../lib/supabase';
 import { Upload, ExternalLink } from 'lucide-react';
 import { SendEmailModal } from '../components/SendEmailModal';
-import { syncContactToCustomer } from '../lib/contactSync';
+import { useContactSyncPrompt } from '../components/ContactSyncPrompt';
 
 const STEPS = ['Form', 'Preview'];
 
@@ -136,6 +136,7 @@ export function NewOrder() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [contactSyncMsg, setContactSyncMsg] = useState<string | null>(null);
+  const contactSync = useContactSyncPrompt();
   useEffect(() => {
     if (!contactSyncMsg) return;
     const t = setTimeout(() => setContactSyncMsg(null), 6000);
@@ -533,9 +534,10 @@ export function NewOrder() {
         // Converting to an order wins the quote → close its follow-up process.
         try { await closeFollowUp(quoteRef, 'Won'); } catch { /* no follow-up row — ignore */ }
       }
-      if (!data.customers.find(c => c.name.toLowerCase() === custName.toLowerCase())) {
-        await addCustomer({ id: generateId('CUST', data.customers.map(c => c.id)), code: generateId('CUS', data.customers.map(c => c.code)), name: custName, seg: 'General', gstin: '', inco: 'Ex-Works', curr: 'INR', pay: '30 days', sites: [] });
-      }
+      // NEW order for a company that isn't a customer or a lead (and doesn't
+      // look like one) → create a LEAD, never a Customer Master record.
+      const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email });
+      if (lead) await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
     }
     return orderPayload;
   };
@@ -543,8 +545,8 @@ export function NewOrder() {
   // Run contact sync after save — silently for cases 1/2, brief toast for case 3.
   const doContactSync = async (): Promise<boolean> => {
     try {
-      const r = await syncContactToCustomer(custName, contact, phone, email, data.customers);
-      if (r.action === 'full') { setContactSyncMsg(r.message); return true; }
+      const fullMsg = await contactSync.run(custName, contact, phone, email);
+      if (fullMsg) { setContactSyncMsg(fullMsg); return true; }
     } catch (e) { console.error('Contact sync failed:', e); }
     return false;
   };
@@ -1613,6 +1615,8 @@ export function NewOrder() {
           }}
         />
       )}
+
+      {contactSync.dialog}
 
       {/* Contact sync — Case 3 toast (all slots full) */}
       {contactSyncMsg && (

@@ -8,6 +8,9 @@ interface Props {
   onChange: (name: string) => void;
   error?: boolean;
   placeholder?: string;
+  // When set, a typed name that isn't an existing customer / lead can be used
+  // as a new company (New Enquiry only — it is saved as a Lead).
+  onCreateNew?: (name: string) => void;
 }
 
 function matchesQuery(c: Customer, q: string): boolean {
@@ -25,7 +28,7 @@ function matchesQuery(c: Customer, q: string): boolean {
   return false;
 }
 
-export function CustomerSearch({ customers, value, onChange, error, placeholder = 'Search customer…' }: Props) {
+export function CustomerSearch({ customers, value, onChange, error, placeholder = 'Search customer…', onCreateNew }: Props) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -40,6 +43,15 @@ export function CustomerSearch({ customers, value, onChange, error, placeholder 
     if (!q) return customers.slice(0, 50);
     return customers.filter(c => matchesQuery(c, q)).slice(0, 50);
   }, [query, customers]);
+
+  const typed = query.trim();
+  const canCreate = !!onCreateNew && !!typed
+    && !customers.some(c => (c.name ?? '').trim().toLowerCase() === typed.toLowerCase());
+  const createNew = () => {
+    onCreateNew?.(typed);
+    setQuery(typed);
+    setOpen(false);
+  };
 
   // Reset active index when filtered list changes
   useEffect(() => { setActiveIdx(0); }, [filtered.length]);
@@ -74,7 +86,7 @@ export function CustomerSearch({ customers, value, onChange, error, placeholder 
     if (!open) { if (e.key !== 'Tab') setOpen(true); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, filtered.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[activeIdx]) pick(filtered[activeIdx].name); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[activeIdx]) pick(filtered[activeIdx].name); else if (canCreate) createNew(); }
     else if (e.key === 'Escape') { setOpen(false); setQuery(value); }
     else if (e.key === 'Tab') setOpen(false);
   };
@@ -105,7 +117,7 @@ export function CustomerSearch({ customers, value, onChange, error, placeholder 
       {open && (
         <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white border border-g200 rounded-[3px] shadow-lg max-h-56 overflow-y-auto">
           {filtered.length === 0 ? (
-            <div className="px-3 py-3 text-[12px] text-g400">No customers match "{query}"</div>
+            !canCreate && <div className="px-3 py-3 text-[12px] text-g400">No customers match "{query}"</div>
           ) : (
             filtered.map((c, idx) => {
               const siteGstins = c.sites.filter(s => s.gstin?.trim());
@@ -140,6 +152,14 @@ export function CustomerSearch({ customers, value, onChange, error, placeholder 
                 </div>
               );
             })
+          )}
+          {canCreate && (
+            <div
+              onMouseDown={createNew}
+              className="px-3 py-2 cursor-pointer border-t border-g200 bg-lead-bg text-[12px] text-lead-text hover:bg-lead/15"
+            >
+              Use "<span className="font-semibold">{typed}</span>" as new company (saved as Lead)
+            </div>
           )}
         </div>
       )}

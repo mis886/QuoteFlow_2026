@@ -71,6 +71,134 @@ export const LEAD_PROMOTE_THRESHOLD = 100000;
 export const LEAD_EXCLUDED_ORDER_STATUSES: readonly string[] = ['Lost'];
 export const isLead = (c: { customerStatus?: string } | null | undefined): boolean => c?.customerStatus === 'lead';
 
+// ── Customer / lead matching + duplicate check ───────────────────────────────
+// Everything here searches BOTH Customer Master rows and Customer Leads (same
+// customers table).
+
+// Exact company-name match, trimmed + case-insensitive — the "already exists"
+// check used before any enquiry / quote / order creates a lead.
+export function findCustomerByName<T extends { name: string }>(name: string | null | undefined, customers: T[]): T | undefined {
+  const key = (name ?? '').trim().toLowerCase();
+  if (!key) return undefined;
+  return customers.find(c => (c.name ?? '').trim().toLowerCase() === key);
+}
+
+const COMPANY_NOISE_WORDS = new Set(['pvt', 'private', 'ltd', 'limited', 'llp', 'co', 'company']);
+// "M/s. ABC Chemicals (India) Pvt. Ltd." → "abcchemicalsindia"
+export function normalizeCompanyName(name: string | null | undefined): string {
+  return (name ?? '')
+    .toLowerCase()
+    .replace(/m\/s/g, ' ')
+    .replace(/[.,&()[\]{}]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w && !COMPANY_NOISE_WORDS.has(w))
+    .join('');
+}
+
+const normGstin = (s: string | null | undefined): string => (s ?? '').replace(/\s+/g, '').toUpperCase();
+// Last 10 digits; '' when there are fewer than 10 (not a usable mobile).
+export const last10Digits = (s: string | null | undefined): string => {
+  const d = (s ?? '').replace(/\D/g, '');
+  return d.length >= 10 ? d.slice(-10) : '';
+};
+const normEmail = (s: string | null | undefined): string => (s ?? '').trim().toLowerCase();
+
+export type SimilarCustomerKind = 'gstin' | 'pan' | 'similar';
+export interface SimilarCustomer {
+  kind: SimilarCustomerKind;   // gstin = block a NEW record, pan = info only, similar = amber warning
+  customer: Customer;
+  message: string;
+}
+
+// Duplicate check for a record about to be created / saved. Strongest match
+// per existing record, GSTIN matches first:
+//   gstin   — same GSTIN (ignoring case / spaces)
+//   pan     — same PAN (GSTIN characters 3–12) under a different GSTIN: the
+//             same company's other GST registration (branch / plant) — valid
+//   similar — same normalised company name, same mobile (last 10 digits) or
+//             same email
+// excludeId = the record being edited, so it never matches itself.
+export function findSimilarCustomers(
+  input: { name?: string; gstins?: (string | null | undefined)[]; phones?: (string | null | undefined)[]; emails?: (string | null | undefined)[] },
+  customers: Customer[],
+  excludeId?: string,
+): SimilarCustomer[] {
+  const nameKey = normalizeCompanyName(input.name);
+  const gstins = new Set((input.gstins ?? []).map(normGstin).filter(Boolean));
+  const pans = new Set([...gstins].filter(g => g.length === 15).map(g => g.slice(2, 12)));
+  const phones = new Set((input.phones ?? []).map(last10Digits).filter(Boolean));
+  const emails = new Set((input.emails ?? []).map(normEmail).filter(Boolean));
+
+  const out: SimilarCustomer[] = [];
+  for (const c of customers) {
+    if (excludeId && c.id === excludeId) continue;
+    const cGstins = [c.gstin, ...(c.sites ?? []).map(s => s.gstin)].map(normGstin).filter(Boolean);
+    if (cGstins.some(g => gstins.has(g))) {
+      out.push({ kind: 'gstin', customer: c, message: `This GSTIN already exists: ${c.name} (${c.id})` });
+      continue;
+    }
+    const contacts = (c.sites ?? []).flatMap(s => s.contacts ?? []);
+    const sameName = !!nameKey && normalizeCompanyName(c.name) === nameKey;
+    const samePhone = phones.size > 0 && contacts.some(ct => [ct.phone, ...(ct.extraPhones ?? [])].some(p => phones.has(last10Digits(p))));
+    const sameEmail = emails.size > 0 && contacts.some(ct => [ct.email, ...(ct.extraEmails ?? [])].some(e => emails.has(normEmail(e))));
+    if (sameName || samePhone || sameEmail) {
+      out.push({ kind: 'similar', customer: c, message: `Possible duplicate: ${c.name} (${c.id}, ${isLead(c) ? 'Lead' : 'Customer'})` });
+      continue;
+    }
+    if (cGstins.some(g => g.length === 15 && pans.has(g.slice(2, 12)))) {
+      out.push({ kind: 'pan', customer: c, message: `Same company, other GST registration: ${c.name}` });
+    }
+  }
+  const rank: Record<SimilarCustomerKind, number> = { gstin: 0, pan: 1, similar: 2 };
+  return out.sort((a, b) => rank[a.kind] - rank[b.kind]);
+}
+
+// The lead an enquiry / quote / order creates for a company that isn't in the
+// customers table yet — same shape as the Add Lead form: LEAD-YYYY-NNN id (no
+// CUS- code), contact in the Main Office site, 100% Advance, no credit.
+export function buildLeadRecord(
+  name: string,
+  customers: { id: string }[],
+  contact: { name?: string; phone?: string; email?: string } = {},
+): Customer {
+  const leadId = generateId('LEAD', customers.map(c => c.id));
+  return {
+    id: leadId,
+    code: leadId,
+    name: name.trim(),
+    seg: '',
+    gstin: '',
+    inco: 'EXW',
+    curr: 'INR',
+    pay: '100% Advance',
+    creditLimit: 0,
+    customerStatus: 'lead',
+    sites: [{
+      id: 'S1', name: 'Main Office', city: '',
+      contacts: [{ id: 'C1', name: (contact.name ?? '').trim(), role: 'Purchase', email: (contact.email ?? '').trim(), phone: (contact.phone ?? '').trim(), isPrimary: true }],
+    }],
+  };
+}
+
+// Quotes / orders have no place to show a duplicate warning (the company name
+// arrives from the enquiry), so they only create a lead when there is no exact
+// match AND no normalised-name match. Returns null when nothing should be
+// created.
+export function leadForUnknownCompany(
+  name: string,
+  customers: Customer[],
+  contact: { name?: string; phone?: string; email?: string } = {},
+): Customer | null {
+  if (!name.trim() || findCustomerByName(name, customers)) return null;
+  const key = normalizeCompanyName(name);
+  const lookalike = key ? customers.find(c => normalizeCompanyName(c.name) === key) : undefined;
+  if (lookalike) {
+    console.info(`[customers] "${name}" looks like existing ${lookalike.name} (${lookalike.id}) — no lead created.`);
+    return null;
+  }
+  return buildLeadRecord(name, customers, contact);
+}
+
 // Dispatch Board (Kanban): logins allowed to press Done / Hold / Resume on
 // steps 1–7 — Samata (mum@) plus the ADMIN_EMAILS logins in
 // store/index.tsx. Everyone else sees the board read-only. The Bhiwandi
