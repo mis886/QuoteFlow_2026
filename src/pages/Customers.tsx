@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
+import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { DuplicateReviewPanel } from '../components/DuplicateReviewPanel';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -646,6 +647,21 @@ const COLUMNS: ColDef[] = [
   { label: 'Actions',         sortKey: null },
 ];
 
+// ── Review mode (admins): clean up inactive Customer Master records ──────────
+type ReviewGroup = 'A' | 'B' | 'C' | 'D' | 'E';
+type ReviewKey = '' | 'all' | ReviewGroup;
+const REVIEW_OPTIONS: { key: Exclude<ReviewKey, ''>; label: string }[] = [
+  { key: 'all', label: 'Inactive — all' },
+  { key: 'A', label: 'A · Open enquiry' },
+  { key: 'B', label: 'B · Old customer, enquiry closed' },
+  { key: 'C', label: 'C · Sample sent, no enquiry' },
+  { key: 'D', label: 'D · App-created, no activity' },
+  { key: 'E', label: 'E · Old list, no activity' },
+];
+const REVIEW_OPEN_ENQ = ['New', 'In Review', 'Quoted', 'Sample'];
+const REVIEW_CLOSED_ENQ = ['Not Qualified', 'Lost', 'Parked'];
+const REVIEW_KEPT_KEY = 'customerReviewKept';
+
 // Returns a comparable value for a given customer + sort key.
 function sortValue(c: Customer, key: SortKey): string | number {
   switch (key) {
@@ -855,13 +871,37 @@ export function Customers() {
   const [bulkFixes, setBulkFixes] = useState<SiteFix[] | null>(null);
   const [bulkApplying, setBulkApplying] = useState(false);
   const [bulkDone, setBulkDone] = useState(false);
-  const [noActivityOnly, setNoActivityOnly] = useState(false);
+  // Review mode (admins only): '' = normal list, 'all' = every inactive
+  // customer, 'A'…'E' = one clean-up group (see REVIEW_OPTIONS).
+  const [review, setReviewState] = useState<ReviewKey>('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const setReview = (v: ReviewKey) => { setReviewState(v); setSelectedIds(new Set()); };
+  // KEEP = "reviewed, leave it in Customer Master". There is no database
+  // column for it, so the ids live in this browser only (localStorage).
+  const [keptIds, setKeptIds] = useState<Set<string>>(() => {
+    try { return new Set<string>(JSON.parse(localStorage.getItem(REVIEW_KEPT_KEY) || '[]')); } catch { return new Set<string>(); }
+  });
+  const saveKept = (next: Set<string>) => {
+    setKeptIds(next);
+    try { localStorage.setItem(REVIEW_KEPT_KEY, JSON.stringify(Array.from(next))); } catch { /* storage unavailable — kept for this visit only */ }
+  };
+  const [showKept, setShowKept] = useState(false);
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  // Samples aren't part of the store's data — loaded here for the Review
+  // groups (admins only), linked like every other document.
+  const [reviewSamples, setReviewSamples] = useState<{ cust: string; customerId?: string }[]>([]);
+  useEffect(() => {
+    if (!canDelete) return;
+    supabase.from('samples').select('cust, customer_id').then(({ data: rows }) => {
+      setReviewSamples((rows ?? []).map((r: any) => ({ cust: r.cust ?? '', customerId: r.customer_id ?? undefined })));
+    });
+  }, [canDelete]);
   const [moveTarget, setMoveTarget] = useState<Customer | null>(null);
   const [moving, setMoving] = useState(false);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
-  const showToast = (type: 'ok' | 'err', msg: string) => {
+  const showToast = (type: 'ok' | 'err', msg: string, ms = 4000) => {
     setToast({ type, msg });
-    setTimeout(() => setToast(null), 4000);
+    setTimeout(() => setToast(null), ms);
   };
 
   // One-off success toast from "Save & Promote" on the Promote to Customer
@@ -944,8 +984,77 @@ export function Customers() {
   const ordersByCustomer = groupDocsByCustomer(data.orders as { cust: string; customerId?: string }[], masters);
   const quoteCountOf = (c: Customer) => (quotesByCustomer.get(c.id) ?? []).length;
   const orderCountOf = (c: Customer) => (ordersByCustomer.get(c.id) ?? []).length;
-  const hasNoActivity = (c: Customer) => quoteCountOf(c) === 0 && orderCountOf(c) === 0;
-  const noActivityCount = masters.filter(hasNoActivity).length;
+
+  // ── Review mode ──
+  // Inactive = no quotes, no orders (ANY quote / order counts as activity,
+  // Lost ones too) and last FY turnover = 0. Each inactive customer falls
+  // into at most one group; the rest only show under "Inactive — all".
+  const reviewOn = canDelete && review !== '';
+  const enquiriesByCustomer = groupDocsByCustomer(data.enquiries as { cust: string; customerId?: string; status: string; recv: string }[], masters);
+  const samplesByCustomer = groupDocsByCustomer(reviewSamples, masters);
+  const enquiriesOf = (c: Customer) => enquiriesByCustomer.get(c.id) ?? [];
+  const sampleCountOf = (c: Customer) => (samplesByCustomer.get(c.id) ?? []).length;
+  const isInactive = (c: Customer) => quoteCountOf(c) === 0 && orderCountOf(c) === 0 && !(Number(c.turnover) > 0);
+  const reviewGroupOf = (c: Customer): ReviewGroup | null => {
+    const enqs = enquiriesOf(c);
+    const oldId = /^C/i.test(c.id) && !c.id.startsWith('CUST-');   // imported list: C329 …
+    if (enqs.some(e => REVIEW_OPEN_ENQ.includes(e.status))) return 'A';
+    if (enqs.length > 0) return oldId && enqs.every(e => REVIEW_CLOSED_ENQ.includes(e.status)) ? 'B' : null;
+    if (sampleCountOf(c) > 0) return 'C';
+    if (c.id.startsWith('CUST-')) return 'D';
+    return oldId ? 'E' : null;
+  };
+  const inReview = (c: Customer, key: ReviewKey) =>
+    isInactive(c) && (showKept || !keptIds.has(c.id)) && (key === 'all' || reviewGroupOf(c) === key);
+  const reviewCounts: Record<string, number> = {};
+  if (canDelete) for (const o of REVIEW_OPTIONS) reviewCounts[o.key] = masters.filter(c => inReview(c, o.key)).length;
+  const keptInactiveCount = canDelete ? masters.filter(c => keptIds.has(c.id) && isInactive(c)).length : 0;
+
+  const toggleSelected = (id: string) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const selectedCustomers = masters.filter(c => selectedIds.has(c.id));
+
+  // KEEP / un-keep the ticked rows (this browser only).
+  const handleKeep = (keep: boolean) => {
+    const next = new Set(keptIds);
+    for (const c of selectedCustomers) { if (keep) next.add(c.id); else next.delete(c.id); }
+    saveKept(next);
+    showToast('ok', keep ? `${selectedCustomers.length} kept in Customer Master — hidden from Review.` : `${selectedCustomers.length} back in Review.`);
+    setSelectedIds(new Set());
+  };
+
+  // Bulk MOVE TO LEAD: the same update as the single button, one at a time,
+  // so each customer gets its own History Log entry (customer → lead). Rows
+  // with quotes / orders are refused; a failed row stays a customer and is
+  // listed, the rest stay moved.
+  const handleBulkMoveToLead = async () => {
+    if (!canDelete) return;
+    const skipped = selectedCustomers.filter(c => quoteCountOf(c) + orderCountOf(c) > 0);
+    const toMove = selectedCustomers.filter(c => quoteCountOf(c) + orderCountOf(c) === 0);
+    setMoving(true);
+    const failed: string[] = [];
+    let moved = 0;
+    for (const c of toMove) {
+      try {
+        await updateCustomer(c.id, { customerStatus: 'lead', promotedAt: undefined });
+        moved++;
+      } catch (err) {
+        console.error('Move to Lead failed:', c.id, err);
+        failed.push(c.name);
+      }
+    }
+    setMoving(false);
+    setBulkMoveOpen(false);
+    setSelectedIds(new Set());
+    if (selectedCustomer && selectedIds.has(selectedCustomer.id)) setSelectedCustomer(null);
+    const parts = [`${moved} moved to Customer Lead`];
+    if (skipped.length) parts.push(`skipped: has quotes/orders — ${skipped.map(c => c.name).join(', ')}`);
+    if (failed.length) parts.push(`failed — ${failed.join(', ')}`);
+    showToast(failed.length ? 'err' : 'ok', parts.join(' · '), skipped.length || failed.length ? 12000 : 4000);
+  };
 
   // MOVE TO LEAD: the SAME row goes back to Customer Lead — customer_status
   // 'lead', promoted_at cleared, nothing else touched, never deleted.
@@ -967,7 +1076,7 @@ export function Customers() {
   };
 
   const filteredCustomers = masters.filter(c => {
-    if (noActivityOnly && canDelete && !hasNoActivity(c)) return false;
+    if (reviewOn && !inReview(c, review)) return false;
     if (searchQuery) {
       const q = normalizeSearchText(searchQuery);
       if (!normalizeSearchText(c.name ?? '').includes(q)) return false;
@@ -1052,16 +1161,21 @@ export function Customers() {
         </select>
 
         {canDelete && (
-          <button type="button" onClick={() => setNoActivityOnly(v => !v)} aria-pressed={noActivityOnly}
-            title="Customers with no quotes and no orders"
-            className={`flex items-center gap-1.5 font-sans text-xs border rounded px-2 h-7 transition-colors whitespace-nowrap ${noActivityOnly ? 'border-lead bg-lead-bg text-lead-text font-semibold' : 'border-g200 bg-white text-blk hover:border-lead'}`}>
-            No quotes &amp; no orders
-            <span className={`min-w-[18px] h-[16px] px-1 rounded-full text-[9px] leading-none inline-flex items-center justify-center ${noActivityOnly ? 'bg-lead text-white' : 'bg-g200 text-g600'}`}>{noActivityCount}</span>
-          </button>
+          <select title="Review — clean up inactive customers (no quotes, no orders, no last-FY turnover)" value={review} onChange={e => setReview(e.target.value as ReviewKey)}
+            className={`select-filter font-sans text-xs border rounded py-1 pl-2 pr-6 cursor-pointer outline-none appearance-none ${reviewOn ? 'border-lead bg-lead-bg text-lead-text font-semibold' : 'border-g200 bg-white text-blk'}`}>
+            <option value="">Review: All</option>
+            {REVIEW_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label} ({reviewCounts[o.key] ?? 0})</option>)}
+          </select>
+        )}
+        {reviewOn && (
+          <label className="flex items-center gap-1.5 font-sans text-xs text-g600 cursor-pointer whitespace-nowrap" title="Customers you marked KEEP in this browser">
+            <input type="checkbox" checked={showKept} onChange={e => { setShowKept(e.target.checked); setSelectedIds(new Set()); }} />
+            Show kept ({keptInactiveCount})
+          </label>
         )}
 
-        {(searchQuery || segFilter || tierFilter || noActivityOnly) && (
-          <button type="button" onClick={() => { setParams({}, { replace: true }); setSearchQuery(''); setNoActivityOnly(false); }}
+        {(searchQuery || segFilter || tierFilter || reviewOn) && (
+          <button type="button" onClick={() => { setParams({}, { replace: true }); setSearchQuery(''); setReview(''); }}
             className="flex items-center gap-1 font-mono text-[10px] text-g500 hover:text-red-mrt border border-g200 hover:border-red-lt rounded px-2 h-7 transition-colors whitespace-nowrap">
             <X size={10} /> Clear filters
           </button>
@@ -1076,11 +1190,22 @@ export function Customers() {
           <table className="min-w-full border-collapse text-[12.5px]">
             <thead>
               <tr>
+                {/* Review mode: select every row currently shown */}
+                {reviewOn && (
+                  <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] w-8 border-b border-g200 shadow-[0_1px_0_0_theme(colors.g200)]">
+                    <input type="checkbox" title="Select all on this page"
+                      checked={filteredCustomers.length > 0 && filteredCustomers.every(c => selectedIds.has(c.id))}
+                      onChange={e => setSelectedIds(e.target.checked ? new Set(filteredCustomers.map(c => c.id)) : new Set())} />
+                  </th>
+                )}
                 {COLUMNS.map(col => {
                   const active = col.sortKey && sortKey === col.sortKey;
                   return (
+                    <React.Fragment key={col.label}>
+                    {reviewOn && col.label === 'Actions' && ['Enquiries', 'Samples'].map(label => (
+                      <th key={label} className="sticky top-0 z-10 bg-g100 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 shadow-[0_1px_0_0_theme(colors.g200)] text-lead-text">{label}</th>
+                    ))}
                     <th
-                      key={col.label}
                       onClick={col.sortKey ? () => toggleSort(col.sortKey!) : undefined}
                       className={`sticky top-0 z-10 bg-g100 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200 shadow-[0_1px_0_0_theme(colors.g200)] ${col.sortKey ? 'cursor-pointer select-none hover:bg-g200 transition-colors' : ''} ${active ? 'text-red-mrt' : 'text-g500'}`}
                     >
@@ -1093,13 +1218,14 @@ export function Customers() {
                         )}
                       </span>
                     </th>
+                    </React.Fragment>
                   );
                 })}
               </tr>
             </thead>
             <tbody>
               {filteredCustomers.length === 0 ? (
-                <tr><td colSpan={9} className="text-center p-8 text-g400 text-[13px]">No customers match</td></tr>
+                <tr><td colSpan={reviewOn ? 12 : 9} className="text-center p-8 text-g400 text-[13px]">No customers match</td></tr>
               ) : filteredCustomers.map((c, idx) => {
                 const contact = getPrimaryContact(c);
                 const rating  = computeRating(c);
@@ -1113,12 +1239,19 @@ export function Customers() {
                     className={`transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 ${isExpanded ? 'bg-red-mrt/5' : ''}`}
                     onClick={() => setExpandedRow(isExpanded ? null : c.id)}
                   >
+                    {reviewOn && (
+                      <td className="px-[13px] py-[11px] align-middle w-8" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox" title="Select" checked={selectedIds.has(c.id)} onChange={() => toggleSelected(c.id)} />
+                      </td>
+                    )}
                     {/* Company */}
                     <td className="px-[13px] py-[11px] align-middle">
                       <div className="flex items-center gap-2.5">
                         <InitialAvatar name={c.name} />
                         <div>
-                          <div className="font-semibold text-blk leading-snug">{c.name}</div>
+                          <div className="font-semibold text-blk leading-snug">{c.name}
+                            {reviewOn && keptIds.has(c.id) && <span className="ml-1.5 px-1.5 py-[1px] rounded-[3px] border border-g300 bg-g100 text-g500 font-mono text-[8.5px] font-bold uppercase tracking-wide align-middle">Kept</span>}
+                          </div>
                           <TierBadge tier={c.tier} />
                         </div>
                       </div>
@@ -1171,6 +1304,25 @@ export function Customers() {
                       ) : <span className="text-g300">—</span>}
                     </td>
 
+                    {/* Review mode: enquiries (count + latest status) and samples */}
+                    {reviewOn && (() => {
+                      const enqs = enquiriesOf(c);
+                      const latest = enqs.reduce<typeof enqs[number] | null>((a, e) => (!a || (e.recv || '') > (a.recv || '') ? e : a), null);
+                      const samples = sampleCountOf(c);
+                      return (
+                        <>
+                          <td className="px-[13px] py-[11px] align-middle whitespace-nowrap">
+                            {enqs.length === 0 ? <span className="text-g300">—</span> : (
+                              <span className="font-mono text-[11px] text-g600">{enqs.length}<span className="text-g400"> · {latest?.status}</span></span>
+                            )}
+                          </td>
+                          <td className="px-[13px] py-[11px] align-middle font-mono text-[11px] text-g600">
+                            {samples || <span className="text-g300">—</span>}
+                          </td>
+                        </>
+                      );
+                    })()}
+
                     {/* Actions */}
                     <td className="px-[13px] py-[11px] align-middle" onClick={e => e.stopPropagation()}>
                       <div className="flex flex-col gap-1">
@@ -1199,7 +1351,7 @@ export function Customers() {
 
                   {isExpanded && (
                     <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">
-                      <td colSpan={9} className="p-0">
+                      <td colSpan={reviewOn ? 12 : 9} className="p-0">
                         <div className="p-[10px_16px]">
                           <div className="text-[9px] font-mono font-bold uppercase tracking-[1.5px] text-red-mrt mb-2 flex items-center gap-1.5">
                             <MapPin size={10} /> Sites ({c.sites.length})
@@ -1259,11 +1411,48 @@ export function Customers() {
       )}
 
       {toast && (
-        <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white animate-in slide-in-from-bottom-2 ${toast.type === 'ok' ? 'bg-sW' : 'bg-red-mrt'}`}>
+        <div className={`fixed bottom-5 right-5 z-50 max-w-[560px] flex items-start gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white animate-in slide-in-from-bottom-2 ${toast.type === 'ok' ? 'bg-sW' : 'bg-red-mrt'}`}>
           {toast.type === 'ok' && <CheckCircle2 size={14} />}
           {toast.msg}
         </div>
       )}
+
+      {/* Review mode: bar for the ticked rows */}
+      {reviewOn && selectedCustomers.length > 0 && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-blk text-white rounded-[4px] shadow-2xl px-4 py-2.5 animate-in slide-in-from-bottom-2">
+          <span className="text-[12.5px] font-medium whitespace-nowrap">{selectedCustomers.length} selected —</span>
+          <Button size="sm" variant="secondary" className="border-lead bg-lead text-white hover:bg-lead-strong hover:border-lead" onClick={() => setBulkMoveOpen(true)}>Move to Lead</Button>
+          {selectedCustomers.some(c => !keptIds.has(c.id)) && (
+            <Button size="sm" variant="secondary" title="Reviewed — leave in Customer Master and hide from Review (this browser)" onClick={() => handleKeep(true)}>Keep</Button>
+          )}
+          {selectedCustomers.some(c => keptIds.has(c.id)) && (
+            <Button size="sm" variant="secondary" title="Put back into Review" onClick={() => handleKeep(false)}>Un-keep</Button>
+          )}
+          <button type="button" onClick={() => setSelectedIds(new Set())} className="font-mono text-[10px] uppercase tracking-[1px] text-white/70 hover:text-white">Clear</button>
+        </div>
+      )}
+
+      {bulkMoveOpen && (() => {
+        const blocked = selectedCustomers.filter(c => quoteCountOf(c) + orderCountOf(c) > 0);
+        const n = selectedCustomers.length - blocked.length;
+        return (
+          <ConfirmDialog
+            title={`Move ${n} customer${n === 1 ? '' : 's'} to Customer Lead?`}
+            tone="lead"
+            confirmLabel="Move to Lead"
+            busy={moving}
+            onConfirm={handleBulkMoveToLead}
+            onCancel={() => setBulkMoveOpen(false)}
+          >
+            They will no longer appear in Customer Master. Nothing is deleted.
+            {blocked.length > 0 && (
+              <div className="mt-2 text-[12px] text-lead-text bg-lead-bg border border-lead/50 rounded-[3px] px-2.5 py-1.5">
+                {blocked.length} will be skipped (has quotes/orders): {blocked.map(c => c.name).join(', ')}
+              </div>
+            )}
+          </ConfirmDialog>
+        );
+      })()}
 
       {moveTarget && (() => {
         const nq = quoteCountOf(moveTarget);
