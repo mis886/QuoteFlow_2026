@@ -95,7 +95,89 @@ export function normalizeCompanyName(name: string | null | undefined): string {
     .join('');
 }
 
-const normGstin = (s: string | null | undefined): string => (s ?? '').replace(/\s+/g, '').toUpperCase();
+// ── Documents ↔ customers ────────────────────────────────────────────────────
+// Enquiries / quotes / orders / samples carry customer_id (customerId). Always
+// match on that FIRST; only a document without one falls back to the company
+// name (trimmed, case-insensitive) — `cust` is just the printed name snapshot.
+type CustomerDocRef = { cust?: string | null; customerId?: string | null };
+
+export function customerOfDoc<T extends { id: string; name: string }>(doc: CustomerDocRef | null | undefined, customers: T[]): T | undefined {
+  if (!doc) return undefined;
+  if (doc.customerId) {
+    const byId = customers.find(c => c.id === doc.customerId);
+    if (byId) return byId;
+  }
+  return findCustomerByName(doc.cust, customers);
+}
+
+export function isDocOfCustomer(doc: CustomerDocRef, customer: { id: string; name: string }): boolean {
+  if (doc.customerId) return doc.customerId === customer.id;
+  const key = (doc.cust ?? '').trim().toLowerCase();
+  return !!key && key === (customer.name ?? '').trim().toLowerCase();
+}
+
+// customer id → its documents, in one pass (for pages that total every
+// customer at once). Same rule as isDocOfCustomer.
+export function groupDocsByCustomer<D extends CustomerDocRef>(docs: D[], customers: { id: string; name: string }[]): Map<string, D[]> {
+  const ids = new Set(customers.map(c => c.id));
+  const idsByName = new Map<string, string[]>();
+  for (const c of customers) {
+    const key = (c.name ?? '').trim().toLowerCase();
+    if (!key) continue;
+    const list = idsByName.get(key);
+    if (list) list.push(c.id); else idsByName.set(key, [c.id]);
+  }
+  const out = new Map<string, D[]>();
+  const add = (id: string, d: D) => { const list = out.get(id); if (list) list.push(d); else out.set(id, [d]); };
+  for (const d of docs) {
+    if (d.customerId) { if (ids.has(d.customerId)) add(d.customerId, d); continue; }
+    for (const id of idsByName.get((d.cust ?? '').trim().toLowerCase()) ?? []) add(id, d);
+  }
+  return out;
+}
+
+// Sites a document can be raised for: Main Office (S1) + active extra sites.
+export const activeSites = <S extends { isActive?: boolean }>(sites: S[] | undefined | null): S[] =>
+  (sites ?? []).filter(s => s.isActive !== false);
+
+// ── GSTIN ────────────────────────────────────────────────────────────────────
+const GSTIN_RX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
+// A real 15-character GSTIN (spaces ignored, any case).
+export const isValidGstin = (s: string | null | undefined): boolean => GSTIN_RX.test((s ?? '').replace(/\s+/g, '').toUpperCase());
+// Only a VALID GSTIN is ever compared — "URP", "NA", "N/A", "-", "NIL",
+// "UNREGISTERED" etc. become '' so they never block a save or count as a
+// GSTIN / PAN match.
+const normGstin = (s: string | null | undefined): string => {
+  const g = (s ?? '').replace(/\s+/g, '').toUpperCase();
+  return GSTIN_RX.test(g) ? g : '';
+};
+
+// First two digits of a GSTIN = GST state code.
+export const GST_STATE_CODES: Record<string, string> = {
+  '01': 'Jammu and Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh', '05': 'Uttarakhand',
+  '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim',
+  '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya',
+  '18': 'Assam', '19': 'West Bengal', '20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh',
+  '24': 'Gujarat', '26': 'Dadra and Nagar Haveli and Daman and Diu', '27': 'Maharashtra', '29': 'Karnataka', '30': 'Goa',
+  '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu', '34': 'Puducherry', '35': 'Andaman and Nicobar Islands',
+  '36': 'Telangana', '37': 'Andhra Pradesh', '38': 'Ladakh',
+};
+export const gstinState = (gstin: string | null | undefined): string =>
+  isValidGstin(gstin) ? (GST_STATE_CODES[(gstin ?? '').replace(/\s+/g, '').slice(0, 2)] ?? '') : '';
+// Loose state-name compare ("Maharashtra" vs "MAHARASHTRA ", "Orissa" vs "Odisha").
+const stateKey = (s: string) => {
+  const k = s.toLowerCase().replace(/[^a-z]/g, '').replace(/and/g, '');
+  return k === 'orissa' ? 'odisha' : k === 'uttaranchal' ? 'uttarakhand' : k === 'newdelhi' ? 'delhi' : k === 'pondicherry' ? 'puducherry' : k;
+};
+// '' = fine. Otherwise the message to show under a site's GSTIN field.
+export function gstinFieldWarning(gstin: string | null | undefined, state: string | null | undefined): string {
+  const g = (gstin ?? '').replace(/\s+/g, '').toUpperCase();
+  if (!g || g === 'URP') return '';
+  if (!GSTIN_RX.test(g)) return 'Not a valid 15-character GSTIN (leave blank or enter URP if unregistered).';
+  const st = GST_STATE_CODES[g.slice(0, 2)];
+  if (st && state?.trim() && stateKey(state) !== stateKey(st)) return `GSTIN state code ${g.slice(0, 2)} is ${st}, but State says ${state.trim()}.`;
+  return '';
+}
 // Last 10 digits; '' when there are fewer than 10 (not a usable mobile).
 export const last10Digits = (s: string | null | undefined): string => {
   const d = (s ?? '').replace(/\D/g, '');
@@ -832,3 +914,9 @@ export const generateId = (prefix: string, existingIds: (string | undefined | nu
   }
   return `${prefix}-${yr}-${String(maxNum + 1).padStart(3, '0')}`;
 };
+
+// Site picker options for a document: Main Office + active extra sites, plus
+// the document's own site even if it has since been hidden.
+export function pickableSites<S extends { id: string; isActive?: boolean }>(sites: S[] | undefined | null, currentSiteId?: string | null): S[] {
+  return (sites ?? []).filter(s => s.isActive !== false || s.id === currentSiteId);
+}

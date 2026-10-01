@@ -1,9 +1,9 @@
 ﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, localDateStr, localDateTimeStr, ENQUIRY_SOURCES, findCustomerByName, findSimilarCustomers, buildLeadRecord } from '../lib/utils';
+import { generateId, customerOfDoc, findCustomerByName, pickableSites, localDateStr, localDateTimeStr, ENQUIRY_SOURCES, findSimilarCustomers, buildLeadRecord } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
-import { Enquiry, LineItem, Urgency, CustomerTier } from '../lib/types';
+import { Enquiry, LineItem, Urgency, CustomerTier, Customer } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
@@ -53,6 +53,10 @@ export function NewEnquiry() {
   const [date, setDate] = useState(localDateTimeStr(new Date()));
   const [src, setSrc] = useState('');
   const [custName, setCustName] = useState('');
+  // customer_id of the picked customer / lead ('' = not linked yet). The
+  // customer is resolved by this id first, then by name (old documents).
+  const [customerId, setCustomerId] = useState('');
+  const pickedCustomer = customerOfDoc({ cust: custName, customerId }, data.customers);
   const [custEnqDocNo, setCustEnqDocNo] = useState('');
   const [siteId, setSiteId] = useState('');
   const [contactId, setContactId] = useState('');
@@ -103,7 +107,7 @@ export function NewEnquiry() {
         setEnqId(e.id);
         setDate(localDateTimeStr(new Date(e.recv)));
         setSrc(e.src);
-        setCustName(e.cust);
+        setCustName(e.cust); setCustomerId(e.customerId ?? '');
         setCustEnqDocNo(e.custEnqDocNo || '');
         setSiteId(e.siteId || '');
         setContactId(e.contactId || '');
@@ -125,7 +129,7 @@ export function NewEnquiry() {
         setManagementNotes(e.managementNotes || '');
         setItems(e.items);
         
-        const c = data.customers.find(x => x.name === e.cust);
+        const c = customerOfDoc(e, data.customers);
         if (c && !e.customerTier) setCustomerTier(c.tier || '');
       }
     } else {
@@ -157,12 +161,12 @@ export function NewEnquiry() {
   // Auto-fill effect
   useEffect(() => {
     if (!custName) return;
-    const customer = data.customers.find(c => c.name === custName);
+    const customer = pickedCustomer;
     if (!customer) return;
 
     if (!editId) setCustomerTier(customer.tier || '');
 
-    const sites = customer.sites ?? [];
+    const sites = pickableSites(customer.sites, siteId);
     if (siteId) {
       const site = sites.find(s => s.id === siteId);
       if (site) {
@@ -209,9 +213,9 @@ export function NewEnquiry() {
     [isNewCompany, custName, phone, email, data.customers],
   );
   // [Use this] — switch to the existing record, keeping what was typed.
-  const pickExistingCustomer = (name: string) => {
-    setCustName(name); setSiteId(''); setContactId('');
-    setCustomerTier(data.customers.find(c => c.name === name)?.tier || '');
+  const pickExistingCustomer = (c: Customer) => {
+    setCustName(c.name); setCustomerId(c.id); setSiteId(''); setContactId('');
+    setCustomerTier(c.tier || '');
     setErrors(prev => ({ ...prev, custName: '' }));
     markDirty();
   };
@@ -261,7 +265,21 @@ export function NewEnquiry() {
       // Store exact date as iso string for age calculation
       const isoDate = new Date(date).toISOString();
 
+      // Link by customer_id (also fills it on an old enquiry saved again).
+      // New enquiry for a company that is neither a customer nor a lead →
+      // first create a LEAD (never a Customer Master record) so its id can be
+      // saved on the enquiry. Editing an existing enquiry never creates anything.
+      let linkedCustomerId = pickedCustomer?.id;
+      if (!editId && !linkedCustomerId) {
+        linkedCustomerId = (await addCustomer({
+          ...buildLeadRecord(custName, data.customers, { name: contact, phone: normalizeIndianPhone(phone).value, email }),
+          createdBy: user?.email ?? undefined,
+          createdDate: new Date().toISOString(),
+        })).id;
+      }
+
       const enqData: Enquiry = {
+        customerId: linkedCustomerId,
         id: enqId,
 // ... rest of lines
 
@@ -294,17 +312,6 @@ export function NewEnquiry() {
         await addEnquiry(enqData);
       }
 
-      // New enquiry for a company that is neither a customer nor a lead →
-      // create a LEAD (never a Customer Master record). Editing an existing
-      // enquiry never creates anything.
-      if (!editId && !findCustomerByName(custName, data.customers)) {
-        await addCustomer({
-          ...buildLeadRecord(custName, data.customers, { name: contact, phone: normalizeIndianPhone(phone).value, email }),
-          createdBy: user?.email ?? undefined,
-          createdDate: new Date().toISOString(),
-        });
-      }
-
       setDirty(false);   // persisted — no longer unsaved
       await refreshData();
 
@@ -312,7 +319,7 @@ export function NewEnquiry() {
       // ("Add contact …? [Add] [Skip]") and waits for the answer.
       let contactFull = false;
       try {
-        const fullMsg = await contactSync.run(custName, contact, phone, email, `Enquiry ${enqId}`);
+        const fullMsg = await contactSync.run(custName, contact, phone, email, `Enquiry ${enqId}`, { customerId: pickedCustomer?.id, siteId });
         if (fullMsg) { setContactSyncMsg(fullMsg); contactFull = true; }
       } catch (e) { console.error('Contact sync failed:', e); }
 
@@ -379,9 +386,9 @@ export function NewEnquiry() {
                   <CustomerSearch
                     customers={data.customers}
                     value={custName}
-                    onChange={name => { setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({...errors, custName: ''}); const _cust = data.customers.find(c => c.name === name); setCustomerTier(_cust?.tier || ''); }}
+                    onChange={(name, picked) => { setCustName(name); setCustomerId(picked?.id ?? ''); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({...errors, custName: ''}); const _cust = picked; setCustomerTier(_cust?.tier || ''); }}
                     error={!!errors.custName}
-                    onCreateNew={editId ? undefined : name => { setCustName(name); setSiteId(''); setContactId(''); setCustomerTier(''); setErrors({ ...errors, custName: '' }); markDirty(); }}
+                    onCreateNew={editId ? undefined : name => { setCustName(name); setCustomerId(''); setSiteId(''); setContactId(''); setCustomerTier(''); setErrors({ ...errors, custName: '' }); markDirty(); }}
                   />
                   {isNewCompany && (
                     <div className="mt-1 text-[10px] font-medium text-lead-text">New company — will be saved as a Lead</div>
@@ -390,7 +397,7 @@ export function NewEnquiry() {
                 </div>
                 <div>
                   {(() => {
-                    const custSites = data.customers.find(c => c.name === custName)?.sites ?? [];
+                    const custSites = pickableSites(pickedCustomer?.sites, siteId);
                     const mustPick = custName && custSites.length > 1 && !siteId;
                     return (
                       <>
@@ -442,7 +449,7 @@ export function NewEnquiry() {
                   {similarCustomers.map(s => (
                     <div key={s.customer.id} className="flex items-center justify-between gap-3 text-[11.5px] text-amber-800 bg-amber-50 border border-amber-300 rounded-[3px] px-2.5 py-1.5">
                       <span>{s.message}</span>
-                      <button type="button" onClick={() => pickExistingCustomer(s.customer.name)}
+                      <button type="button" onClick={() => pickExistingCustomer(s.customer)}
                         className="shrink-0 font-bold text-[10.5px] uppercase tracking-wide text-amber-800 border border-amber-400 rounded-[3px] px-2 py-0.5 bg-white hover:bg-amber-100">
                         Use this
                       </button>
@@ -454,7 +461,7 @@ export function NewEnquiry() {
                 <div ref={contactRef} className="relative">
                   <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Contact Person</label>
                   {(() => {
-                    const siteContacts = ((data.customers.find(c => c.name === custName)?.sites ?? []).find(s => s.id === siteId)?.contacts ?? []) as any[];
+                    const siteContacts = ((pickedCustomer?.sites ?? []).find(s => s.id === siteId)?.contacts ?? []) as any[];
                     const filtered = siteContacts.filter(ct => !contact || ct.name.toLowerCase().includes(contact.toLowerCase()));
                     return (
                       <>
@@ -702,7 +709,7 @@ export function NewEnquiry() {
             {similarCustomers.map(s => (
               <div key={s.customer.id} className="flex items-center justify-between gap-3 text-[11.5px] text-amber-800 bg-amber-50 border border-amber-300 rounded-[3px] px-2.5 py-1.5">
                 <span>{s.message}</span>
-                <button type="button" onClick={() => { pickExistingCustomer(s.customer.name); setDupConfirm(null); }}
+                <button type="button" onClick={() => { pickExistingCustomer(s.customer); setDupConfirm(null); }}
                   className="shrink-0 font-bold text-[10.5px] uppercase tracking-wide text-amber-800 border border-amber-400 rounded-[3px] px-2 py-0.5 bg-white hover:bg-amber-100">
                   Use this
                 </button>

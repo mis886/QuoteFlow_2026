@@ -85,6 +85,9 @@ export interface Site {
   gstin?: string;
   pincode?: string;
   isPrimary?: boolean;
+  // Extra sites only (customer_sites.is_active). false = removed from the
+  // customer but still used by old documents — hidden from pickers and the form.
+  isActive?: boolean;
   contacts: Contact[];
 }
 
@@ -105,7 +108,8 @@ export interface Enquiry {
   id: string;
   recv: string;
   src: string;
-  cust: string;
+  cust: string;              // printed company-name snapshot
+  customerId?: string;       // customer_id — the customers row this belongs to (id first, name is the fallback)
   custEnqDocNo?: string;
   siteId?: string;
   contactId?: string;
@@ -137,6 +141,7 @@ export interface Quote {
   id: string;
   enqRef: string | null; // ON DELETE SET NULL if the enquiry it was raised from is deleted
   cust: string;
+  customerId?: string;        // customer_id — see Enquiry.customerId
   siteId?: string;
   contactId?: string;
   contact?: string;
@@ -204,6 +209,7 @@ export interface Order {
   quoteRef: string | null; // ON DELETE SET NULL if the source quotation is deleted
   enqRef: string | null;   // ON DELETE SET NULL if the source enquiry is deleted
   cust: string;
+  customerId?: string;     // customer_id — see Enquiry.customerId
   siteId?: string;
   contactId?: string;
   contact?: string;

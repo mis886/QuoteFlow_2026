@@ -9,7 +9,7 @@ import type {
   AppSettings, DataStore, FollowUp, FollowUpLog, Quote, DoerRole, BoardLane, GlobalDateRangeLike,
 } from './types';
 import { DEFAULT_STAGE_TAT_H, DEFAULT_STAGE_ROLE } from './types';
-import { siteLabel } from './utils';
+import { siteLabel, customerOfDoc } from './utils';
 
 // Shared/admin logins that keep a team_roster row (for the sales@ PIN gate,
 // signatory resolution, etc.) but are deliberately excluded from Doer KPI
@@ -198,8 +198,8 @@ export function computeDoerMetrics(
 
   // Resolve a customer + siteId to a human site/branch label, with a stable
   // fallback so unscoped quotes still group together (one "call" per site).
-  const siteOf = (cust: string, siteId: string | null | undefined): string => {
-    const c = data.customers.find(x => x.name === cust);
+  const siteOf = (doc: { cust: string; customerId?: string }, siteId: string | null | undefined): string => {
+    const c = customerOfDoc(doc, data.customers);
     return siteLabel(c, siteId) || 'Head Office / General';
   };
 
@@ -371,7 +371,7 @@ export function computeDoerMetrics(
           const raw = matchDoer(fu.owner, role);
           if (raw) raw.dueNextWeek.push({
             kind: 'followup', refId: fu.quote_id, cust: quote.cust,
-            siteId: quote.siteId ?? null, site: siteOf(quote.cust, quote.siteId),
+            siteId: quote.siteId ?? null, site: siteOf(quote, quote.siteId),
             label: `Follow-up ${quote.id} · ${quote.cust}`, dueDate: fu.next_date,
           });
         }
@@ -420,7 +420,7 @@ export function computeDoerMetrics(
     if (raw) {
       raw.dueNextWeek.push({
         kind: 'draft-quote', refId: q.id, cust: q.cust,
-        siteId: q.siteId ?? null, site: siteOf(q.cust, q.siteId),
+        siteId: q.siteId ?? null, site: siteOf(q, q.siteId),
         label: `Send quote ${q.id} · ${q.cust}`, dueDate: null,
       });
     }
@@ -557,8 +557,8 @@ export function buildDoerTimeline(
   const now = new Date();
   // Resolve a quote's customer + site to a human label; fallback keeps unscoped
   // quotes grouped together (one call per site).
-  const siteOf = (cust: string, siteId: string | null | undefined): string => {
-    const c = data.customers.find(x => x.name === cust);
+  const siteOf = (doc: { cust: string; customerId?: string }, siteId: string | null | undefined): string => {
+    const c = customerOfDoc(doc, data.customers);
     return siteLabel(c, siteId) || 'Head Office / General';
   };
 
@@ -601,7 +601,7 @@ export function buildDoerTimeline(
         refId: q.id,
         cust: q.cust,
         siteId: q.siteId ?? null,
-        site: siteOf(q.cust, q.siteId),
+        site: siteOf(q, q.siteId),
         onTime: wasSent ? onTime : null,
         lapH: wasSent ? lapH : null,
         kindLabel: wasSent ? 'Quote sent' : 'Draft',
@@ -646,7 +646,7 @@ export function buildDoerTimeline(
         refId: e.id,
         cust: e.cust,
         siteId: e.siteId ?? null,
-        site: siteOf(e.cust, e.siteId),
+        site: siteOf(e, e.siteId),
         onTime,
         lapH,
         kindLabel: 'Enquiry entry',
@@ -672,7 +672,7 @@ export function buildDoerTimeline(
         refId: o.quoteRef || o.id,
         cust: o.cust,
         siteId: o.siteId ?? null,
-        site: siteOf(o.cust, o.siteId),
+        site: siteOf(o, o.siteId),
         onTime: null,                                  // conversion has no SLA bar
         lapH,
         kindLabel: 'Order',
@@ -703,7 +703,7 @@ export function buildDoerTimeline(
         refId: o.id,
         cust: o.cust,
         siteId: o.siteId ?? null,
-        site: siteOf(o.cust, o.siteId),
+        site: siteOf(o, o.siteId),
         onTime: null,
         lapH: null,
         kindLabel: 'Order',
@@ -743,7 +743,7 @@ export function buildDoerTimeline(
         refId: quote.id,
         cust: quote.cust,
         siteId: quote.siteId ?? null,
-        site: siteOf(quote.cust, quote.siteId),
+        site: siteOf(quote, quote.siteId),
         onTime,
         note: log.note,
         nextSummary: nextSummaryOf({ date: log.nextDate, time: log.nextTime, channel: log.nextChannel, note: log.nextNote }),
@@ -770,7 +770,7 @@ export function buildDoerTimeline(
         refId: quote.id,
         cust: quote.cust,
         siteId: quote.siteId ?? null,
-        site: siteOf(quote.cust, quote.siteId),
+        site: siteOf(quote, quote.siteId),
         onTime: overdue ? false : null, // false = overdue, null = upcoming
         nextSummary: nextSummaryOf({ date: fu.next_date, time: fu.next_time }),
       });
@@ -797,7 +797,7 @@ export function buildDoerTimeline(
         refId: quote.id,
         cust: quote.cust,
         siteId: quote.siteId ?? null,
-        site: siteOf(quote.cust, quote.siteId),
+        site: siteOf(quote, quote.siteId),
         onTime: null,
         note: 'Owned — no activity logged yet',
       });
@@ -825,7 +825,7 @@ export function buildDoerTimeline(
         refId: quote.id,
         cust: quote.cust,
         siteId: quote.siteId ?? null,
-        site: siteOf(quote.cust, quote.siteId),
+        site: siteOf(quote, quote.siteId),
         onTime: null,
         note: `Closed ${fu.outcome} — no activity logged`,
       });

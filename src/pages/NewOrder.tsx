@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, leadForUnknownCompany, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
+import { generateId, customerOfDoc, findCustomerByName, pickableSites, leadForUnknownCompany, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -103,6 +103,10 @@ export function NewOrder() {
   const [contactOpen, setContactOpen] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
   const [custName, setCustName] = useState(custParam ?? '');
+  // customer_id of the picked customer / lead ('' = not linked yet). The
+  // customer is resolved by this id first, then by name (old documents).
+  const [customerId, setCustomerId] = useState('');
+  const pickedCustomer = customerOfDoc({ cust: custName, customerId }, data.customers);
   const [siteId, setSiteId] = useState('');
   const [contactId, setContactId] = useState('');
   // Auto-derived from resolvedSignatory for a new order, or hydrated
@@ -208,10 +212,10 @@ export function NewOrder() {
         if (o.inco) { const _n = normalizeInco(o.inco); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : o.inco); }
         setCurr(o.curr || 'INR');
         if (o.pay) setPay(o.pay);
-        setCustName(o.cust); setAuthName(o.authorizedPerson?.name || '');
+        setCustName(o.cust); setCustomerId(o.customerId ?? ''); setAuthName(o.authorizedPerson?.name || '');
         setAuthDesignation(o.authorizedPerson?.designation || ''); setAuthPhone(o.authorizedPerson?.phone || '');
         setCustomerTier(o.customerTier || '');
-        if (!o.customerTier && o.cust) { const _oc = data.customers.find(x => x.name === o.cust); if (_oc?.tier) setCustomerTier(_oc.tier); }
+        if (!o.customerTier && o.cust) { const _oc = customerOfDoc(o, data.customers); if (_oc?.tier) setCustomerTier(_oc.tier); }
         setOrderStatus(o.status as OrderStatus); setCustomTerms(parseQuoteTerms(o.terms)); setItems(o.items);
         setInsurance(o.insurance ?? 0);
         setReceivedAmount(o.receivedAmount ?? 0);
@@ -250,10 +254,10 @@ export function NewOrder() {
         setLinkedQuoteRef(q.id);
         if (q.enqRef) setLinkedEnqRef(q.enqRef);
         setOrderId(generateId('ORD', data.orders.map(o => o.id)));
-        setCustName(q.cust);
+        setCustName(q.cust); setCustomerId(q.customerId ?? '');
         if (q.siteId) {
           setSiteId(q.siteId);
-          const qCust = data.customers.find(c => c.name === q.cust);
+          const qCust = customerOfDoc(q, data.customers);
           const qSite = (qCust?.sites ?? []).find((s: any) => s.id === q.siteId);
           if (qSite) setShipAddr((qSite as any).dispatchAddress || (qSite as any).fullAddress || qSite.address || '');
         }
@@ -274,7 +278,7 @@ export function NewOrder() {
         if (q.pay) setPay(q.pay);
         setItems(getCurrentQuoteItems(q.items, q.negotiations).map(i => ({ ...i, agreedRate: i.unitPrice })));
         setInsurance(q.insurance ?? 0);
-        setCustomerTier(q.customerTier || data.customers.find(c => c.name === q.cust)?.tier || '');
+        setCustomerTier(q.customerTier || customerOfDoc(q, data.customers)?.tier || '');
       }
     } else {
       hydratedKey.current = key;
@@ -286,7 +290,7 @@ export function NewOrder() {
   // Cascading customer → site → contact auto-fill
   useEffect(() => {
     if (!custName) return;
-    const customer = data.customers.find(c => c.name === custName);
+    const customer = pickedCustomer;
     if (!customer) return;
     if (!editOrderId) {
       const ci = customer.inco || '';
@@ -316,7 +320,7 @@ export function NewOrder() {
         autoTransporterRef.current = derivedTransporter;
       }
     }
-    const sites = customer.sites ?? [];
+    const sites = pickableSites(customer.sites, siteId);
     if (siteId) {
       const site = sites.find((s: any) => s.id === siteId);
       if (site) {
@@ -512,6 +516,15 @@ export function NewOrder() {
       } catch { /* use local name as fallback */ }
     }
     const orderPayload: Order = { ...buildOrderData(), poFileName: finalPoFileName };
+    // Link by customer_id (also fills it on an old order saved again). A NEW
+    // order for a company that isn't a customer or a lead (and doesn't look
+    // like one) first creates a LEAD — never a Customer Master record — so
+    // its id can be saved on the order.
+    orderPayload.customerId = pickedCustomer?.id;
+    if (!editOrderId && !orderPayload.customerId) {
+      const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email });
+      if (lead) orderPayload.customerId = (await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() })).id;
+    }
     if (editOrderId) {
       // Status lock (order sent to Dispatch): non-admins can't change it (the
       // dropdown is disabled; keep the saved status just in case). Admins
@@ -534,10 +547,6 @@ export function NewOrder() {
         // Converting to an order wins the quote → close its follow-up process.
         try { await closeFollowUp(quoteRef, 'Won'); } catch { /* no follow-up row — ignore */ }
       }
-      // NEW order for a company that isn't a customer or a lead (and doesn't
-      // look like one) → create a LEAD, never a Customer Master record.
-      const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email });
-      if (lead) await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
     }
     return orderPayload;
   };
@@ -545,7 +554,7 @@ export function NewOrder() {
   // Run contact sync after save — silently for cases 1/2, brief toast for case 3.
   const doContactSync = async (): Promise<boolean> => {
     try {
-      const fullMsg = await contactSync.run(custName, contact, phone, email, `Order ${editOrderId || orderId}`);
+      const fullMsg = await contactSync.run(custName, contact, phone, email, `Order ${editOrderId || orderId}`, { customerId: pickedCustomer?.id, siteId });
       if (fullMsg) { setContactSyncMsg(fullMsg); return true; }
     } catch (e) { console.error('Contact sync failed:', e); }
     return false;
@@ -581,7 +590,7 @@ export function NewOrder() {
       const qt = quoteRef ? data.quotes.find(q => q.id === quoteRef) : undefined;
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
       const sig = data.signatories.find((s: any) => s.is_default);
-      await generateOrderPDF(payload, qt, data.customers.find(c => c.name === custName), data.settings, sig, unit, true);
+      await generateOrderPDF(payload, qt, pickedCustomer, data.settings, sig, unit, true);
     } catch (err) {
       setErrors({ global: `Failed to generate PI: ${(err as any)?.message || 'Check connection'}` });
     } finally { setIsSaving(false); }
@@ -599,7 +608,7 @@ export function NewOrder() {
       const bank = bankAccountId ? data.bankAccounts.find(b => b.id === bankAccountId)
         : data.bankAccounts.find(b => b.unit_id === unit?.id && b.is_default);
       const sig = data.signatories.find((s: any) => s.is_default);
-      await downloadPIDOCX(payload, qt, data.customers.find(c => c.name === custName), data.settings, sig, unit, bank);
+      await downloadPIDOCX(payload, qt, pickedCustomer, data.settings, sig, unit, bank);
     } catch (err) {
       setErrors({ global: `Failed to generate DOCX: ${(err as any)?.message || 'Check connection'}` });
     } finally { setIsSaving(false); }
@@ -627,7 +636,7 @@ export function NewOrder() {
     </div>
   );
 
-  const customer = data.customers.find(c => c.name === custName);
+  const customer = pickedCustomer;
   const relatedQuote = quoteRef ? data.quotes.find(q => q.id === quoteRef) : undefined;
 
   if (dupOrderAlert) {
@@ -827,11 +836,11 @@ export function NewOrder() {
                     <CustomerSearch
                       customers={data.customers}
                       value={custName}
-                      onChange={name => {
-                        setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({ ...errors, custName: '' });
+                      onChange={(name, picked) => {
+                        setCustName(name); setCustomerId(picked?.id ?? ''); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({ ...errors, custName: '' });
                         // Auto-fill primary site and primary named contact immediately (mirrors enquiry→quote hydration)
                         if (name) {
-                          const cust = data.customers.find(c => c.name === name);
+                          const cust = picked;
                           setCustomerTier(cust?.tier || '');
                           if (cust) {
                             const sites = (cust.sites ?? []) as any[];
@@ -857,7 +866,7 @@ export function NewOrder() {
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Unit</label>
                     <select value={siteId} onChange={e => { setSiteId(e.target.value); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); }} disabled={!custName} className={selectCls + ' disabled:bg-g50 disabled:cursor-not-allowed'}>
                       <option value="">Select Unit...</option>
-                      {(data.customers.find(c => c.name === custName)?.sites ?? []).map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` (${s.city})` : ''}</option>)}
+                      {pickableSites(pickedCustomer?.sites, siteId).map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` (${s.city})` : ''}</option>)}
                     </select>
                   </div>
                   {(() => {
@@ -889,7 +898,7 @@ export function NewOrder() {
                   <div ref={contactRef} className="relative">
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Contact Person</label>
                     {(() => {
-                      const siteContacts = ((data.customers.find(c => c.name === custName)?.sites ?? []).find((s: any) => s.id === siteId)?.contacts ?? []) as any[];
+                      const siteContacts = ((pickedCustomer?.sites ?? []).find((s: any) => s.id === siteId)?.contacts ?? []) as any[];
                       const filtered = siteContacts.filter((ct: any) => !contact || ct.name.toLowerCase().includes(contact.toLowerCase()));
                       return (
                         <>

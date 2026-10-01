@@ -5,8 +5,8 @@ import { ArrowLeft, ArrowUp, CheckCircle2, Loader2, Plus, Search, Upload, X } fr
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { Customer } from '../lib/types';
-import { formatINR, isLead, LEAD_PROMOTE_THRESHOLD, LEAD_EXCLUDED_ORDER_STATUSES, normalizeSearchText, nameTier, canDeleteRecords } from '../lib/utils';
+import { Customer, Enquiry, Order } from '../lib/types';
+import { formatINR, isLead, groupDocsByCustomer, isDocOfCustomer, LEAD_PROMOTE_THRESHOLD, LEAD_EXCLUDED_ORDER_STATUSES, normalizeSearchText, nameTier, canDeleteRecords } from '../lib/utils';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
 import { CustomerPanel, InitialAvatar, TierBadge, getPrimaryContact, importCustomerCsvRows } from './Customers';
 
@@ -53,27 +53,26 @@ export function CustomerLeads() {
 
   const leads: Customer[] = useMemo(() => data.customers.filter((c: Customer) => isLead(c)), [data.customers]);
 
-  // Enquiry / order counts and total order value per company name.
-  const statsByName = useMemo(() => {
+  // Enquiry / order counts and total order value per lead. Documents are
+  // matched by customer_id first; only a document without one falls back to
+  // the company name (trimmed, case-insensitive).
+  const statsById = useMemo(() => {
     const m = new Map<string, LeadStats>();
-    const get = (name: string) => {
-      let s = m.get(name);
-      if (!s) { s = { enquiries: 0, orders: 0, countedOrders: 0, orderValue: 0 }; m.set(name, s); }
-      return s;
-    };
-    const leadNames = new Set(leads.map(l => l.name));
-    for (const e of data.enquiries) if (leadNames.has(e.cust)) get(e.cust).enquiries++;
-    for (const o of data.orders) {
-      if (!leadNames.has(o.cust)) continue;
-      const s = get(o.cust);
-      s.orders++;
-      if (LEAD_EXCLUDED_ORDER_STATUSES.includes(o.status)) continue;
-      s.countedOrders++;
-      s.orderValue += Number(o.value) || 0;
+    const enqsBy = groupDocsByCustomer(data.enquiries as Enquiry[], leads);
+    const ordersBy = groupDocsByCustomer(data.orders as Order[], leads);
+    for (const l of leads) {
+      const s: LeadStats = { enquiries: (enqsBy.get(l.id) ?? []).length, orders: 0, countedOrders: 0, orderValue: 0 };
+      for (const o of ordersBy.get(l.id) ?? []) {
+        s.orders++;
+        if (LEAD_EXCLUDED_ORDER_STATUSES.includes(o.status)) continue;
+        s.countedOrders++;
+        s.orderValue += Number(o.value) || 0;
+      }
+      m.set(l.id, s);
     }
     return m;
   }, [leads, data.enquiries, data.orders]);
-  const statsFor = (c: Customer): LeadStats => statsByName.get(c.name) ?? { enquiries: 0, orders: 0, countedOrders: 0, orderValue: 0 };
+  const statsFor = (c: Customer): LeadStats => statsById.get(c.id) ?? { enquiries: 0, orders: 0, countedOrders: 0, orderValue: 0 };
 
   const states = Array.from(new Set(leads.map(l => l.sites?.[0]?.state?.trim()).filter(Boolean) as string[])).sort();
   const crms = Array.from(new Set(leads.map(l => l.crm).filter(Boolean) as string[])).sort();
@@ -124,11 +123,11 @@ export function CustomerLeads() {
   // Delete (admins only): deleteLead removes the row ONLY if it's still a
   // lead, throws on any failure (FK / permission / nothing deleted) and logs
   // to activity_log like a customer delete. Linked enquiries / quotes /
-  // orders (matched by company name) are left as they are.
+  // orders are left as they are.
   const linkedCounts = (c: Customer) => ({
-    enquiries: data.enquiries.filter((e: any) => e.cust === c.name).length,
-    quotes: data.quotes.filter((q: any) => q.cust === c.name).length,
-    orders: data.orders.filter((o: any) => o.cust === c.name).length,
+    enquiries: data.enquiries.filter((e: any) => isDocOfCustomer(e, c)).length,
+    quotes: data.quotes.filter((q: any) => isDocOfCustomer(q, c)).length,
+    orders: data.orders.filter((o: any) => isDocOfCustomer(o, c)).length,
   });
   const handleDelete = async () => {
     if (!deleteTarget || !canDelete) return;

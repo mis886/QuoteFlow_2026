@@ -20,6 +20,7 @@ interface Sample {
   enq_ref?: string | null;
   quote_ref?: string | null;
   cust: string;
+  customer_id?: string | null;   // customers row this sample belongs to (id first, cust name is the fallback)
   product_name: string;
   product_grade?: string | null;
   quantity: number;

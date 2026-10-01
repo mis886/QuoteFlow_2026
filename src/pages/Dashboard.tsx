@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store';
-import { formatINR, cn, getThisWeekRange, localDateStr, siteLabel, fmtIST } from '../lib/utils';
+import { customerOfDoc, formatINR, cn, getThisWeekRange, localDateStr, siteLabel, fmtIST } from '../lib/utils';
 import { Badge, Button } from '../components/ui';
 import { DailySnapshot } from '../components/DailySnapshot';
 import { useNavigate } from 'react-router-dom';
@@ -537,7 +537,7 @@ export function Dashboard() {
       // Skip orphaned follow-ups (quote_id nulled after its quote was
       // deleted) — nothing to show/open for them.
       if (!quote) return;
-      const cust = data.customers.find(c => c.name === quote.cust);
+      const cust = customerOfDoc(quote, data.customers);
       const site = cust?.sites.find(s => s.isPrimary) ?? cust?.sites[0];
       const contact = site?.contacts.find(ct => ct.isPrimary) ?? site?.contacts[0];
       const contactLine = contact
@@ -1171,7 +1171,7 @@ export function Dashboard() {
                             </div>
                             <div>
                               <div className={`font-mono text-[10px] font-bold tracking-wider mb-0.5 ${ageCls}`}>{e.id}</div>
-                              <div className="text-[13px] font-bold text-blk">{e.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === e.cust), e.siteId); return sl ? <span className="font-normal text-g400"> — {sl}</span> : null; })()}</div>
+                              <div className="text-[13px] font-bold text-blk">{e.cust}{(() => { const sl = siteLabel(customerOfDoc(e, data.customers), e.siteId); return sl ? <span className="font-normal text-g400"> — {sl}</span> : null; })()}</div>
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
@@ -1281,7 +1281,7 @@ export function Dashboard() {
                     <div key={e.id} className="flex items-center p-[9px_16px] border-b border-g100 last:border-0 cursor-pointer hover:bg-g50 transition-colors overflow-hidden" onClick={() => openDetailPanel('enquiry', e.id)}>
                       <div className="w-[120px] font-mono text-[11px] font-bold text-red-mrt shrink-0 tracking-wider truncate pr-2">{e.id}</div>
                       <div className="flex-1 min-w-0 pr-3">
-                        <div className="font-bold text-[13px] truncate">{e.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === e.cust), e.siteId); return sl ? <span className="font-normal text-g400"> — {sl}</span> : null; })()}</div>
+                        <div className="font-bold text-[13px] truncate">{e.cust}{(() => { const sl = siteLabel(customerOfDoc(e, data.customers), e.siteId); return sl ? <span className="font-normal text-g400"> — {sl}</span> : null; })()}</div>
                       </div>
                       <div className="flex items-center justify-end shrink-0 w-[190px] gap-2.5">
                         <span className="font-mono text-[10px] text-g400 bg-g50">{e.items.length} items</span>
@@ -1321,7 +1321,7 @@ export function Dashboard() {
                         <div key={q.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] gap-x-3 items-center px-[16px] py-[8px] border-b border-g100 last:border-0 hover:bg-g50 cursor-pointer transition-colors" onClick={() => openDetailPanel('quote', q.id)}>
                           <div className="font-mono text-[10.5px] font-bold text-red-mrt truncate">{q.id}</div>
                           <div className="min-w-0">
-                            <div className="text-[12px] font-medium text-blk truncate">{q.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === q.cust), (q as any).siteId); return sl ? <span className="font-normal text-g400"> — {sl}</span> : null; })()}</div>
+                            <div className="text-[12px] font-medium text-blk truncate">{q.cust}{(() => { const sl = siteLabel(customerOfDoc(q, data.customers), (q as any).siteId); return sl ? <span className="font-normal text-g400"> — {sl}</span> : null; })()}</div>
                           </div>
                           <div className="font-mono text-[11px] font-bold text-blk text-right whitespace-nowrap">{formatINR(val)}</div>
                           <div className="font-mono text-[10px] text-g400 text-right whitespace-nowrap">{new Date(q.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</div>

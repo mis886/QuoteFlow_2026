@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { parseISO, isToday } from 'date-fns';
 import { useAppStore } from '../store';
-import { cn, fmtIST, tatHealth, fmtElapsed, type TatHealth, siteLabel, isInDateRange } from '../lib/utils';
+import { customerOfDoc, cn, fmtIST, tatHealth, fmtElapsed, type TatHealth, siteLabel, isInDateRange } from '../lib/utils';
 import { generateQuotePDF, generatePIPDF } from '../lib/pdfGenerator';
 import {
   BOARD_LANES,
@@ -125,8 +125,8 @@ export default function PipelineBoard({
 
   // Resolve the site/branch name for a customer + explicit siteId, falling
   // back to the customer's primary/first site (PROCESS_MAP §6.4).
-  const siteNameFor = (custName: string, siteId?: string): string | undefined => {
-    const cust = data.customers.find(c => c.name === custName);
+  const siteNameFor = (doc: { cust: string; customerId?: string }, siteId?: string): string | undefined => {
+    const cust = customerOfDoc(doc, data.customers);
     const label = siteLabel(cust, siteId);
     return label || undefined;
   };
@@ -159,7 +159,7 @@ export default function PipelineBoard({
         key: `enq:${enq.id}`,
         lane, kind: 'enquiry',
         cust: enq.cust,
-        site: siteNameFor(enq.cust, enq.siteId),
+        site: siteNameFor(enq, enq.siteId),
         title: enq.id,
         subtitle: `${enq.urg} · ${enq.src || 'RFQ'}`,
         value: 0,
@@ -193,7 +193,7 @@ export default function PipelineBoard({
         key: `q:${quote.id}`,
         lane, kind: 'quote',
         cust: quote.cust,
-        site: siteNameFor(quote.cust, quote.siteId || data.enquiries.find(e => e.id === quote.enqRef)?.siteId),
+        site: siteNameFor(quote, quote.siteId || data.enquiries.find(e => e.id === quote.enqRef)?.siteId),
         title: quote.id,
         subtitle: `Ref: ${quote.enqRef || '—'}`,
         value: quote.items.reduce((a, i) => a + i.total, 0),
@@ -498,7 +498,7 @@ function CardDrawer({ card, onClose, onCreateQuote }: { card: BoardCard; onClose
   const handleQuotePDF = () => {
     const q = card.quote;
     if (!q) return;
-    const c = data.customers.find(x => x.name === q.cust);
+    const c = customerOfDoc(q, data.customers);
     const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
     const sig = data.signatories.find(s => s.is_default);
     generateQuotePDF(q, c, data.settings, sig, true, unit);
@@ -507,7 +507,7 @@ function CardDrawer({ card, onClose, onCreateQuote }: { card: BoardCard; onClose
   const handlePIPDF = () => {
     const q = card.quote;
     if (!q || !order) return;
-    const c = data.customers.find(x => x.name === order.cust);
+    const c = customerOfDoc(order, data.customers);
     const unit = order.unitId ? data.units.find(u => u.id === order.unitId) : data.units.find(u => u.is_default);
     const bank = order.bankAccountId
       ? data.bankAccounts.find(b => b.id === order.bankAccountId)
@@ -516,7 +516,7 @@ function CardDrawer({ card, onClose, onCreateQuote }: { card: BoardCard; onClose
     generatePIPDF(order, q, c, data.settings, sig, true, unit, bank);
   };
 
-  const cust = data.customers.find(c => c.name === card.cust);
+  const cust = customerOfDoc(card, data.customers);
   const siteId = isEnquiry ? card.enquiry?.siteId : (card.quote?.siteId || data.enquiries.find(e => e.id === card.quote?.enqRef)?.siteId);
   const site = (siteId && cust?.sites.find(s => s.id === siteId)) || cust?.sites.find(s => s.isPrimary) || cust?.sites?.[0];
   const contacts = site?.contacts ?? [];

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, List, Columns3, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
-import { canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
+import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, OrderItem, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 import { buildBoard, mapStepFromDB, stepDef, lastStepClick, describeStepClick,BoardCard, BoardOrderCard, DispatchStepRecord, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
 import { DispatchBoard, AutoTag, StepActionButtons } from '../components/DispatchBoard';
@@ -345,7 +345,7 @@ export function Dispatch() {
   // pattern, else "Not Set".
   const orderFulfillment = (o: Order): SubType => {
     if (o.fulfillmentType === 'delivery' || o.fulfillmentType === 'self_pickup') return o.fulfillmentType;
-    const cf = data.customers.find(c => c.name === o.cust)?.fulfilmentType;
+    const cf = customerOfDoc(o, data.customers)?.fulfilmentType;
     if (cf === 'Delivery') return 'delivery';
     if (cf === 'Self Pickup') return 'self_pickup';
     return 'not_set';
@@ -623,7 +623,7 @@ export function Dispatch() {
                     const itemGst = o.items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
                     const grandTotal = resolveAdjustments(o.adjustments, subTotal, itemGst, maxItemGstRate(o.items)).grand;
                     const isExpanded = expandedRow === o.id;
-                    const sl = siteLabel(data.customers.find(c => c.name === o.cust), o.siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId);
+                    const sl = siteLabel(customerOfDoc(o, data.customers), o.siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId);
                     return (
                       <React.Fragment key={o.id}>
                         <tr

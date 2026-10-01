@@ -4,7 +4,7 @@ import { Upload, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { uploadPublicFile } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { localDateStr } from '../lib/utils';
+import { localDateStr, customerOfDoc } from '../lib/utils';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
@@ -78,6 +78,9 @@ export function SamplingNew() {
   const [existingPodUrl, setExistingPodUrl] = useState<string | null>(null);
   const [cost,           setCost]           = useState('');
   const [cust,           setCust]           = useState(() => (editId ? '' : (searchParams.get('cust') ?? '')));
+  // customer_id of the picked customer / lead ('' = resolve on save from the
+  // linked enquiry / quote, else by company name).
+  const [sampleCustomerId, setSampleCustomerId] = useState('');
   const [linkedRef,      setLinkedRef]      = useState(() => (editId ? '' : (searchParams.get('enqRef') ?? searchParams.get('quoteRef') ?? '')));
   const [sentBy,         setSentBy]         = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
@@ -119,6 +122,7 @@ export function SamplingNew() {
       setOriginalProductRows(productRows ?? []);
 
       setCust(row.cust ?? '');
+      setSampleCustomerId(row.customer_id ?? '');
       setLinkedRef(row.quote_ref ?? row.enq_ref ?? '');
       setSentBy(row.sent_by ?? '');
       setNotes(row.notes ?? '');
@@ -225,8 +229,10 @@ export function SamplingNew() {
     const first = savedProductRows[0];
 
     // Legacy-compat columns on samples: mirror first product's values
+    const linkedDoc = data.quotes.find(q => q.id === linkedRef) ?? data.enquiries.find(e => e.id === linkedRef);
     const commonFields = {
       cust:            cust.trim(),
+      customer_id:     customerOfDoc({ cust, customerId: sampleCustomerId || linkedDoc?.customerId }, data.customers)?.id ?? null,
       quote_ref:       (ref && isQt)  ? ref : null,
       enq_ref:         (ref && !isQt) ? ref : null,
       product_name:    first?.product_name ?? null,
@@ -466,7 +472,7 @@ export function SamplingNew() {
                   <CustomerSearch
                     customers={data.customers}
                     value={cust}
-                    onChange={name => { setCust(name); setErrors(e => ({ ...e, cust: '' })); }}
+                    onChange={(name, picked) => { setCust(name); setSampleCustomerId(picked?.id ?? ''); setErrors(e => ({ ...e, cust: '' })); }}
                     error={!!errors.cust}
                   />
                   {errors.cust && <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.cust}</div>}

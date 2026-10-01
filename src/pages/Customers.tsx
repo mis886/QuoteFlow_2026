@@ -6,7 +6,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Customer, Contact, CustomerTier, CustomerStatus, FollowUpLog } from '../lib/types';
-import { formatINR, fmtIST, generateId, canDeleteRecords, nameTier, normalizeSearchText, isLead } from '../lib/utils';
+import { formatINR, fmtIST, generateId, groupDocsByCustomer, isDocOfCustomer, canDeleteRecords, nameTier, normalizeSearchText, isLead } from '../lib/utils';
 import { parseISO } from 'date-fns';
 import Papa from 'papaparse';
 
@@ -176,7 +176,7 @@ interface SiteFix {
 function detectAllFixes(customers: Customer[]): SiteFix[] {
   const fixes: SiteFix[] = [];
   for (const c of customers) {
-    for (const s of c.sites ?? []) {
+    for (const s of (c.sites ?? []).slice(0, 1)) {   // Main Office only — extra sites are edited in the customer form
       const raw = s.fullAddress || s.address || '';
       if (!raw || !hasMixedContent(raw)) continue;
       fixes.push({
@@ -266,7 +266,7 @@ export function CustomerPanel({ customer, onClose }: { customer: Customer; onClo
   const navigate = useNavigate();
 
   // Gather all follow-up logs for quotes belonging to this customer
-  const customerQuotes = data.quotes.filter(q => q.cust === customer.name);
+  const customerQuotes = data.quotes.filter(q => isDocOfCustomer(q, customer));
   const quoteIds = new Set(customerQuotes.map(q => q.id));
   const allLogs: (FollowUpLog & { quoteId: string })[] = data.followups
     .filter(f => quoteIds.has(f.quote_id))
@@ -669,7 +669,7 @@ function sortValue(c: Customer, key: SortKey): string | number {
 // status 'lead' they're saved as Customer Leads (LEAD-… ids).
 export async function importCustomerCsvRows(
   rows: Record<string, string>[],
-  opts: { customers: Customer[]; addCustomer: (c: Customer) => Promise<void>; status: CustomerStatus },
+  opts: { customers: Customer[]; addCustomer: (c: Customer) => Promise<unknown>; status: CustomerStatus },
 ): Promise<{ imported: number; skipped: number }> {
   // Flexible column accessor — case-insensitive, trimmed, first match wins
   const col = (row: Record<string, string>, ...keys: string[]): string => {
@@ -872,9 +872,9 @@ export function Customers() {
   useEffect(() => { setSearchQuery(globalSearchQuery); }, [globalSearchQuery]);
 
   const handleDeleteCustomer = async (c: Customer) => {
-    const enqCount   = data.enquiries.filter((e: any) => e.cust === c.name).length;
-    const quoteCount = data.quotes.filter((q: any)    => q.cust === c.name).length;
-    const orderCount = data.orders.filter((o: any)    => o.cust === c.name).length;
+    const enqCount   = data.enquiries.filter((e: any) => isDocOfCustomer(e, c)).length;
+    const quoteCount = data.quotes.filter((q: any) => isDocOfCustomer(q, c)).length;
+    const orderCount = data.orders.filter((o: any) => isDocOfCustomer(o, c)).length;
     const linkedParts: string[] = [];
     if (enqCount   > 0) linkedParts.push(`${enqCount} enquir${enqCount === 1 ? 'y' : 'ies'}`);
     if (quoteCount > 0) linkedParts.push(`${quoteCount} quote${quoteCount === 1 ? '' : 's'}`);
@@ -923,16 +923,11 @@ export function Customers() {
 
   // Clean-up tools (admins only — canDeleteRecords). Quotes / orders link to a
   // customer by company NAME (trimmed, case-insensitive), like the rest of the app.
-  const nameKey = (s: string | undefined | null) => (s ?? '').trim().toLowerCase();
-  const countByName = (rows: { cust: string }[]) => {
-    const m = new Map<string, number>();
-    for (const r of rows) m.set(nameKey(r.cust), (m.get(nameKey(r.cust)) ?? 0) + 1);
-    return m;
-  };
-  const quotesByName = countByName(data.quotes);
-  const ordersByName = countByName(data.orders);
-  const quoteCountOf = (c: Customer) => quotesByName.get(nameKey(c.name)) ?? 0;
-  const orderCountOf = (c: Customer) => ordersByName.get(nameKey(c.name)) ?? 0;
+  // (customer_id first; the name is only the fallback for documents without one.)
+  const quotesByCustomer = groupDocsByCustomer(data.quotes as { cust: string; customerId?: string }[], masters);
+  const ordersByCustomer = groupDocsByCustomer(data.orders as { cust: string; customerId?: string }[], masters);
+  const quoteCountOf = (c: Customer) => (quotesByCustomer.get(c.id) ?? []).length;
+  const orderCountOf = (c: Customer) => (ordersByCustomer.get(c.id) ?? []).length;
   const hasNoActivity = (c: Customer) => quoteCountOf(c) === 0 && orderCountOf(c) === 0;
   const noActivityCount = masters.filter(hasNoActivity).length;
 

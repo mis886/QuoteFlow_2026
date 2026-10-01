@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Phone, Mail, MessageCircle, MapPin, Star, ChevronRight, ExternalLink, FileText, Paperclip } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Customer, Contact, CustomerTier, Quote, Order, Enquiry, FollowUpLog } from '../lib/types';
-import { formatINR, fmtIST, isLead } from '../lib/utils';
+import { customerOfDoc, groupDocsByCustomer, formatINR, fmtIST, isLead } from '../lib/utils';
 import { cn } from '../lib/utils';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { generateQuotePDF } from '../lib/pdfGenerator';
@@ -95,10 +95,15 @@ function useCustomerStats(customers: Customer[], allEnqs: Enquiry[], allQuotes: 
     const companyWon = allEnqs.filter(e => e.status === 'Won').length;
     const companyAvg = allEnqs.length ? Math.round(companyWon / allEnqs.length * 100) : 0;
 
+    // customer_id first, company name only for documents without one.
+    const enqsBy = groupDocsByCustomer(allEnqs, customers);
+    const quotesBy = groupDocsByCustomer(allQuotes, customers);
+    const ordersBy = groupDocsByCustomer(allOrders, customers);
+
     return customers.map(c => {
-      const enqs   = allEnqs.filter(e => e.cust === c.name);
-      const quotes = allQuotes.filter(q => q.cust === c.name);
-      const orders = allOrders.filter(o => o.cust === c.name);
+      const enqs   = enqsBy.get(c.id) ?? [];
+      const quotes = quotesBy.get(c.id) ?? [];
+      const orders = ordersBy.get(c.id) ?? [];
 
       const wonQ    = quotes.filter(q => q.status === 'Won');
       const winRate = enqs.length ? Math.round(wonQ.length / enqs.length * 100) : 0;
@@ -405,7 +410,7 @@ function CustomerDetail({ stats, allFollowups }: {
                                         type="button"
                                         title="Download Quote PDF"
                                         onClick={() => {
-                                          const cust = data.customers.find(x => x.name === q.cust);
+                                          const cust = customerOfDoc(q, data.customers);
                                           const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
                                           const sig = data.signatories.find((s: any) => s.is_default);
                                           generateQuotePDF(q, cust, data.settings, sig, true, unit);
@@ -758,7 +763,7 @@ function AllQuotationsView({
     }
     return Array.from(custMap.entries())
       .map(([cust, qs]) => {
-        const custRec = customers.find(c => c.name === cust);
+        const custRec = customerOfDoc(qs[0], customers);
         const siteMap = new Map<string, { siteKey: string; siteName: string; siteCity: string; quotes: Quote[] }>();
         for (const q of qs) {
           const site = q.siteId ? custRec?.sites?.find(s => s.id === q.siteId) : null;
@@ -952,7 +957,7 @@ function AllQuotationsView({
                                           type="button"
                                           title="Download Quote PDF"
                                           onClick={() => {
-                                            const cust2 = data.customers.find(x => x.name === q.cust);
+                                            const cust2 = customerOfDoc(q, data.customers);
                                             const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
                                             const sig = data.signatories.find((s: any) => s.is_default);
                                             generateQuotePDF(q, cust2, data.settings, sig, true, unit);

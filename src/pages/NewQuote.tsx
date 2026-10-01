@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, leadForUnknownCompany, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals, getCurrentQuoteItems } from '../lib/utils';
+import { generateId, customerOfDoc, isDocOfCustomer, findCustomerByName, pickableSites, leadForUnknownCompany, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals, getCurrentQuoteItems } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { QuoteItem, Quote, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
@@ -169,6 +169,10 @@ export function NewQuote() {
   const [date, setDate] = useState(localDateStr(new Date()));
   const [validity, setValidity] = useState(localDateStr(new Date(Date.now() + 86400000)));
   const [custName, setCustName] = useState('');
+  // customer_id of the picked customer / lead ('' = not linked yet). The
+  // customer is resolved by this id first, then by name (old documents).
+  const [customerId, setCustomerId] = useState('');
+  const pickedCustomer = customerOfDoc({ cust: custName, customerId }, data.customers);
   const [siteId, setSiteId] = useState('');
   const [contactId, setContactId] = useState('');
   const [contact, setContact] = useState('');
@@ -288,7 +292,7 @@ export function NewQuote() {
       if (q) {
         if (q.enqRef) setLinkedEnqRef(q.enqRef);
         setQuoteId(q.id); setDate(q.date); setValidity(q.validity || localDateStr(new Date(new Date(q.date + 'T00:00:00').getTime() + 86400000)));
-        setCustName(q.cust);
+        setCustName(q.cust); setCustomerId(q.customerId ?? '');
         const savedInco = q.inco || '';
         const _ni = normalizeInco(savedInco);
         setInco(_ni || 'OVERRIDE'); setCustomInco(_ni ? '' : savedInco);
@@ -303,7 +307,7 @@ export function NewQuote() {
         setItems(q.items);
         setInsurance(q.insurance ?? 0);
         setNotes(q.notes ?? []);
-        const c = data.customers.find(x => x.name === q.cust);
+        const c = customerOfDoc(q, data.customers);
         if (c) {
           if (!q.customerTier) setCustomerTier(c.tier || '');
           const ps = (q.siteId && (c.sites ?? []).find((s: any) => s.id === q.siteId))
@@ -323,13 +327,13 @@ export function NewQuote() {
       setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
       const enq = data.enquiries.find(e => e.id === enqRef);
       if (enq) {
-        setCustName(enq.cust); if (enq.siteId) setSiteId(enq.siteId); if (enq.contactId) setContactId(enq.contactId);
+        setCustName(enq.cust); setCustomerId(enq.customerId ?? ''); if (enq.siteId) setSiteId(enq.siteId); if (enq.contactId) setContactId(enq.contactId);
         setContact(enq.contact); setEmail(enq.email); setPhone(enq.phone || '');
         // Carry the customer's enquiry doc number forward (editable).
         if (enq.custEnqDocNo) setCustEnquiryDocNo(enq.custEnqDocNo);
         // If the enquiry had no contactId the details were typed manually — preserve them
         setContactManual(!enq.contactId && !!(enq.contact || enq.email));
-        const cr = data.customers.find(c => c.name === enq.cust);
+        const cr = customerOfDoc(enq, data.customers);
         if (cr) { const ci = cr.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(cr.curr || 'INR'); setPay(normalizePayTerms(cr.pay) || cr.pay); }
         setCustomerTier(enq.customerTier || cr?.tier || '');
         setItems(enq.items.map((i, idx) => ({ ...i, seq: idx + 1, hsn: i.hsn || '', unitPrice: 0, gst: 18, total: 0 })));
@@ -342,8 +346,8 @@ export function NewQuote() {
       setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
       setItems([{ seq: 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', priceBasis: 'Per kg', unitPrice: 0, gst: 18, total: 0 }]);
       if (custParam) {
-        setCustName(custParam);
-        const cr = data.customers.find(c => c.name === custParam);
+        setCustName(custParam); setCustomerId('');
+        const cr = findCustomerByName(custParam, data.customers);
         if (cr) {
           const ci = cr.inco || '';
           { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); }
@@ -374,10 +378,10 @@ export function NewQuote() {
   // Cascading customer → site → contact auto-fill
   useEffect(() => {
     if (!custName) return;
-    const customer = data.customers.find(c => c.name === custName);
+    const customer = pickedCustomer;
     if (!customer) return;
     if (!editId) { const ci = customer.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(customer.curr || 'INR'); setPay(normalizePayTerms(customer.pay) || customer.pay); if (!enqRef) setCustomerTier(customer.tier || ''); }
-    const sites = customer.sites ?? [];
+    const sites = pickableSites(customer.sites, siteId);
     if (siteId) {
       const site = sites.find(s => s.id === siteId);
       if (site) {
@@ -634,6 +638,15 @@ export function NewQuote() {
     if (!validateStep1()) { setStep(1); return null; }
     setErrors({});
     const qData = buildQuoteData(statusOverride);
+    // Link by customer_id (also fills it on an old quote saved again). A NEW
+    // quote for a company that isn't a customer or a lead (and doesn't look
+    // like one) first creates a LEAD — never a Customer Master record — so
+    // its id can be saved on the quote.
+    qData.customerId = pickedCustomer?.id;
+    if (!editId && !qData.customerId) {
+      const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email });
+      if (lead) qData.customerId = (await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() })).id;
+    }
     if (editId) {
       await updateQuote(editId, qData);
       // Re-establish the enquiry back-link if it was ever lost.
@@ -644,10 +657,6 @@ export function NewQuote() {
     } else {
       await addQuote(qData);
       if (qData.enqRef) await updateEnquiry(qData.enqRef, { status: 'Quoted', qRef: quoteId });
-      // NEW quote for a company that isn't a customer or a lead (and doesn't
-      // look like one) → create a LEAD, never a Customer Master record.
-      const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email });
-      if (lead) await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
     }
     return qData;
   };
@@ -656,7 +665,7 @@ export function NewQuote() {
   // Returns true if navigation should be delayed (case 3 shown).
   const doContactSync = async (): Promise<boolean> => {
     try {
-      const fullMsg = await contactSync.run(custName, contact, phone, email, `Quote ${editId || quoteId}`);
+      const fullMsg = await contactSync.run(custName, contact, phone, email, `Quote ${editId || quoteId}`, { customerId: pickedCustomer?.id, siteId });
       if (fullMsg) { setContactSyncMsg(fullMsg); return true; }
     } catch (e) { console.error('Contact sync failed:', e); }
     return false;
@@ -692,7 +701,7 @@ export function NewQuote() {
       await doContactSync();
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
       const sig = data.signatories.find((s: any) => s.is_default);
-      generateQuotePDF(qData, data.customers.find(c => c.name === custName), data.settings, sig, true, unit);
+      generateQuotePDF(qData, pickedCustomer, data.settings, sig, true, unit);
     } catch (e: any) {
       console.error('PDF generation failed:', e);
       setErrors({ global: `Failed to generate PDF: ${e?.message || e?.details || 'Unknown error — check browser console for details.'}` });
@@ -709,7 +718,7 @@ export function NewQuote() {
       await doContactSync();
       const unit = unitId ? data.units.find(u => u.id === unitId) : data.units.find(u => u.is_default);
       const sig = data.signatories.find((s: any) => s.is_default);
-      await downloadQuoteDOCX(qData, data.customers.find(c => c.name === custName), data.settings, sig, unit);
+      await downloadQuoteDOCX(qData, pickedCustomer, data.settings, sig, unit);
     } catch (e: any) {
       console.error('DOCX generation failed:', e);
       setErrors({ global: `Failed to generate DOCX: ${e?.message || e?.details || 'Unknown error — check browser console for details.'}` });
@@ -739,7 +748,7 @@ export function NewQuote() {
     </div>
   );
 
-  const customer = data.customers.find(c => c.name === custName);
+  const customer = pickedCustomer;
 
   if (dupQuoteAlert) {
     return (
@@ -879,10 +888,10 @@ export function NewQuote() {
                     <CustomerSearch
                       customers={data.customers}
                       value={custName}
-                      onChange={name => {
-                        setCustName(name); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({ ...errors, custName: '' });
+                      onChange={(name, picked) => {
+                        setCustName(name); setCustomerId(picked?.id ?? ''); setSiteId(''); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); setErrors({ ...errors, custName: '' });
                         if (name) {
-                          const cust = data.customers.find(c => c.name === name);
+                          const cust = picked;
                           setCustomerTier(cust?.tier || '');
                           if (cust) {
                             const sites = (cust.sites ?? []) as any[];
@@ -907,7 +916,7 @@ export function NewQuote() {
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Unit</label>
                     <select value={siteId} onChange={e => { setSiteId(e.target.value); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); }} disabled={!custName} className={selectCls + ' disabled:bg-g50 disabled:cursor-not-allowed'}>
                       <option value="">Select Unit...</option>
-                      {(data.customers.find(c => c.name === custName)?.sites ?? []).map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` (${s.city})` : ''}</option>)}
+                      {pickableSites(pickedCustomer?.sites, siteId).map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` (${s.city})` : ''}</option>)}
                     </select>
                   </div>
                   {(() => {
@@ -939,7 +948,7 @@ export function NewQuote() {
                   <div ref={contactRef} className="relative">
                     <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Contact Person</label>
                     {(() => {
-                      const siteContacts = ((data.customers.find(c => c.name === custName)?.sites ?? []).find((s: any) => s.id === siteId)?.contacts ?? []) as any[];
+                      const siteContacts = ((pickedCustomer?.sites ?? []).find((s: any) => s.id === siteId)?.contacts ?? []) as any[];
                       const filtered = siteContacts.filter((ct: any) => !contact || ct.name.toLowerCase().includes(contact.toLowerCase()));
                       return (
                         <>
@@ -1061,7 +1070,7 @@ export function NewQuote() {
 
               {/* Copy-from-quote panel */}
               {showCopyQuote && (() => {
-                const custQuotes = data.quotes.filter(q => q.cust === custName && q.items.length > 0);
+                const custQuotes = data.quotes.filter(q => (pickedCustomer ? isDocOfCustomer(q, pickedCustomer) : q.cust === custName) && q.items.length > 0);
                 const allQuotes = data.quotes.filter(q => q.items.length > 0);
                 const list = custQuotes.length > 0 ? custQuotes : allQuotes;
                 return (

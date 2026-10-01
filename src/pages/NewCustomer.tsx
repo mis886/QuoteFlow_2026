@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { Customer, Site, Contact, NextOrder } from '../lib/types';
-import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead } from '../lib/utils';
+import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead, activeSites, gstinFieldWarning, gstinState } from '../lib/utils';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { normalizeIndianPhone } from '../lib/phone';
 import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
@@ -180,7 +180,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
   const navigate = useNavigate();
-  const { data, user, addCustomer, updateCustomer } = useAppStore();
+  const { data, user, addCustomer, updateCustomer, saveCustomerSites } = useAppStore();
 
   // Promote mode (/customers/new?id=<LEAD-id>&promote=1, from the Customer
   // Lead page): the full customer form for a record that is STILL a lead.
@@ -263,7 +263,8 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         const loadedGstin = cust.gstin || '';
         setGstin(loadedGstin);
         setPan(cust.pan || (loadedGstin.length === 15 ? loadedGstin.substring(2, 12) : ''));
-        setSites(cust.sites || []);
+        // Main Office + active extra sites (cloned — the form edits them in place).
+        setSites(activeSites(cust.sites).map(s => ({ ...s, contacts: (s.contacts ?? []).map(ct => ({ ...ct })) })));
         setCreditLimit(cust.creditLimit != null ? String(cust.creditLimit) : '');
         setNextOrder1({ product: cust.nextOrder1?.product || '', qty: cust.nextOrder1?.qty || '', date: cust.nextOrder1?.date || '' });
         setNextOrder2({ product: cust.nextOrder2?.product || '', qty: cust.nextOrder2?.qty || '', date: cust.nextOrder2?.date || '' });
@@ -300,22 +301,26 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         setPay('100% Advance');
         setCreditLimit('0');
       } else {
-        setId(generateId('CUST', data.customers.map(c => c.id)));
-        setCode(generateId('CUS', data.customers.map(c => c.code)));
+        // The real id that will be saved (customer_id) — shown read-only.
+        const custId = generateId('CUST', data.customers.map(c => c.id));
+        setId(custId);
+        setCode(custId);
       }
     }
   }, [editId, data.customers]);
 
   const addSite = () => {
     setSites([...sites, {
-      id: 'S' + Date.now(), name: '', city: '',
+      id: 'SITE-' + Math.random().toString(36).slice(2, 10), name: '', city: '',
       contacts: [{ id: 'C' + Date.now(), name: '', role: '', email: '', isPrimary: false }]
     }]);
   };
   const updateSite = (sIdx: number, field: keyof Site, value: any) => {
     const s = [...sites]; (s[sIdx] as any)[field] = value; setSites(s);
   };
-  const removeSite = (sIdx: number) => setSites(sites.filter((_, i) => i !== sIdx));
+  // Main Office (the first card) can't be removed. A removed extra site is
+  // hidden instead of deleted on save if any document uses it (saveCustomerSites).
+  const removeSite = (sIdx: number) => { if (sIdx > 0) setSites(sites.filter((_, i) => i !== sIdx)); };
   const addContact = (sIdx: number) => {
     const s = [...sites];
     s[sIdx].contacts.push({ id: 'C' + Date.now(), name: '', role: '', email: '' });
@@ -411,10 +416,13 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   // Records still pointing at the loaded name (orders/enquiries/quotes link by
   // company NAME, not id). Only matters when an existing lead is renamed.
   const nameChanged = !!editId && !!originalName && name.trim() !== originalName.trim();
+  const sameName = (n: string | undefined) => (n ?? '').trim().toLowerCase() === originalName.trim().toLowerCase();
   const linkedToOldName = nameChanged ? {
-    enquiries: data.enquiries.filter(e => e.cust === originalName).length,
-    quotes: data.quotes.filter(q => q.cust === originalName).length,
-    orders: data.orders.filter(o => o.cust === originalName).length,
+    // Only documents WITHOUT a customer_id — those link by name and would be
+    // orphaned. Documents with an id stay linked after a rename.
+    enquiries: data.enquiries.filter(e => !e.customerId && sameName(e.cust)).length,
+    quotes: data.quotes.filter(q => !q.customerId && sameName(q.cust)).length,
+    orders: data.orders.filter(o => !o.customerId && sameName(o.cust)).length,
   } : { enquiries: 0, quotes: 0, orders: 0 };
   const hasLinkedToOldName = linkedToOldName.enquiries + linkedToOldName.quotes + linkedToOldName.orders > 0;
   const linkedSummary = [
@@ -448,6 +456,10 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
       if (!primaryContact?.name?.trim()) e.contactName = 'Contact person is required';
       if (!primaryContact?.phone?.trim()) e.contactPhone = 'Mobile is required';
     }
+    // Site GSTIN: blank, "URP" or a valid 15-character GSTIN. (A state that
+    // doesn't match the GSTIN's state code is only a warning.)
+    const badSite = sites.find(s => gstinFieldWarning(s.gstin, '') !== '');
+    if (badSite) e.save = `Site "${badSite.name || 'unnamed'}": GSTIN is not valid — leave it blank or enter URP.`;
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -465,8 +477,11 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     // use the old name → confirm first.
     if ((isLeadMode || isPromote) && hasLinkedToOldName && !renameConfirmOpen) { setRenameConfirmOpen(true); return; }
     setRenameConfirmOpen(false);
-    const normalizedSites = sites.map(site => ({
+    const normalizedSites = sites.map((site, idx) => ({
       ...site,
+      // Extra sites are customer_sites rows (SITE-… ids); Main Office is S1.
+      id: idx > 0 && !site.id.startsWith('SITE-') ? 'SITE-' + Math.random().toString(36).slice(2, 10) : site.id,
+      gstin: (site.gstin ?? '').replace(/\s+/g, '').toUpperCase(),
       contacts: site.contacts.map(ct => ({
         ...ct,
         phone: ct.phone ? normalizeIndianPhone(ct.phone).value : ct.phone,
@@ -497,6 +512,17 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
           crossSellOpportunities: crossSellOpportunities.trim() || undefined,
           notes: notes.trim() || undefined,
         };
+    // Main Office → the customers row (add / updateCustomer); every extra site
+    // → customer_sites (saveCustomerSites), keyed by the id actually saved.
+    const saveRecord = async () => {
+      if (editId) {
+        await updateCustomer(editId, { ...cust, modifiedBy: user?.email ?? undefined, modifiedDate: new Date().toISOString() });
+        await saveCustomerSites(editId, normalizedSites, cust.name);
+      } else {
+        const saved = await addCustomer({ ...cust, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
+        if (normalizedSites.length > 1) await saveCustomerSites(saved.id, normalizedSites, cust.name);
+      }
+    };
     if (isPromote && editId) {
       // ONE update on the same row (same LEAD- id, so linked enquiries /
       // quotes / orders stay connected): every form field + the move to
@@ -511,6 +537,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
           modifiedBy: user?.email ?? undefined,
           modifiedDate: new Date().toISOString(),
         });
+        await saveCustomerSites(editId, normalizedSites, name.trim());
       } catch (err: any) {
         setSaving(false);
         setToast(`Promote failed: ${err?.message || 'could not save — check your connection.'}`);
@@ -524,8 +551,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     if (isLeadMode) {
       setSaving(true);
       try {
-        if (editId) await updateCustomer(editId, { ...cust, modifiedBy: user?.email ?? undefined, modifiedDate: new Date().toISOString() });
-        else await addCustomer({ ...cust, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
+        await saveRecord();
       } catch (err: any) {
         setSaving(false);
         setErrors(prev => ({ ...prev, save: err?.message || 'Could not save — check your connection.' }));
@@ -535,10 +561,11 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
       goBack();
       return;
     }
-    if (editId) {
-      await updateCustomer(editId, { ...cust, modifiedBy: user?.email ?? undefined, modifiedDate: new Date().toISOString() });
-    } else {
-      await addCustomer({ ...cust, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
+    try {
+      await saveRecord();
+    } catch (err: any) {
+      setErrors(prev => ({ ...prev, save: err?.message || 'Could not save — check your connection.' }));
+      return;
     }
     navigate(-1);
   };
@@ -833,12 +860,31 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                     placeholder="Pincode"
                     className="bg-white border border-g300 rounded px-2 py-1 text-xs font-mono w-24 outline-none focus:border-red-mrt"
                   />
-                  <button type="button" onClick={() => removeSite(sIdx)} className="text-g400 hover:text-red-mrt transition-colors p-1" title="Remove site">
-                    <Trash2 size={15} />
-                  </button>
+                  {sIdx > 0 ? (
+                    <button type="button" onClick={() => removeSite(sIdx)} className="text-g400 hover:text-red-mrt transition-colors p-1" title="Remove site">
+                      <Trash2 size={15} />
+                    </button>
+                  ) : <span className="w-[23px]" />}
                 </div>
 
                 <div className="p-4 space-y-4">
+                  {/* Each site has its own GSTIN (blank / URP allowed). Quotes and
+                      orders use the selected site's GSTIN, falling back to the
+                      Company GSTIN when the site has none. */}
+                  <div>
+                    <label className={labelCls}>Site GSTIN <span className="normal-case font-normal text-g400">(optional — blank or URP if unregistered)</span></label>
+                    <input
+                      type="text" value={site.gstin || ''}
+                      onChange={e => updateSite(sIdx, 'gstin', e.target.value.toUpperCase())}
+                      onBlur={() => { const st = gstinState(site.gstin); if (st && !site.state?.trim()) updateSite(sIdx, 'state', st); }}
+                      placeholder="27AABCF5171D1ZW"
+                      maxLength={15}
+                      className="w-56 font-mono uppercase text-xs bg-white border border-g300 rounded-[3px] p-2 outline-none focus:border-red-mrt"
+                    />
+                    {gstinFieldWarning(site.gstin, site.state) && (
+                      <p className="text-amber-700 text-[10.5px] mt-1">{gstinFieldWarning(site.gstin, site.state)}</p>
+                    )}
+                  </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className={labelCls}>Full Address / Postal Address</label>

@@ -5,7 +5,7 @@ import { EntryDateFilter } from '../components/EntryDateFilter';
 import { Search, Plus, Send, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { QuoteStatus } from '../lib/types';
-import { formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText, getCurrentQuoteItems, getEffectiveTotals } from '../lib/utils';
+import { customerOfDoc, formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText, getCurrentQuoteItems, getEffectiveTotals } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { supabase } from '../lib/supabase';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
@@ -66,8 +66,8 @@ export function Quotes() {
       if (custFilter && q.cust !== custFilter) return false;
       if (!isInDateRange(q.date, entryDate ? { startDate: entryDate, endDate: entryDate } : null)) return false;
       if (sq) {
-        const sl = siteLabel(data.customers.find(c => c.name === q.cust), (q as any).siteId) || '';
-        const cust = data.customers.find(c => c.name === q.cust);
+        const sl = siteLabel(customerOfDoc(q, data.customers), (q as any).siteId) || '';
+        const cust = customerOfDoc(q, data.customers);
         const site = (cust?.sites ?? []).find((s: any) => s.id === (q as any).siteId);
         const city = (site as any)?.city || '';
         if (!sl.toLowerCase().includes(sq) && !city.toLowerCase().includes(sq)) return false;
@@ -251,8 +251,8 @@ export function Quotes() {
                           <td className="px-[13px] py-[10px] align-middle"><span className="font-mono text-[10.5px] font-bold text-sQ">{q.id}</span></td>
                           <td className="px-[13px] py-[10px] align-middle">{q.enqRef ? <span className="font-mono text-[10px] font-bold text-red-mrt">{q.enqRef}</span> : <span className="font-mono text-[10px] font-bold text-g400" title="Standalone quote — not linked to an enquiry">—</span>}</td>
                           <td className="px-[13px] py-[10px] align-middle">
-                            <div className="font-semibold">{q.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === q.cust), (q as any).siteId || data.enquiries.find(e => e.id === q.enqRef)?.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
-                            {(() => { const saved = (q as any).customerTier as string; const t = saved || (() => { const ct = data.customers.find(c => c.name === q.cust)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
+                            <div className="font-semibold">{q.cust}{(() => { const sl = siteLabel(customerOfDoc(q, data.customers), (q as any).siteId || data.enquiries.find(e => e.id === q.enqRef)?.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
+                            {(() => { const saved = (q as any).customerTier as string; const t = saved || (() => { const ct = customerOfDoc(q, data.customers)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
                           </td>
                           <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
                             {q.date ? fmtIST(new Date(q.date), 'dd-MMM-yyyy') : '--'}
@@ -287,7 +287,7 @@ export function Quotes() {
                               <Button size="sm" variant="secondary" onClick={(ev) => { ev.stopPropagation(); openDetailPanel('quote', q.id); }}>Detail</Button>
                               <Button size="sm" variant="secondary" onClick={(ev) => {
                                 ev.stopPropagation();
-                                const cust = data.customers.find(c => c.name === q.cust);
+                                const cust = customerOfDoc(q, data.customers);
                                 const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
                                 const sig = data.signatories.find(s => s.is_default);
                                 generateQuotePDF(q, cust, data.settings, sig, true, unit);

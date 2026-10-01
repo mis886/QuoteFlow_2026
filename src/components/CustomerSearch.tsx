@@ -5,7 +5,7 @@ import { Search, X } from 'lucide-react';
 interface Props {
   customers: Customer[];
   value: string;           // the selected customer name
-  onChange: (name: string) => void;
+  onChange: (name: string, customer?: Customer) => void;   // customer = the picked record (undefined when cleared)
   error?: boolean;
   placeholder?: string;
   // When set, a typed name that isn't an existing customer / lead can be used
@@ -70,8 +70,9 @@ export function CustomerSearch({ customers, value, onChange, error, placeholder 
     return () => el.removeEventListener('focusout', handler);
   }, [value]);
 
-  const pick = (name: string) => {
-    onChange(name);
+  const pick = (c: Customer) => {
+    const name = c.name;
+    onChange(name, c);
     setQuery(name);
     setOpen(false);
   };
@@ -86,7 +87,7 @@ export function CustomerSearch({ customers, value, onChange, error, placeholder 
     if (!open) { if (e.key !== 'Tab') setOpen(true); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, filtered.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[activeIdx]) pick(filtered[activeIdx].name); else if (canCreate) createNew(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[activeIdx]) pick(filtered[activeIdx]); else if (canCreate) createNew(); }
     else if (e.key === 'Escape') { setOpen(false); setQuery(value); }
     else if (e.key === 'Tab') setOpen(false);
   };
@@ -126,7 +127,7 @@ export function CustomerSearch({ customers, value, onChange, error, placeholder 
               return (
                 <div
                   key={c.id}
-                  onMouseDown={() => pick(c.name)}
+                  onMouseDown={() => pick(c)}
                   onMouseEnter={() => setActiveIdx(idx)}
                   className={`px-3 py-2 cursor-pointer flex items-center justify-between gap-3 ${idx === activeIdx ? 'bg-red-lt/40' : 'hover:bg-g50'}`}
                 >

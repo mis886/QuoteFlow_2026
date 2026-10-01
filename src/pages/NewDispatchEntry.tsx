@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, remainingByLine, totalRemaining } from '../lib/utils';
+import { customerOfDoc, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, remainingByLine, totalRemaining } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
@@ -342,7 +342,8 @@ export function NewDispatchEntry() {
     setInco(order.inco || '');
     setCurr(order.curr || 'INR');
     setPay(order.pay || '');
-    setShipAddr(order.shipToAddress || '');
+    // Order's own ship-to first; else the dispatch address of the order's site (Main Office or an extra site).
+    setShipAddr(order.shipToAddress || customerOfDoc(order, data.customers)?.sites.find(s => s.id === order.siteId)?.dispatchAddress || '');
     setCustEnquiryDocNo(order.custEnquiryDocNo || '');
     setItems(order.items.map(i => ({ ...i })));
     setInsurance(order.insurance ?? 0);
@@ -433,7 +434,7 @@ export function NewDispatchEntry() {
       // Insurance is charged once, on the order's first dispatch — same as
       // the old leftover orders, which always carried insurance 0.
       if (data.dispatchEntries.some(e => e.orderId === order.id)) setInsurance(0);
-      const cust = data.customers.find(c => c.name === order.cust);
+      const cust = customerOfDoc(order, data.customers);
       if (!order.fulfillmentType) {
         if (cust?.fulfilmentType === 'Delivery') setType('delivery');
         else if (cust?.fulfilmentType === 'Self Pickup') setType('self_pickup');
@@ -464,7 +465,7 @@ export function NewDispatchEntry() {
 
   const selectedOrder = selectedOrderId ? data.orders.find(o => o.id === selectedOrderId) : null;
   const isEditMode = !!existingEntryId;
-  const selectedCustomer = selectedOrder ? data.customers.find(c => c.name === selectedOrder.cust) : undefined;
+  const selectedCustomer = selectedOrder ? customerOfDoc(selectedOrder, data.customers) : undefined;
 
   // "Email to Client" attachments — every document already saved on this
   // entry (the 4 Documents Attachment fields + COA), whichever of those are

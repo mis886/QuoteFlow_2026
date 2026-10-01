@@ -3,7 +3,7 @@ import { Bell, AlertTriangle, Clock, ChevronRight, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { isBefore, isToday, parseISO } from 'date-fns';
 import { useAppStore } from '../store';
-import { cn, fmtIST, siteLabel } from '../lib/utils';
+import { customerOfDoc, cn, fmtIST, siteLabel } from '../lib/utils';
 import { Highlighter } from './ui/highlighter';
 
 type AlertItem = {
@@ -192,7 +192,7 @@ export function SlaNotificationBell() {
                       <Highlighter action="underline" color={a.priority === 'overdue' ? '#ef4444' : '#f59e0b'}>
                         {a.cust}
                       </Highlighter>
-                      {(() => { const sl = siteLabel(data.customers.find(c => c.name === a.cust), a.siteId); return sl ? <span className="font-normal text-g400"> — {sl}</span> : null; })()}
+                      {(() => { const sl = siteLabel(customerOfDoc(a, data.customers), a.siteId); return sl ? <span className="font-normal text-g400"> — {sl}</span> : null; })()}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[10px] text-g500">

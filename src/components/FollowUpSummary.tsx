@@ -4,7 +4,7 @@ import { Quote, FollowUpLog } from '../lib/types';
 import { parseISO, isBefore, isToday, startOfDay } from 'date-fns';
 import { Phone, ChevronRight, CheckCircle2, Plus, X, ChevronDown, MessageCircle, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { cn, fmtIST } from '../lib/utils';
+import { customerOfDoc, cn, fmtIST } from '../lib/utils';
 
 export function FollowUpSummary({ quote }: { quote: Quote }) {
   const { data, addFollowUpLog, stampName } = useAppStore();
@@ -16,7 +16,7 @@ export function FollowUpSummary({ quote }: { quote: Quote }) {
   const [showForm, setShowForm] = useState(false);
   const [showContact, setShowContact] = useState(false);
 
-  const custRec = data.customers.find(c => c.name === quote.cust);
+  const custRec = customerOfDoc(quote, data.customers);
   const site = custRec?.sites.find(s => s.isPrimary) ?? custRec?.sites[0];
   const allContacts = site?.contacts ?? [];
   const [channel, setChannel] = useState<FollowUpLog['channel']>('Called');

@@ -22,12 +22,12 @@ export function useContactSyncPrompt() {
   // Page the change came from ("Enquiry ENQ-…") — recorded in the History Log.
   const sourceRef = useRef<string | undefined>(undefined);
 
-  const run = async (custName: string, contact: string, phone: string, email: string, source?: string): Promise<string | null> => {
+  const run = async (custName: string, contact: string, phone: string, email: string, source?: string, doc: { customerId?: string; siteId?: string } = {}): Promise<string | null> => {
     sourceRef.current = source;
-    const r = await syncContactToCustomer(custName, contact, phone, email, data.customers, source);
+    const r = await syncContactToCustomer(custName, contact, phone, email, data.customers, source, doc);
     if (r.action === 'full') return r.message;
     if (r.action === 'ask') {
-      const key = `${r.prompt.customerId}|${JSON.stringify(r.prompt.patch)}`;
+      const key = `${r.prompt.customerId}|${r.prompt.siteId ?? ""}|${JSON.stringify(r.prompt.log.after)}`;
       if (answered.current.has(key)) return null;
       answered.current.add(key);
       await new Promise<void>(resolve => { resolver.current = resolve; setPrompt(r.prompt); });

@@ -27,7 +27,7 @@ import {
   Timer,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { cn, fmtIST, isInDateRange, getThisWeekRange } from '../lib/utils';
+import { customerOfDoc, cn, fmtIST, isInDateRange, getThisWeekRange } from '../lib/utils';
 import { EntryDateFilter } from '../components/EntryDateFilter';
 import type { Quote, FollowUp, FollowUpLog } from '../lib/types';
 import { DEFAULT_STAGE_TAT_H } from '../lib/types';
@@ -513,7 +513,7 @@ export default function FollowUps() {
   };
 
   const handleQuotePDF = (quote: Quote) => {
-    const cust = data.customers.find(c => c.name === quote.cust);
+    const cust = customerOfDoc(quote, data.customers);
     const unit = quote.unitId ? data.units.find(u => u.id === quote.unitId) : data.units.find(u => u.is_default);
     const sig = data.signatories.find(s => s.is_default);
     generateQuotePDF(quote, cust, data.settings, sig, true, unit);
@@ -522,7 +522,7 @@ export default function FollowUps() {
   const handlePIPDF = (quote: Quote) => {
     const order = data.orders.find(o => o.quoteRef === quote.id);
     if (!order) return;
-    const cust = data.customers.find(c => c.name === order.cust);
+    const cust = customerOfDoc(order, data.customers);
     const unit = order.unitId ? data.units.find(u => u.id === order.unitId) : data.units.find(u => u.is_default);
     const bank = order.bankAccountId
       ? data.bankAccounts.find(b => b.id === order.bankAccountId)
@@ -806,7 +806,7 @@ export default function FollowUps() {
             const onTimePct = cardOnTimeRate(fullChain);
             const tat = tatLabel(followUp);
             const isSelected = selectedQuoteId === quote.id || (selectedItem && selectedItem.quote.id === quote.id);
-            const custRec = data.customers.find(c => c.name === quote.cust);
+            const custRec = customerOfDoc(quote, data.customers);
             const site = custRec?.sites.find(s => s.id === quote.siteId) ?? custRec?.sites.find(s => s.isPrimary) ?? custRec?.sites[0];
             const locationLabel = [site?.city, site?.name && site.name !== quote.cust ? site.name : ''].filter(Boolean).join(' — ') || site?.state || '';
             const value = quote.items.reduce((a, i) => a + i.total, 0);
@@ -952,7 +952,7 @@ export default function FollowUps() {
                   <div className="flex items-center gap-2 min-w-0">
                     <h1 className="font-serif text-[22px] text-blk italic leading-tight truncate">{selectedItem.quote.cust}</h1>
                     {(() => {
-                      const custRec = data.customers.find(c => c.name === selectedItem.quote.cust);
+                      const custRec = customerOfDoc(selectedItem.quote, data.customers);
                       if (!custRec) return null;
                       return (
                         <button type="button" title="Open customer record" onClick={() => navigate(`/customers/new?id=${custRec.id}`)}
@@ -963,7 +963,7 @@ export default function FollowUps() {
                     })()}
                   </div>
                   {(() => {
-                    const custRec = data.customers.find(c => c.name === selectedItem.quote.cust);
+                    const custRec = customerOfDoc(selectedItem.quote, data.customers);
                     const site = custRec?.sites.find(s => s.id === selectedItem.quote.siteId) ?? custRec?.sites.find(s => s.isPrimary) ?? custRec?.sites[0];
                     const detailLocation = [site?.city, site?.name && site.name !== custRec?.name ? site.name : ''].filter(Boolean).join(' — ') || site?.state || '';
                     return (
@@ -1041,7 +1041,7 @@ export default function FollowUps() {
                 {/* Contacts bar — lives in the timeline column (left) so it doesn't
                     push the Log Activity panel down; panel starts right below the KPIs. */}
                 {(() => {
-                  const custRec = data.customers.find(c => c.name === selectedItem.quote.cust);
+                  const custRec = customerOfDoc(selectedItem.quote, data.customers);
                   const site = custRec?.sites.find(s => s.id === selectedItem.quote.siteId) ?? custRec?.sites.find(s => s.isPrimary) ?? custRec?.sites[0];
                   const contacts = site?.contacts ?? [];
                   if (contacts.length === 0) return null;
@@ -1262,8 +1262,9 @@ export default function FollowUps() {
             {/* Also log for sibling quotes — same customer, other open quotes */}
             {(() => {
               const custName = selectedItem.quote.cust;
+              const curCust = customerOfDoc(selectedItem.quote, data.customers);
               const siblings = followUpQueue.filter(item =>
-                item.quote.cust === custName &&
+                (curCust ? customerOfDoc(item.quote, data.customers)?.id === curCust.id : item.quote.cust === custName) &&
                 item.quote.id !== selectedItem.quote.id
               );
               if (siblings.length === 0) return null;

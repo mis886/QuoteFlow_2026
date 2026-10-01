@@ -6,7 +6,7 @@ import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollb
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
+import { customerOfDoc, formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -165,7 +165,7 @@ export function Orders() {
       }
       if (!isInDateRange(o.created_at, entryDate ? { startDate: entryDate, endDate: entryDate } : null)) return false;
       if (sq) {
-        const cust = data.customers.find(c => c.name === o.cust);
+        const cust = customerOfDoc(o, data.customers);
         const sl = siteLabel(cust, (o as any).siteId) || '';
         const site = (cust?.sites ?? []).find((s: any) => s.id === (o as any).siteId);
         const city = (site as any)?.city || '';
@@ -354,8 +354,8 @@ export function Orders() {
                         <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10.5px] font-bold text-sW">{o.id}</span></td>
                         <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10px] font-bold text-sQ">{o.quoteRef}</span></td>
                         <td className="px-[13px] py-[10px] align-top break-words">
-                          <div className="font-semibold">{o.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === o.cust), (o as any).siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
-                          {(() => { const saved = (o as any).customerTier as string; const t = saved || (() => { const ct = data.customers.find(c => c.name === o.cust)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
+                          <div className="font-semibold">{o.cust}{(() => { const sl = siteLabel(customerOfDoc(o, data.customers), (o as any).siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
+                          {(() => { const saved = (o as any).customerTier as string; const t = saved || (() => { const ct = customerOfDoc(o, data.customers)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
                         </td>
                         <td className="px-[13px] py-[10px] align-top font-mono text-[11px] font-bold text-g700 [overflow-wrap:anywhere]">
                           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
@@ -513,7 +513,7 @@ export function Orders() {
                               onClick={(e) => {
                               e.stopPropagation();
                               const qt = data.quotes.find(q => q.id === o.quoteRef);
-                              const cust = data.customers.find(c => c.name === o.cust);
+                              const cust = customerOfDoc(o, data.customers);
                               const unit = o.unitId ? data.units.find(u => u.id === o.unitId) : data.units.find(u => u.is_default);
                               const bank = o.bankAccountId ? data.bankAccounts.find(b => b.id === o.bankAccountId)
                                 : data.bankAccounts.find(b => b.unit_id === unit?.id && b.is_default);
@@ -620,7 +620,7 @@ export function Orders() {
           mode="order"
           doc={sendModalOrder}
           relatedQuote={data.quotes.find(q => q.id === sendModalOrder.quoteRef)}
-          customer={data.customers.find(c => c.name === sendModalOrder.cust)}
+          customer={customerOfDoc(sendModalOrder, data.customers)}
           siteId={sendModalOrder.siteId}
           settings={data.settings}
           defaultSignatory={data.signatories.find((s: any) => s.is_default)}

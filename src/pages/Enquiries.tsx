@@ -14,7 +14,7 @@ import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollb
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
+import { customerOfDoc, calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
 import { EnqStatus } from '../lib/types';
 import { supabase } from '../lib/supabase';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
@@ -73,8 +73,8 @@ export function Enquiries() {
       if (urgFilter && e.urg !== urgFilter) return false;
       if (!isInDateRange(e.created_at, entryDate ? { startDate: entryDate, endDate: entryDate } : null)) return false;
       if (sq) {
-        const sl = siteLabel(data.customers.find(c => c.name === e.cust), e.siteId) || '';
-        const cust = data.customers.find(c => c.name === e.cust);
+        const sl = siteLabel(customerOfDoc(e, data.customers), e.siteId) || '';
+        const cust = customerOfDoc(e, data.customers);
         const site = (cust?.sites ?? []).find(s => s.id === e.siteId);
         const city = (site as any)?.city || '';
         if (!sl.toLowerCase().includes(sq) && !city.toLowerCase().includes(sq)) return false;
@@ -284,8 +284,8 @@ export function Enquiries() {
                             {e.created_at ? fmtIST(new Date(e.created_at), 'dd MMM HH:mm') : '--'}
                           </td>
                           <td className="px-[13px] py-[10px] align-top">
-                            <div className="font-semibold">{e.cust}{(() => { const sl = siteLabel(data.customers.find(c => c.name === e.cust), e.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
-                            {(() => { const saved = (e as any).customerTier as string; const t = saved || (() => { const ct = data.customers.find(c => c.name === e.cust)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
+                            <div className="font-semibold">{e.cust}{(() => { const sl = siteLabel(customerOfDoc(e, data.customers), e.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
+                            {(() => { const saved = (e as any).customerTier as string; const t = saved || (() => { const ct = customerOfDoc(e, data.customers)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
                             <div className="text-[11px] text-g500">{e.contact}</div>
                           </td>
                           <td className="px-[13px] py-[10px] align-top">

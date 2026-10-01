@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../store';
-import { fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
+import { customerOfDoc, fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -113,7 +113,7 @@ export function DetailPanel() {
             <div className="flex items-center gap-2">
               <h2 className="font-serif text-2xl text-blk">{enq.cust}</h2>
               {(() => {
-                const custRec = data.customers.find(c => c.name === enq.cust);
+                const custRec = customerOfDoc(enq, data.customers);
                 if (!custRec) return null;
                 return (
                   <button type="button" title="Edit Customer" onClick={() => { closeDetailPanel(); navigate(`/customers/new?id=${custRec.id}`); }} className="text-g400 hover:text-red-mrt transition-colors p-0.5">
@@ -360,7 +360,7 @@ export function DetailPanel() {
             <div className="flex items-center gap-2">
               <h2 className="font-serif text-2xl text-blk">{q.cust}</h2>
               {(() => {
-                const custRec = data.customers.find(c => c.name === q.cust);
+                const custRec = customerOfDoc(q, data.customers);
                 if (!custRec) return null;
                 return (
                   <button type="button" title="Edit Customer" onClick={() => { closeDetailPanel(); navigate(`/customers/new?id=${custRec.id}`); }} className="text-g400 hover:text-red-mrt transition-colors p-0.5">
@@ -386,8 +386,8 @@ export function DetailPanel() {
           </Section>
 
           {(() => {
-            const custRec = data.customers.find(c => c.name === q.cust);
-            const site = custRec?.sites.find(s => s.isPrimary) ?? custRec?.sites[0];
+            const custRec = customerOfDoc(q, data.customers);
+            const site = (q.siteId ? custRec?.sites.find(s => s.id === q.siteId) : undefined) ?? custRec?.sites.find(s => s.isPrimary) ?? custRec?.sites[0];
             const contacts = site?.contacts ?? [];
             if (!custRec || contacts.length === 0) return null;
             return (
@@ -567,7 +567,7 @@ export function DetailPanel() {
               );
             })()}
             <Button variant="secondary" onClick={() => {
-              const cust = data.customers.find(c => c.name === q.cust);
+              const cust = customerOfDoc(q, data.customers);
               const unit = q.unitId ? data.units.find(u => u.id === q.unitId) : data.units.find(u => u.is_default);
               const sig = data.signatories.find(s => s.is_default);
               generateQuotePDF(q, cust, data.settings, sig, true, unit);
@@ -707,7 +707,7 @@ export function DetailPanel() {
             }}>Edit</Button>
             <Button variant="secondary" onClick={() => {
               const qt = data.quotes.find(q => q.id === o.quoteRef);
-              const cust = data.customers.find(c => c.name === o.cust);
+              const cust = customerOfDoc(o, data.customers);
               const unit = o.unitId ? data.units.find(u => u.id === o.unitId) : data.units.find(u => u.is_default);
               const bank = o.bankAccountId ? data.bankAccounts.find(b => b.id === o.bankAccountId)
                 : data.bankAccounts.find(b => b.unit_id === unit?.id && b.is_default);
