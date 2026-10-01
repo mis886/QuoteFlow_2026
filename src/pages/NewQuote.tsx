@@ -656,7 +656,7 @@ export function NewQuote() {
   // Returns true if navigation should be delayed (case 3 shown).
   const doContactSync = async (): Promise<boolean> => {
     try {
-      const fullMsg = await contactSync.run(custName, contact, phone, email);
+      const fullMsg = await contactSync.run(custName, contact, phone, email, `Quote ${editId || quoteId}`);
       if (fullMsg) { setContactSyncMsg(fullMsg); return true; }
     } catch (e) { console.error('Contact sync failed:', e); }
     return false;

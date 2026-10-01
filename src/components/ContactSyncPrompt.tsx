@@ -19,8 +19,12 @@ export function useContactSyncPrompt() {
   // never asked twice.
   const answered = useRef<Set<string>>(new Set());
 
-  const run = async (custName: string, contact: string, phone: string, email: string): Promise<string | null> => {
-    const r = await syncContactToCustomer(custName, contact, phone, email, data.customers);
+  // Page the change came from ("Enquiry ENQ-…") — recorded in the History Log.
+  const sourceRef = useRef<string | undefined>(undefined);
+
+  const run = async (custName: string, contact: string, phone: string, email: string, source?: string): Promise<string | null> => {
+    sourceRef.current = source;
+    const r = await syncContactToCustomer(custName, contact, phone, email, data.customers, source);
     if (r.action === 'full') return r.message;
     if (r.action === 'ask') {
       const key = `${r.prompt.customerId}|${JSON.stringify(r.prompt.patch)}`;
@@ -41,7 +45,7 @@ export function useContactSyncPrompt() {
     if (!prompt) return;
     setBusy(true);
     try {
-      await applyContactSync(prompt);
+      await applyContactSync(prompt, sourceRef.current);
       await refreshData();
     } catch (e) {
       console.error('Contact sync failed:', e);

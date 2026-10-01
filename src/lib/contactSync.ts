@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { Customer } from './types';
 import { findCustomerByName, isLead, last10Digits } from './utils';
+import { logActivity } from './activityLog';
 
 // A change to a customer's contacts that must be confirmed by the user before
 // it is written (see ContactSyncPrompt.tsx for the in-app box).
@@ -11,6 +12,28 @@ export interface ContactSyncPrompt {
   title: string;
   detail: string;
   patch: Record<string, string | null>;   // contact columns only
+  log: ContactChangeLog;                  // what the History Log will show
+}
+
+// History Log entry for a contact change: an 'update' on the customer / lead
+// whose old → new rows read e.g. "contact Ramesh phone: 98… → 99…" or
+// "contact added: — → Ramesh, 98…, r@x.com", plus the page it came from.
+interface ContactChangeLog {
+  before: Record<string, string | null>;
+  after: Record<string, string | null>;
+}
+
+// Never awaited and never throws (logActivity console.errors its own
+// failures) — a logging problem must not block the save.
+function logContactChange(customer: { id: string; name: string }, log: ContactChangeLog, source?: string) {
+  logActivity({
+    module: 'customers',
+    recordId: customer.id,
+    recordLabel: customer.name,
+    action: 'update',
+    before: log.before,
+    after: source ? { ...log.after, 'source page': source } : log.after,
+  });
 }
 
 export type ContactSyncResult =
@@ -30,9 +53,14 @@ async function writePatch(customerId: string, patch: Record<string, string | nul
   if (error) throw error;
 }
 
-/** Writes a change the user confirmed ([Add] / [Update]). */
-export async function applyContactSync(prompt: ContactSyncPrompt): Promise<void> {
+/**
+ * Writes a change the user confirmed ([Add] / [Update]) and records it in the
+ * History Log. `source` = the page it came from, e.g. "Enquiry ENQ-2026-012".
+ * [Skip] never gets here, so it logs nothing.
+ */
+export async function applyContactSync(prompt: ContactSyncPrompt, source?: string): Promise<void> {
   await writePatch(prompt.customerId, prompt.patch);
+  logContactChange({ id: prompt.customerId, name: prompt.customerName }, prompt.log, source);
 }
 
 /**
@@ -54,6 +82,7 @@ export async function syncContactToCustomer(
   phone: string,
   email: string,
   customers: Customer[],
+  source?: string,   // page it came from ("Enquiry ENQ-…") — for the History Log
 ): Promise<ContactSyncResult> {
   const name = contact.trim();
   const ph   = phone.trim();
@@ -80,13 +109,18 @@ export async function syncContactToCustomer(
     const oldEm = match.c.email ?? '';
     const patch: Record<string, string | null> = {};
     const parts: string[] = [];
+    const log: ContactChangeLog = { before: {}, after: {} };
     let overwrites = false;
     if (ph && !samePhone(oldPh, ph)) {
+      log.before[`contact ${match.c.name} phone`] = oldPh.trim() || null;
+      log.after[`contact ${match.c.name} phone`] = ph;
       patch[`${match.col}_phone`] = ph;
       parts.push(oldPh.trim() ? `phone from ${oldPh.trim()} to ${ph}` : `phone to ${ph}`);
       if (oldPh.trim()) overwrites = true;
     }
     if (em && !sameEmail(oldEm, em)) {
+      log.before[`contact ${match.c.name} email`] = oldEm.trim() || null;
+      log.after[`contact ${match.c.name} email`] = em;
       patch[`${match.col}_email`] = em;
       parts.push(oldEm.trim() ? `email from ${oldEm.trim()} to ${em}` : `email to ${em}`);
       if (oldEm.trim()) overwrites = true;
@@ -94,12 +128,13 @@ export async function syncContactToCustomer(
     if (parts.length === 0) return { action: 'none' };
     if (lead && !overwrites) {
       await writePatch(customer.id, patch);
+      logContactChange(customer, log, source);
       return { action: 'updated' };
     }
     return {
       action: 'ask',
       prompt: {
-        kind: 'update', customerId: customer.id, customerName: customer.name, patch,
+        kind: 'update', customerId: customer.id, customerName: customer.name, patch, log,
         title: `Update contact on ${customer.name}?`,
         detail: `Update ${match.c.name}'s ${parts.join(' and ')}?`,
       },
@@ -124,14 +159,19 @@ export async function syncContactToCustomer(
       [`${empty.col}_phone`]: ph || null,
       [`${empty.col}_email`]: em || null,
     };
+    const log: ContactChangeLog = {
+      before: { 'contact added': null },
+      after: { 'contact added': [name, ph, em].filter(Boolean).join(', ') },
+    };
     if (lead) {
       await writePatch(customer.id, patch);
+      logContactChange(customer, log, source);
       return { action: 'updated' };
     }
     return {
       action: 'ask',
       prompt: {
-        kind: 'add', customerId: customer.id, customerName: customer.name, patch,
+        kind: 'add', customerId: customer.id, customerName: customer.name, patch, log,
         title: `Add contact to ${customer.name}?`,
         detail: `Add contact ${[name, ph, em].filter(Boolean).join(', ')} to ${customer.name}?`,
       },

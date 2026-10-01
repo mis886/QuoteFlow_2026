@@ -545,7 +545,7 @@ export function NewOrder() {
   // Run contact sync after save — silently for cases 1/2, brief toast for case 3.
   const doContactSync = async (): Promise<boolean> => {
     try {
-      const fullMsg = await contactSync.run(custName, contact, phone, email);
+      const fullMsg = await contactSync.run(custName, contact, phone, email, `Order ${editOrderId || orderId}`);
       if (fullMsg) { setContactSyncMsg(fullMsg); return true; }
     } catch (e) { console.error('Contact sync failed:', e); }
     return false;

@@ -312,7 +312,7 @@ export function NewEnquiry() {
       // ("Add contact …? [Add] [Skip]") and waits for the answer.
       let contactFull = false;
       try {
-        const fullMsg = await contactSync.run(custName, contact, phone, email);
+        const fullMsg = await contactSync.run(custName, contact, phone, email, `Enquiry ${enqId}`);
         if (fullMsg) { setContactSyncMsg(fullMsg); contactFull = true; }
       } catch (e) { console.error('Contact sync failed:', e); }
 
