@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -527,7 +527,11 @@ export function NewOrder() {
     const quoteCustomerId = sourceQuote?.customerId && sameCompanyName(sourceQuote.cust, custName) ? sourceQuote.customerId : '';
     orderPayload.customerId = customerIdForSave({ cust: custName, customerId: customerId || pickedCustomer?.id || quoteCustomerId }, data.customers);
     if (!editOrderId && !orderPayload.customerId) {
-      const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email });
+      // Lead source: the linked enquiry's Source (and link it), else 'Order'.
+      const enq = orderPayload.enqRef ? data.enquiries.find(e => e.id === orderPayload.enqRef) : undefined;
+      const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email }, enq
+        ? { source: enq.src, enquiryId: enq.id, productInterest: orderPayload.items[0]?.desc }
+        : { source: LEAD_SOURCES_AUTO.order, productInterest: orderPayload.items[0]?.desc });
       if (lead) orderPayload.customerId = (await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() })).id;
     }
     if (editOrderId) {

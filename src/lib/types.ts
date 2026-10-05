@@ -348,10 +348,15 @@ export interface Customer {
   // Customer Master vs Customer Lead (small / IndiaMART buyers, orders below
   // ₹1 lakh). Same table, same id — promoting a lead just flips this to
   // 'customer' (see src/pages/CustomerLeads.tsx). Undefined = 'customer'.
-  // (lead_source / first_enquiry_date / linked_enquiry_id / product_interest
-  // columns exist in the DB but are no longer used by the app.)
   customerStatus?: CustomerStatus;
+  // Set once when a lead is created (auto from an enquiry / quote / order /
+  // sample, or the Add Lead form) — see LEAD_SOURCES in utils.ts.
+  leadSource?: string;        // lead_source — enquiry src, or 'Quotation' / 'Order' / 'Sample'
+  linkedEnquiryId?: string;   // linked_enquiry_id — only when created from an enquiry
+  firstEnquiryDate?: string;  // first_enquiry_date (YYYY-MM-DD)
+  productInterest?: string;   // product_interest — first item description
   promotedAt?: string;        // promoted_at — when the lead was moved to Customer Master
+  promotedBy?: string;        // promoted_by (email) — set by the promote_lead DB function
   // Review mode KEEP (admins): reviewed and deliberately left in Customer
   // Master. Both empty = not reviewed.
   reviewedAt?: string;        // reviewed_at

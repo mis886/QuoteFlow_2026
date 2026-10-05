@@ -5,7 +5,9 @@ import { fmtIST } from '../lib/utils';
 
 const PAGE_SIZE = 50;
 
-type ActivityAction = 'insert' | 'update' | 'delete';
+// promote / merge are written by the promote_lead / merge_lead_into_customer
+// DB functions (supabase/migrations/20261005_lead_promote_merge.sql).
+type ActivityAction = 'insert' | 'update' | 'delete' | 'promote' | 'merge';
 
 interface ActivityLogRow {
   id: string;
@@ -59,15 +61,22 @@ const MODULE_NO_MODULES = new Set(['enquiries', 'quotes', 'orders', 'followups',
 const moduleNo = (row: Pick<ActivityLogRow, 'module' | 'record_id'>) =>
   MODULE_NO_MODULES.has(row.module) ? row.record_id : '—';
 
-function ActionPill({ action }: { action: ActivityAction }) {
+function ActionPill({ action, changes }: { action: ActivityAction; changes?: Record<string, any> | null }) {
   const styles: Record<ActivityAction, string> = {
     insert: 'bg-sW/10 text-sW border-sW/30',
     update: 'bg-sN/10 text-sN border-sN/30',
     delete: 'bg-red-mrt/10 text-red-mrt border-red-mrt/30',
+    promote: 'bg-lead/10 text-lead-text border-lead/40',
+    merge: 'bg-lead/10 text-lead-text border-lead/40',
   };
+  // Lead → customer events read as a sentence, not a bare verb.
+  const label = action === 'promote' ? 'Promoted lead → customer'
+    : action === 'merge' ? `Merged lead ${changes?.['merged lead'] ?? ''} into this customer`
+    : action;
+  const caseCls = action === 'promote' || action === 'merge' ? 'normal-case' : 'uppercase';
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${styles[action]}`}>
-      {action}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[9.5px] font-bold tracking-wide ${caseCls} ${styles[action] ?? styles.update}`}>
+      {label}
     </span>
   );
 }
@@ -105,7 +114,7 @@ function ChangesDetail({ action, changes }: { action: ActivityAction; changes: R
     );
   }
 
-  // insert / delete — flat row snapshot
+  // insert / delete / promote / merge — flat snapshot
   const fields = Object.keys(changes).sort();
   return (
     <div className="grid grid-cols-[minmax(120px,180px)_1fr] gap-x-2 gap-y-1.5 text-[11.5px]">
@@ -304,7 +313,7 @@ export function HistoryLog() {
                       <td className="px-[13px] py-[11px] align-middle text-g600">{moduleLabel(row.module)}</td>
                       <td className="px-[13px] py-[11px] align-middle text-blk font-medium">{row.record_label || '—'}</td>
                       <td className="px-[13px] py-[11px] align-middle font-mono text-[11px] text-g600">{moduleNo(row)}</td>
-                      <td className="px-[13px] py-[11px] align-middle"><ActionPill action={row.action} /></td>
+                      <td className="px-[13px] py-[11px] align-middle"><ActionPill action={row.action} changes={row.changes} /></td>
                     </tr>
                     {isExpanded && (
                       <tr className="bg-red-mrt/[0.02] border-b-2 border-red-mrt">

@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, customerOfDoc, isDocOfCustomer, findCustomerByName, mainOffice, leadForUnknownCompany, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals, getCurrentQuoteItems } from '../lib/utils';
+import { generateId, customerOfDoc, isDocOfCustomer, findCustomerByName, mainOffice, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals, getCurrentQuoteItems } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { QuoteItem, Quote, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
@@ -637,7 +637,11 @@ export function NewQuote() {
     // its id can be saved on the quote.
     qData.customerId = pickedCustomer?.id;
     if (!editId && !qData.customerId) {
-      const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email });
+      // Lead source: the linked enquiry's Source (and link it), else 'Quotation'.
+      const enq = qData.enqRef ? data.enquiries.find(e => e.id === qData.enqRef) : undefined;
+      const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email }, enq
+        ? { source: enq.src, enquiryId: enq.id, productInterest: qData.items[0]?.desc }
+        : { source: LEAD_SOURCES_AUTO.quote, productInterest: qData.items[0]?.desc });
       if (lead) qData.customerId = (await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() })).id;
     }
     if (editId) {

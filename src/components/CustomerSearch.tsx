@@ -38,10 +38,12 @@ export function CustomerSearch({ customers, value, onChange, error, placeholder 
   // Keep display text in sync when parent resets value (e.g. form pre-fill on edit)
   useEffect(() => { setQuery(value); }, [value]);
 
+  // Customer Master records first, then Customer Leads (LEAD tag below) —
+  // each group keeps its own order.
   const filtered = useMemo(() => {
     const q = query.trim();
-    if (!q) return customers.slice(0, 50);
-    return customers.filter(c => matchesQuery(c, q)).slice(0, 50);
+    const hits = q ? customers.filter(c => matchesQuery(c, q)) : customers;
+    return [...hits.filter(c => c.customerStatus !== 'lead'), ...hits.filter(c => c.customerStatus === 'lead')].slice(0, 50);
   }, [query, customers]);
 
   const typed = query.trim();

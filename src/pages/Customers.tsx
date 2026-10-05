@@ -347,6 +347,11 @@ export function CustomerPanel({ customer, onClose }: { customer: Customer; onClo
                   )}
                 </div>
               )}
+              {!isLead(customer) && customer.promotedAt && (
+                <p className="text-[10px] text-lead-text font-mono mt-0.5">
+                  Promoted from Lead on {new Date(customer.promotedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}{customer.promotedBy ? ` by ${customer.promotedBy}` : ''}
+                </p>
+              )}
             </div>
           </div>
           <button type="button" title="Close panel" aria-label="Close customer panel" onClick={onClose} className="p-1 text-g400 hover:text-blk rounded transition-colors">
@@ -900,9 +905,17 @@ export function Customers() {
   // form (router state). Cleared from history so a refresh won't repeat it.
   const location = useLocation();
   const [arrivalToast, setArrivalToast] = useState<string | null>(() => (location.state as { toast?: string } | null)?.toast ?? null);
+  // After Promote / Merge: open that customer's profile.
+  const [arrivalProfileId] = useState<string | null>(() => (location.state as { openProfile?: string } | null)?.openProfile ?? null);
   useEffect(() => {
-    if (!arrivalToast) return;
+    if (!arrivalProfileId) return;
+    const c = data.customers.find((x: Customer) => x.id === arrivalProfileId);
+    if (c) setSelectedCustomer(c);
+  }, [arrivalProfileId, data.customers]);
+  useEffect(() => {
+    if (!arrivalToast && !arrivalProfileId) return;
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if (!arrivalToast) return;
     const t = setTimeout(() => setArrivalToast(null), 5000);
     return () => clearTimeout(t);
   }, []);

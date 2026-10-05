@@ -271,7 +271,8 @@ export function NewEnquiry() {
       let linkedCustomerId = pickedCustomer?.id;
       if (!editId && !linkedCustomerId) {
         linkedCustomerId = (await addCustomer({
-          ...buildLeadRecord(custName, data.customers, { name: contact, phone: normalizeIndianPhone(phone).value, email }),
+          ...buildLeadRecord(custName, data.customers, { name: contact, phone: normalizeIndianPhone(phone).value, email },
+            { source: src, enquiryId: enqId, productInterest: items[0]?.desc }),
           createdBy: user?.email ?? undefined,
           createdDate: new Date().toISOString(),
         })).id;

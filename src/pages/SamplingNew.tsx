@@ -4,7 +4,7 @@ import { Upload, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { uploadPublicFile } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { localDateStr, customerIdForSave } from '../lib/utils';
+import { localDateStr, customerIdForSave, leadForUnknownCompany, LEAD_SOURCES_AUTO } from '../lib/utils';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
@@ -63,7 +63,7 @@ function addDaysToDate(dateStr: string, days: number): string {
 export function SamplingNew() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { data, user } = useAppStore();
+  const { data, user, addCustomer } = useAppStore();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
   const editId = searchParams.get('id');
@@ -230,9 +230,27 @@ export function SamplingNew() {
 
     // Legacy-compat columns on samples: mirror first product's values
     const linkedDoc = data.quotes.find(q => q.id === linkedRef) ?? data.enquiries.find(e => e.id === linkedRef);
+    let customerId = customerIdForSave({ cust, customerId: sampleCustomerId || linkedDoc?.customerId }, data.customers) ?? null;
+    // A NEW sample for a company that isn't a customer or a lead (and doesn't
+    // look like one) first creates a LEAD, same rule as quotes / orders.
+    // Source = the linked enquiry's Source (and link it), else 'Sample'.
+    if (!editId && !customerId) {
+      const enqId = data.enquiries.some(e => e.id === linkedRef) ? linkedRef : data.quotes.find(q => q.id === linkedRef)?.enqRef;
+      const enq = enqId ? data.enquiries.find(e => e.id === enqId) : undefined;
+      const lead = leadForUnknownCompany(cust, data.customers, {}, enq
+        ? { source: enq.src, enquiryId: enq.id, productInterest: products[0]?.name }
+        : { source: LEAD_SOURCES_AUTO.sample, productInterest: products[0]?.name });
+      if (lead) {
+        try {
+          customerId = (await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() })).id;
+        } catch (err) {
+          console.error('Could not create lead for sample:', err);   // the sample still saves, linked by name
+        }
+      }
+    }
     const commonFields = {
       cust:            cust.trim(),
-      customer_id:     customerIdForSave({ cust, customerId: sampleCustomerId || linkedDoc?.customerId }, data.customers) ?? null,
+      customer_id:     customerId,
       quote_ref:       (ref && isQt)  ? ref : null,
       enq_ref:         (ref && !isQt) ? ref : null,
       product_name:    first?.product_name ?? null,

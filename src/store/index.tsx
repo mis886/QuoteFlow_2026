@@ -114,6 +114,8 @@ interface AppContextType {
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
+  promoteLead: (id: string, fields: Partial<Customer>) => Promise<Customer>;
+  mergeLeadIntoCustomer: (leadId: string, targetId: string) => Promise<Record<string, number | string>>;
   removeOrderFromDispatch: (orderId: string) => Promise<any[]>;
   addFollowUpLog: (quoteId: string, log: FollowUpLog, nextDate?: string | null, nextTime?: string | null, owner?: string, stageOverride?: string | null) => Promise<void>;
   addFollowUpLogBulk: (quoteIds: string[], log: FollowUpLog, nextDate?: string | null, nextTime?: string | null) => Promise<void>;
@@ -1330,7 +1332,12 @@ const mapEnquiryToDB = (e: any) => {
       crm: c.crm || '',
       fulfilmentType: c.fulfilment_type || '',
       customerStatus: c.customer_status === 'lead' ? 'lead' : 'customer',
+      leadSource: c.lead_source || undefined,
+      linkedEnquiryId: c.linked_enquiry_id || undefined,
+      firstEnquiryDate: c.first_enquiry_date || undefined,
+      productInterest: c.product_interest || undefined,
       promotedAt: c.promoted_at || undefined,
+      promotedBy: c.promoted_by || undefined,
       reviewedAt: c.reviewed_at || undefined,
       reviewedBy: c.reviewed_by || undefined,
       // Main Office (S1) only — the customers row itself. Each branch / plant
@@ -1373,6 +1380,11 @@ const mapEnquiryToDB = (e: any) => {
     // plain customer save never sends them (and never touches customer_status).
     if ('customerStatus' in c && c.customerStatus) obj.customer_status = c.customerStatus;
     if ('promotedAt' in c) obj.promoted_at = c.promotedAt || null;
+    if ('leadSource' in c)       obj.lead_source        = c.leadSource || null;
+    if ('linkedEnquiryId' in c)  obj.linked_enquiry_id  = c.linkedEnquiryId || null;
+    if ('firstEnquiryDate' in c) obj.first_enquiry_date = c.firstEnquiryDate || null;
+    if ('productInterest' in c)  obj.product_interest   = c.productInterest || null;
+    // promoted_by is written only by the promote_lead DB function.
     // Review mode KEEP / Un-keep — only written when present.
     if ('reviewedAt' in c) obj.reviewed_at = c.reviewedAt || null;
     if ('reviewedBy' in c) obj.reviewed_by = c.reviewedBy || null;
@@ -1512,6 +1524,36 @@ const mapEnquiryToDB = (e: any) => {
     if (!rows || rows.length === 0) throw new Error('Nothing was deleted — this record is no longer a lead, or you don\'t have permission.');
     setData(prev => ({ ...prev, customers: prev.customers.filter(c => c.id !== id) }));
     logActivity({ module: 'customers', recordId: id, recordLabel: before?.name || id, action: 'delete', before });
+  };
+
+  // Save & Promote (lead → customer) in ONE DB transaction via the
+  // promote_lead function (supabase/migrations/20261005_lead_promote_merge.sql):
+  // saves the form's columns, flips customer_status, stamps promoted_at /
+  // promoted_by and writes the History Log row itself — so no logActivity
+  // here. Refuses a GSTIN already used in Customer Master (DUPLICATE_GSTIN:…).
+  const promoteLead = async (id: string, fields: Partial<Customer>): Promise<Customer> => {
+    const { customer_id: _id, customer_status: _status, promoted_at: _pa, reviewed_at: _ra, reviewed_by: _rb, ...pFields } = mapCustomerToDB(fields);
+    const { data: row, error } = await supabase.rpc('promote_lead', {
+      p_id: id, p_fields: pFields, p_actor_email: user?.email ?? null, p_actor_name: stampName(),
+    });
+    if (error) throw error;
+    const promoted = mapCustomerFromDB(row);
+    setData(prev => ({ ...prev, customers: prev.customers.map(c => c.id === id ? promoted : c) }));
+    return promoted;
+  };
+
+  // Merge a lead into a Customer Master record — MIS only (canMerge; the DB
+  // function checks the same email and raises MERGE_NOT_ALLOWED otherwise).
+  // Moves the lead's enquiries / quotes / orders / samples / production rows
+  // to the customer, deletes the lead and logs it, in one DB transaction.
+  // Reloads everything afterwards, since document rows changed.
+  const mergeLeadIntoCustomer = async (leadId: string, targetId: string): Promise<Record<string, number | string>> => {
+    const { data: result, error } = await supabase.rpc('merge_lead_into_customer', {
+      p_lead_id: leadId, p_target_id: targetId, p_actor_email: user?.email ?? null, p_actor_name: stampName(),
+    });
+    if (error) throw error;
+    await refreshData();
+    return result ?? {};
   };
 
   // Dispatch Board "Delete" on an ORDER card (admins): takes the order OFF
@@ -2148,6 +2190,8 @@ const mapEnquiryToDB = (e: any) => {
         updateCustomer,
         deleteCustomer,
         deleteLead,
+        promoteLead,
+        mergeLeadIntoCustomer,
         removeOrderFromDispatch,
         addFollowUpLog,
         addFollowUpLogBulk,

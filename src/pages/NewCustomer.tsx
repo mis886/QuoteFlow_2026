@@ -4,8 +4,10 @@ import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { Customer, Site, Contact, NextOrder } from '../lib/types';
-import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead, MAIN_OFFICE_ID, cleanGstin, gstinProblem, gstinState, gstinStateWarning, panFromGstin, isValidPan } from '../lib/utils';
+import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead, MAIN_OFFICE_ID, ENQUIRY_SOURCES, DEFAULT_LEAD_SOURCE, localDateStr, canMerge, cleanGstin, gstinProblem, gstinState, gstinStateWarning, panFromGstin, isValidPan } from '../lib/utils';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { LeadMatchDialog, MergeConfirmDialog, mergeSummary, mergeErrorText } from '../components/LeadMerge';
+import type { SimilarCustomer } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
 
@@ -180,7 +182,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
   const navigate = useNavigate();
-  const { data, user, addCustomer, updateCustomer } = useAppStore();
+  const { data, user, addCustomer, updateCustomer, promoteLead, mergeLeadIntoCustomer } = useAppStore();
 
   // Promote mode (/customers/new?id=<LEAD-id>&promote=1, from the Customer
   // Lead page): the full customer form for a record that is STILL a lead.
@@ -221,6 +223,8 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const [curr, setCurr] = useState('INR');
   const [pay, setPay] = useState('');
   const [gstin, setGstin] = useState('');
+  // Lead form only: how the lead arrived (lead_source). New lead → IndiaMART.
+  const [leadSource, setLeadSource] = useState('');
   const [pan, setPan] = useState('');
   const [sites, setSites] = useState<Site[]>([
     { id: 'S1', name: 'Main Office', city: '', contacts: [{ id: 'C1', name: '', role: 'Purchase', email: '', isPrimary: true }] }
@@ -257,6 +261,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         setCustomerType(cust.customerType || '');
         setCrm(cust.crm || '');
         setTier(cust.tier || '');
+        setLeadSource(cust.leadSource || '');
         setInco(normalizeInco(cust.inco) || cust.inco || 'EXW');
         setCurr(cust.curr || 'INR');
         setPay(normalizePayTerms(cust.pay) || cust.pay);
@@ -301,6 +306,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         setCode(leadId);
         setPay('100% Advance');
         setCreditLimit('0');
+        setLeadSource(DEFAULT_LEAD_SOURCE);
       } else {
         // The real id that will be saved (customer_id) — shown read-only.
         const custId = generateId('CUST', data.customers.map(c => c.id));
@@ -444,10 +450,28 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const branchMatch = !gstinDuplicate && !name.includes(' - ') ? similarCustomers.find(s => s.samePan) : undefined;
   const branchCity = sites[0]?.city?.trim() || '';
   const suggestedBranchName = branchMatch && branchCity ? `${(name.trim() || branchMatch.customer.name.trim())} - ${branchCity}` : '';
-  // Save & Promote: an existing CUSTOMER that looks like this lead → confirm.
-  const similarMaster = similarCustomers.find(s => s.kind !== 'pan' && !isLead(s.customer));
-  const [promoteDupOpen, setPromoteDupOpen] = useState(false);
-  const promoteDupOk = useRef(false);
+  // Save & Promote: Customer Master records (never leads, never this lead)
+  // that look like it → the "looks like an existing customer" popup, with
+  // Merge (MIS only) / Create as new customer / Cancel.
+  const masterMatches = similarCustomers.filter(s => !isLead(s.customer));
+  const [matchPopup, setMatchPopup] = useState<{ matches: SimilarCustomer[]; mergeOnly: boolean } | null>(null);
+  const promoteMatchOk = useRef(false);
+  const [mergeTarget, setMergeTarget] = useState<Customer | null>(null);
+  const [merging, setMerging] = useState(false);
+  const mayMerge = canMerge(user?.email);
+  const runMerge = async () => {
+    if (!editId || !mergeTarget) return;
+    setMerging(true);
+    try {
+      const result = await mergeLeadIntoCustomer(editId, mergeTarget.id);
+      navigate('/customers', { state: { toast: mergeSummary(result), openProfile: mergeTarget.id } });
+    } catch (err) {
+      setMerging(false);
+      setMergeTarget(null);
+      setToast(mergeErrorText(err));
+      setTimeout(() => setToast(null), 6000);
+    }
+  };
 
   // PAN always comes from a valid Company GSTIN (characters 3–12); '' = no
   // valid GSTIN, so the PAN field is typed by hand.
@@ -512,7 +536,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
       setErrors(prev => ({ ...prev, save: gstinDuplicate.message }));
       return;
     }
-    if (isPromote && similarMaster && !promoteDupOk.current) { setPromoteDupOpen(true); return; }
+    if (isPromote && masterMatches.length && !promoteMatchOk.current) { setMatchPopup({ matches: masterMatches, mergeOnly: false }); return; }
     // Lead renamed (in the lead form, or while promoting) while records still
     // use the old name → confirm first.
     if ((isLeadMode || isPromote) && hasLinkedToOldName && !renameConfirmOpen) { setRenameConfirmOpen(true); return; }
@@ -543,7 +567,8 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     const cust: Customer = isLeadMode
       ? {
           ...base,
-          ...(editId ? {} : { customerStatus: 'lead' as const }),
+          leadSource: leadSource || undefined,
+          ...(editId ? {} : { customerStatus: 'lead' as const, firstEnquiryDate: localDateStr(new Date()) }),
         }
       : {
           ...base,
@@ -562,27 +587,31 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
       }
     };
     if (isPromote && editId) {
-      // ONE update on the same row (same LEAD- id, so linked enquiries /
-      // quotes / orders stay connected): every form field + the move to
-      // Customer Master. updateCustomer logs it (customerStatus lead →
-      // customer). On failure it's still a lead — stay here with the error.
+      // ONE call to the promote_lead DB function (same row, same LEAD- id, so
+      // linked enquiries / quotes / orders stay connected): saves every form
+      // field + moves it to Customer Master + stamps promoted_at / promoted_by
+      // + writes the History Log, all in one transaction. On failure it's
+      // still a lead — stay here.
       setSaving(true);
       try {
-        await updateCustomer(editId, {
-          ...cust,
-          customerStatus: 'customer',
-          promotedAt: new Date().toISOString(),
-          modifiedBy: user?.email ?? undefined,
-          modifiedDate: new Date().toISOString(),
-        });
+        await promoteLead(editId, { ...cust, modifiedBy: user?.email ?? undefined, modifiedDate: new Date().toISOString() });
       } catch (err: any) {
         setSaving(false);
-        setToast(`Promote failed: ${err?.message || 'could not save — check your connection.'}`);
+        const msg = String(err?.message ?? '');
+        // The DB found a Customer Master record with this GSTIN → merge only.
+        if (msg.includes('DUPLICATE_GSTIN')) {
+          const dupId = msg.match(/already used by\s+(\S+)/)?.[1];
+          const dup = data.customers.find(c => c.id === dupId);
+          const matches = masterMatches.filter(m => m.kind === 'gstin');
+          if (dup && !matches.some(m => m.customer.id === dup.id)) matches.unshift({ kind: 'gstin', customer: dup, matchedOn: ['GSTIN'], message: `This GSTIN already exists: ${dup.name} (${dup.id})` });
+          if (matches.length) { setMatchPopup({ matches, mergeOnly: true }); return; }
+        }
+        setToast(`Promote failed: ${msg || 'could not save — check your connection.'}`);
         setTimeout(() => setToast(null), 6000);
         return;
       }
       setSaving(false);
-      navigate('/customers', { state: { toast: `${name.trim()} moved to Customer Master.` } });
+      navigate('/customers', { state: { toast: 'Promoted to Customer Master', openProfile: editId } });
       return;
     }
     if (isLeadMode) {
@@ -785,8 +814,18 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
               )}
             </div>
 
-            <div className={`grid ${isLeadMode ? 'grid-cols-2' : 'grid-cols-3'} gap-3`}>
+            <div className="grid grid-cols-3 gap-3">
               {!isLeadMode && crmField}
+              {isLeadMode && (
+                <div>
+                  <label className={labelCls}>Source <span className="normal-case font-normal text-g400">(optional)</span></label>
+                  <select title="Lead Source" value={leadSource} onChange={e => setLeadSource(e.target.value)} className={inputCls}>
+                    <option value="">—</option>
+                    {leadSource && !(ENQUIRY_SOURCES as readonly string[]).includes(leadSource) && <option value={leadSource}>{leadSource}</option>}
+                    {ENQUIRY_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className={labelCls}>Company GSTIN{isLeadMode && <span className="normal-case font-normal text-g400"> (optional)</span>}</label>
@@ -1189,15 +1228,26 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         </div>
       )}
 
-      {promoteDupOpen && similarMaster && (
-        <ConfirmDialog
-          title="Promote anyway?"
-          confirmLabel="Promote anyway"
-          onConfirm={() => { promoteDupOk.current = true; setPromoteDupOpen(false); handleSave(); }}
-          onCancel={() => setPromoteDupOpen(false)}
-        >
-          Looks like existing customer <strong>{similarMaster.customer.name}</strong> ({similarMaster.customer.id}). Promote anyway?
-        </ConfirmDialog>
+      {matchPopup && !mergeTarget && (
+        <LeadMatchDialog
+          leadName={originalName || name}
+          matches={matchPopup.matches}
+          canMerge={mayMerge}
+          busy={saving}
+          onMerge={target => setMergeTarget(target)}
+          onCreateNew={matchPopup.mergeOnly ? undefined : () => { promoteMatchOk.current = true; setMatchPopup(null); handleSave(); }}
+          onCancel={() => setMatchPopup(null)}
+        />
+      )}
+
+      {mergeTarget && editId && (
+        <MergeConfirmDialog
+          lead={{ id: editId, name: originalName || name }}
+          target={mergeTarget}
+          busy={merging}
+          onConfirm={runMerge}
+          onCancel={() => setMergeTarget(null)}
+        />
       )}
 
       {renameConfirmOpen && (

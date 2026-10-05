@@ -71,6 +71,22 @@ export const LEAD_PROMOTE_THRESHOLD = 100000;
 export const LEAD_EXCLUDED_ORDER_STATUSES: readonly string[] = ['Lost'];
 export const isLead = (c: { customerStatus?: string } | null | undefined): boolean => c?.customerStatus === 'lead';
 
+// Lead source (customers.lead_source): the enquiry's Source when a lead comes
+// from an enquiry (or the Add Lead form's Source), else where it was created.
+export const LEAD_SOURCES_AUTO = { quote: 'Quotation', order: 'Order', sample: 'Sample' } as const;
+export const DEFAULT_LEAD_SOURCE = 'IndiaMART';
+// What a newly created lead records about how it arrived.
+export interface LeadOrigin {
+  source?: string;          // lead_source
+  enquiryId?: string;       // linked_enquiry_id — only when created from an enquiry
+  productInterest?: string; // product_interest — first item description
+}
+
+// Merging a lead into a Customer Master record: MIS only — not admins, not
+// anyone else. The merge_lead_into_customer DB function checks the same email.
+export const MERGE_ALLOWED_EMAIL = 'mis@himalayaterpene.com';
+export const canMerge = (email?: string | null) => (email || '').toLowerCase() === MERGE_ALLOWED_EMAIL;
+
 // ── Customer / lead matching + duplicate check ───────────────────────────────
 // Everything here searches BOTH Customer Master rows and Customer Leads (same
 // customers table).
@@ -263,6 +279,7 @@ export interface SimilarCustomer {
   customer: Customer;
   message: string;
   samePan?: boolean;           // same PAN under a different GSTIN (any kind but gstin) — a branch / plant of this company
+  matchedOn: string[];         // what matched: 'GSTIN' | 'PAN' | 'name' | 'mobile' | 'email'
 }
 
 // Duplicate check for a record about to be created / saved. Strongest match
@@ -290,7 +307,7 @@ export function findSimilarCustomers(
     if (excludeId && c.id === excludeId) continue;
     const cGstins = [c.gstin, ...(c.sites ?? []).map(s => s.gstin)].map(normGstin).filter(Boolean);
     if (cGstins.some(g => gstins.has(g))) {
-      out.push({ kind: 'gstin', customer: c, message: `This GSTIN already exists: ${c.name} (${c.id})` });
+      out.push({ kind: 'gstin', customer: c, matchedOn: ['GSTIN'], message: `This GSTIN already exists: ${c.name} (${c.id})` });
       continue;
     }
     const panGstin = cGstins.find(g => g.length === 15 && pans.has(g.slice(2, 12)));
@@ -299,13 +316,14 @@ export function findSimilarCustomers(
     const samePhone = phones.size > 0 && contacts.some(ct => [ct.phone, ...(ct.extraPhones ?? [])].some(p => phones.has(last10Digits(p))));
     const sameEmail = emails.size > 0 && contacts.some(ct => [ct.email, ...(ct.extraEmails ?? [])].some(e => emails.has(normEmail(e))));
     if (sameName || samePhone || sameEmail) {
-      out.push({ kind: 'similar', customer: c, samePan: !!panGstin, message: `Possible duplicate: ${c.name} (${c.id}, ${isLead(c) ? 'Lead' : 'Customer'})` });
+      const matchedOn = [panGstin && 'PAN', sameName && 'name', samePhone && 'mobile', sameEmail && 'email'].filter(Boolean) as string[];
+      out.push({ kind: 'similar', customer: c, samePan: !!panGstin, matchedOn, message: `Possible duplicate: ${c.name} (${c.id}, ${isLead(c) ? 'Lead' : 'Customer'})` });
       continue;
     }
     if (panGstin) {
       const state = gstinState(panGstin) || c.sites?.[0]?.state?.trim() || '';
       out.push({
-        kind: 'pan', customer: c, samePan: true,
+        kind: 'pan', customer: c, samePan: true, matchedOn: ['PAN'],
         message: `Same company (PAN), different GST registration: ${c.name}${state ? ` (${state})` : ''}. This will be saved as a separate customer for this branch.`,
       });
     }
@@ -321,9 +339,14 @@ export function buildLeadRecord(
   name: string,
   customers: { id: string }[],
   contact: { name?: string; phone?: string; email?: string } = {},
+  origin: LeadOrigin = {},
 ): Customer {
   const leadId = generateId('LEAD', customers.map(c => c.id));
   return {
+    leadSource: origin.source?.trim() || undefined,
+    linkedEnquiryId: origin.enquiryId || undefined,
+    firstEnquiryDate: localDateStr(new Date()),
+    productInterest: origin.productInterest?.trim() || undefined,
     id: leadId,
     code: leadId,
     name: name.trim(),
@@ -349,6 +372,7 @@ export function leadForUnknownCompany(
   name: string,
   customers: Customer[],
   contact: { name?: string; phone?: string; email?: string } = {},
+  origin: LeadOrigin = {},
 ): Customer | null {
   if (!name.trim() || findCustomerByName(name, customers)) return null;
   const key = normalizeCompanyName(name);
@@ -357,7 +381,7 @@ export function leadForUnknownCompany(
     console.info(`[customers] "${name}" looks like existing ${lookalike.name} (${lookalike.id}) — no lead created.`);
     return null;
   }
-  return buildLeadRecord(name, customers, contact);
+  return buildLeadRecord(name, customers, contact, origin);
 }
 
 // Dispatch Board (Kanban): logins allowed to press Done / Hold / Resume on

@@ -6,7 +6,8 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Customer, Enquiry, Order } from '../lib/types';
-import { formatINR, isLead, groupDocsByCustomer, isDocOfCustomer, LEAD_PROMOTE_THRESHOLD, LEAD_EXCLUDED_ORDER_STATUSES, normalizeSearchText, nameTier, canDeleteRecords } from '../lib/utils';
+import { formatINR, isLead, groupDocsByCustomer, isDocOfCustomer, LEAD_PROMOTE_THRESHOLD, LEAD_EXCLUDED_ORDER_STATUSES, normalizeSearchText, nameTier, canDeleteRecords, canMerge, DEFAULT_LEAD_SOURCE } from '../lib/utils';
+import { CustomerMasterPicker, MergeConfirmDialog, mergeSummary, mergeErrorText } from '../components/LeadMerge';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
 import { CustomerPanel, InitialAvatar, TierBadge, getPrimaryContact, importCustomerCsvRows } from './Customers';
 
@@ -17,7 +18,7 @@ import { CustomerPanel, InitialAvatar, TierBadge, getPrimaryContact, importCusto
 // ₹1,00,000 a lead can be promoted — same row, same id, status → 'customer'.
 // Same look as Customer Master (Customers.tsx) with amber instead of red.
 
-const COLUMNS = ['Company', 'Contact', 'Mobile', 'City / State', 'Enq / Orders', 'Order Value (Total)', 'CRM', 'Actions'];
+const COLUMNS = ['Company', 'Source', 'Contact', 'Mobile', 'City / State', 'Enq / Orders', 'Order Value (Total)', 'CRM', 'Actions'];
 // Long headers allowed to wrap onto two lines when space is tight (1366px),
 // so the table never needs a sideways scroll bar.
 const WRAPPABLE_HEADERS = new Set(['Enq / Orders', 'Order Value (Total)']);
@@ -31,7 +32,7 @@ interface LeadStats { enquiries: number; orders: number; countedOrders: number; 
 
 export function CustomerLeads() {
   const navigate = useNavigate();
-  const { data, user, addCustomer, deleteLead, globalSearchQuery } = useAppStore() as any;
+  const { data, user, addCustomer, deleteLead, mergeLeadIntoCustomer, globalSearchQuery } = useAppStore() as any;
   // Same delete permission as Enquiries / Quotes / Orders.
   const canDelete = canDeleteRecords(user?.email);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
@@ -39,6 +40,26 @@ export function CustomerLeads() {
   const [searchQuery, setSearchQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [crmFilter, setCrmFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  // Merge into a Customer Master record — MIS only (canMerge), hidden for
+  // everyone else. Picker → confirm → merge_lead_into_customer.
+  const mayMerge = canMerge(user?.email);
+  const [mergeLead, setMergeLead] = useState<Customer | null>(null);
+  const [mergeTarget, setMergeTarget] = useState<Customer | null>(null);
+  const [merging, setMerging] = useState(false);
+  const runMerge = async () => {
+    if (!mergeLead || !mergeTarget || !mayMerge) return;
+    setMerging(true);
+    try {
+      const result = await mergeLeadIntoCustomer(mergeLead.id, mergeTarget.id);
+      navigate('/customers', { state: { toast: mergeSummary(result), openProfile: mergeTarget.id } });
+    } catch (err) {
+      setMerging(false);
+      setMergeTarget(null);
+      setMergeLead(null);
+      showToast('err', mergeErrorText(err));
+    }
+  };
   const [importing, setImporting] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Customer | null>(null);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
@@ -76,6 +97,8 @@ export function CustomerLeads() {
 
   const states = Array.from(new Set(leads.map(l => l.sites?.[0]?.state?.trim()).filter(Boolean) as string[])).sort();
   const crms = Array.from(new Set(leads.map(l => l.crm).filter(Boolean) as string[])).sort();
+  const sources = Array.from(new Set(leads.map(l => l.leadSource?.trim()).filter(Boolean) as string[])).sort();
+  const NO_SOURCE = '__none__';
 
   const filtered = leads.filter(c => {
     if (searchQuery) {
@@ -89,6 +112,7 @@ export function CustomerLeads() {
     }
     if (stateFilter && (c.sites?.[0]?.state?.trim() || '') !== stateFilter) return false;
     if (crmFilter && (c.crm || '') !== crmFilter) return false;
+    if (sourceFilter && (c.leadSource?.trim() || NO_SOURCE) !== sourceFilter) return false;
     return true;
   }).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'en', { sensitivity: 'base' }));
   if (searchQuery) filtered.sort((a, b) => nameTier(a.name ?? '', searchQuery) - nameTier(b.name ?? '', searchQuery));
@@ -98,7 +122,7 @@ export function CustomerLeads() {
     ordered: leads.filter(l => statsFor(l).countedOrders > 0).length,
     ready: leads.filter(l => statsFor(l).orderValue >= LEAD_PROMOTE_THRESHOLD).length,
   };
-  const hasFilters = !!(searchQuery || stateFilter || crmFilter);
+  const hasFilters = !!(searchQuery || stateFilter || crmFilter || sourceFilter);
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -213,8 +237,13 @@ export function CustomerLeads() {
           <option value="">All CRM</option>
           {crms.map(s => <option key={s}>{s}</option>)}
         </select>
+        <select title="Filter by source" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} className={selectCls}>
+          <option value="">All Sources</option>
+          {sources.map(s => <option key={s}>{s}</option>)}
+          <option value={NO_SOURCE}>No source</option>
+        </select>
         {hasFilters && (
-          <button type="button" onClick={() => { setSearchQuery(''); setStateFilter(''); setCrmFilter(''); }}
+          <button type="button" onClick={() => { setSearchQuery(''); setStateFilter(''); setCrmFilter(''); setSourceFilter(''); }}
             className="flex items-center gap-1 font-mono text-[10px] text-g500 hover:text-lead-text border border-g200 hover:border-lead rounded px-2 h-7 transition-colors whitespace-nowrap">
             <X size={10} /> Clear filters
           </button>
@@ -258,6 +287,14 @@ export function CustomerLeads() {
                           <TierBadge tier={c.tier} />
                         </div>
                       </div>
+                    </td>
+                    {/* Source — compact pill, amber for IndiaMART */}
+                    <td className="px-[13px] py-[10px] align-middle whitespace-nowrap">
+                      {c.leadSource ? (
+                        <span className={`inline-block px-1.5 py-0.5 rounded-full border text-[9.5px] font-bold ${c.leadSource === DEFAULT_LEAD_SOURCE ? 'bg-lead-bg text-lead-text border-lead/50' : 'bg-g100 text-g600 border-g200'}`}>
+                          {c.leadSource}
+                        </span>
+                      ) : <span className="text-g300">—</span>}
                     </td>
                     {/* Contact — capped width, long names / emails truncate */}
                     <td className="px-[13px] py-[10px] align-middle">
@@ -309,6 +346,10 @@ export function CustomerLeads() {
                         {canDelete && (
                           <Button size="sm" variant="ghost" className="h-[26px] text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => setDeleteTarget(c)}>Delete</Button>
                         )}
+                        {/* MIS only — not rendered at all for anyone else. */}
+                        {mayMerge && (
+                          <Button size="sm" variant="secondary" className="h-[26px] border-lead text-lead-text bg-white hover:bg-lead/10" title="Merge this lead into a Customer Master record" onClick={() => setMergeLead(c)}>Merge into customer…</Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -349,6 +390,24 @@ export function CustomerLeads() {
         );
       })()}
 
+
+      {mayMerge && mergeLead && !mergeTarget && (
+        <CustomerMasterPicker
+          customers={data.customers}
+          leadName={mergeLead.name}
+          onPick={setMergeTarget}
+          onCancel={() => setMergeLead(null)}
+        />
+      )}
+      {mayMerge && mergeLead && mergeTarget && (
+        <MergeConfirmDialog
+          lead={mergeLead}
+          target={mergeTarget}
+          busy={merging}
+          onConfirm={runMerge}
+          onCancel={() => setMergeTarget(null)}
+        />
+      )}
 
       {toast && (
         <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white animate-in slide-in-from-bottom-2 ${toast.type === 'ok' ? 'bg-sW' : 'bg-red-mrt'}`}>
