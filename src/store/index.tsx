@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, Ticket } from '../lib/types';
+import type { MergeResult, Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, Ticket } from '../lib/types';
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
@@ -115,7 +115,7 @@ interface AppContextType {
   deleteCustomer: (id: string) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
   promoteLead: (id: string, fields: Partial<Customer>) => Promise<Customer>;
-  mergeLeadIntoCustomer: (leadId: string, targetId: string) => Promise<Record<string, number | string>>;
+  mergeLeadIntoCustomer: (leadId: string, targetId: string) => Promise<MergeResult>;
   removeOrderFromDispatch: (orderId: string) => Promise<any[]>;
   addFollowUpLog: (quoteId: string, log: FollowUpLog, nextDate?: string | null, nextTime?: string | null, owner?: string, stageOverride?: string | null) => Promise<void>;
   addFollowUpLogBulk: (quoteIds: string[], log: FollowUpLog, nextDate?: string | null, nextTime?: string | null) => Promise<void>;
@@ -1545,14 +1545,22 @@ const mapEnquiryToDB = (e: any) => {
   // Merge a lead into a Customer Master record — MIS only (canMerge; the DB
   // function checks the same email and raises MERGE_NOT_ALLOWED otherwise).
   // Moves the lead's enquiries / quotes / orders / samples / production rows
-  // to the customer, deletes the lead and logs it, in one DB transaction.
-  // Reloads everything afterwards, since document rows changed.
-  const mergeLeadIntoCustomer = async (leadId: string, targetId: string): Promise<Record<string, number | string>> => {
+  // to the customer, fills the customer's EMPTY fields from the lead (never
+  // overwrites — returned as details_added), deletes the lead and logs it, in
+  // one DB transaction. Reloads everything afterwards, since document rows
+  // changed, then refetches the customer row itself so the added contacts /
+  // phones / emails / address show straight away.
+  const mergeLeadIntoCustomer = async (leadId: string, targetId: string): Promise<MergeResult> => {
     const { data: result, error } = await supabase.rpc('merge_lead_into_customer', {
       p_lead_id: leadId, p_target_id: targetId, p_actor_email: user?.email ?? null, p_actor_name: stampName(),
     });
     if (error) throw error;
     await refreshData();
+    const { data: row } = await supabase.from('customers').select('*').eq('customer_id', targetId).maybeSingle();
+    if (row) {
+      const fresh = mapCustomerFromDB(row);
+      setData(prev => ({ ...prev, customers: prev.customers.filter(c => c.id !== leadId).map(c => c.id === targetId ? fresh : c) }));
+    }
     return result ?? {};
   };
 

@@ -363,6 +363,16 @@ export interface Customer {
   reviewedBy?: string;        // reviewed_by (email)
 }
 
+// What the merge_lead_into_customer DB function returns: documents moved to
+// the customer, plus the customer's EMPTY fields it filled from the lead
+// (existing details are never overwritten; [] when nothing was added).
+export interface MergeResult {
+  target?: string;
+  enquiries?: number; quotes?: number; orders?: number; samples?: number;
+  prod_jobs?: number; prod_products?: number;
+  details_added?: { field: string; value: string }[];
+}
+
 export type CustomerStatus = 'customer' | 'lead';
 
 export interface FollowUpLog {

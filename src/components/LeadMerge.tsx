@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { Button } from './ui';
 import { ConfirmDialog } from './ConfirmDialog';
-import type { Customer } from '../lib/types';
+import type { Customer, MergeResult } from '../lib/types';
 import type { SimilarCustomer } from '../lib/utils';
 import { isLead, normalizeSearchText, nameTier } from '../lib/utils';
 
@@ -102,7 +102,9 @@ export function MergeConfirmDialog({ lead, target, busy, onConfirm, onCancel }: 
       onConfirm={onConfirm}
       onCancel={onCancel}
     >
-      All enquiries, quotes, orders and samples of <strong>{lead.name}</strong> ({lead.id}) move to <strong>{target.name}</strong> ({target.id}). The lead will be deleted. Continue?
+      <p>All enquiries, quotes, orders and samples of <strong>{lead.name}</strong> ({lead.id}) move to <strong>{target.name}</strong> ({target.id}).</p>
+      <p className="mt-2">Any contact person, phone, email, address or GSTIN that <strong>{target.name}</strong> doesn't have will be <strong>ADDED</strong> from the lead. Existing details of <strong>{target.name}</strong> are never overwritten.</p>
+      <p className="mt-2">The lead will be deleted. Continue?</p>
     </ConfirmDialog>
   );
 }
@@ -161,10 +163,10 @@ export function CustomerMasterPicker({ customers, leadName, onPick, onCancel }: 
 }
 
 // Toast text after a merge.
-export const mergeSummary = (r: Record<string, number | string>) => {
-  const n = (k: string) => Number(r[k]) || 0;
-  const plural = (v: number, one: string, many: string) => `${v} ${v === 1 ? one : many}`;
-  return `Merged: ${plural(n('enquiries'), 'enquiry', 'enquiries')}, ${plural(n('quotes'), 'quote', 'quotes')}, ${plural(n('orders'), 'order', 'orders')} moved`;
+export const mergeSummary = (r: MergeResult) => {
+  const plural = (v: number | undefined, one: string, many: string) => `${Number(v) || 0} ${Number(v) === 1 ? one : many}`;
+  const added = r.details_added?.length ?? 0;
+  return `Merged: ${plural(r.enquiries, 'enquiry', 'enquiries')}, ${plural(r.quotes, 'quote', 'quotes')}, ${plural(r.orders, 'order', 'orders')} moved · ${plural(added, 'detail', 'details')} added`;
 };
 
 // Error text → what to show. MERGE_NOT_ALLOWED → "Only MIS can merge".

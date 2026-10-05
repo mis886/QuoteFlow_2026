@@ -90,9 +90,45 @@ function formatValue(v: any): string {
 // changes for an update = { field: { old, new } }; for insert/delete = the
 // full row snapshot. Rendered differently since one is a diff and the other
 // is a flat record.
+// Merge: the customer's empty fields filled from the lead, as
+// [{ field, value }]. primary_contact / contact2 / contact3 read as
+// "Primary contact" / "Contact 2" / "Contact 3" (the _name part is the
+// contact itself, other parts are appended: "Primary contact phone"); every
+// other column is Title Case ("billing_address" → "Billing Address").
+const MERGE_DETAILS_KEYS = ['details added', 'details_added'];
+const CONTACT_SLOT_LABELS: Record<string, string> = { primary_contact: 'Primary contact', contact2: 'Contact 2', contact3: 'Contact 3' };
+function mergeDetailLabel(field: string): string {
+  const m = field.match(/^(primary_contact|contact2|contact3)(?:_(.+))?$/);
+  if (m) return !m[2] || m[2] === 'name' ? CONTACT_SLOT_LABELS[m[1]] : `${CONTACT_SLOT_LABELS[m[1]]} ${m[2].replace(/_/g, ' ')}`;
+  return field.split('_').filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+}
+
 function ChangesDetail({ action, changes }: { action: ActivityAction; changes: Record<string, any> | null }) {
   if (!changes || Object.keys(changes).length === 0) {
     return <div className="text-[11.5px] text-g400 italic px-1 py-1.5">No detail recorded.</div>;
+  }
+
+  if (action === 'merge') {
+    const detailsKey = MERGE_DETAILS_KEYS.find(k => k in changes);
+    const added: { field: string; value: any }[] = detailsKey && Array.isArray(changes[detailsKey]) ? changes[detailsKey] : [];
+    const rest = Object.fromEntries(Object.entries(changes).filter(([k]) => k !== detailsKey));
+    return (
+      <div className="space-y-2.5">
+        <div>
+          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.5px] text-g500 mb-1">Details added from the lead</div>
+          {added.length === 0 ? (
+            <div className="text-[11.5px] text-g400 italic">None — the customer already had every detail.</div>
+          ) : (
+            <ul className="text-[11.5px] text-blk space-y-0.5">
+              {added.map((d, i) => (
+                <li key={i}><span className="text-g500">{mergeDetailLabel(String(d.field ?? ''))}:</span> {formatValue(d.value)}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {Object.keys(rest).length > 0 && <ChangesDetail action="insert" changes={rest} />}
+      </div>
+    );
   }
 
   if (action === 'update') {
