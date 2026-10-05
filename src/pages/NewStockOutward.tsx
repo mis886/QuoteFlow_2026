@@ -350,14 +350,33 @@ async function insertOutwardWithRetry(
   return { error: new Error('Could not save entry after several attempts — please try again.') };
 }
 
-export function NewStockOutward() {
+// 2026-10-05: the same form can now also open INSIDE the Dispatch board
+// (Step 6 "Transporter & DO" → "DO issued ✓" button). In that case
+// Dispatch.tsx renders <NewStockOutward embedded prefill={...} onSaved onCancel />
+// in a popup. Save logic is 100% the same (same stock_movements insert,
+// same stock_lots decrement, same DO Number generation) — only the
+// "where do I go after Save / Cancel" part changes: embedded mode calls
+// onSaved/onCancel instead of navigating to /stock-movements.
+export type OutwardPrefill = Partial<typeof emptyForm>;
+
+export function NewStockOutward({ embedded = false, prefill, onSaved, onCancel }: {
+  embedded?: boolean;
+  prefill?: OutwardPrefill;
+  onSaved?: () => void;
+  onCancel?: () => void;
+} = {}) {
   const navigate = useNavigate();
   const { user, activeDoer, data } = useAppStore();
   const [searchParams] = useSearchParams();
-  const movementId = searchParams.get('movementId');
+  // Embedded (Dispatch board) mode is always "create new" — never reads the URL.
+  const movementId = embedded ? null : searchParams.get('movementId');
   const isEditing = !!movementId;
 
-  const [form, setForm] = useState(emptyForm);
+  // Where to go after Save / Back / Cancel.
+  const goBack = () => (embedded ? onCancel?.() : navigate('/stock-movements'));
+  const afterSave = () => (embedded ? onSaved?.() : navigate('/stock-movements'));
+
+  const [form, setForm] = useState(() => ({ ...emptyForm, ...(prefill || {}) }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -462,6 +481,14 @@ export function NewStockOutward() {
       setTransporterByParty(map);
       setFulfilmentTypeByParty(fulfilmentMap);
       setTransporterOptions([...Array.from(transporterSet).sort(), 'Other']);
+      // Prefilled Party Name (Dispatch board) never goes through the
+      // combobox onChange, so fill Transporter / Fulfilment Type here the
+      // same way picking the party by hand would — only if still empty.
+      setForm(f => f.partyName ? {
+        ...f,
+        transporter: f.transporter || map[f.partyName] || '',
+        fulfilmentType: f.fulfilmentType || fulfilmentMap[f.partyName] || '',
+      } : f);
     };
     loadPartyTransporters();
     return () => { cancelled = true; };
@@ -790,7 +817,7 @@ export function NewStockOutward() {
       }).eq('id', movementId);
 
       if (moveErr) { setError(moveErr.message); setSaving(false); return; }
-      navigate('/stock-movements');
+      afterSave();
       setSaving(false);
       return;
     }
@@ -856,7 +883,7 @@ export function NewStockOutward() {
       }
     }
 
-    navigate('/stock-movements');
+    afterSave();
     setSaving(false);
   };
 
@@ -874,7 +901,7 @@ export function NewStockOutward() {
       <div className="pt-5 px-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">Stock Movements Module</div>
+            <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">{embedded ? 'Dispatch · Step 06 · Issue DO' : 'Stock Movements Module'}</div>
             <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">
               {isEditing ? <>Edit <em className="italic text-red-mrt">Outward Entry</em></> : <>Log <em className="italic text-red-mrt">New Outward</em></>}
             </h1>
@@ -882,7 +909,7 @@ export function NewStockOutward() {
               {isEditing ? 'Update a previously logged Delivery Order stock outward.' : 'Record a Delivery Order stock outward — replaces the Delivery Order Sale Google Form.'}
             </p>
           </div>
-          <Button variant="secondary" onClick={() => navigate('/stock-movements')}>Back</Button>
+          <Button variant="secondary" onClick={goBack}>{embedded ? 'Close' : 'Back'}</Button>
         </div>
       </div>
 
@@ -1045,7 +1072,7 @@ export function NewStockOutward() {
           <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M2 4h12v8H2zM3 5l5 3.5L13 5v-.5L8 8 3 4.5V5z" /></svg>
           Email to Client
         </button>
-        <Button variant="secondary" onClick={() => navigate('/stock-movements')} disabled={saving}>Cancel</Button>
+        <Button variant="secondary" onClick={goBack} disabled={saving}>Cancel</Button>
         <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>
         {error && <div className="ml-4 text-red-mrt text-[11px] font-bold">{error}</div>}
       </div>

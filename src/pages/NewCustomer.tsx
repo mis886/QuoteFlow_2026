@@ -272,8 +272,8 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         // Main Office only (cloned — the form edits it in place).
         setSites(cust.sites.slice(0, 1).map(s => ({ ...s, contacts: (s.contacts ?? []).map(ct => ({ ...ct })) })));
         setCreditLimit(cust.creditLimit != null ? String(cust.creditLimit) : '');
-        setNextOrder1({ product: cust.nextOrder1?.product || '', qty: cust.nextOrder1?.qty || '', date: cust.nextOrder1?.date || '' });
-        setNextOrder2({ product: cust.nextOrder2?.product || '', qty: cust.nextOrder2?.qty || '', date: cust.nextOrder2?.date || '' });
+        setNextOrder1({ product: cust.nextOrder1?.product || '', qty: cust.nextOrder1?.qty, date: cust.nextOrder1?.date || '' });
+        setNextOrder2({ product: cust.nextOrder2?.product || '', qty: cust.nextOrder2?.qty, date: cust.nextOrder2?.date || '' });
         setCrossSellOpportunities(cust.crossSellOpportunities || '');
         setNotes(cust.notes || '');
         setOriginalName(cust.name);
