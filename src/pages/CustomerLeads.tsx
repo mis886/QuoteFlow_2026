@@ -317,7 +317,8 @@ export function CustomerLeads() {
                     <td className="px-[13px] py-[10px] align-middle text-g600 whitespace-nowrap">{c.crm || '—'}</td>
                     {/* Actions */}
                     <td className="px-[13px] py-[10px] align-middle" onClick={e => e.stopPropagation()}>
-                      {/* One line: Promote, Profile, edit, Delete (admins) — all 26px tall. */}
+                      {/* One line: Promote, Edit, Delete (admins), Merge (MIS) — all 26px tall.
+                          (The profile still opens by clicking the row.) */}
                       <div className="flex items-center gap-[6px] flex-nowrap whitespace-nowrap">
                         {/* Same on every lead — any lead can be promoted at any time.
                             Opens the customer form in promote mode — nothing
@@ -328,9 +329,9 @@ export function CustomerLeads() {
                           onClick={() => navigate(`/customers/new?id=${encodeURIComponent(c.id)}&promote=1`)}>
                           <ArrowUp size={10} className="stroke-[2.5]" /> Promote
                         </Button>
-                        <Button size="sm" variant="secondary" className="h-[26px]" onClick={() => setSelectedLead(c)}>Profile</Button>
-                        <Button size="sm" variant="secondary" className="h-[26px] w-[26px] px-0 justify-center" title="Edit lead" onClick={() => navigate(`/customers/leads/new?id=${c.id}`)}>
-                          <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        <Button size="sm" variant="secondary" className="h-[26px] gap-1" title="Edit lead" onClick={() => navigate(`/customers/leads/new?id=${c.id}`)}>
+                          <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="2.5" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          Edit
                         </Button>
                         {/* Same Delete as Enquiries / Quotes / Orders (canDeleteRecords). */}
                         {canDelete && (
