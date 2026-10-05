@@ -3,7 +3,6 @@ import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { DuplicateReviewPanel } from '../components/DuplicateReviewPanel';
-import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Customer, Contact, CustomerTier, CustomerStatus, FollowUpLog } from '../lib/types';
@@ -882,7 +881,6 @@ export function Customers() {
   // The earlier per-browser list is no longer used — clear it if it's there.
   useEffect(() => { try { localStorage.removeItem('customerReviewKept'); } catch { /* storage unavailable */ } }, []);
   const [showKept, setShowKept] = useState(false);
-  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
   // Samples aren't part of the store's data — loaded here for the Review
   // groups (admins only), linked like every other document.
   const [reviewSamples, setReviewSamples] = useState<{ cust: string; customerId?: string }[]>([]);
@@ -892,8 +890,6 @@ export function Customers() {
       setReviewSamples((rows ?? []).map((r: any) => ({ cust: r.cust ?? '', customerId: r.customer_id ?? undefined })));
     });
   }, [canDelete]);
-  const [moveTarget, setMoveTarget] = useState<Customer | null>(null);
-  const [moving, setMoving] = useState(false);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const showToast = (type: 'ok' | 'err', msg: string, ms = 4000) => {
     setToast({ type, msg });
@@ -1037,55 +1033,6 @@ export function Customers() {
     setSelectedIds(new Set());
     const msg = keep ? `${done} kept in Customer Master — hidden from Review.` : `${done} back in Review.`;
     showToast(failed.length ? 'err' : 'ok', failed.length ? `${msg} Failed — ${failed.join(', ')}` : msg, failed.length ? 12000 : 4000);
-  };
-
-  // Bulk MOVE TO LEAD: the same update as the single button, one at a time,
-  // so each customer gets its own History Log entry (customer → lead). Rows
-  // with quotes / orders are refused; a failed row stays a customer and is
-  // listed, the rest stay moved.
-  const handleBulkMoveToLead = async () => {
-    if (!canDelete) return;
-    const skipped = selectedCustomers.filter(c => quoteCountOf(c) + orderCountOf(c) > 0);
-    const toMove = selectedCustomers.filter(c => quoteCountOf(c) + orderCountOf(c) === 0);
-    setMoving(true);
-    const failed: string[] = [];
-    let moved = 0;
-    for (const c of toMove) {
-      try {
-        await updateCustomer(c.id, { customerStatus: 'lead', promotedAt: undefined });
-        moved++;
-      } catch (err) {
-        console.error('Move to Lead failed:', c.id, err);
-        failed.push(c.name);
-      }
-    }
-    setMoving(false);
-    setBulkMoveOpen(false);
-    setSelectedIds(new Set());
-    if (selectedCustomer && selectedIds.has(selectedCustomer.id)) setSelectedCustomer(null);
-    const parts = [`${moved} moved to Customer Lead`];
-    if (skipped.length) parts.push(`skipped: has quotes/orders — ${skipped.map(c => c.name).join(', ')}`);
-    if (failed.length) parts.push(`failed — ${failed.join(', ')}`);
-    showToast(failed.length ? 'err' : 'ok', parts.join(' · '), skipped.length || failed.length ? 12000 : 4000);
-  };
-
-  // MOVE TO LEAD: the SAME row goes back to Customer Lead — customer_status
-  // 'lead', promoted_at cleared, nothing else touched, never deleted.
-  // updateCustomer records it in the History Log (customerStatus customer → lead).
-  const handleMoveToLead = async () => {
-    if (!moveTarget || !canDelete) return;
-    const { id, name } = moveTarget;
-    setMoving(true);
-    try {
-      await updateCustomer(id, { customerStatus: 'lead', promotedAt: undefined });
-      if (selectedCustomer?.id === id) setSelectedCustomer(null);
-      showToast('ok', `${name} moved to Customer Lead.`);
-    } catch (err: any) {
-      showToast('err', `Move failed: ${err?.message || 'could not save — check your connection.'}`);
-    } finally {
-      setMoving(false);
-      setMoveTarget(null);
-    }
   };
 
   const filteredCustomers = masters.filter(c => {
@@ -1350,10 +1297,6 @@ export function Customers() {
                           {canDelete && (
                             <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); handleDeleteCustomer(c); }}>Delete</Button>
                           )}
-                          {/* Admins only: send a not-yet-qualified record back to Customer Lead. */}
-                          {canDelete && (
-                            <Button size="sm" variant="secondary" className="border-lead text-lead-text bg-white hover:border-lead hover:bg-lead/10 whitespace-nowrap" title="Move to Customer Lead" onClick={() => setMoveTarget(c)}>Move to Lead</Button>
-                          )}
                         </div>
                         {(c.modifiedBy || c.createdBy) && (
                           <span className="text-[10px] font-mono text-g400 whitespace-nowrap ml-0.5">{c.modifiedBy || c.createdBy}</span>
@@ -1434,7 +1377,6 @@ export function Customers() {
       {reviewOn && selectedCustomers.length > 0 && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-blk text-white rounded-[4px] shadow-2xl px-4 py-2.5 animate-in slide-in-from-bottom-2">
           <span className="text-[12.5px] font-medium whitespace-nowrap">{selectedCustomers.length} selected —</span>
-          <Button size="sm" variant="secondary" className="border-lead bg-lead text-white hover:bg-lead-strong hover:border-lead" onClick={() => setBulkMoveOpen(true)}>Move to Lead</Button>
           {selectedCustomers.some(c => !isKept(c)) && (
             <Button size="sm" variant="secondary" title="Reviewed — leave in Customer Master and hide from Review" disabled={keeping} onClick={() => handleKeep(true)}>{keeping ? "Saving…" : "Keep"}</Button>
           )}
@@ -1444,50 +1386,6 @@ export function Customers() {
           <button type="button" onClick={() => setSelectedIds(new Set())} className="font-mono text-[10px] uppercase tracking-[1px] text-white/70 hover:text-white">Clear</button>
         </div>
       )}
-
-      {bulkMoveOpen && (() => {
-        const blocked = selectedCustomers.filter(c => quoteCountOf(c) + orderCountOf(c) > 0);
-        const n = selectedCustomers.length - blocked.length;
-        return (
-          <ConfirmDialog
-            title={`Move ${n} customer${n === 1 ? '' : 's'} to Customer Lead?`}
-            tone="lead"
-            confirmLabel="Move to Lead"
-            busy={moving}
-            onConfirm={handleBulkMoveToLead}
-            onCancel={() => setBulkMoveOpen(false)}
-          >
-            They will no longer appear in Customer Master. Nothing is deleted.
-            {blocked.length > 0 && (
-              <div className="mt-2 text-[12px] text-lead-text bg-lead-bg border border-lead/50 rounded-[3px] px-2.5 py-1.5">
-                {blocked.length} will be skipped (has quotes/orders): {blocked.map(c => c.name).join(', ')}
-              </div>
-            )}
-          </ConfirmDialog>
-        );
-      })()}
-
-      {moveTarget && (() => {
-        const nq = quoteCountOf(moveTarget);
-        const no = orderCountOf(moveTarget);
-        return (
-          <ConfirmDialog
-            title={`Move ${moveTarget.name} to Customer Lead?`}
-            tone="lead"
-            confirmLabel="Move to Lead"
-            busy={moving}
-            onConfirm={handleMoveToLead}
-            onCancel={() => setMoveTarget(null)}
-          >
-            It will no longer appear in Customer Master.
-            {nq + no > 0 && (
-              <div className="mt-2 text-[12px] text-lead-text bg-lead-bg border border-lead/50 rounded-[3px] px-2.5 py-1.5">
-                This customer has {nq} quote{nq === 1 ? '' : 's'} / {no} order{no === 1 ? '' : 's'}.
-              </div>
-            )}
-          </ConfirmDialog>
-        );
-      })()}
 
       {/* Customer profile panel */}
       {selectedCustomer && (

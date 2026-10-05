@@ -538,10 +538,12 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     // lead mode leaves out every field the lead form doesn't edit (credit
     // limit, tier, next orders, cross-sell, notes) — saving a lead never
     // overwrites or blanks them.
+    // customer_status 'lead' is set only when a NEW lead is created — an edit
+    // never sends it, so this form can't turn a customer back into a lead.
     const cust: Customer = isLeadMode
       ? {
           ...base,
-          customerStatus: 'lead',
+          ...(editId ? {} : { customerStatus: 'lead' as const }),
         }
       : {
           ...base,

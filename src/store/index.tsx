@@ -1461,8 +1461,14 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  const updateCustomer = async (id: string, updates: Partial<Customer>) => {
+  const updateCustomer = async (id: string, updatesIn: Partial<Customer>) => {
     const before = data.customers.find(c => c.id === id);
+    // A customer can never be turned back into a lead from the app (an admin
+    // corrects that in the database). An update only ever moves lead →
+    // customer (Promote); a lead is only created by addCustomer. So
+    // customerStatus 'lead' is never written by an update.
+    const { customerStatus, ...rest } = updatesIn;
+    const updates: Partial<Customer> = customerStatus === 'lead' ? rest : updatesIn;
     const { error } = await supabase.from('customers').update(mapCustomerToDB(updates)).eq('customer_id', id);
     if (!error) {
       setData(prev => ({
