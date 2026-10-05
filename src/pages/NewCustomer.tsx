@@ -542,19 +542,19 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
       id, code: code.trim().toUpperCase(), name: name.trim(),
       seg, customerType, inco, curr, pay, gstin: cleanGstin(gstin), pan: derivedPan || cleanGstin(pan) || undefined, sites: normalizedSites,
       crm: crm.trim() || undefined,
-      tier: (tier || undefined) as Customer['tier'],
     };
     // mapCustomerToDB only writes fields that are PRESENT on the object, so
-    // lead mode leaves out every field the lead form doesn't show (next
-    // orders, cross-sell, notes) — saving a lead never blanks them.
+    // lead mode leaves out every field the lead form doesn't edit (credit
+    // limit, tier, next orders, cross-sell, notes) — saving a lead never
+    // overwrites or blanks them.
     const cust: Customer = isLeadMode
       ? {
           ...base,
           customerStatus: 'lead',
-          creditLimit: 0,   // leads get no credit
         }
       : {
           ...base,
+          tier: (tier || undefined) as Customer['tier'],
           creditLimit: creditLimit !== '' ? Number(creditLimit) : undefined,
           nextOrder1: nextOrder1.product ? nextOrder1 : undefined,
           nextOrder2: nextOrder2.product ? nextOrder2 : undefined,
@@ -854,7 +854,11 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
             <div>
               <label className={labelCls}>Credit Limit (₹)</label>
               {isLeadMode ? (
-                <div className="bg-g100 border border-g200 rounded-[3px] p-2 text-sm text-g500">0 · not allowed</div>
+                <div className="bg-g100 border border-g200 rounded-[3px] p-2 text-sm text-g500">
+                  {creditLimit !== '' && Number(creditLimit) > 0
+                    ? `${Number(creditLimit).toLocaleString('en-IN')} · read-only`
+                    : '0 · not allowed'}
+                </div>
               ) : (
                 <input
                   type="number" value={creditLimit} onChange={e => setCreditLimit(e.target.value)}
