@@ -3,7 +3,7 @@ import type { Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quo
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { calculateAgeHours, generateId, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
+import { calculateAgeHours, generateId, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { User } from '@supabase/supabase-js';
 
@@ -913,7 +913,23 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  const addEnquiry = async (enquiry: Enquiry) => {
+  // customer_id safety net for every enquiry / quote / order save: a NEW doc
+  // without one gets the unique exact-name match; an UPDATE whose stored row
+  // (after these updates) has none gets it too. Otherwise unchanged.
+  const withCustomerId = <D extends { cust?: string; customerId?: string }>(doc: D): D => {
+    if (doc.customerId) return doc;
+    const id = customerIdForSave(doc, data.customers);
+    return id ? { ...doc, customerId: id } : doc;
+  };
+  const updatesWithCustomerId = <D extends { cust?: string; customerId?: string }>(before: D | undefined, updates: Partial<D>): Partial<D> => {
+    const effective = 'customerId' in updates ? updates.customerId : before?.customerId;
+    if (effective) return updates;
+    const id = customerIdForSave({ cust: updates.cust ?? before?.cust }, data.customers);
+    return id ? { ...updates, customerId: id } : updates;
+  };
+
+  const addEnquiry = async (enquiryIn: Enquiry) => {
+    const enquiry = withCustomerId(enquiryIn);
     const { error, finalRecord } = await insertWithIdRetry<Enquiry>(
       'enquiries',
       enquiry,
@@ -933,8 +949,9 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  const updateEnquiry = async (id: string, updates: Partial<Enquiry>) => {
+  const updateEnquiry = async (id: string, updatesIn: Partial<Enquiry>) => {
     const before = data.enquiries.find(e => e.id === id);
+    const updates = updatesWithCustomerId(before, updatesIn);
     const dbUpdates = mapEnquiryToDB(updates);
     const { error } = await supabase.from('enquiries').update(dbUpdates).eq('id', id);
     if (!error) {
@@ -967,7 +984,8 @@ const mapEnquiryToDB = (e: any) => {
     logActivity({ module: 'enquiries', recordId: id, recordLabel: before?.cust || id, action: 'delete', before });
   };
 
-  const addQuote = async (quote: Quote) => {
+  const addQuote = async (quoteIn: Quote) => {
+    const quote = withCustomerId(quoteIn);
     const { error, finalRecord } = await insertWithIdRetry<Quote>(
       'quotes',
       quote,
@@ -987,8 +1005,9 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  const updateQuote = async (id: string, updates: Partial<Quote>) => {
+  const updateQuote = async (id: string, updatesIn: Partial<Quote>) => {
     const before = data.quotes.find(q => q.id === id);
+    const updates = updatesWithCustomerId(before, updatesIn);
     const dbUpdates = mapQuoteToDB(updates);
     const { error } = await supabase.from('quotes').update(dbUpdates).eq('id', id);
     if (!error) {
@@ -1021,7 +1040,8 @@ const mapEnquiryToDB = (e: any) => {
     logActivity({ module: 'quotes', recordId: id, recordLabel: before?.cust || id, action: 'delete', before });
   };
 
-  const addOrder = async (order: Order) => {
+  const addOrder = async (orderIn: Order) => {
+    const order = withCustomerId(orderIn);
     const { error, finalRecord } = await insertWithIdRetry<Order>(
       'orders',
       order,
@@ -1041,8 +1061,9 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  const updateOrder = async (id: string, updates: Partial<Order>, opts?: { adminOverride?: boolean }) => {
+  const updateOrder = async (id: string, updatesIn: Partial<Order>, opts?: { adminOverride?: boolean }) => {
     const before = data.orders.find(o => o.id === id);
+    const updates = updatesWithCustomerId(before, updatesIn);
     // Status lock: once an order is sent to Dispatch (or has a dispatch
     // entry) its status can't change — except the moves in
     // isLockedStatusChangeAllowed, or an admin who confirmed the override.
@@ -2179,10 +2200,11 @@ const mapEnquiryToDB = (e: any) => {
 
         if (emailAttachments.length) newEnq.attachments = emailAttachments;
 
-        const dbPayload = { ...mapEnquiryToDB(newEnq), gmail_message_id: email.messageId };
+        const savedEnq = withCustomerId(newEnq);
+        const dbPayload = { ...mapEnquiryToDB(savedEnq), gmail_message_id: email.messageId };
         const { error } = await supabase.from('enquiries').insert([dbPayload]);
         if (!error) {
-          setData(prev => ({ ...prev, enquiries: [newEnq, ...prev.enquiries] }));
+          setData(prev => ({ ...prev, enquiries: [savedEnq, ...prev.enquiries] }));
         }
       }
 

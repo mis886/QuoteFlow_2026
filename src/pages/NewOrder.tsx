@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, customerOfDoc, findCustomerByName, pickableSites, leadForUnknownCompany, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
+import { generateId, customerOfDoc, findCustomerByName, pickableSites, leadForUnknownCompany, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -520,7 +520,12 @@ export function NewOrder() {
     // order for a company that isn't a customer or a lead (and doesn't look
     // like one) first creates a LEAD — never a Customer Master record — so
     // its id can be saved on the order.
-    orderPayload.customerId = pickedCustomer?.id;
+    // The linked quote's customer_id is always copied while the order is still
+    // for the quote's company — even if that customer isn't in the loaded
+    // list (pickedCustomer would then miss it and drop the id).
+    const sourceQuote = data.quotes.find(q => q.id === (linkedQuoteRef || quoteRef));
+    const quoteCustomerId = sourceQuote?.customerId && sameCompanyName(sourceQuote.cust, custName) ? sourceQuote.customerId : '';
+    orderPayload.customerId = customerIdForSave({ cust: custName, customerId: customerId || pickedCustomer?.id || quoteCustomerId }, data.customers);
     if (!editOrderId && !orderPayload.customerId) {
       const lead = leadForUnknownCompany(custName, data.customers, { name: contact, phone, email });
       if (lead) orderPayload.customerId = (await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() })).id;

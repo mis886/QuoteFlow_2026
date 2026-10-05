@@ -4,7 +4,7 @@ import { Upload, ExternalLink } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { uploadPublicFile } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { localDateStr, customerOfDoc } from '../lib/utils';
+import { localDateStr, customerIdForSave } from '../lib/utils';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
@@ -232,7 +232,7 @@ export function SamplingNew() {
     const linkedDoc = data.quotes.find(q => q.id === linkedRef) ?? data.enquiries.find(e => e.id === linkedRef);
     const commonFields = {
       cust:            cust.trim(),
-      customer_id:     customerOfDoc({ cust, customerId: sampleCustomerId || linkedDoc?.customerId }, data.customers)?.id ?? null,
+      customer_id:     customerIdForSave({ cust, customerId: sampleCustomerId || linkedDoc?.customerId }, data.customers) ?? null,
       quote_ref:       (ref && isQt)  ? ref : null,
       enq_ref:         (ref && !isQt) ? ref : null,
       product_name:    first?.product_name ?? null,

@@ -110,6 +110,21 @@ export function customerOfDoc<T extends { id: string; name: string }>(doc: Custo
   return findCustomerByName(doc.cust, customers);
 }
 
+// Safety net for SAVING a document: the customer_id to store. An id the doc
+// already has is kept as-is (even if that customer isn't in the loaded list);
+// with none, the customer / lead whose name matches exactly (trimmed,
+// case-insensitive) — but only when exactly ONE does, never a guess.
+export function customerIdForSave(doc: CustomerDocRef, customers: { id: string; name: string }[]): string | undefined {
+  if (doc.customerId) return doc.customerId;
+  const key = (doc.cust ?? '').trim().toLowerCase();
+  if (!key) return undefined;
+  const matches = customers.filter(c => (c.name ?? '').trim().toLowerCase() === key);
+  return matches.length === 1 ? matches[0].id : undefined;
+}
+
+export const sameCompanyName = (a: string | null | undefined, b: string | null | undefined): boolean =>
+  !!(a ?? '').trim() && (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase();
+
 export function isDocOfCustomer(doc: CustomerDocRef, customer: { id: string; name: string }): boolean {
   if (doc.customerId) return doc.customerId === customer.id;
   const key = (doc.cust ?? '').trim().toLowerCase();
