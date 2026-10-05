@@ -673,7 +673,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
             ) : (
             <p className="text-xs text-g500 mt-1">
               {isLeadMode
-                ? (editId ? `Updating lead ${code}` : 'Small-order / IndiaMART buyer — promote to Customer Master once orders cross ₹1 lakh.')
+                ? (editId ? `Updating lead ${code}` : 'Small-order / IndiaMART buyer — can be promoted to Customer Master at any time.')
                 : (editId ? `Updating corporate record ${code}` : 'Create a new hierarchical customer master record.')}
             </p>
             )}

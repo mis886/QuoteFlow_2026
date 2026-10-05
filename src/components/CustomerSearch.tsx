@@ -136,7 +136,7 @@ export function CustomerSearch({ customers, value, onChange, error, placeholder 
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="text-[12.5px] font-semibold text-blk truncate">{c.name}</span>
-                      {/* Customer Lead (small / IndiaMART buyer) — still pickable so its orders count toward ₹1 lakh */}
+                      {/* Customer Lead (small / IndiaMART buyer) — still pickable, so its documents link to the lead */}
                       {c.customerStatus === 'lead' && (
                         <span className="shrink-0 px-1.5 py-[1px] rounded-[3px] border border-lead/60 bg-lead-bg text-lead-text font-mono text-[8.5px] font-bold uppercase tracking-wide">Lead</span>
                       )}

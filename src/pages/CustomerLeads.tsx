@@ -6,16 +6,15 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Customer, Enquiry, Order } from '../lib/types';
-import { formatINR, isLead, groupDocsByCustomer, isDocOfCustomer, LEAD_PROMOTE_THRESHOLD, LEAD_EXCLUDED_ORDER_STATUSES, normalizeSearchText, nameTier, canDeleteRecords, canMerge, DEFAULT_LEAD_SOURCE } from '../lib/utils';
+import { formatINR, isLead, groupDocsByCustomer, isDocOfCustomer, LEAD_EXCLUDED_ORDER_STATUSES, normalizeSearchText, nameTier, canDeleteRecords, canMerge, DEFAULT_LEAD_SOURCE } from '../lib/utils';
 import { CustomerMasterPicker, MergeConfirmDialog, mergeSummary, mergeErrorText } from '../components/LeadMerge';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
 import { CustomerPanel, InitialAvatar, TierBadge, getPrimaryContact, importCustomerCsvRows } from './Customers';
 
-// Customer Lead — small / not-qualified buyers (mostly IndiaMART, orders
-// below ₹1 lakh). Same customers table as Customer Master, customer_status
-// 'lead'. A lead's order total isn't stored: it's summed live from orders
-// (orders link to customers by company NAME, like the rest of the app). At
-// ₹1,00,000 a lead can be promoted — same row, same id, status → 'customer'.
+// Customer Lead — small / not-qualified buyers (mostly IndiaMART). Same
+// customers table as Customer Master, customer_status 'lead'. A lead's order
+// total isn't stored: it's summed live from orders. Any lead can be promoted
+// at any time (no amount limit) — same row, same id, status → 'customer'.
 // Same look as Customer Master (Customers.tsx) with amber instead of red.
 
 const COLUMNS = ['Company', 'Source', 'Contact', 'Mobile', 'City / State', 'Enq / Orders', 'Order Value (Total)', 'CRM', 'Actions'];
@@ -26,8 +25,8 @@ const WRAPPABLE_HEADERS = new Set(['Enq / Orders', 'Order Value (Total)']);
 const selectCls = 'select-filter font-sans text-xs text-blk bg-white border border-g200 rounded py-1 pl-2 pr-6 cursor-pointer outline-none appearance-none';
 
 // orders = every order (Enq / Orders column); countedOrders + orderValue skip
-// Lost orders (LEAD_EXCLUDED_ORDER_STATUSES) — they drive the ₹1L bar,
-// "Ordered at least once" and "Ready to Promote".
+// Lost orders (LEAD_EXCLUDED_ORDER_STATUSES) — they drive the Order Value
+// total and "Ordered at least once".
 interface LeadStats { enquiries: number; orders: number; countedOrders: number; orderValue: number; }
 
 export function CustomerLeads() {
@@ -120,7 +119,6 @@ export function CustomerLeads() {
   const stats = {
     total: leads.length,
     ordered: leads.filter(l => statsFor(l).countedOrders > 0).length,
-    ready: leads.filter(l => statsFor(l).orderValue >= LEAD_PROMOTE_THRESHOLD).length,
   };
   const hasFilters = !!(searchQuery || stateFilter || crmFilter || sourceFilter);
 
@@ -187,7 +185,7 @@ export function CustomerLeads() {
             <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">
               Customer <em className="italic text-lead-text">Lead</em>
             </h1>
-            <p className="text-xs text-g500 mt-1 font-light">Small-order &amp; IndiaMART buyers (orders below ₹1 lakh) · Promote to Customer Master once they cross ₹1 lakh</p>
+            <p className="text-xs text-g500 mt-1 font-light">Small-order &amp; IndiaMART buyers · Promote to Customer Master at any time</p>
           </div>
           <div className="flex items-center gap-2 mt-1 shrink-0">
             <Button variant="dark" className="gap-2 relative" disabled={importing}>
@@ -202,11 +200,10 @@ export function CustomerLeads() {
         </div>
 
         {/* Stat boxes */}
-        <div className="grid grid-cols-3 gap-3 mt-4">
+        <div className="grid grid-cols-2 gap-3 mt-4">
           {([
             ['Total Leads', stats.total, 'text-blk'],
             ['Ordered at least once', stats.ordered, 'text-blk'],
-            ['Ready to Promote (≥ ₹1L)', stats.ready, 'text-sW'],
           ] as const).map(([label, value, cls]) => (
             <div key={label} className="bg-white border border-g200 rounded-[3px] px-4 py-3">
               <div className="font-mono text-[8.5px] font-bold uppercase tracking-[1.5px] text-g400">{label}</div>
@@ -273,8 +270,6 @@ export function CustomerLeads() {
               ) : filtered.map(c => {
                 const contact = getPrimaryContact(c);
                 const st = statsFor(c);
-                const pct = Math.min(1, st.orderValue / LEAD_PROMOTE_THRESHOLD);
-                const ready = st.orderValue >= LEAD_PROMOTE_THRESHOLD;
                 const site = c.sites?.[0];
                 return (
                   <tr key={c.id} className="transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-lead/5" onClick={() => setSelectedLead(c)}>
@@ -317,12 +312,9 @@ export function CustomerLeads() {
                     <td className="px-[13px] py-[10px] align-middle font-mono text-[11px] text-g600 whitespace-nowrap">
                       {st.enquiries} / {st.orders}
                     </td>
-                    {/* Order Value (Total) + progress to ₹1L */}
+                    {/* Order Value (Total) — Lost orders excluded */}
                     <td className="px-[13px] py-[10px] align-middle">
-                      <div className={`font-mono text-[11.5px] font-bold whitespace-nowrap ${ready ? 'text-sW' : 'text-blk'}`}>{formatINR(Math.round(st.orderValue))}</div>
-                      <div className="h-[4px] min-w-[80px] bg-g200 rounded-full mt-1 overflow-hidden" title={`${Math.round(pct * 100)}% of ₹1,00,000`}>
-                        <div className={`h-full rounded-full ${ready ? 'bg-sW' : 'bg-lead'}`} style={{ width: `${pct * 100}%` }} />
-                      </div>
+                      <div className="font-mono text-[11.5px] font-bold whitespace-nowrap text-blk">{formatINR(Math.round(st.orderValue))}</div>
                     </td>
                     {/* CRM */}
                     <td className="px-[13px] py-[10px] align-middle text-g600 whitespace-nowrap">{c.crm || '—'}</td>
@@ -330,11 +322,12 @@ export function CustomerLeads() {
                     <td className="px-[13px] py-[10px] align-middle" onClick={e => e.stopPropagation()}>
                       {/* One line: Promote, Profile, edit, Delete (admins) — all 26px tall. */}
                       <div className="flex items-center gap-[6px] flex-nowrap whitespace-nowrap">
-                        {/* On every lead; filled green once it has crossed ₹1 lakh. Opens the
-                            customer form in promote mode — nothing changes until Save & Promote. */}
+                        {/* Same on every lead — any lead can be promoted at any time.
+                            Opens the customer form in promote mode — nothing
+                            changes until Save & Promote. */}
                         <Button size="sm" variant="secondary"
-                          className={`h-[26px] gap-1 border-sW hover:border-sW ${ready ? 'bg-sW text-white hover:bg-sW/90' : 'bg-white text-sW hover:bg-sW/10'}`}
-                          title={ready ? 'Crossed ₹1 lakh — ready to promote' : 'Move to Customer Master'}
+                          className="h-[26px] gap-1 border-sW hover:border-sW bg-white text-sW hover:bg-sW/10"
+                          title="Move to Customer Master"
                           onClick={() => navigate(`/customers/new?id=${encodeURIComponent(c.id)}&promote=1`)}>
                           <ArrowUp size={10} className="stroke-[2.5]" /> Promote
                         </Button>
@@ -358,7 +351,6 @@ export function CustomerLeads() {
             </tbody>
           </table>
         </div>
-        <div className="text-[10.5px] text-g400 mt-2">Progress bar = total order value vs ₹1,00,000 promotion threshold</div>
       </div>
 
       {/* Profile panel — the same one Customer Master uses */}

@@ -62,9 +62,8 @@ export const ENQUIRY_SOURCES = [
   'Email', 'Phone', 'WhatsApp', 'Exhibition', 'Website', 'Walk-in', 'Referral', 'IndiaMART', 'Meta Ads', 'LinkedIn',
 ] as const;
 
-// Customer Lead (small / IndiaMART buyers): a lead can be promoted to
-// Customer Master once its total order value reaches this (₹1 lakh).
-export const LEAD_PROMOTE_THRESHOLD = 100000;
+// Customer Lead (small / IndiaMART buyers). Any lead can be promoted to
+// Customer Master at any time — there is no order-value limit.
 // Orders that don't count toward a lead's total / "ordered at least once".
 // 'Lost' is the only dead-order status in OrderStatus (there is no
 // Cancelled / Rejected for orders).
