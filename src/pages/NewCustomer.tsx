@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { Customer, Site, Contact, NextOrder } from '../lib/types';
-import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead, activeSites, cleanGstin, gstinProblem, gstinState, gstinStateWarning, panFromGstin, isValidPan } from '../lib/utils';
+import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead, MAIN_OFFICE_ID, cleanGstin, gstinProblem, gstinState, gstinStateWarning, panFromGstin, isValidPan } from '../lib/utils';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { normalizeIndianPhone } from '../lib/phone';
 import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
@@ -180,7 +180,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
   const navigate = useNavigate();
-  const { data, user, addCustomer, updateCustomer, saveCustomerSites } = useAppStore();
+  const { data, user, addCustomer, updateCustomer } = useAppStore();
 
   // Promote mode (/customers/new?id=<LEAD-id>&promote=1, from the Customer
   // Lead page): the full customer form for a record that is STILL a lead.
@@ -264,8 +264,8 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         setGstin(loadedGstin);
         // A valid GSTIN always decides the PAN (see derivedPan); the stored PAN is only used without one.
         setPan(cleanGstin(cust.pan));
-        // Main Office + active extra sites (cloned — the form edits them in place).
-        setSites(activeSites(cust.sites).map(s => ({ ...s, contacts: (s.contacts ?? []).map(ct => ({ ...ct })) })));
+        // Main Office only (cloned — the form edits it in place).
+        setSites(cust.sites.slice(0, 1).map(s => ({ ...s, contacts: (s.contacts ?? []).map(ct => ({ ...ct })) })));
         setCreditLimit(cust.creditLimit != null ? String(cust.creditLimit) : '');
         setNextOrder1({ product: cust.nextOrder1?.product || '', qty: cust.nextOrder1?.qty || '', date: cust.nextOrder1?.date || '' });
         setNextOrder2({ product: cust.nextOrder2?.product || '', qty: cust.nextOrder2?.qty || '', date: cust.nextOrder2?.date || '' });
@@ -310,18 +310,11 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     }
   }, [editId, data.customers]);
 
-  const addSite = () => {
-    setSites([...sites, {
-      id: 'SITE-' + Math.random().toString(36).slice(2, 10), name: '', city: '',
-      contacts: [{ id: 'C' + Date.now(), name: '', role: '', email: '', isPrimary: false }]
-    }]);
-  };
+  // `sites` only ever holds the Main Office — each branch / plant is a
+  // separate customer.
   const updateSite = (sIdx: number, field: keyof Site, value: any) => {
     const s = [...sites]; (s[sIdx] as any)[field] = value; setSites(s);
   };
-  // Main Office (the first card) can't be removed. A removed extra site is
-  // hidden instead of deleted on save if any document uses it (saveCustomerSites).
-  const removeSite = (sIdx: number) => { if (sIdx > 0) setSites(sites.filter((_, i) => i !== sIdx)); };
   const addContact = (sIdx: number) => {
     const s = [...sites];
     s[sIdx].contacts.push({ id: 'C' + Date.now(), name: '', role: '', email: '' });
@@ -439,12 +432,18 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     const contacts = sites.flatMap(s => s.contacts ?? []);
     return findSimilarCustomers({
       name,
-      gstins: [gstin, ...sites.map(s => s.gstin)],
+      gstins: [gstin],
       phones: contacts.flatMap(ct => [ct.phone, ...(ct.extraPhones ?? [])]),
       emails: contacts.flatMap(ct => [ct.email, ...(ct.extraEmails ?? [])]),
     }, data.customers, editId || undefined);
   }, [name, gstin, sites, data.customers, editId]);
   const gstinDuplicate = similarCustomers.find(s => s.kind === 'gstin');
+  // Same PAN, different GSTIN = a branch / plant of an existing company.
+  // Suggest (never force) "<Company> - <City>" so branches are easy to tell
+  // apart in the customer picker. Hidden once the name already has a " - ".
+  const branchMatch = !gstinDuplicate && !name.includes(' - ') ? similarCustomers.find(s => s.samePan) : undefined;
+  const branchCity = sites[0]?.city?.trim() || '';
+  const suggestedBranchName = branchMatch && branchCity ? `${(name.trim() || branchMatch.customer.name.trim())} - ${branchCity}` : '';
   // Save & Promote: an existing CUSTOMER that looks like this lead → confirm.
   const similarMaster = similarCustomers.find(s => s.kind !== 'pan' && !isLead(s.customer));
   const [promoteDupOpen, setPromoteDupOpen] = useState(false);
@@ -461,12 +460,6 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     setGstin(val);
     const st = gstinState(val);
     if (st && sites[0] && !sites[0].state?.trim()) updateSite(0, 'state', st);
-  };
-  const setSiteGstin = (sIdx: number, raw: string) => {
-    const val = cleanGstin(raw).slice(0, 15);
-    updateSite(sIdx, 'gstin', val);
-    const st = gstinState(val);
-    if (st && !sites[sIdx].state?.trim()) updateSite(sIdx, 'state', st);
   };
   // Red error (with [Use this] when only the last character is missing) or
   // the amber state-mismatch warning under a GSTIN field.
@@ -501,11 +494,9 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
       if (!primaryContact?.name?.trim()) e.contactName = 'Contact person is required';
       if (!primaryContact?.phone?.trim()) e.contactPhone = 'Mobile is required';
     }
-    // Site GSTIN: blank, "URP" or a valid 15-character GSTIN. (A state that
+    // Company GSTIN: blank, "URP" or a valid 15-character GSTIN. (A state that
     // doesn't match the GSTIN's state code is only a warning.)
     // An incomplete GSTIN or a wrong check digit blocks the save.
-    const badSite = sites.find(s => gstinProblem(s.gstin).kind !== 'ok');
-    if (badSite) e.save = `Site "${badSite.name || 'unnamed'}": ${gstinProblem(badSite.gstin).message}`;
     if (gstinProblem(gstin).kind !== 'ok') e.save = `Company GSTIN: ${gstinProblem(gstin).message}`;
     // PAN comes from a valid GSTIN; typed by hand only when there is none.
     if (!derivedPan && pan.trim() && !isValidPan(pan)) e.save = 'PAN is not valid — 5 letters, 4 digits, 1 letter (e.g. AABCM1234A).';
@@ -526,10 +517,10 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     // use the old name → confirm first.
     if ((isLeadMode || isPromote) && hasLinkedToOldName && !renameConfirmOpen) { setRenameConfirmOpen(true); return; }
     setRenameConfirmOpen(false);
-    const normalizedSites = sites.map((site, idx) => ({
+    // Main Office only — saved to the customers row's own columns.
+    const normalizedSites = sites.slice(0, 1).map(site => ({
       ...site,
-      // Extra sites are customer_sites rows (SITE-… ids); Main Office is S1.
-      id: idx > 0 && !site.id.startsWith('SITE-') ? 'SITE-' + Math.random().toString(36).slice(2, 10) : site.id,
+      id: MAIN_OFFICE_ID,
       gstin: cleanGstin(site.gstin),
       contacts: site.contacts.map(ct => ({
         ...ct,
@@ -561,15 +552,11 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
           crossSellOpportunities: crossSellOpportunities.trim() || undefined,
           notes: notes.trim() || undefined,
         };
-    // Main Office → the customers row (add / updateCustomer); every extra site
-    // → customer_sites (saveCustomerSites), keyed by the id actually saved.
     const saveRecord = async () => {
       if (editId) {
         await updateCustomer(editId, { ...cust, modifiedBy: user?.email ?? undefined, modifiedDate: new Date().toISOString() });
-        await saveCustomerSites(editId, normalizedSites, cust.name);
       } else {
-        const saved = await addCustomer({ ...cust, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
-        if (normalizedSites.length > 1) await saveCustomerSites(saved.id, normalizedSites, cust.name);
+        await addCustomer({ ...cust, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() });
       }
     };
     if (isPromote && editId) {
@@ -586,7 +573,6 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
           modifiedBy: user?.email ?? undefined,
           modifiedDate: new Date().toISOString(),
         });
-        await saveCustomerSites(editId, normalizedSites, name.trim());
       } catch (err: any) {
         setSaving(false);
         setToast(`Promote failed: ${err?.message || 'could not save — check your connection.'}`);
@@ -724,6 +710,20 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                   )}
                 </div>
               ))}
+              {branchMatch && (
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px] rounded-[3px] px-2.5 py-1.5 leading-snug border text-g600 bg-g100 border-g200">
+                  <span>
+                    <strong>Branch / Plant:</strong> name it "&lt;Company&gt; - &lt;City&gt;" (e.g. "Indigo Paints Ltd - Cochin") so branches are easy to tell apart in the customer picker.
+                    {!branchCity && ' Fill in the City below to get a suggestion.'}
+                  </span>
+                  {suggestedBranchName && (
+                    <button type="button" onClick={() => setName(suggestedBranchName)}
+                      className="shrink-0 font-bold text-[10px] tracking-wide border border-current rounded-[3px] px-2 py-0.5 bg-white hover:opacity-80">
+                      Use "{suggestedBranchName}"
+                    </button>
+                  )}
+                </div>
+              )}
               {(isLeadMode || isPromote) && hasLinkedToOldName && (
                 <div className="mt-1.5 text-[11px] text-lead-text bg-lead-bg border border-lead/50 rounded-[3px] px-2.5 py-1.5 leading-snug">
                   {linkedSummary} still use the old name "<strong>{originalName}</strong>". They won't be renamed, so this lead's order total may stop adding up.
@@ -869,17 +869,14 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
           </div>
         </div>
 
-        {/* Row 2: Sites & Contacts (full width) */}
+        {/* Row 2: Main Office & Contacts (full width). One address per
+            customer — a branch / plant with its own GSTIN is a separate customer. */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <div className="font-mono text-[10px] font-bold tracking-[1px] uppercase text-blk flex items-center gap-2">
               <MapPin size={13} className="text-red-mrt" />
-              Manufacturing Units
-              <span className="ml-1 px-1.5 py-0.5 bg-g200 rounded font-mono text-[9px] text-g500">{sites.length}</span>
+              Main Office
             </div>
-            <Button size="sm" variant="secondary" onClick={addSite} className="gap-1.5">
-              <Plus size={14} /> Add New Site
-            </Button>
           </div>
 
           <div className="space-y-4">
@@ -890,7 +887,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                   <input
                     type="text" value={site.name}
                     onChange={e => updateSite(sIdx, 'name', e.target.value)}
-                    placeholder="Unit Name (e.g. Pune Plant)"
+                    placeholder="Main Office"
                     className="bg-transparent border-none outline-none font-sans font-bold text-sm text-blk placeholder:text-g400 flex-1"
                   />
                   <input
@@ -911,27 +908,9 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                     placeholder="Pincode"
                     className="bg-white border border-g300 rounded px-2 py-1 text-xs font-mono w-24 outline-none focus:border-red-mrt"
                   />
-                  {sIdx > 0 ? (
-                    <button type="button" onClick={() => removeSite(sIdx)} className="text-g400 hover:text-red-mrt transition-colors p-1" title="Remove site">
-                      <Trash2 size={15} />
-                    </button>
-                  ) : <span className="w-[23px]" />}
                 </div>
 
                 <div className="p-4 space-y-4">
-                  {/* Each site has its own GSTIN (blank / URP allowed). Quotes and
-                      orders use the selected site's GSTIN, falling back to the
-                      Company GSTIN when the site has none. */}
-                  <div>
-                    <label className={labelCls}>Site GSTIN <span className="normal-case font-normal text-g400">(optional — blank or URP if unregistered)</span></label>
-                    <input
-                      type="text" value={site.gstin || ''}
-                      onChange={e => setSiteGstin(sIdx, e.target.value)}
-                      placeholder="27AABCF5171D1ZW"
-                      className="w-56 font-mono uppercase text-xs bg-white border border-g300 rounded-[3px] p-2 outline-none focus:border-red-mrt"
-                    />
-                    {gstinHint(site.gstin, site.state, v => setSiteGstin(sIdx, v))}
-                  </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className={labelCls}>Full Address / Postal Address</label>
@@ -1131,12 +1110,6 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                 </div>
               </div>
             ))}
-
-            {sites.length === 0 && (
-              <div className="text-center py-10 text-g400 text-sm border border-dashed border-g300 rounded-[3px]">
-                No sites added yet. Click "Add New Site" to begin.
-              </div>
-            )}
           </div>
         </div>
 

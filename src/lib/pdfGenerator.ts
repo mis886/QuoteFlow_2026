@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Customer, Quote, Order, AppSettings, CompanyUnit, BankAccount, StockMovement } from './types';
-import { formatINR, resolveAdjustments, maxItemGstRate, fmtDate, getNegotiationExportTables, type ResolvedAdjustment } from './utils';
+import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate, getNegotiationExportTables, type ResolvedAdjustment } from './utils';
 import { supabase } from './supabase';
 
 export function getQuoteTotals(q: Quote) {
@@ -115,10 +115,7 @@ export function generateQuotePDF(
   doc.line(pw / 2 - qw / 2, y + 0.8, pw / 2 + qw / 2, y + 0.8);
 
   // ── K.A. contact ─────────────────────────────────────────────────────────
-  const primarySite =
-    (((quote as any).siteId ? (customer?.sites ?? []).find((s) => s.id === (quote as any).siteId) : undefined))
-    || (customer?.sites ?? []).find((s) => s.isPrimary)
-    || (customer?.sites ?? [])[0];
+  const primarySite = mainOffice(customer);   // always the Main Office
   const primaryContact =
     (primarySite?.contacts ?? []).find((c) => c.isPrimary) || (primarySite?.contacts ?? [])[0];
   if (primaryContact?.name) {
@@ -520,10 +517,7 @@ export function generatePIPDF(
   y += (subLines.length - 1) * 4.5;
 
   // ── Customer + PO details ────────────────────────────────────────────────
-  const primarySite =
-    (((order as any).siteId ? (customer?.sites ?? []).find((s) => s.id === (order as any).siteId) : undefined))
-    || (customer?.sites ?? []).find((s) => s.isPrimary)
-    || (customer?.sites ?? [])[0];
+  const primarySite = mainOffice(customer);   // always the Main Office
   const primaryContact = (primarySite?.contacts ?? []).find((c) => c.isPrimary) || (primarySite?.contacts ?? [])[0];
 
   // ── Dear [Name] letter ───────────────────────────────────────────────────
@@ -551,7 +545,7 @@ export function generatePIPDF(
   if (primarySite?.name) { y += 5; doc.text(primarySite.name, mx, y); }
   if (primaryContact?.name) { y += 5; doc.text('Attn: ' + primaryContact.name, mx, y); }
   if (primarySite?.city) { y += 5; doc.text(primarySite.city + (primarySite.state ? ', ' + primarySite.state : ''), mx, y); }
-  const billGstin = primarySite?.gstin || customer?.gstin;
+  const billGstin = customer?.gstin || primarySite?.gstin;   // the customer's own GSTIN first
   if (billGstin) { y += 5; doc.text('GSTIN: ' + billGstin, mx, y); }
 
   // ── Ship To ──────────────────────────────────────────────────────────────

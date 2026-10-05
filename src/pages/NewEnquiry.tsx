@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, customerOfDoc, findCustomerByName, pickableSites, localDateStr, localDateTimeStr, ENQUIRY_SOURCES, findSimilarCustomers, buildLeadRecord } from '../lib/utils';
+import { generateId, customerOfDoc, findCustomerByName, MAIN_OFFICE_ID, localDateStr, localDateTimeStr, ENQUIRY_SOURCES, findSimilarCustomers, buildLeadRecord } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { Enquiry, LineItem, Urgency, CustomerTier, Customer } from '../lib/types';
 import { Button } from '../components/ui';
@@ -109,7 +109,9 @@ export function NewEnquiry() {
         setSrc(e.src);
         setCustName(e.cust); setCustomerId(e.customerId ?? '');
         setCustEnqDocNo(e.custEnqDocNo || '');
-        setSiteId(e.siteId || '');
+        // Every document uses the Main Office; an old extra-site id is
+        // dropped here and the auto-fill below picks the Main Office.
+        setSiteId(e.siteId === MAIN_OFFICE_ID ? MAIN_OFFICE_ID : '');
         setContactId(e.contactId || '');
         setContact(e.contact || '');
         setEmail(e.email || '');
@@ -166,7 +168,7 @@ export function NewEnquiry() {
 
     if (!editId) setCustomerTier(customer.tier || '');
 
-    const sites = pickableSites(customer.sites, siteId);
+    const sites = customer.sites ?? [];
     if (siteId) {
       const site = sites.find(s => s.id === siteId);
       if (site) {
@@ -196,11 +198,8 @@ export function NewEnquiry() {
         }
       }
     } else {
-      // Only auto-fill when there is exactly one site — if multiple exist the
-      // doer must pick manually to avoid mismatched entries.
-      if (sites.length === 1) {
-        setSiteId(sites[0].id);
-      }
+      // Main Office is the only site — pick it automatically.
+      if (sites.length) setSiteId(sites[0].id);
     }
   }, [custName, siteId, contactId, contactManual, data.customers]);
 
@@ -319,7 +318,7 @@ export function NewEnquiry() {
       // ("Add contact …? [Add] [Skip]") and waits for the answer.
       let contactFull = false;
       try {
-        const fullMsg = await contactSync.run(custName, contact, phone, email, `Enquiry ${enqId}`, { customerId: pickedCustomer?.id, siteId });
+        const fullMsg = await contactSync.run(custName, contact, phone, email, `Enquiry ${enqId}`, { customerId: pickedCustomer?.id });
         if (fullMsg) { setContactSyncMsg(fullMsg); contactFull = true; }
       } catch (e) { console.error('Contact sync failed:', e); }
 
@@ -395,30 +394,7 @@ export function NewEnquiry() {
                   )}
                   {errors.custName && <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.custName}</div>}
                 </div>
-                <div>
-                  {(() => {
-                    const custSites = pickableSites(pickedCustomer?.sites, siteId);
-                    const mustPick = custName && custSites.length > 1 && !siteId;
-                    return (
-                      <>
-                        <label className="block text-[10px] font-bold tracking-[0.5px] uppercase mb-[4px] flex items-center gap-1.5">
-                          <span className={mustPick ? 'text-red-mrt' : 'text-g600'}>Unit</span>
-                          {mustPick && <span className="text-[9px] font-bold text-red-mrt">— Select required</span>}
-                        </label>
-                        <select
-                          title="Unit"
-                          value={siteId}
-                          onChange={e => { setSiteId(e.target.value); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); }}
-                          disabled={!custName}
-                          className={`w-full font-sans text-[13px] text-blk bg-white rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%23888\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt disabled:bg-g50 disabled:cursor-not-allowed border ${mustPick ? 'border-red-mrt ring-[3px] ring-red-lt' : 'border-g300'}`}
-                        >
-                          <option value="">{custSites.length > 1 ? 'Select Unit...' : 'Select Unit...'}</option>
-                          {custSites.map(s => <option key={s.id} value={s.id}>{s.name} ({s.city})</option>)}
-                        </select>
-                      </>
-                    );
-                  })()}
-                </div>
+                {/* No Unit picker — every enquiry uses the customer's Main Office. */}
                 {(() => {
                   const canEditTier = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
                   return (
@@ -467,7 +443,7 @@ export function NewEnquiry() {
                       <>
                         <input
                           type="text"
-                          placeholder={siteId ? 'Type or search contact...' : isNewCompany ? 'Contact person...' : 'Select site first'}
+                          placeholder={siteId ? 'Type or search contact...' : isNewCompany ? 'Contact person...' : 'Select customer first'}
                           value={contact}
                           disabled={!siteId && !isNewCompany}
                           onChange={e => { setContact(e.target.value); setContactId(''); setContactManual(true); setContactOpen(true); }}

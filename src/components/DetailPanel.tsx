@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../store';
-import { customerOfDoc, fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
+import { customerOfDoc, mainOffice, fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -387,16 +387,16 @@ export function DetailPanel() {
 
           {(() => {
             const custRec = customerOfDoc(q, data.customers);
-            const site = (q.siteId ? custRec?.sites.find(s => s.id === q.siteId) : undefined) ?? custRec?.sites.find(s => s.isPrimary) ?? custRec?.sites[0];
+            const site = mainOffice(custRec);   // always the Main Office
             const contacts = site?.contacts ?? [];
             if (!custRec || contacts.length === 0) return null;
+            const gstin = custRec.gstin || site?.gstin;
             return (
               <Section title="Customer Contact">
-                {site?.gstin && (
+                {gstin && (
                   <div className="mb-2 px-3 py-1.5 bg-g50 border border-g200 rounded-[4px] flex items-center gap-2">
                     <span className="text-[9px] font-bold uppercase tracking-wide text-g400">GSTIN</span>
-                    <span className="font-mono text-[11.5px] font-bold text-blk">{site.gstin}</span>
-                    <span className="text-[10px] text-g400">· {site.name}</span>
+                    <span className="font-mono text-[11.5px] font-bold text-blk">{gstin}</span>
                   </div>
                 )}
                 <div className="border border-g200 rounded-[4px] divide-y divide-g100 overflow-hidden">

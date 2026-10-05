@@ -85,9 +85,6 @@ export interface Site {
   gstin?: string;
   pincode?: string;
   isPrimary?: boolean;
-  // Extra sites only (customer_sites.is_active). false = removed from the
-  // customer but still used by old documents — hidden from pickers and the form.
-  isActive?: boolean;
   contacts: Contact[];
 }
 

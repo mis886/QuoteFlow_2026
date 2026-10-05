@@ -1367,7 +1367,7 @@ export function Customers() {
                       <td colSpan={reviewOn ? 12 : 9} className="p-0">
                         <div className="p-[10px_16px]">
                           <div className="text-[9px] font-mono font-bold uppercase tracking-[1.5px] text-red-mrt mb-2 flex items-center gap-1.5">
-                            <MapPin size={10} /> Sites ({c.sites.length})
+                            <MapPin size={10} /> Main Office
                           </div>
                           {c.sites.length === 0 ? (
                             <div className="text-[12px] text-g400 py-2">No sites linked to this customer.</div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, customerOfDoc, findCustomerByName, pickableSites, leadForUnknownCompany, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -235,7 +235,9 @@ export function NewOrder() {
         if (o.promisedDeliveryDate) setPromisedDeliveryDate(o.promisedDeliveryDate);
         if (o.estimatedDeliveryDate) setEstimatedDeliveryDate(o.estimatedDeliveryDate);
         if (o.remark) setDispatchRemark(o.remark);
-        if (o.siteId) setSiteId(o.siteId);
+        // Every document uses the Main Office; an old extra-site id is
+        // dropped here and the auto-fill below picks the Main Office.
+        if (o.siteId === MAIN_OFFICE_ID) setSiteId(MAIN_OFFICE_ID);
         if (o.contactId) setContactId(o.contactId);
         if (o.contact) setContact(o.contact);
         if (o.email) setEmail(o.email);
@@ -255,11 +257,11 @@ export function NewOrder() {
         if (q.enqRef) setLinkedEnqRef(q.enqRef);
         setOrderId(generateId('ORD', data.orders.map(o => o.id)));
         setCustName(q.cust); setCustomerId(q.customerId ?? '');
-        if (q.siteId) {
-          setSiteId(q.siteId);
-          const qCust = customerOfDoc(q, data.customers);
-          const qSite = (qCust?.sites ?? []).find((s: any) => s.id === q.siteId);
-          if (qSite) setShipAddr((qSite as any).dispatchAddress || (qSite as any).fullAddress || qSite.address || '');
+        // Ship-to = the customer's Main Office.
+        const qSite = mainOffice(customerOfDoc(q, data.customers));
+        if (qSite) {
+          setSiteId(qSite.id);
+          setShipAddr(qSite.dispatchAddress || qSite.fullAddress || qSite.address || '');
         }
         if (q.contactId) setContactId(q.contactId);
         if (q.contact) setContact(q.contact);
@@ -320,7 +322,7 @@ export function NewOrder() {
         autoTransporterRef.current = derivedTransporter;
       }
     }
-    const sites = pickableSites(customer.sites, siteId);
+    const sites = customer.sites ?? [];
     if (siteId) {
       const site = sites.find((s: any) => s.id === siteId);
       if (site) {
@@ -347,10 +349,8 @@ export function NewOrder() {
           if (pc && (pc.name || pc.email || pc.phone)) { setContactId(pc.id); setContact(pc.name || ''); setEmail(pc.email || ''); setPhone(pc.phone || ''); }
         }
       }
-    } else if (sites.length === 1) {
-      // Only auto-fill when there is exactly one site — if multiple exist the
-      // doer must pick manually to avoid mismatched entries (mirrors
-      // NewEnquiry.tsx/NewQuote.tsx's own cascading auto-fill effects).
+    } else if (sites.length) {
+      // Main Office is the only site — pick it automatically.
       setSiteId(sites[0].id);
     }
   }, [custName, siteId, contactId, contactManual, data.customers, editOrderId, quoteRef]);
@@ -559,7 +559,7 @@ export function NewOrder() {
   // Run contact sync after save — silently for cases 1/2, brief toast for case 3.
   const doContactSync = async (): Promise<boolean> => {
     try {
-      const fullMsg = await contactSync.run(custName, contact, phone, email, `Order ${editOrderId || orderId}`, { customerId: pickedCustomer?.id, siteId });
+      const fullMsg = await contactSync.run(custName, contact, phone, email, `Order ${editOrderId || orderId}`, { customerId: pickedCustomer?.id });
       if (fullMsg) { setContactSyncMsg(fullMsg); return true; }
     } catch (e) { console.error('Contact sync failed:', e); }
     return false;
@@ -848,11 +848,7 @@ export function NewOrder() {
                           const cust = picked;
                           setCustomerTier(cust?.tier || '');
                           if (cust) {
-                            const sites = (cust.sites ?? []) as any[];
-                            // Only auto-fill when there is exactly one site — if
-                            // multiple exist the doer must pick manually to avoid
-                            // mismatched entries (mirrors NewEnquiry.tsx/NewQuote.tsx).
-                            const ps = sites.length === 1 ? sites[0] : undefined;
+                            const ps = mainOffice(cust);
                             if (ps) {
                               setSiteId(ps.id);
                               if (!quoteRef && !editOrderId) setShipAddr((ps as any).dispatchAddress || (ps as any).fullAddress || ps.address || '');
@@ -867,13 +863,7 @@ export function NewOrder() {
                     />
                     {errors.custName && <p className="text-red-mrt text-[10px] mt-1">{errors.custName}</p>}
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Unit</label>
-                    <select value={siteId} onChange={e => { setSiteId(e.target.value); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); }} disabled={!custName} className={selectCls + ' disabled:bg-g50 disabled:cursor-not-allowed'}>
-                      <option value="">Select Unit...</option>
-                      {pickableSites(pickedCustomer?.sites, siteId).map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` (${s.city})` : ''}</option>)}
-                    </select>
-                  </div>
+                  {/* No Unit picker — every order uses the customer's Main Office. */}
                   {(() => {
                     const canEditTier = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
                     return (
@@ -909,7 +899,7 @@ export function NewOrder() {
                         <>
                           <input
                             type="text"
-                            placeholder={siteId ? 'Type or search contact...' : 'Select site first'}
+                            placeholder={siteId ? 'Type or search contact...' : 'Select customer first'}
                             value={contact}
                             disabled={!siteId}
                             onChange={e => { setContact(e.target.value); setContactId(''); setContactManual(true); setContactOpen(true); }}
@@ -1619,7 +1609,6 @@ export function NewOrder() {
           doc={buildOrderData()}
           relatedQuote={relatedQuote}
           customer={customer}
-          siteId={siteId || undefined}
           settings={data.settings}
           defaultSignatory={data.signatories.find((s: any) => s.is_default)}
           onClose={() => setShowEmailModal(false)}

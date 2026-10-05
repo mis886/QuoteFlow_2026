@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, customerOfDoc, isDocOfCustomer, findCustomerByName, pickableSites, leadForUnknownCompany, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals, getCurrentQuoteItems } from '../lib/utils';
+import { generateId, customerOfDoc, isDocOfCustomer, findCustomerByName, mainOffice, leadForUnknownCompany, formatINR, localDateStr, fmtDate, PAY_OPTIONS, normalizePayTerms, computeItemTotal, computeQuoteTotals, getCurrentQuoteItems } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { QuoteItem, Quote, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
@@ -310,9 +310,7 @@ export function NewQuote() {
         const c = customerOfDoc(q, data.customers);
         if (c) {
           if (!q.customerTier) setCustomerTier(c.tier || '');
-          const ps = (q.siteId && (c.sites ?? []).find((s: any) => s.id === q.siteId))
-            || (c.sites ?? []).find((s: any) => s.isPrimary)
-            || (c.sites ?? [])[0];
+          const ps = mainOffice(c);   // every document uses the Main Office
           if (ps) { setSiteId(ps.id); const pc = (ps.contacts ?? []).find((ct: any) => ct.isPrimary) || (ps.contacts ?? [])[0]; if (pc) { setContactId(pc.id); setContact(pc.name); setEmail(pc.email); setPhone(pc.phone || ''); } }
         }
         // Saved quote contact details win over re-derived ones.
@@ -327,7 +325,7 @@ export function NewQuote() {
       setQuoteId(generateId('HTP', data.quotes.map(q => q.id)));
       const enq = data.enquiries.find(e => e.id === enqRef);
       if (enq) {
-        setCustName(enq.cust); setCustomerId(enq.customerId ?? ''); if (enq.siteId) setSiteId(enq.siteId); if (enq.contactId) setContactId(enq.contactId);
+        setCustName(enq.cust); setCustomerId(enq.customerId ?? ''); if (enq.contactId) setContactId(enq.contactId);
         setContact(enq.contact); setEmail(enq.email); setPhone(enq.phone || '');
         // Carry the customer's enquiry doc number forward (editable).
         if (enq.custEnqDocNo) setCustEnquiryDocNo(enq.custEnqDocNo);
@@ -353,10 +351,7 @@ export function NewQuote() {
           { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); }
           setCurr(cr.curr || 'INR');
           setPay(normalizePayTerms(cr.pay) || cr.pay);
-          // Only auto-fill when there is exactly one site — if multiple exist
-          // the doer must pick manually to avoid mismatched entries.
-          const crSites = cr.sites ?? [];
-          const ps = crSites.length === 1 ? crSites[0] : undefined;
+          const ps = mainOffice(cr);
           if (ps) {
             setSiteId(ps.id);
             const pc = (ps.contacts ?? []).find((ct: any) => ct.isPrimary) || (ps.contacts ?? [])[0];
@@ -381,7 +376,7 @@ export function NewQuote() {
     const customer = pickedCustomer;
     if (!customer) return;
     if (!editId) { const ci = customer.inco || ''; { const _n = normalizeInco(ci); setInco(_n || 'OVERRIDE'); setCustomInco(_n ? '' : (ci || '')); } setCurr(customer.curr || 'INR'); setPay(normalizePayTerms(customer.pay) || customer.pay); if (!enqRef) setCustomerTier(customer.tier || ''); }
-    const sites = pickableSites(customer.sites, siteId);
+    const sites = customer.sites ?? [];
     if (siteId) {
       const site = sites.find(s => s.id === siteId);
       if (site) {
@@ -413,10 +408,8 @@ export function NewQuote() {
           }
         }
       }
-    } else if (sites.length === 1) {
-      // Only auto-fill when there is exactly one site — if multiple exist the
-      // doer must pick manually to avoid mismatched entries (mirrors
-      // NewEnquiry.tsx's own cascading auto-fill effect).
+    } else if (sites.length) {
+      // Main Office is the only site — pick it automatically.
       setSiteId(sites[0].id);
     }
   }, [custName, siteId, contactId, contactManual, data.customers, editId]);
@@ -665,7 +658,7 @@ export function NewQuote() {
   // Returns true if navigation should be delayed (case 3 shown).
   const doContactSync = async (): Promise<boolean> => {
     try {
-      const fullMsg = await contactSync.run(custName, contact, phone, email, `Quote ${editId || quoteId}`, { customerId: pickedCustomer?.id, siteId });
+      const fullMsg = await contactSync.run(custName, contact, phone, email, `Quote ${editId || quoteId}`, { customerId: pickedCustomer?.id });
       if (fullMsg) { setContactSyncMsg(fullMsg); return true; }
     } catch (e) { console.error('Contact sync failed:', e); }
     return false;
@@ -894,11 +887,7 @@ export function NewQuote() {
                           const cust = picked;
                           setCustomerTier(cust?.tier || '');
                           if (cust) {
-                            const sites = (cust.sites ?? []) as any[];
-                            // Only auto-fill when there is exactly one site — if
-                            // multiple exist the doer must pick manually to avoid
-                            // mismatched entries (mirrors NewEnquiry.tsx).
-                            const ps = sites.length === 1 ? sites[0] : undefined;
+                            const ps = mainOffice(cust);
                             if (ps) {
                               setSiteId(ps.id);
                               const contacts = (ps.contacts ?? []) as any[];
@@ -912,13 +901,7 @@ export function NewQuote() {
                     />
                     {errors.custName && <p className="text-red-mrt text-[10px] mt-1">{errors.custName}</p>}
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Unit</label>
-                    <select value={siteId} onChange={e => { setSiteId(e.target.value); setContactId(''); setContact(''); setEmail(''); setPhone(''); setContactManual(false); }} disabled={!custName} className={selectCls + ' disabled:bg-g50 disabled:cursor-not-allowed'}>
-                      <option value="">Select Unit...</option>
-                      {pickableSites(pickedCustomer?.sites, siteId).map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` (${s.city})` : ''}</option>)}
-                    </select>
-                  </div>
+                  {/* No Unit picker — every quote uses the customer's Main Office. */}
                   {(() => {
                     const canEditTier = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com'].includes((user?.email ?? '').toLowerCase());
                     return (
@@ -954,7 +937,7 @@ export function NewQuote() {
                         <>
                           <input
                             type="text"
-                            placeholder={siteId ? 'Type or search contact...' : 'Select site first'}
+                            placeholder={siteId ? 'Type or search contact...' : 'Select customer first'}
                             value={contact}
                             disabled={!siteId}
                             onChange={e => { setContact(e.target.value); setContactId(''); setContactManual(true); setContactOpen(true); }}
@@ -1619,7 +1602,6 @@ export function NewQuote() {
           mode="quote"
           doc={buildQuoteData()}
           customer={customer}
-          siteId={siteId || undefined}
           settings={data.settings}
           defaultSignatory={data.signatories.find((s: any) => s.is_default)}
           onClose={() => setShowEmailModal(false)}

@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { Customer, Site } from './types';
+import type { Customer } from './types';
 import { customerOfDoc, isLead, last10Digits } from './utils';
 import { logActivity } from './activityLog';
 
@@ -12,7 +12,6 @@ export interface ContactSyncPrompt {
   title: string;
   detail: string;
   patch: Record<string, any>;             // contact columns only
-  siteId?: string;                        // set = an extra site (customer_sites.contacts), else Main Office
   log: ContactChangeLog;                  // what the History Log will show
 }
 
@@ -49,12 +48,7 @@ const samePhone = (a: string, b: string) => {
 };
 const sameEmail = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-async function writePatch(customerId: string, patch: Record<string, any>, siteId?: string) {
-  if (siteId) {
-    const { error } = await supabase.from('customer_sites').update(patch).eq('id', siteId).eq('customer_id', customerId);
-    if (error) throw error;
-    return;
-  }
+async function writePatch(customerId: string, patch: Record<string, any>) {
   const { error } = await supabase.from('customers').update(patch).eq('customer_id', customerId);
   if (error) throw error;
 }
@@ -65,7 +59,7 @@ async function writePatch(customerId: string, patch: Record<string, any>, siteId
  * [Skip] never gets here, so it logs nothing.
  */
 export async function applyContactSync(prompt: ContactSyncPrompt, source?: string): Promise<void> {
-  await writePatch(prompt.customerId, prompt.patch, prompt.siteId);
+  await writePatch(prompt.customerId, prompt.patch);
   logContactChange({ id: prompt.customerId, name: prompt.customerName }, prompt.log, source);
 }
 
@@ -89,7 +83,7 @@ export async function syncContactToCustomer(
   email: string,
   customers: Customer[],
   source?: string,   // page it came from ("Enquiry ENQ-…") — for the History Log
-  doc: { customerId?: string; siteId?: string } = {},   // the document's customer_id + site
+  doc: { customerId?: string } = {},   // the document's customer_id
 ): Promise<ContactSyncResult> {
   const name = contact.trim();
   const ph   = phone.trim();
@@ -101,11 +95,6 @@ export async function syncContactToCustomer(
   const customer = customerOfDoc({ cust: custName, customerId: doc.customerId }, customers);
   if (!customer) return { action: 'none' };
   const lead = isLead(customer);
-
-  // Document raised for an EXTRA site → the contact belongs on that site
-  // (customer_sites.contacts), same ask / silent rules. Main Office below.
-  const extraSite = doc.siteId && doc.siteId !== 'S1' ? (customer.sites ?? []).slice(1).find(s => s.id === doc.siteId) : undefined;
-  if (extraSite) return syncToExtraSite(customer, extraSite, name, ph, em, lead, source);
 
   const contacts = customer.sites?.[0]?.contacts ?? [];
   const slots = [
@@ -195,80 +184,5 @@ export async function syncContactToCustomer(
   return {
     action: 'full',
     message: 'New contact could not be saved to customer profile — all 3 slots are full. Please update manually in the Customers module.',
-  };
-}
-
-// Same rules as Main Office, for an extra site: its contacts are a JSON list
-// (no 3-slot limit), so the whole list is rewritten with the one change.
-async function syncToExtraSite(
-  customer: Customer, site: Site, name: string, ph: string, em: string, lead: boolean, source?: string,
-): Promise<ContactSyncResult> {
-  const list = site.contacts ?? [];
-  const where = `${customer.name} (${site.name})`;
-  const idx = name ? list.findIndex(c => (c.name ?? '').trim().toLowerCase() === name.toLowerCase()) : -1;
-
-  if (idx >= 0) {
-    const cur = list[idx];
-    const oldPh = cur.phone ?? '';
-    const oldEm = cur.email ?? '';
-    const change: { phone?: string; email?: string } = {};
-    const parts: string[] = [];
-    const log: ContactChangeLog = { before: {}, after: {} };
-    let overwrites = false;
-    if (ph && !samePhone(oldPh, ph)) {
-      change.phone = ph;
-      log.before[`${site.name}: contact ${cur.name} phone`] = oldPh.trim() || null;
-      log.after[`${site.name}: contact ${cur.name} phone`] = ph;
-      parts.push(oldPh.trim() ? `phone from ${oldPh.trim()} to ${ph}` : `phone to ${ph}`);
-      if (oldPh.trim()) overwrites = true;
-    }
-    if (em && !sameEmail(oldEm, em)) {
-      change.email = em;
-      log.before[`${site.name}: contact ${cur.name} email`] = oldEm.trim() || null;
-      log.after[`${site.name}: contact ${cur.name} email`] = em;
-      parts.push(oldEm.trim() ? `email from ${oldEm.trim()} to ${em}` : `email to ${em}`);
-      if (oldEm.trim()) overwrites = true;
-    }
-    if (parts.length === 0) return { action: 'none' };
-    const patch = { contacts: list.map((c, i) => i === idx ? { ...c, ...change } : c) };
-    if (lead && !overwrites) {
-      await writePatch(customer.id, patch, site.id);
-      logContactChange(customer, log, source);
-      return { action: 'updated' };
-    }
-    return {
-      action: 'ask',
-      prompt: {
-        kind: 'update', customerId: customer.id, customerName: customer.name, siteId: site.id, patch, log,
-        title: `Update contact on ${where}?`,
-        detail: `Update ${cur.name}'s ${parts.join(' and ')}?`,
-      },
-    };
-  }
-
-  if (!name) {
-    const phKnown = !ph || list.some(c => samePhone(c.phone ?? '', ph));
-    const emKnown = !em || list.some(c => sameEmail(c.email ?? '', em));
-    if (phKnown && emKnown) return { action: 'none' };
-  }
-
-  const added = { id: 'C' + Date.now(), name, role: '', email: em, phone: ph, isPrimary: list.length === 0 };
-  const patch = { contacts: [...list, added] };
-  const log: ContactChangeLog = {
-    before: { [`${site.name}: contact added`]: null },
-    after: { [`${site.name}: contact added`]: [name, ph, em].filter(Boolean).join(', ') },
-  };
-  if (lead) {
-    await writePatch(customer.id, patch, site.id);
-    logContactChange(customer, log, source);
-    return { action: 'updated' };
-  }
-  return {
-    action: 'ask',
-    prompt: {
-      kind: 'add', customerId: customer.id, customerName: customer.name, siteId: site.id, patch, log,
-      title: `Add contact to ${where}?`,
-      detail: `Add contact ${[name, ph, em].filter(Boolean).join(', ')} to ${where}?`,
-    },
   };
 }

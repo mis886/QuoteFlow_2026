@@ -151,9 +151,11 @@ export function groupDocsByCustomer<D extends CustomerDocRef>(docs: D[], custome
   return out;
 }
 
-// Sites a document can be raised for: Main Office (S1) + active extra sites.
-export const activeSites = <S extends { isActive?: boolean }>(sites: S[] | undefined | null): S[] =>
-  (sites ?? []).filter(s => s.isActive !== false);
+// Every document uses the customer's Main Office (site "S1", the customers
+// row itself). Each branch / plant is a separate customer — there are no
+// extra sites.
+export const MAIN_OFFICE_ID = 'S1';
+export const mainOffice = <S,>(customer: { sites?: S[] } | null | undefined): S | undefined => customer?.sites?.[0];
 
 // ── GSTIN ────────────────────────────────────────────────────────────────────
 const GSTIN_RX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
@@ -260,13 +262,15 @@ export interface SimilarCustomer {
   kind: SimilarCustomerKind;   // gstin = block a NEW record, pan = info only, similar = amber warning
   customer: Customer;
   message: string;
+  samePan?: boolean;           // same PAN under a different GSTIN (any kind but gstin) — a branch / plant of this company
 }
 
 // Duplicate check for a record about to be created / saved. Strongest match
 // per existing record, GSTIN matches first:
 //   gstin   — same GSTIN (ignoring case / spaces)
 //   pan     — same PAN (GSTIN characters 3–12) under a different GSTIN: the
-//             same company's other GST registration (branch / plant) — valid
+//             same company's other GST registration (branch / plant) — valid,
+//             saved as a separate customer
 //   similar — same normalised company name, same mobile (last 10 digits) or
 //             same email
 // excludeId = the record being edited, so it never matches itself.
@@ -289,16 +293,21 @@ export function findSimilarCustomers(
       out.push({ kind: 'gstin', customer: c, message: `This GSTIN already exists: ${c.name} (${c.id})` });
       continue;
     }
+    const panGstin = cGstins.find(g => g.length === 15 && pans.has(g.slice(2, 12)));
     const contacts = (c.sites ?? []).flatMap(s => s.contacts ?? []);
     const sameName = !!nameKey && normalizeCompanyName(c.name) === nameKey;
     const samePhone = phones.size > 0 && contacts.some(ct => [ct.phone, ...(ct.extraPhones ?? [])].some(p => phones.has(last10Digits(p))));
     const sameEmail = emails.size > 0 && contacts.some(ct => [ct.email, ...(ct.extraEmails ?? [])].some(e => emails.has(normEmail(e))));
     if (sameName || samePhone || sameEmail) {
-      out.push({ kind: 'similar', customer: c, message: `Possible duplicate: ${c.name} (${c.id}, ${isLead(c) ? 'Lead' : 'Customer'})` });
+      out.push({ kind: 'similar', customer: c, samePan: !!panGstin, message: `Possible duplicate: ${c.name} (${c.id}, ${isLead(c) ? 'Lead' : 'Customer'})` });
       continue;
     }
-    if (cGstins.some(g => g.length === 15 && pans.has(g.slice(2, 12)))) {
-      out.push({ kind: 'pan', customer: c, message: `Same company, other GST registration: ${c.name}` });
+    if (panGstin) {
+      const state = gstinState(panGstin) || c.sites?.[0]?.state?.trim() || '';
+      out.push({
+        kind: 'pan', customer: c, samePan: true,
+        message: `Same company (PAN), different GST registration: ${c.name}${state ? ` (${state})` : ''}. This will be saved as a separate customer for this branch.`,
+      });
     }
   }
   const rank: Record<SimilarCustomerKind, number> = { gstin: 0, pan: 1, similar: 2 };
@@ -984,9 +993,3 @@ export const generateId = (prefix: string, existingIds: (string | undefined | nu
   }
   return `${prefix}-${yr}-${String(maxNum + 1).padStart(3, '0')}`;
 };
-
-// Site picker options for a document: Main Office + active extra sites, plus
-// the document's own site even if it has since been hidden.
-export function pickableSites<S extends { id: string; isActive?: boolean }>(sites: S[] | undefined | null, currentSiteId?: string | null): S[] {
-  return (sites ?? []).filter(s => s.isActive !== false || s.id === currentSiteId);
-}

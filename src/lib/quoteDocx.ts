@@ -4,7 +4,7 @@ import {
   convertInchesToTwip, HeadingLevel, UnderlineType,
 } from 'docx';
 import type { Quote, Order, Customer, AppSettings, CompanyUnit, BankAccount } from './types';
-import { formatINR, resolveAdjustments, maxItemGstRate, fmtDate as utilFmtDate, getNegotiationExportTables } from './utils';
+import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate as utilFmtDate, getNegotiationExportTables } from './utils';
 
 // ── colour palette (mirrors PDF)
 const C_DARK    = '1E1E1E';
@@ -166,9 +166,7 @@ export async function downloadQuoteDOCX(
   const gst = quote.items.reduce((a, i) => a + i.total * i.gst / 100, 0);
   const grand = sub + gst;
 
-  const primarySite = (quote.siteId ? customer?.sites.find(s => s.id === quote.siteId) : undefined)
-    ?? customer?.sites.find(s => s.isPrimary)
-    ?? customer?.sites[0];
+  const primarySite = mainOffice(customer);   // always the Main Office
   const primaryContact = primarySite?.contacts.find(c => c.isPrimary) ?? primarySite?.contacts[0];
 
   const settingsSig: SigPerson | undefined = settings?.signatory_name
@@ -400,9 +398,7 @@ export async function downloadPIDOCX(
   const receivedAmount = order.receivedAmount || 0;
   const balanceDue = Math.round(grand - receivedAmount);
 
-  const primarySite = ((order as any).siteId ? customer?.sites.find(s => s.id === (order as any).siteId) : undefined)
-    ?? customer?.sites.find(s => s.isPrimary)
-    ?? customer?.sites[0];
+  const primarySite = mainOffice(customer);   // always the Main Office
   const primaryContact = primarySite?.contacts.find(c => c.isPrimary) ?? primarySite?.contacts[0];
 
   const piSettingsSig: SigPerson | undefined = settings?.signatory_name
@@ -552,7 +548,7 @@ export async function downloadPIDOCX(
                   ...(primarySite?.name ? [para([r(primarySite.name, { size: 17 })], AlignmentType.LEFT, 20)] : []),
                   ...(primaryContact?.name ? [para([r('Attn: ' + primaryContact.name, { size: 17 })], AlignmentType.LEFT, 20)] : []),
                   ...(primarySite?.city ? [para([r(primarySite.city + (primarySite.state ? ', ' + primarySite.state : ''), { size: 17 })], AlignmentType.LEFT, 0)] : []),
-                  ...((primarySite?.gstin || customer?.gstin) ? [para([r('GSTIN: ' + (primarySite?.gstin || customer?.gstin || ''), { size: 17 })], AlignmentType.LEFT, 0)] : []),
+                  ...((customer?.gstin || primarySite?.gstin) ? [para([r('GSTIN: ' + (customer?.gstin || primarySite?.gstin || ''), { size: 17 })], AlignmentType.LEFT, 0)] : []),
                 ],
               }),
               // PO details

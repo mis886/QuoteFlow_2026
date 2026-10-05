@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { customerOfDoc, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, remainingByLine, totalRemaining } from '../lib/utils';
+import { customerOfDoc, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, remainingByLine, totalRemaining } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
 import { OptionSearch } from '../components/OptionSearch';
@@ -342,8 +342,8 @@ export function NewDispatchEntry() {
     setInco(order.inco || '');
     setCurr(order.curr || 'INR');
     setPay(order.pay || '');
-    // Order's own ship-to first; else the dispatch address of the order's site (Main Office or an extra site).
-    setShipAddr(order.shipToAddress || customerOfDoc(order, data.customers)?.sites.find(s => s.id === order.siteId)?.dispatchAddress || '');
+    // Order's own ship-to first; else the customer's Main Office dispatch address.
+    setShipAddr(order.shipToAddress || mainOffice(customerOfDoc(order, data.customers))?.dispatchAddress || '');
     setCustEnquiryDocNo(order.custEnquiryDocNo || '');
     setItems(order.items.map(i => ({ ...i })));
     setInsurance(order.insurance ?? 0);
@@ -440,7 +440,7 @@ export function NewDispatchEntry() {
         else if (cust?.fulfilmentType === 'Self Pickup') setType('self_pickup');
       }
       if (!order.transporter) {
-        const site = cust?.sites.find(s => s.id === order.siteId);
+        const site = mainOffice(cust);
         if (site?.transporter) setTransporter(site.transporter);
       }
       if (!order.promisedDeliveryDate) {
@@ -1306,7 +1306,6 @@ export function NewDispatchEntry() {
           doc={{ id: existingEntryId || selectedOrderId || '', invoiceNumber } as any}
           attachments={dispatchEmailAttachments}
           customer={selectedCustomer}
-          siteId={selectedOrder.siteId || undefined}
           settings={data.settings}
           defaultSignatory={data.signatories.find((s: any) => s.is_default)}
           onClose={() => setShowEmailModal(false)}

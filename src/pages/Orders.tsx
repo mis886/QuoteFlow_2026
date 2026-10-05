@@ -621,7 +621,6 @@ export function Orders() {
           doc={sendModalOrder}
           relatedQuote={data.quotes.find(q => q.id === sendModalOrder.quoteRef)}
           customer={customerOfDoc(sendModalOrder, data.customers)}
-          siteId={sendModalOrder.siteId}
           settings={data.settings}
           defaultSignatory={data.signatories.find((s: any) => s.is_default)}
           onClose={() => setSendModalOrder(null)}

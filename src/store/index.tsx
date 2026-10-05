@@ -111,7 +111,6 @@ interface AppContextType {
   deleteDispatchEntry: (id: string) => Promise<void>;
   markDispatchEmailSent: (id: string) => Promise<void>;
   addCustomer: (customer: Customer) => Promise<Customer>;
-  saveCustomerSites: (customerId: string, sites: Site[], customerName?: string) => Promise<void>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
@@ -217,59 +216,6 @@ async function insertWithIdRetry<T extends { id: string }>(
   return { error: new Error('Could not generate a unique ID after retries'), finalRecord: current };
 }
 
-// Extra customer sites (customer_sites rows). Main Office is NOT one of these —
-// it lives in the customers row itself and is always site "S1".
-const mapSiteFromDB = (r: any): Site => ({
-  id: r.id,
-  name: r.site_name || '',
-  city: r.city || '',
-  state: r.state || '',
-  pincode: r.pincode || '',
-  gstin: r.gstin || '',
-  address: r.billing_address || '',
-  fullAddress: r.billing_address || '',
-  dispatchAddress: r.dispatch_address || '',
-  transporter: r.preferred_transporter || '',
-  leadTimeNote: r.lead_time_note || '',
-  isPrimary: false,
-  isActive: r.is_active !== false,
-  contacts: (Array.isArray(r.contacts) ? r.contacts : []).map((c: any, i: number) => ({
-    id: c.id || `K${i + 1}`,
-    name: c.name || '',
-    role: c.role || '',
-    email: c.email || '',
-    phone: c.phone || '',
-    ...(c.extraEmails?.length ? { extraEmails: c.extraEmails } : {}),
-    ...(c.extraPhones?.length ? { extraPhones: c.extraPhones } : {}),
-    isPrimary: !!c.isPrimary,
-  })),
-});
-
-const mapSiteToDB = (s: Site, customerId: string, sortOrder: number) => ({
-  id: s.id,
-  customer_id: customerId,
-  site_name: s.name?.trim() || 'Site',
-  city: s.city || null,
-  state: s.state || null,
-  pincode: s.pincode || null,
-  gstin: s.gstin?.trim().toUpperCase() || null,
-  billing_address: s.fullAddress || s.address || null,
-  dispatch_address: s.dispatchAddress || null,
-  preferred_transporter: s.transporter || null,
-  lead_time_note: s.leadTimeNote || null,
-  contacts: (s.contacts ?? []).map(c => ({
-    id: c.id, name: c.name || '', role: c.role || '', email: c.email || '', phone: c.phone || '',
-    ...(c.extraEmails?.length ? { extraEmails: c.extraEmails } : {}),
-    ...(c.extraPhones?.length ? { extraPhones: c.extraPhones } : {}),
-    isPrimary: !!c.isPrimary,
-  })),
-  is_active: true,
-  sort_order: sortOrder,
-});
-
-// One line per site for the History Log's old → new view.
-const siteSummary = (s: Site) =>
-  [s.name, s.gstin, [s.city, s.state].filter(Boolean).join(', '), `${(s.contacts ?? []).filter(c => c.name || c.email || c.phone).length} contact(s)`].filter(Boolean).join(' | ');
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<DataStore>({
@@ -863,7 +809,6 @@ const mapEnquiryToDB = (e: any) => {
         { data: rosterData },
         { data: dispatchEntriesData },
         { data: ticketsData },
-        { data: customerSitesData },
       ] = await Promise.all([
         supabase.from('enquiries').select('*').order('recv', { ascending: false }),
         supabase.from('quotes').select('*').order('date', { ascending: false }),
@@ -877,20 +822,13 @@ const mapEnquiryToDB = (e: any) => {
         supabase.from('team_roster').select('*').order('display_name'),
         supabase.from('dispatch_entries').select('*').order('created_at', { ascending: false }),
         supabase.from('tickets').select('*').order('created_at', { ascending: false }),
-        supabase.from('customer_sites').select('*').order('sort_order').order('created_at'),
       ]);
-
-      const sitesByCustomer = new Map<string, Site[]>();
-      for (const row of customerSitesData || []) {
-        const list = sitesByCustomer.get(row.customer_id);
-        if (list) list.push(mapSiteFromDB(row)); else sitesByCustomer.set(row.customer_id, [mapSiteFromDB(row)]);
-      }
 
       setData({
         enquiries: (enquiries || []).map(mapEnquiryFromDB),
         quotes: (quotes || []).map(mapQuoteFromDB),
         orders: (orders || []).map(mapOrderFromDB),
-        customers: (customers || []).map((c: any) => mapCustomerFromDB(c, sitesByCustomer.get(c.customer_id))),
+        customers: (customers || []).map(mapCustomerFromDB),
         followups: (followups || []).map((f: any) => ({
           ...f,
           // Backfill stage for rows created before the pipeline existed.
@@ -1319,7 +1257,7 @@ const mapEnquiryToDB = (e: any) => {
     return s;
   };
 
-  const mapCustomerFromDB = (c: any, extraSites: Site[] = []): Customer => {
+  const mapCustomerFromDB = (c: any): Customer => {
     const contacts: Contact[] = [];
     if (c.primary_contact_name || c.primary_contact_email) {
       contacts.push({ id: 'C1', name: c.primary_contact_name || '', role: c.primary_contact_designation || '', email: c.primary_contact_email || '', extraEmails: c.primary_contact_extra_emails || undefined, phone: fixPhone(c.primary_contact_phone), extraPhones: c.primary_contact_extra_phones || undefined, isPrimary: true });
@@ -1395,8 +1333,9 @@ const mapEnquiryToDB = (e: any) => {
       promotedAt: c.promoted_at || undefined,
       reviewedAt: c.reviewed_at || undefined,
       reviewedBy: c.reviewed_by || undefined,
-      // Main Office (S1, the customers row itself) + extra sites (customer_sites).
-      sites: [primarySite, ...extraSites],
+      // Main Office (S1) only — the customers row itself. Each branch / plant
+      // is its own customer record.
+      sites: [primarySite],
     };
   };
 
@@ -1520,61 +1459,6 @@ const mapEnquiryToDB = (e: any) => {
       console.error('Error adding customer:', error);
       throw error;
     }
-  };
-
-  // Saves a customer's EXTRA sites to customer_sites (Customer / Lead form
-  // only). `sites` is the form's full list: sites[0] is Main Office and is
-  // ignored here (updateCustomer / addCustomer write it to the customers row).
-  //   • every other site → upsert by id
-  //   • a site removed from the form → hidden (is_active = false) if any
-  //     enquiry / quote / order uses it, otherwise deleted
-  // Sites already hidden stay as they are.
-  const saveCustomerSites = async (customerId: string, sites: Site[], customerName?: string) => {
-    const who = user?.email ?? null;
-    const now = new Date().toISOString();
-    const wanted = sites.slice(1);
-    const existing = (data.customers.find(c => c.id === customerId)?.sites ?? []).slice(1);
-    const existingIds = new Set(existing.map(s => s.id));
-
-    if (wanted.length) {
-      const rows = wanted.map((s, i) => ({
-        ...mapSiteToDB(s, customerId, i + 1),
-        updated_at: now, updated_by: who,
-        ...(existingIds.has(s.id) ? {} : { created_by: who }),
-      }));
-      // Two batches: PostgREST upserts need every row to carry the same keys.
-      for (const batch of [rows.filter(r => 'created_by' in r), rows.filter(r => !('created_by' in r))]) {
-        if (!batch.length) continue;
-        const { error } = await supabase.from('customer_sites').upsert(batch, { onConflict: 'id' });
-        if (error) { console.error('Error saving customer sites:', error); throw error; }
-      }
-    }
-
-    const wantedIds = new Set(wanted.map(s => s.id));
-    const removed = existing.filter(s => s.isActive !== false && !wantedIds.has(s.id));
-    const hidden: Site[] = [];
-    for (const s of removed) {
-      const inUse = data.enquiries.some(e => e.siteId === s.id) || data.quotes.some(q => q.siteId === s.id) || data.orders.some(o => o.siteId === s.id);
-      const { error } = inUse
-        ? await supabase.from('customer_sites').update({ is_active: false, updated_at: now, updated_by: who }).eq('id', s.id)
-        : await supabase.from('customer_sites').delete().eq('id', s.id);
-      if (error) { console.error('Error removing customer site:', error); throw error; }
-      if (inUse) hidden.push({ ...s, isActive: false });
-    }
-
-    const stillHidden = existing.filter(s => s.isActive === false && !wantedIds.has(s.id));
-    const nextExtras = [...wanted.map(s => ({ ...s, isPrimary: false, isActive: true })), ...stillHidden, ...hidden];
-    setData(prev => ({
-      ...prev,
-      customers: prev.customers.map(c => c.id === customerId ? { ...c, sites: [c.sites[0], ...nextExtras].filter(Boolean) } : c),
-    }));
-
-    const summarise = (list: Site[]) => Object.fromEntries(list.map(s => [`site ${s.id}`, s.isActive === false ? `${siteSummary(s)} | hidden` : siteSummary(s)]));
-    logActivity({
-      module: 'customers', recordId: customerId,
-      recordLabel: customerName || data.customers.find(c => c.id === customerId)?.name || customerId,
-      action: 'update', before: summarise(existing), after: summarise(nextExtras),
-    });
   };
 
   const updateCustomer = async (id: string, updates: Partial<Customer>) => {
@@ -2255,7 +2139,6 @@ const mapEnquiryToDB = (e: any) => {
         deleteDispatchEntry,
         markDispatchEmailSent,
         addCustomer,
-        saveCustomerSites,
         updateCustomer,
         deleteCustomer,
         deleteLead,

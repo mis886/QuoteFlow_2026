@@ -45,12 +45,10 @@ interface CCCandidate { name: string; role?: string; email: string; isPrimary?: 
 // main email is always pushed first and is the only one that can carry
 // isPrimary: true, so getPrimaryContact below still resolves to exactly the
 // contact's main email, never an extra.
-function getSiteContacts(customer?: Customer, siteId?: string): CCCandidate[] {
+function getSiteContacts(customer?: Customer): CCCandidate[] {
   if (!customer) return [];
-  // If siteId provided, restrict to that site only
-  const site = siteId
-    ? customer.sites.find(s => s.id === siteId) ?? customer.sites.find(s => s.isPrimary) ?? customer.sites[0]
-    : customer.sites.find(s => s.isPrimary) ?? customer.sites[0];
+  // Always the Main Office (each branch / plant is its own customer).
+  const site = customer.sites[0];
   const out: CCCandidate[] = [];
   for (const c of site?.contacts ?? []) {
     if (c.email) out.push({ name: c.name, role: c.role, email: c.email, isPrimary: c.isPrimary });
@@ -61,8 +59,8 @@ function getSiteContacts(customer?: Customer, siteId?: string): CCCandidate[] {
   return out;
 }
 
-function getPrimaryContact(customer?: Customer, siteId?: string): CCCandidate | undefined {
-  const contacts = getSiteContacts(customer, siteId);
+function getPrimaryContact(customer?: Customer): CCCandidate | undefined {
+  const contacts = getSiteContacts(customer);
   return contacts.find(c => c.isPrimary) ?? contacts[0];
 }
 
@@ -95,7 +93,6 @@ async function urlToBase64(url: string): Promise<{ base64: string; mimeType: str
 // ── types ─────────────────────────────────────────────────────────────────────
 interface BaseProps {
   customer?: Customer;
-  siteId?: string;
   settings: AppSettings | null;
   defaultSignatory?: AuthorizedSignatory;
   onClose: () => void;
@@ -116,11 +113,11 @@ const OAUTH_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 // ── component ─────────────────────────────────────────────────────────────────
 export function SendEmailModal(props: Props) {
-  const { customer, siteId, onClose, onSent } = props;
+  const { customer, onClose, onSent } = props;
   const { activeDoer, user, data } = useAppStore();
   const senderEmail = activeDoer?.email ?? user?.email ?? '';
-  const siteContacts = getSiteContacts(customer, siteId);
-  const primaryContact = getPrimaryContact(customer, siteId);
+  const siteContacts = getSiteContacts(customer);
+  const primaryContact = getPrimaryContact(customer);
   const primaryEmail = primaryContact?.email ?? '';
 
   const isQuote    = props.mode === 'quote';
