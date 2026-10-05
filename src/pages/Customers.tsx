@@ -6,7 +6,7 @@ import { DuplicateReviewPanel } from '../components/DuplicateReviewPanel';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Customer, Contact, CustomerTier, CustomerStatus, FollowUpLog } from '../lib/types';
-import { formatINR, fmtIST, generateId, cleanGstin, isValidGstin, panFromGstin, groupDocsByCustomer, isDocOfCustomer, canDeleteRecords, nameTier, normalizeSearchText, isLead } from '../lib/utils';
+import { formatINR, fmtIST, generateId, cleanGstin, isValidGstin, panFromGstin, groupDocsByCustomer, isDocOfCustomer, canDeleteRecords, nameTier, normalizeSearchText, isLead, contactMatchesQuery } from '../lib/utils';
 import { parseISO } from 'date-fns';
 import Papa from 'papaparse';
 
@@ -274,6 +274,11 @@ export function CustomerPanel({ customer, onClose }: { customer: Customer; onClo
     .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
 
   const primaryContact = getPrimaryContact(customer);
+  // Every contact person on the Main Office (up to 5), primary first.
+  const profileContacts = [
+    ...(primaryContact ? [primaryContact] : []),
+    ...(customer.sites?.[0]?.contacts ?? []).filter(ct => ct !== primaryContact && (ct.name || ct.phone || ct.email)),
+  ].filter(ct => ct.name || ct.phone || ct.email);
   const rating = computeRating(customer);
 
   // Inline log form
@@ -397,34 +402,50 @@ export function CustomerPanel({ customer, onClose }: { customer: Customer; onClo
             <div><span className="text-g400">CRM: </span><span className="font-bold text-blk">{customer.crm || '—'}</span></div>
           </div>
 
-          {/* Primary contact */}
-          {primaryContact && (
+          {/* Contact persons — all of them (up to 5), primary first */}
+          {profileContacts.length > 0 && (
             <div className="px-5 py-3 border-b border-g100">
-              <div className="font-mono text-[8px] font-bold uppercase tracking-[1.5px] text-g400 mb-2">Primary Contact</div>
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-semibold text-[13px] text-blk">{primaryContact.name}</div>
-                  <div className="text-[11px] text-g500">{primaryContact.role}</div>
-                </div>
-                <div className="flex gap-1.5">
-                  {primaryContact.phone && (
-                    <a href={`tel:${primaryContact.phone}`} className="p-1.5 rounded bg-g100 hover:bg-g200 transition-colors" title="Call">
-                      <Phone size={12} className="text-blk" />
-                    </a>
-                  )}
-                  {primaryContact.phone && (
-                    <a href={`https://wa.me/${primaryContact.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="p-1.5 rounded bg-green-50 hover:bg-green-100 transition-colors" title="WhatsApp">
-                      <MessageCircle size={12} className="text-green-600" />
-                    </a>
-                  )}
-                  {primaryContact.email && (
-                    <a href={`mailto:${primaryContact.email}`} className="p-1.5 rounded bg-g100 hover:bg-g200 transition-colors" title="Email">
-                      <Mail size={12} className="text-blk" />
-                    </a>
-                  )}
-                </div>
+              <div className="font-mono text-[8px] font-bold uppercase tracking-[1.5px] text-g400 mb-2">
+                Contacts ({profileContacts.length})
               </div>
-              {primaryContact.email && <div className="text-[11px] text-g400 mt-1 font-mono">{primaryContact.email}</div>}
+              <div className="space-y-2.5">
+                {profileContacts.map(ct => (
+                  <div key={ct.id}>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-semibold text-[13px] text-blk flex items-center gap-1.5">
+                          {ct.name || <span className="text-g400 font-normal">(no name)</span>}
+                          {ct === primaryContact && <span className="px-1 py-0.5 bg-red-50 border border-red-200 text-[8px] font-bold uppercase text-red-700 rounded">Primary</span>}
+                        </div>
+                        {ct.role && <div className="text-[11px] text-g500">{ct.role}</div>}
+                      </div>
+                      <div className="flex gap-1.5">
+                        {ct.phone && (
+                          <a href={`tel:${ct.phone}`} className="p-1.5 rounded bg-g100 hover:bg-g200 transition-colors" title="Call">
+                            <Phone size={12} className="text-blk" />
+                          </a>
+                        )}
+                        {ct.phone && (
+                          <a href={`https://wa.me/${ct.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="p-1.5 rounded bg-green-50 hover:bg-green-100 transition-colors" title="WhatsApp">
+                            <MessageCircle size={12} className="text-green-600" />
+                          </a>
+                        )}
+                        {ct.email && (
+                          <a href={`mailto:${ct.email}`} className="p-1.5 rounded bg-g100 hover:bg-g200 transition-colors" title="Email">
+                            <Mail size={12} className="text-blk" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    {[ct.phone, ...(ct.extraPhones ?? [])].filter(Boolean).length > 0 && (
+                      <div className="text-[11px] text-g500 mt-0.5 font-mono">{[ct.phone, ...(ct.extraPhones ?? [])].filter(Boolean).join(', ')}</div>
+                    )}
+                    {[ct.email, ...(ct.extraEmails ?? [])].filter(Boolean).length > 0 && (
+                      <div className="text-[11px] text-g400 mt-0.5 font-mono break-all">{[ct.email, ...(ct.extraEmails ?? [])].filter(Boolean).join(', ')}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1052,7 +1073,7 @@ export function Customers() {
     if (reviewOn && !inReview(c, review)) return false;
     if (searchQuery) {
       const q = normalizeSearchText(searchQuery);
-      if (!normalizeSearchText(c.name ?? '').includes(q)) return false;
+      if (!normalizeSearchText(c.name ?? '').includes(q) && !contactMatchesQuery(c, searchQuery)) return false;
     }
     if (segFilter && c.seg !== segFilter) return false;
     if (tierFilter && (c.tier ?? 'New') !== tierFilter) return false;

@@ -3,7 +3,7 @@ import type { MergeResult, Customer, Site, Contact, DataStore, Enquiry, Order, O
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { calculateAgeHours, generateId, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave } from '../lib/utils';
+import { calculateAgeHours, generateId, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { User } from '@supabase/supabase-js';
 
@@ -1261,15 +1261,18 @@ const mapEnquiryToDB = (e: any) => {
 
   const mapCustomerFromDB = (c: any): Customer => {
     const contacts: Contact[] = [];
-    if (c.primary_contact_name || c.primary_contact_email) {
-      contacts.push({ id: 'C1', name: c.primary_contact_name || '', role: c.primary_contact_designation || '', email: c.primary_contact_email || '', extraEmails: c.primary_contact_extra_emails || undefined, phone: fixPhone(c.primary_contact_phone), extraPhones: c.primary_contact_extra_phones || undefined, isPrimary: true });
-    }
-    if (c.contact2_name || c.contact2_email) {
-      contacts.push({ id: 'C2', name: c.contact2_name || '', role: c.contact2_designation || '', email: c.contact2_email || '', extraEmails: c.contact2_extra_emails || undefined, phone: fixPhone(c.contact2_phone), extraPhones: c.contact2_extra_phones || undefined });
-    }
-    if (c.contact3_name || c.contact3_email) {
-      contacts.push({ id: 'C3', name: c.contact3_name || '', role: c.contact3_designation || '', email: c.contact3_email || '', extraEmails: c.contact3_extra_emails || undefined, phone: fixPhone(c.contact3_phone), extraPhones: c.contact3_extra_phones || undefined });
-    }
+    // Slots C1…C5 (CONTACT_SLOTS). A slot loads if ANY of its columns has a
+    // value — a phone-only contact must load too, or saving the form would
+    // clear it (the save writes every slot).
+    CONTACT_SLOTS.forEach((col, i) => {
+      const extraEmails = c[`${col}_extra_emails`], extraPhones = c[`${col}_extra_phones`];
+      if (!(c[`${col}_name`] || c[`${col}_email`] || c[`${col}_phone`] || c[`${col}_designation`] || extraEmails?.length || extraPhones?.length)) return;
+      contacts.push({
+        id: `C${i + 1}`, name: c[`${col}_name`] || '', role: c[`${col}_designation`] || '', email: c[`${col}_email`] || '',
+        extraEmails: extraEmails || undefined, phone: fixPhone(c[`${col}_phone`]), extraPhones: extraPhones || undefined,
+        ...(i === 0 ? { isPrimary: true } : {}),
+      });
+    });
     if (contacts.length === 0) {
       contacts.push({ id: 'C1', name: '', role: 'Purchase', email: '', isPrimary: true });
     }
@@ -1349,7 +1352,6 @@ const mapEnquiryToDB = (e: any) => {
   const mapCustomerToDB = (c: Partial<Customer>) => {
     const primarySite = c.sites?.[0];
     const contacts = primarySite?.contacts ?? [];
-    const [c1, c2, c3] = contacts;
 
     const obj: any = {};
     if ('id' in c || 'code' in c) obj.customer_id = c.id ?? c.code;
@@ -1402,30 +1404,21 @@ const mapEnquiryToDB = (e: any) => {
       obj.lead_time_note        = primarySite.leadTimeNote ?? null;
     }
 
-    // Flat contact columns
-    if (c1 !== undefined) {
-      obj.primary_contact_name        = c1?.name;
-      obj.primary_contact_designation = c1?.role;
-      obj.primary_contact_email       = c1?.email;
-      obj.primary_contact_extra_emails = c1?.extraEmails?.length ? c1.extraEmails : null;
-      obj.primary_contact_phone       = c1?.phone;
-      obj.primary_contact_extra_phones = c1?.extraPhones?.length ? c1.extraPhones : null;
-    }
-    if (c2 !== undefined) {
-      obj.contact2_name        = c2?.name;
-      obj.contact2_designation = c2?.role;
-      obj.contact2_email       = c2?.email;
-      obj.contact2_extra_emails = c2?.extraEmails?.length ? c2.extraEmails : null;
-      obj.contact2_phone       = c2?.phone;
-      obj.contact2_extra_phones = c2?.extraPhones?.length ? c2.extraPhones : null;
-    }
-    if (c3 !== undefined) {
-      obj.contact3_name        = c3?.name;
-      obj.contact3_designation = c3?.role;
-      obj.contact3_email       = c3?.email;
-      obj.contact3_extra_emails = c3?.extraEmails?.length ? c3.extraEmails : null;
-      obj.contact3_phone       = c3?.phone;
-      obj.contact3_extra_phones = c3?.extraPhones?.length ? c3.extraPhones : null;
+    // Flat contact columns — the form's contacts in order fill slots C1…C5
+    // (primary_contact, contact2 … contact5). Only when the Main Office is
+    // being saved (sites present): then EVERY slot is written, and a slot with
+    // no contact is cleared, so a contact removed in the form is removed here
+    // too instead of lingering / duplicating after the others shift up.
+    if (primarySite) {
+      CONTACT_SLOTS.forEach((col, i) => {
+        const ct = contacts[i];
+        obj[`${col}_name`]         = ct?.name || null;
+        obj[`${col}_designation`]  = ct?.role || null;
+        obj[`${col}_email`]        = ct?.email || null;
+        obj[`${col}_extra_emails`] = ct?.extraEmails?.length ? ct.extraEmails : null;
+        obj[`${col}_phone`]        = ct?.phone || null;
+        obj[`${col}_extra_phones`] = ct?.extraPhones?.length ? ct.extraPhones : null;
+      });
     }
 
     // Next orders

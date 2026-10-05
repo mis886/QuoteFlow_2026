@@ -70,6 +70,13 @@ export const ENQUIRY_SOURCES = [
 export const LEAD_EXCLUDED_ORDER_STATUSES: readonly string[] = ['Lost'];
 export const isLead = (c: { customerStatus?: string } | null | undefined): boolean => c?.customerStatus === 'lead';
 
+// Contact persons per customer: 5 slots, stored as flat column groups on the
+// customers row — primary_contact_*, contact2_* … contact5_* (name,
+// designation, email, phone, extra_emails[], extra_phones[]). Slot i is
+// contact id `C${i + 1}`; the Main Office's contacts fill them in order.
+export const CONTACT_SLOTS = ['primary_contact', 'contact2', 'contact3', 'contact4', 'contact5'] as const;
+export const MAX_CONTACTS = CONTACT_SLOTS.length;
+
 // Lead source (customers.lead_source): the enquiry's Source when a lead comes
 // from an enquiry (or the Add Lead form's Source), else where it was created.
 export const LEAD_SOURCES_AUTO = { quote: 'Quotation', order: 'Order', sample: 'Sample' } as const;
@@ -949,6 +956,20 @@ export function getThisWeekRange(): { start: Date; end: Date } {
  */
 export function normalizeSearchText(s: string): string {
   return (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Customer search by contact person: true when ANY of the customer's
+// contacts (all 5 slots) matches by name, any email or any phone (3+ digits).
+type SearchableContact = { name?: string; email?: string; phone?: string; extraEmails?: string[]; extraPhones?: string[] };
+export function contactMatchesQuery(c: { sites?: { contacts?: SearchableContact[] }[] }, query: string): boolean {
+  const q = normalizeSearchText(query);
+  const lower = query.trim().toLowerCase();
+  const digits = query.replace(/\D/g, '');
+  if (!q) return false;
+  return (c.sites?.[0]?.contacts ?? []).some(ct =>
+    normalizeSearchText(ct.name ?? '').includes(q)
+    || [ct.email, ...(ct.extraEmails ?? [])].some(e => !!e && e.toLowerCase().includes(lower))
+    || (digits.length >= 3 && [ct.phone, ...(ct.extraPhones ?? [])].some(p => !!p && p.replace(/\D/g, '').includes(digits))));
 }
 
 /**

@@ -6,7 +6,7 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Customer, Enquiry, Order } from '../lib/types';
-import { formatINR, isLead, groupDocsByCustomer, isDocOfCustomer, LEAD_EXCLUDED_ORDER_STATUSES, normalizeSearchText, nameTier, canDeleteRecords, canMerge, DEFAULT_LEAD_SOURCE } from '../lib/utils';
+import { formatINR, isLead, groupDocsByCustomer, isDocOfCustomer, LEAD_EXCLUDED_ORDER_STATUSES, normalizeSearchText, nameTier, canDeleteRecords, canMerge, contactMatchesQuery, DEFAULT_LEAD_SOURCE } from '../lib/utils';
 import { CustomerMasterPicker, MergeConfirmDialog, mergeSummary, mergeErrorText } from '../components/LeadMerge';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
 import { CustomerPanel, InitialAvatar, TierBadge, getPrimaryContact, importCustomerCsvRows } from './Customers';
@@ -102,11 +102,8 @@ export function CustomerLeads() {
   const filtered = leads.filter(c => {
     if (searchQuery) {
       const q = normalizeSearchText(searchQuery);
-      const contact = getPrimaryContact(c);
-      const phoneQ = searchQuery.replace(/\D/g, '');
-      const hit = normalizeSearchText(c.name ?? '').includes(q)
-        || normalizeSearchText(contact?.name ?? '').includes(q)
-        || (phoneQ.length >= 3 && (contact?.phone ?? '').replace(/\D/g, '').includes(phoneQ));
+      // Company name, or any of its contacts (all 5) by name / email / mobile.
+      const hit = normalizeSearchText(c.name ?? '').includes(q) || contactMatchesQuery(c, searchQuery);
       if (!hit) return false;
     }
     if (stateFilter && (c.sites?.[0]?.state?.trim() || '') !== stateFilter) return false;

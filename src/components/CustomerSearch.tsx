@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Customer } from '../lib/types';
 import { Search, X } from 'lucide-react';
+import { contactMatchesQuery } from '../lib/utils';
 
 interface Props {
   customers: Customer[];
@@ -25,7 +26,8 @@ function matchesQuery(c: Customer, q: string): boolean {
     s.gstin?.toLowerCase().includes(lq) ||
     s.name?.toLowerCase().includes(lq)
   )) return true;
-  return false;
+  // Any of its contact persons (all 5) by name / email / phone.
+  return contactMatchesQuery(c, q);
 }
 
 export function CustomerSearch({ customers, value, onChange, error, placeholder = 'Search customer…', onCreateNew }: Props) {

@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { Customer, Site, Contact, NextOrder } from '../lib/types';
-import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead, MAIN_OFFICE_ID, ENQUIRY_SOURCES, DEFAULT_LEAD_SOURCE, localDateStr, canMerge, cleanGstin, gstinProblem, gstinState, gstinStateWarning, panFromGstin, isValidPan } from '../lib/utils';
+import { generateId, PAY_OPTIONS, normalizePayTerms, findSimilarCustomers, isLead, MAIN_OFFICE_ID, MAX_CONTACTS, ENQUIRY_SOURCES, DEFAULT_LEAD_SOURCE, localDateStr, canMerge, cleanGstin, gstinProblem, gstinState, gstinStateWarning, panFromGstin, isValidPan } from '../lib/utils';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LeadMatchDialog, MergeConfirmDialog, mergeSummary, mergeErrorText } from '../components/LeadMerge';
 import type { SimilarCustomer } from '../lib/utils';
@@ -321,7 +321,9 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const updateSite = (sIdx: number, field: keyof Site, value: any) => {
     const s = [...sites]; (s[sIdx] as any)[field] = value; setSites(s);
   };
+  // Up to MAX_CONTACTS (5) contact persons — one per customers contact slot.
   const addContact = (sIdx: number) => {
+    if (sites[sIdx].contacts.length >= MAX_CONTACTS) return;
     const s = [...sites];
     s[sIdx].contacts.push({ id: 'C' + Date.now(), name: '', role: '', email: '' });
     setSites(s);
@@ -1002,8 +1004,12 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                                   const target = primaryIdx >= 0 ? primaryIdx : 0;
                                   if (!s[sIdx].contacts[target]?.phone) {
                                     s[sIdx].contacts[target] = { ...s[sIdx].contacts[target], phone: pv.phones.join(', ') };
-                                  } else {
+                                  } else if (s[sIdx].contacts.length < MAX_CONTACTS) {
                                     s[sIdx].contacts.push({ id: 'C' + Date.now(), name: 'Phone', role: 'Purchase', email: '', phone: pv.phones.join(', ') });
+                                  } else {
+                                    // All 5 contacts used — keep the numbers as extra phones instead.
+                                    const t = s[sIdx].contacts[target];
+                                    s[sIdx].contacts[target] = { ...t, extraPhones: [...(t.extraPhones ?? []), ...pv.phones] };
                                   }
                                   setSites(s);
                                 }
@@ -1061,9 +1067,13 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                       <div className="font-mono text-[9px] font-bold tracking-[1px] uppercase text-g500 flex items-center gap-1.5">
                         <User size={10} /> Contact Persons at this site
                       </div>
-                      <button type="button" onClick={() => addContact(sIdx)} className="text-[11px] font-bold text-red-mrt flex items-center gap-1 hover:underline">
-                        <Plus size={12} /> Add Contact
-                      </button>
+                      {site.contacts.length < MAX_CONTACTS ? (
+                        <button type="button" onClick={() => addContact(sIdx)} className="text-[11px] font-bold text-red-mrt flex items-center gap-1 hover:underline">
+                          <Plus size={12} /> Add Contact
+                        </button>
+                      ) : (
+                        <span className="text-[10.5px] text-g400">Max {MAX_CONTACTS} contacts</span>
+                      )}
                     </div>
                     <div className="space-y-2">
                       {site.contacts.map((ct, cIdx) => (

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { normalizeSearchText, nameTier } from '../lib/utils';
+import { normalizeSearchText, nameTier, contactMatchesQuery } from '../lib/utils';
 import { supabase } from '../lib/supabase';
 
 interface SampleHit { id: string; cust: string; product_name: string; }
@@ -49,7 +49,7 @@ export function GlobalSearchResults({ query, onNavigate }: { query: string; onNa
     const rank = (text: string, exacts: (string | undefined | null)[] = []) => nameTier(text, trimmed, exacts);
 
     const customerRows: ResultRow[] = data.customers
-      .filter(c => matches(c.name) || matches(c.id))
+      .filter(c => matches(c.name) || matches(c.id) || contactMatchesQuery(c, trimmed))
       // A Customer Lead opens the Lead form instead of the Customer form.
       .map(c => ({ id: c.id, title: c.name, subtitle: c.customerStatus === 'lead' ? `${c.id} · Lead` : c.id, tier: rank(c.name, [c.id]), path: c.customerStatus === 'lead' ? `/customers/leads/new?id=${c.id}` : `/customers/new?id=${c.id}` }))
       .sort((a, b) => a.tier - b.tier)

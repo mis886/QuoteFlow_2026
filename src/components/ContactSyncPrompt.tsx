@@ -8,7 +8,7 @@ import { syncContactToCustomer, applyContactSync, ContactSyncPrompt } from '../l
 // syncContactToCustomer) it shows the in-app "Add contact …? [Add] [Skip]" /
 // "Update …'s phone from X to Y? [Update] [Skip]" box and resolves only once
 // the user has answered, so the form can navigate away afterwards. Returns the
-// "all 3 slots are full" message when there is one, else null.
+// "all 5 slots are full" message when there is one, else null.
 // Render `dialog` somewhere in the page.
 export function useContactSyncPrompt() {
   const { data, refreshData } = useAppStore();

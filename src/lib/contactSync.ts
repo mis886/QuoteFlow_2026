@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import type { Customer } from './types';
-import { customerOfDoc, isLead, last10Digits } from './utils';
+import { customerOfDoc, isLead, last10Digits, CONTACT_SLOTS, MAX_CONTACTS } from './utils';
 import { logActivity } from './activityLog';
 
 // A change to a customer's contacts that must be confirmed by the user before
@@ -74,7 +74,7 @@ export async function applyContactSync(prompt: ContactSyncPrompt, source?: strin
  *             "Update …'s phone from X to Y?" and calls applyContactSync() on
  *             yes. Always for a CUSTOMER, and for a lead when an existing
  *             phone/email would be replaced
- *   full    — no name match and all 3 slots occupied; caller shows a message
+ *   full    — no name match and all 5 slots occupied; caller shows a message
  */
 export async function syncContactToCustomer(
   custName: string,
@@ -97,11 +97,8 @@ export async function syncContactToCustomer(
   const lead = isLead(customer);
 
   const contacts = customer.sites?.[0]?.contacts ?? [];
-  const slots = [
-    { c: contacts.find(c => c.id === 'C1') ?? null, col: 'primary_contact' },
-    { c: contacts.find(c => c.id === 'C2') ?? null, col: 'contact2' },
-    { c: contacts.find(c => c.id === 'C3') ?? null, col: 'contact3' },
-  ];
+  // The 5 contact slots (C1 = primary_contact … C5 = contact5).
+  const slots = CONTACT_SLOTS.map((col, i) => ({ c: contacts.find(c => c.id === `C${i + 1}`) ?? null, col }));
 
   // Case 1 — name match in any slot: only phone / email that actually differ.
   // A blank value on the transaction never clears what the profile has.
@@ -152,9 +149,9 @@ export async function syncContactToCustomer(
     if (phKnown && emKnown) return { action: 'none' };
   }
 
-  // Case 2 — no name match: next empty slot (C2 first, then C3).
+  // Case 2 — no name match: next empty slot (C2, C3, C4, then C5).
   // Never fill C1 automatically — primary contact is managed from Customers module.
-  const empty = slots.slice(1).find(s => !s.c || (!s.c.name && !s.c.email));
+  const empty = slots.slice(1).find(s => !s.c || (!s.c.name && !s.c.email && !s.c.phone));
   if (empty) {
     const patch = {
       [`${empty.col}_name`]: name || null,
@@ -180,9 +177,9 @@ export async function syncContactToCustomer(
     };
   }
 
-  // Case 3 — all 3 slots full, cannot save
+  // Case 3 — all 5 slots full, cannot save
   return {
     action: 'full',
-    message: 'New contact could not be saved to customer profile — all 3 slots are full. Please update manually in the Customers module.',
+    message: `New contact could not be saved to customer profile — all ${MAX_CONTACTS} slots are full. Please update manually in the Customers module.`,
   };
 }

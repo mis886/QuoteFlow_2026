@@ -91,14 +91,14 @@ function formatValue(v: any): string {
 // full row snapshot. Rendered differently since one is a diff and the other
 // is a flat record.
 // Merge: the customer's empty fields filled from the lead, as
-// [{ field, value }]. primary_contact / contact2 / contact3 read as
-// "Primary contact" / "Contact 2" / "Contact 3" (the _name part is the
+// [{ field, value }]. primary_contact / contact2 … contact5 read as
+// "Primary contact" / "Contact 2" … "Contact 5" (the _name part is the
 // contact itself, other parts are appended: "Primary contact phone"); every
 // other column is Title Case ("billing_address" → "Billing Address").
 const MERGE_DETAILS_KEYS = ['details added', 'details_added'];
-const CONTACT_SLOT_LABELS: Record<string, string> = { primary_contact: 'Primary contact', contact2: 'Contact 2', contact3: 'Contact 3' };
+const CONTACT_SLOT_LABELS: Record<string, string> = { primary_contact: 'Primary contact', contact2: 'Contact 2', contact3: 'Contact 3', contact4: 'Contact 4', contact5: 'Contact 5' };
 function mergeDetailLabel(field: string): string {
-  const m = field.match(/^(primary_contact|contact2|contact3)(?:_(.+))?$/);
+  const m = field.match(/^(primary_contact|contact[2-5])(?:_(.+))?$/);
   if (m) return !m[2] || m[2] === 'name' ? CONTACT_SLOT_LABELS[m[1]] : `${CONTACT_SLOT_LABELS[m[1]]} ${m[2].replace(/_/g, ' ')}`;
   return field.split('_').filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
 }
