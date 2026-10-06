@@ -1,4 +1,4 @@
--- Stockbook column cleanup (2026-09-11): removes qty_wada_he, qty_he, and
+-- Stock Summary column cleanup (2026-09-11): removes qty_wada_he, qty_he, and
 -- qty_wada — only 4 real warehouses are in active use (Hariom, Reliable,
 -- Swastik, Balaji, matching StockMovementWarehouse in src/lib/types.ts and
 -- the Inward/Outward forms' own 4-option dropdown), so these 3 columns
@@ -13,7 +13,7 @@
 -- immediately before this migration, appending a note to each affected
 -- row's remark recording what was removed (existing remarks preserved,
 -- appended on a new line) — same convention as the backfill note in
--- 20260904130000_stockbook_drop_type_tanker_merge_columns.sql:
+-- 20260904130000_stock_summary_drop_type_tanker_merge_columns.sql:
 --
 --   with parts as (
 --     select id,

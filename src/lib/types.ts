@@ -642,7 +642,7 @@ export interface Ticket {
 // columns the Stock Inward form (NewStockInward.tsx) writes to — so data
 // entered via Inward now shows up in Stock Summary instead of landing in
 // columns nobody displayed. See
-// supabase/migrations/20260904130000_stockbook_drop_type_tanker_merge_columns.sql.
+// supabase/migrations/20260904130000_stock_summary_drop_type_tanker_merge_columns.sql.
 export interface StockLot {
   id: string;
   serialNo?: number;          // running S.No. — matches the original sheet's row order for migrated lots

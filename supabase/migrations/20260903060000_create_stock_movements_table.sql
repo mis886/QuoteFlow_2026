@@ -6,7 +6,7 @@
 -- src/components/StockInwardModal.tsx.
 --
 -- Saving an inward entry here ALSO upserts the matching stock_lots row
--- (by wh_lot_no) client-side, so Stockbook's running balances stay correct —
+-- (by wh_lot_no) client-side, so Stock Summary's running balances stay correct —
 -- see StockInwardModal.tsx's save handler. This table is the immutable
 -- transaction log; stock_lots stays the current-balance view.
 

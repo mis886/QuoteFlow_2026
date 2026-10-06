@@ -1,5 +1,5 @@
 -- Inward-exclusive fields for src/pages/NewStockInward.tsx, split off from
--- the columns Outward (NewStockOutward.tsx) and the Stockbook edit modal
+-- the columns Outward (NewStockOutward.tsx) and the Stock Summary edit modal
 -- (StockLotModal.tsx) already write to (packing, packaging_type,
 -- weight_type/unit) — those two keep using the old columns unchanged.
 -- After this, the only columns still shared between Inward and Outward on
@@ -8,7 +8,7 @@
 -- wh_lot_no — the intentional reconciliation mechanism, untouched here.
 --
 -- product_code already exists on stock_lots (original schema; edited via
--- StockLotModal.tsx, displayed/searched in Stockbook.tsx) and is reused
+-- StockLotModal.tsx, displayed/searched in StockSummary.tsx) and is reused
 -- as-is for Inward's new "Product Code" field rather than adding a
 -- duplicate column — same semantic field, populated at lot creation and
 -- editable afterwards, exactly like product_name/wh_lot_no/fact_lot_no

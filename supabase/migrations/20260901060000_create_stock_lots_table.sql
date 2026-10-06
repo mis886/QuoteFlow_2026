@@ -1,8 +1,8 @@
--- Stockbook module: lot-wise raw-material stock ledger, migrated from the
+-- Stock Summary module: lot-wise raw-material stock ledger, migrated from the
 -- "Stock Lot Godown Wise" tab of the HIMALAYA STOCK SUMMARY[Confidential]
 -- Google Sheet (one row per inward lot, quantity split across the parties/
 -- godowns that physically hold stock: Hariom, Wada-HE, HE, Reliable,
--- Swastik, BALAJI, Wada). Managed from src/pages/Stockbook.tsx, added to
+-- Swastik, BALAJI, Wada). Managed from src/pages/StockSummary.tsx, added to
 -- the sidebar just below Orders. Mirrors the shape of tickets/dispatch_entries
 -- (own table, app-level CRUD, company-wide RLS) except the id is a plain
 -- uuid — there's no human-facing lot "ticket number", WH Lot No / Fact Lot

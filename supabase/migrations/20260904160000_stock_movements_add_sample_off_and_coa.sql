@@ -1,5 +1,5 @@
 -- Adds sample_off / coa_file / coa_url to stock_movements, mirroring the
--- columns that already exist on stock_lots (used by Stockbook.tsx /
+-- columns that already exist on stock_lots (used by StockSummary.tsx /
 -- StockLotModal.tsx) — same pattern as no_of_barrels/mou/packing_type: an
 -- audit-trail copy on the movement row of what was entered on the Inward
 -- form, alongside the live copy on the matching stock_lots row.

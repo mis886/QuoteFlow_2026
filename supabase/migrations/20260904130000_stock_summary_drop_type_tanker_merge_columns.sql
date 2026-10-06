@@ -1,12 +1,12 @@
--- Stockbook column cleanup (2026-09-04):
+-- Stock Summary column cleanup (2026-09-04):
 -- 1. lot_type ("Type") and tanker_unload ("Tanker Unload") are removed
 --    entirely per user request — no longer shown anywhere, data no longer
 --    needed.
 -- 2. op_qty/unit/packaging_type are retired in favor of the no_of_barrels/
 --    mou/packing_type columns already added for the Stock Inward form (see
---    20260903120400_stock_inward_exclusive_columns.sql) — Stockbook and the
+--    20260903120400_stock_inward_exclusive_columns.sql) — Stock Summary and the
 --    Stock Inward form now read/write the SAME columns, so data entered via
---    Inward actually shows up in Stockbook. Existing values were backfilled
+--    Inward actually shows up in Stock Summary. Existing values were backfilled
 --    into the new columns (where the new column was still null) via a
 --    one-off UPDATE run directly against the live DB immediately before
 --    this migration was applied, so no data was lost:

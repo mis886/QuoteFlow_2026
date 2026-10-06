@@ -52,7 +52,7 @@
 //
 // 2026-09-11: Wada-HE/HE/Wada party columns removed entirely (UI, code, and
 // the stock_lots.qty_wada_he/qty_he/qty_wada DB columns themselves — see
-// 20260911150000_stockbook_drop_wada_columns.sql) — only 4 real warehouses
+// 20260911150000_stock_summary_drop_wada_columns.sql) — only 4 real warehouses
 // are in active use (Hariom/Reliable/Swastik/Balaji, matching
 // StockMovementWarehouse in src/lib/types.ts and the Inward/Outward forms'
 // own 4-option dropdown). qty_he was null/zero on every row (no data lost).

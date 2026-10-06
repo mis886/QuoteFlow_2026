@@ -213,7 +213,7 @@ const cardCls = "bg-white border border-g200 p-[18px_20px]";
 // InwardEditModal.tsx). PARTY_COLUMN's WADA entry was removed outright
 // (2026-09-11) rather than kept as dead data, since qty_wada no longer
 // exists as a stock_lots column at all — see
-// supabase/migrations/20260911150000_stockbook_drop_wada_columns.sql.
+// supabase/migrations/20260911150000_stock_summary_drop_wada_columns.sql.
 const WAREHOUSES = ['Hariom', 'Reliable', 'Swastik', 'BALAJI'];
 
 // Party/godown → the stock_lots quantity column it feeds. Only the 4 known
