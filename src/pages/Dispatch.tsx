@@ -237,8 +237,11 @@ export function Dispatch() {
     return runStepAction(card, action, remark);
   };
 
-  const renderBoardActions = (card: BoardCard) => canActOnBoard && card.kind === 'order'
-    ? <StepActionButtons card={card} busy={busyCardKey === card.key} onAction={handleStepAction} onResume={resumeHold} />
+  // 2026-10-06: step buttons are shown to every login; canAct decides whether
+  // they can be clicked (disabled + tooltip otherwise). The guards inside
+  // runStepAction / resumeHold / handleStepAction stay as the real lock.
+  const renderBoardActions = (card: BoardCard) => card.kind === 'order'
+    ? <StepActionButtons card={card} busy={busyCardKey === card.key} canAct={canActOnBoard} onAction={handleStepAction} onResume={resumeHold} />
     : null;
 
   // Admin-only "Undo last step" (drawer): takes back the order's most recent

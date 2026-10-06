@@ -7,7 +7,7 @@ import {
   BoardCard, BoardOrderCard, DispatchStepRecord, OrderStepHistory, StepAction, StepRecordStatus,
   drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastStepClick, describeStepClick, allowedStepStatuses,
 } from '../lib/dispatchFlow';
-import { StepActionButtons, TimeBar, TypeDot } from './DispatchBoard';
+import { StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot } from './DispatchBoard';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Button } from './ui';
 
@@ -185,10 +185,12 @@ export function DispatchDrawer({
   const items = orderCard
     ? orderCard.remaining
     : order.items.map(i => ({ desc: i.desc, qty: Number(i.qty) || 0 }));
-  const canActHere = canAct && !!orderCard && orderCard.column <= 7;
+  // 2026-10-06: the remark box + step buttons show for every login while the
+  // order is on steps 1–7; canAct only decides whether they are enabled.
+  const hasStepActions = !!orderCard && orderCard.column <= 7;
 
-  const act = async (card: BoardOrderCard, action: StepAction) => { await onAction(card, action, remark); setRemark(''); };
-  const resume = async (card: BoardOrderCard) => { await onResume(card, remark); setRemark(''); };
+  const act = async (card: BoardOrderCard, action: StepAction) => { if (!canAct) return; await onAction(card, action, remark); setRemark(''); };
+  const resume = async (card: BoardOrderCard) => { if (!canAct) return; await onResume(card, remark); setRemark(''); };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -290,14 +292,15 @@ export function DispatchDrawer({
         </div>
 
         {/* Remark + current step's buttons */}
-        {(canActHere || orderCard?.column === 8) && orderCard && (
+        {(hasStepActions || orderCard?.column === 8) && orderCard && (
           <div className="border-t border-g200 px-4 py-3 flex flex-col gap-2 bg-cream">
-            {canActHere && (
+            {hasStepActions && (
               <textarea value={remark} onChange={e => setRemark(e.target.value)} rows={2}
+                disabled={!canAct} title={canAct ? undefined : STEP_BUTTONS_LOCKED_TIP}
                 placeholder="Remark (saved with the next button you press)"
-                className="w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[4px] p-[7px_9px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none" />
+                className="w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[4px] p-[7px_9px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
             )}
-            {canActHere && <StepActionButtons card={orderCard} busy={busy} onAction={act} onResume={resume} />}
+            {hasStepActions && <StepActionButtons card={orderCard} busy={busy} canAct={canAct} onAction={act} onResume={resume} />}
             {orderCard.column === 8 && (
               <button type="button" onClick={() => navigate(`/dispatch/new?orderRef=${order.id}&toSent=1&from=board`)}
                 className="w-full bg-red-mrt hover:bg-red-h text-white text-[12px] font-semibold rounded-[4px] px-2.5 py-[7px] transition-colors">

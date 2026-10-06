@@ -73,30 +73,40 @@ const RedButton = ({ children, onClick }: { children: React.ReactNode; onClick: 
 
 /**
  * Step 1–7 buttons for an order card (black = manual Done, white = second
- * choice), or a single Resume button while the card is on hold. Only
- * rendered for logins allowed to act (see canActOnDispatchBoard).
+ * choice), or a single Resume button while the card is on hold.
+ * 2026-10-06: shown to EVERY login. Only logins allowed to act (canAct —
+ * see canActOnDispatchBoard) can click; for everyone else the buttons are
+ * disabled, greyed out, with a tooltip. Who is allowed did not change.
  */
-export function StepActionButtons({ card, busy, onAction, onResume }: {
+export const STEP_BUTTONS_LOCKED_TIP = 'Only Admin / Samata can update dispatch steps';
+export function StepActionButtons({ card, busy, canAct, onAction, onResume }: {
   card: BoardOrderCard;
   busy: boolean;
+  canAct: boolean;
   onAction: (card: BoardOrderCard, action: StepAction) => void;
   onResume: (card: BoardOrderCard) => void;
 }) {
   if (card.column > 7) return null;
-  const base = 'text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[6px] transition-colors disabled:opacity-50 disabled:cursor-wait';
+  const base = `text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[6px] transition-colors disabled:opacity-50 ${canAct ? 'disabled:cursor-wait' : 'disabled:cursor-not-allowed'}`;
+  const off = busy || !canAct;
+  // The tooltip sits on the wrapper too — some browsers don't show a
+  // disabled button's own title.
+  const tip = canAct ? undefined : STEP_BUTTONS_LOCKED_TIP;
   if (card.position.hold) {
     return (
-      <button type="button" disabled={busy} onClick={() => onResume(card)}
-        className={`${base} w-full inline-flex items-center justify-center gap-1.5 bg-blk text-white hover:bg-dark`}>
-        <Play size={11} /> Resume
-      </button>
+      <div title={tip} className={canAct ? undefined : 'cursor-not-allowed'}>
+        <button type="button" disabled={off} title={tip} onClick={() => { if (canAct) onResume(card); }}
+          className={`${base} w-full inline-flex items-center justify-center gap-1.5 bg-blk text-white hover:bg-dark`}>
+          <Play size={11} /> Resume
+        </button>
+      </div>
     );
   }
   const actions = STEP_ACTIONS[card.position.step] || [];
   return (
-    <div className="flex gap-1.5">
+    <div className={`flex gap-1.5 ${canAct ? '' : 'cursor-not-allowed'}`} title={tip}>
       {actions.map(a => (
-        <button key={a.label} type="button" disabled={busy} onClick={() => onAction(card, a)}
+        <button key={a.label} type="button" disabled={off} title={tip} onClick={() => { if (canAct) onAction(card, a); }}
           className={`${base} ${a.primary ? 'flex-1 bg-blk text-white hover:bg-dark' : 'bg-white text-blk border border-g300 hover:bg-g100'}`}>
           {a.label}
         </button>

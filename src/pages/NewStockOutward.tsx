@@ -1001,6 +1001,18 @@ export function NewStockOutward() {
     );
   }
 
+  // 2026-10-06: the Dispatch board now shows "DO issued ✓" (disabled) to
+  // every login, so a login that isn't allowed to act on the board could
+  // still type this URL — no form for them, just a way back.
+  if (fromDispatch && (!canActOnDispatchBoard(user?.email) || isReadOnlyUser)) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
+        <div className="font-serif text-xl text-blk">You don't have permission to issue DO from Dispatch</div>
+        <Button variant="secondary" onClick={goBack}>Back to Dispatch board</Button>
+      </div>
+    );
+  }
+
   // 2026-10-06: Outward entry is saved, but Step 6 was not marked done.
   // Shown instead of the form so the entry can't be saved a second time.
   if (stepProblem) {
