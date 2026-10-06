@@ -436,11 +436,16 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   // Duplicate check against BOTH customers and leads (never the record being
   // edited): same GSTIN (blocks a NEW record), same PAN under another GSTIN
   // (info only), or same normalised name / mobile / email (amber warning).
+  // 2026-10-06: same GSTIN only blocks when the billing address (Main Office
+  // "Full Address / Postal Address" → customers.billing_address) is also the
+  // same, or still empty. Same GSTIN + different billing address = another
+  // unit → amber note, save allowed. Re-checked on every keystroke (sites).
   const similarCustomers = useMemo(() => {
     const contacts = sites.flatMap(s => s.contacts ?? []);
     return findSimilarCustomers({
       name,
       gstins: [gstin],
+      billingAddress: sites[0]?.fullAddress || sites[0]?.address || '',
       phones: contacts.flatMap(ct => [ct.phone, ...(ct.extraPhones ?? [])]),
       emails: contacts.flatMap(ct => [ct.email, ...(ct.extraEmails ?? [])]),
     }, data.customers, editId || undefined);
@@ -449,9 +454,12 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   // Same PAN, different GSTIN = a branch / plant of an existing company.
   // Suggest (never force) "<Company> - <City>" so branches are easy to tell
   // apart in the customer picker. Hidden once the name already has a " - ".
-  const branchMatch = !gstinDuplicate && !name.includes(' - ') ? similarCustomers.find(s => s.samePan) : undefined;
+  // 2026-10-06: same hint for another unit (same GSTIN, different billing
+  // address), plus a "<Company> - Unit 2" suggestion.
+  const branchMatch = !gstinDuplicate && !name.includes(' - ') ? similarCustomers.find(s => s.samePan || s.kind === 'gstinUnit') : undefined;
   const branchCity = sites[0]?.city?.trim() || '';
   const suggestedBranchName = branchMatch && branchCity ? `${(name.trim() || branchMatch.customer.name.trim())} - ${branchCity}` : '';
+  const suggestedUnitName = branchMatch?.kind === 'gstinUnit' ? `${(name.trim() || branchMatch.customer.name.trim())} - Unit 2` : '';
   // Save & Promote: Customer Master records (never leads, never this lead)
   // that look like it → the "looks like an existing customer" popup, with
   // Merge (MIS only) / Create as new customer / Cancel.
@@ -532,7 +540,9 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
 
   const handleSave = async () => {
     if (!validate()) return;
-    // A NEW record can't reuse a GSTIN that already exists (customer or lead).
+    // A NEW record can't reuse a GSTIN + billing address that already exists
+    // (customer or lead). Same GSTIN with a different billing address is a
+    // separate unit and saves normally (2026-10-06).
     // Editing an existing record only shows the warning.
     if (!editId && gstinDuplicate) {
       setErrors(prev => ({ ...prev, save: gstinDuplicate.message }));
@@ -600,12 +610,13 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
       } catch (err: any) {
         setSaving(false);
         const msg = String(err?.message ?? '');
-        // The DB found a Customer Master record with this GSTIN → merge only.
+        // The DB found a Customer Master record with this GSTIN AND the same
+        // billing address → merge only.
         if (msg.includes('DUPLICATE_GSTIN')) {
           const dupId = msg.match(/already used by\s+(\S+)/)?.[1];
           const dup = data.customers.find(c => c.id === dupId);
           const matches = masterMatches.filter(m => m.kind === 'gstin');
-          if (dup && !matches.some(m => m.customer.id === dup.id)) matches.unshift({ kind: 'gstin', customer: dup, matchedOn: ['GSTIN'], message: `This GSTIN already exists: ${dup.name} (${dup.id})` });
+          if (dup && !matches.some(m => m.customer.id === dup.id)) matches.unshift({ kind: 'gstin', customer: dup, matchedOn: ['GSTIN', 'billing address'], message: `This GSTIN with the same billing address already exists — ${dup.id} ${dup.name}.` });
           if (matches.length) { setMatchPopup({ matches, mergeOnly: true }); return; }
         }
         setToast(`Promote failed: ${msg || 'could not save — check your connection.'}`);
@@ -732,7 +743,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                   s.kind === 'gstin' ? 'text-red-mrt bg-red-lt border-red-mrt/30'
                     : s.kind === 'pan' ? 'text-g600 bg-g100 border-g200'
                     : 'text-amber-800 bg-amber-50 border-amber-300'}`}>
-                  <span>{s.message}{s.kind === 'gstin' && !editId ? ' — a new record with this GSTIN cannot be saved.' : ''}</span>
+                  <span>{s.message}</span>
                   {/* New record only: open the existing one instead of creating a duplicate. */}
                   {!editId && s.kind !== 'pan' && (
                     <button type="button"
@@ -746,9 +757,17 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
               {branchMatch && (
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px] rounded-[3px] px-2.5 py-1.5 leading-snug border text-g600 bg-g100 border-g200">
                   <span>
-                    <strong>Branch / Plant:</strong> name it "&lt;Company&gt; - &lt;City&gt;" (e.g. "Indigo Paints Ltd - Cochin") so branches are easy to tell apart in the customer picker.
+                    {branchMatch.kind === 'gstinUnit'
+                      ? <><strong>Another unit:</strong> name it "&lt;Company&gt; - Unit 2" or "&lt;Company&gt; - &lt;City&gt;" so the units are easy to tell apart in the customer picker.</>
+                      : <><strong>Branch / Plant:</strong> name it "&lt;Company&gt; - &lt;City&gt;" (e.g. "Indigo Paints Ltd - Cochin") so branches are easy to tell apart in the customer picker.</>}
                     {!branchCity && ' Fill in the City below to get a suggestion.'}
                   </span>
+                  {suggestedUnitName && (
+                    <button type="button" onClick={() => setName(suggestedUnitName)}
+                      className="shrink-0 font-bold text-[10px] tracking-wide border border-current rounded-[3px] px-2 py-0.5 bg-white hover:opacity-80">
+                      Use "{suggestedUnitName}"
+                    </button>
+                  )}
                   {suggestedBranchName && (
                     <button type="button" onClick={() => setName(suggestedBranchName)}
                       className="shrink-0 font-bold text-[10px] tracking-wide border border-current rounded-[3px] px-2 py-0.5 bg-white hover:opacity-80">
@@ -1242,6 +1261,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
         <LeadMatchDialog
           leadName={originalName || name}
           matches={matchPopup.matches}
+          notice={matchPopup.mergeOnly ? 'Same GSTIN and same billing address already exist in Customer Master.' : undefined}
           canMerge={mayMerge}
           busy={saving}
           onMerge={target => setMergeTarget(target)}

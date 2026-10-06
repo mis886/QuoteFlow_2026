@@ -16,13 +16,18 @@ const cityOf = (c: Customer) => c.sites?.[0]?.city?.trim() || '';
 // Promote found Customer Master records that look like this lead.
 //   MERGE INTO <code> — MIS only; everyone else sees it disabled.
 //   CREATE AS NEW CUSTOMER — hidden when any match has the exact same GSTIN
-//     (promote_lead would refuse it anyway), or when onCreateNew is omitted.
+//     AND the same billing address (kind 'gstin' — promote_lead would refuse
+//     it anyway), or when onCreateNew is omitted. 2026-10-06: same GSTIN with
+//     a DIFFERENT billing address (kind 'gstinUnit') is another unit — the
+//     button stays, with an amber note on that match.
 //   CANCEL — nothing changes.
+//   notice — red line under the title (promote_lead said DUPLICATE_GSTIN).
 export function LeadMatchDialog({
-  leadName, matches, canMerge, busy = false, onMerge, onCreateNew, onCancel,
+  leadName, matches, notice, canMerge, busy = false, onMerge, onCreateNew, onCancel,
 }: {
   leadName: string;
   matches: SimilarCustomer[];
+  notice?: string;
   canMerge: boolean;
   busy?: boolean;
   onMerge: (target: Customer) => void;
@@ -42,6 +47,7 @@ export function LeadMatchDialog({
         <div className="px-5 pt-5 pb-3">
           <h3 className="font-serif text-[18px] text-blk leading-snug">This lead looks like an existing customer</h3>
           <p className="text-[12.5px] text-g600 mt-1"><strong>{leadName}</strong> matches {matches.length === 1 ? 'this Customer Master record' : 'these Customer Master records'}:</p>
+          {notice && <p className="text-[12px] font-bold text-red-mrt mt-1.5">{notice}</p>}
           <div className="mt-3 space-y-2 max-h-[45vh] overflow-y-auto">
             {matches.map(m => (
               <div key={m.customer.id} className="border border-g200 rounded-[4px] px-3 py-2 text-[12px] flex items-start justify-between gap-3">
@@ -56,6 +62,7 @@ export function LeadMatchDialog({
                     Matched on: <span className="font-bold text-lead-text">{m.matchedOn.join(', ')}</span>
                   </div>
                   {m.kind === 'pan' && <div className="text-[10.5px] text-g500 mt-0.5">{m.message}</div>}
+                  {m.kind === 'gstinUnit' && <div className="text-[10.5px] text-amber-800 bg-amber-50 border border-amber-300 rounded-[3px] px-1.5 py-1 mt-1">{m.message}</div>}
                 </div>
                 <div className="shrink-0 text-right">
                   <Button size="sm" variant="secondary"

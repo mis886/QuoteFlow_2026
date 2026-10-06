@@ -279,9 +279,19 @@ export const last10Digits = (s: string | null | undefined): string => {
 };
 const normEmail = (s: string | null | undefined): string => (s ?? '').trim().toLowerCase();
 
-export type SimilarCustomerKind = 'gstin' | 'pan' | 'similar';
+// 2026-10-06: billing-address compare for the duplicate-GSTIN rule — same as
+// the promote_lead DB function: lowercase, keep only a-z 0-9. So
+// "Plot 12, MIDC Jodhpur" and "plot 12 midc jodhpur" are the same address.
+export const normalizeAddress = (s: string | null | undefined): string =>
+  (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+// The address the duplicate rule compares = customers.billing_address, i.e.
+// the Main Office "Full Address / Postal Address" box (same expression the
+// store saves: fullAddress, else address).
+export const billingAddressOf = (c: Customer): string => c.sites?.[0]?.fullAddress || c.sites?.[0]?.address || '';
+
+export type SimilarCustomerKind = 'gstin' | 'gstinUnit' | 'pan' | 'similar';
 export interface SimilarCustomer {
-  kind: SimilarCustomerKind;   // gstin = block a NEW record, pan = info only, similar = amber warning
+  kind: SimilarCustomerKind;   // gstin = block a NEW record, gstinUnit = amber note (allowed), pan = info only, similar = amber warning
   customer: Customer;
   message: string;
   samePan?: boolean;           // same PAN under a different GSTIN (any kind but gstin) — a branch / plant of this company
@@ -290,7 +300,12 @@ export interface SimilarCustomer {
 
 // Duplicate check for a record about to be created / saved. Strongest match
 // per existing record, GSTIN matches first:
-//   gstin   — same GSTIN (ignoring case / spaces)
+//   gstin   — same GSTIN (ignoring case / spaces) AND same billing address
+//             (normalizeAddress), or the new record has no billing address
+//             yet → duplicate, blocked
+//   gstinUnit — same GSTIN but a DIFFERENT billing address: another unit of
+//             the same company (2026-10-06) — allowed, saved as a separate
+//             customer with its own terms
 //   pan     — same PAN (GSTIN characters 3–12) under a different GSTIN: the
 //             same company's other GST registration (branch / plant) — valid,
 //             saved as a separate customer
@@ -298,11 +313,12 @@ export interface SimilarCustomer {
 //             same email
 // excludeId = the record being edited, so it never matches itself.
 export function findSimilarCustomers(
-  input: { name?: string; gstins?: (string | null | undefined)[]; phones?: (string | null | undefined)[]; emails?: (string | null | undefined)[] },
+  input: { name?: string; gstins?: (string | null | undefined)[]; billingAddress?: string | null; phones?: (string | null | undefined)[]; emails?: (string | null | undefined)[] },
   customers: Customer[],
   excludeId?: string,
 ): SimilarCustomer[] {
   const nameKey = normalizeCompanyName(input.name);
+  const addrKey = normalizeAddress(input.billingAddress);
   const gstins = new Set((input.gstins ?? []).map(normGstin).filter(Boolean));
   const pans = new Set([...gstins].filter(g => g.length === 15).map(g => g.slice(2, 12)));
   const phones = new Set((input.phones ?? []).map(last10Digits).filter(Boolean));
@@ -313,7 +329,21 @@ export function findSimilarCustomers(
     if (excludeId && c.id === excludeId) continue;
     const cGstins = [c.gstin, ...(c.sites ?? []).map(s => s.gstin)].map(normGstin).filter(Boolean);
     if (cGstins.some(g => gstins.has(g))) {
-      out.push({ kind: 'gstin', customer: c, matchedOn: ['GSTIN'], message: `This GSTIN already exists: ${c.name} (${c.id})` });
+      const city = c.sites?.[0]?.city?.trim() || '';
+      const theirAddr = billingAddressOf(c).replace(/\s+/g, ' ').trim();
+      if (addrKey && addrKey !== normalizeAddress(theirAddr)) {
+        const shortAddr = theirAddr.length > 70 ? `${theirAddr.slice(0, 70).trim()}…` : theirAddr;
+        out.push({
+          kind: 'gstinUnit', customer: c, matchedOn: ['GSTIN'],
+          message: `Same GSTIN as ${c.id} ${c.name}${city ? ` (${city})` : ''} — billing address: ${shortAddr || 'not on file'}. Saving as a SEPARATE customer for this unit/address.`,
+        });
+      } else {
+        out.push({
+          kind: 'gstin', customer: c, matchedOn: ['GSTIN', 'billing address'],
+          message: `This GSTIN with the same billing address already exists — ${c.id} ${c.name}${city ? `, ${city}` : ''}. Open it instead.`
+            + (addrKey ? '' : " If this is a different unit, enter that unit's billing address."),
+        });
+      }
       continue;
     }
     const panGstin = cGstins.find(g => g.length === 15 && pans.has(g.slice(2, 12)));
@@ -334,7 +364,7 @@ export function findSimilarCustomers(
       });
     }
   }
-  const rank: Record<SimilarCustomerKind, number> = { gstin: 0, pan: 1, similar: 2 };
+  const rank: Record<SimilarCustomerKind, number> = { gstin: 0, gstinUnit: 1, pan: 2, similar: 3 };
   return out.sort((a, b) => rank[a.kind] - rank[b.kind]);
 }
 
