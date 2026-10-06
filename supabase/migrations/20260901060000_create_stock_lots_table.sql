@@ -44,7 +44,7 @@ create table if not exists public.stock_lots (
   updated_at      timestamptz not null default now()
 );
 
-comment on table public.stock_lots is 'Lot-wise raw-material stock ledger by godown/party (Hariom, Wada-HE, HE, Reliable, Swastik, BALAJI, Wada), migrated from the "Stock Lot Godown Wise" tab of the HIMALAYA STOCK SUMMARY Google Sheet. Managed from src/pages/Stockbook.tsx.';
+comment on table public.stock_lots is 'Lot-wise raw-material stock ledger by godown/party (Hariom, Wada-HE, HE, Reliable, Swastik, BALAJI, Wada), migrated from the "Stock Lot Godown Wise" tab of the HIMALAYA STOCK SUMMARY Google Sheet. Managed from src/pages/StockSummary.tsx.';
 
 create index if not exists idx_stock_lots_product_name on public.stock_lots(product_name);
 create index if not exists idx_stock_lots_wh_lot_no    on public.stock_lots(wh_lot_no);
