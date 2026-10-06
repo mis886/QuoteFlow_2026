@@ -12,8 +12,6 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
 import { supabase } from '../lib/supabase';
 import { logActivity } from '../lib/activityLog';
-import { NewStockOutward, OutwardPrefill } from './NewStockOutward';
-import { PRODUCTS } from '../lib/stockInwardProducts';
 
 type SubType = DispatchFulfillmentType | 'not_set';
 type DispatchTab = 'pending' | 'dispatched' | 'emailSent';
@@ -216,35 +214,24 @@ export function Dispatch() {
   };
 
   // 2026-10-05: Step 6 "DO issued ✓" no longer marks the step done straight
-  // away — it first opens the Stock Movements Outward form (same component,
-  // same save logic) prefilled from the order. Only after that Outward entry
-  // is saved does step 6 get marked done. Close/Cancel = nothing changes.
-  const [doIssue, setDoIssue] = useState<{ card: BoardOrderCard; action: StepAction; remark?: string } | null>(null);
-
-  const outwardPrefillFor = (o: Order): OutwardPrefill => {
-    const item = o.items.find(i => i.qty > 0) || o.items[0];
-    const desc = (item?.desc || '').trim();
-    const product = PRODUCTS.find(p => p.name.toLowerCase() === desc.toLowerCase());
-    const packNum = parseFloat(item?.packing || '');
-    const qty = item?.qty ?? 0;
-    return {
-      doDate: fmtIST(new Date(), 'yyyy-MM-dd'),
-      productName: product?.name || desc,
-      productCode: product?.code || '',
-      billingName: product?.billingName || '',
-      numArticles: qty ? String(qty) : '',
-      packing: item?.packing || '',
-      totalQty: qty && packNum > 0 ? String(qty * packNum) : '',
-      packagingType: item?.packingType || '',
-      partyName: o.cust || '',
-      note: `${o.soNumber || ''}${o.soNumber ? ' · ' : ''}${o.id}`,
-    };
-  };
-
+  // away — the Stock Movements Outward form has to be saved first.
+  // 2026-10-06: that form now opens as a normal FULL PAGE (like New Enquiry)
+  // instead of a popup over the board. We only navigate here; the page
+  // (NewStockOutward.tsx, ?fromDispatch=1) prefills itself from the order,
+  // and after its save it writes the Step 6 dispatch_steps row and comes
+  // back to the board. Back/Cancel there = nothing changes.
   const handleStepAction = (card: BoardOrderCard, action: StepAction, remark?: string) => {
     if (card.position.step === 6 && action.primary) {
       if (!canActOnBoard || busyCardKey) return;
-      setDoIssue({ card, action, remark });
+      const params = new URLSearchParams({
+        fromDispatch: '1',
+        orderRef: card.order.id,
+        round: String(card.position.round),
+        plannedAt: card.position.plannedAt || '',
+      });
+      // Remark typed in the drawer travels along, so it is still saved on the step.
+      if (remark?.trim()) params.set('remark', remark.trim());
+      navigate(`/stock-movements/new-outward?${params.toString()}`);
       return;
     }
     return runStepAction(card, action, remark);
@@ -853,24 +840,6 @@ export function Dispatch() {
           />
         );
       })()}
-
-      {doIssue && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onMouseDown={e => { if (e.target === e.currentTarget) setDoIssue(null); }}>
-          <div className="bg-cream w-full max-w-[1200px] h-[92vh] rounded-[6px] shadow-2xl overflow-hidden flex flex-col">
-            <NewStockOutward
-              key={doIssue.card.key}
-              embedded
-              prefill={outwardPrefillFor(doIssue.card.order)}
-              onCancel={() => setDoIssue(null)}
-              onSaved={() => {
-                const { card, action, remark } = doIssue;
-                setDoIssue(null);
-                runStepAction(card, action, remark);
-              }}
-            />
-          </div>
-        </div>
-      )}
 
       {deleteCard && (
         deleteCard.kind === 'order' ? (

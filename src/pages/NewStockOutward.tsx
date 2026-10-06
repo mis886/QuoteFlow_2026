@@ -158,7 +158,7 @@
 // matching Party Name against data.customers — a non-match (e.g. "Other")
 // just leaves the To field blank, an expected fallback.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -172,7 +172,9 @@ import { PACKAGING_TYPES } from '../lib/stockMovementOptions';
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { Loader2 } from 'lucide-react';
-import { StockMovement } from '../lib/types';
+import { StockMovement, Order } from '../lib/types';
+import { fmtIST, canActOnDispatchBoard } from '../lib/utils';
+import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
 import { downloadOutwardDOCX } from '../lib/outwardDocx';
 import { SendEmailModal } from '../components/SendEmailModal';
@@ -350,33 +352,66 @@ async function insertOutwardWithRetry(
   return { error: new Error('Could not save entry after several attempts — please try again.') };
 }
 
-// 2026-10-05: the same form can now also open INSIDE the Dispatch board
-// (Step 6 "Transporter & DO" → "DO issued ✓" button). In that case
-// Dispatch.tsx renders <NewStockOutward embedded prefill={...} onSaved onCancel />
-// in a popup. Save logic is 100% the same (same stock_movements insert,
-// same stock_lots decrement, same DO Number generation) — only the
-// "where do I go after Save / Cancel" part changes: embedded mode calls
-// onSaved/onCancel instead of navigating to /stock-movements.
+// 2026-10-05: the same form can also be opened from the Dispatch board
+// (Step 6 "Transporter & DO" → "DO issued ✓" button).
+// 2026-10-06: that no longer happens in a popup. Dispatch.tsx now navigates
+// to this same page as a normal full page (like New Enquiry):
+//   /stock-movements/new-outward?fromDispatch=1&orderRef=<order id>&round=<n>&plannedAt=<iso>
+// The page finds the order in the store, prefills the form once, and after
+// a successful save marks Step 6 done in dispatch_steps (same row
+// runStepAction in Dispatch.tsx writes) and goes back to the board. Save
+// logic for the Outward entry itself is 100% unchanged. The old
+// embedded / prefill / onSaved / onCancel props are gone.
 export type OutwardPrefill = Partial<typeof emptyForm>;
 
-export function NewStockOutward({ embedded = false, prefill, onSaved, onCancel }: {
-  embedded?: boolean;
-  prefill?: OutwardPrefill;
-  onSaved?: () => void;
-  onCancel?: () => void;
-} = {}) {
+// Builds the Dispatch prefill from an order (moved here from Dispatch.tsx
+// on 2026-10-06). Uses the first item with qty > 0; product is matched
+// against PRODUCTS by name (case-insensitive), falling back to the raw text.
+export function outwardPrefillFor(o: Order): OutwardPrefill {
+  const item = o.items.find(i => i.qty > 0) || o.items[0];
+  const desc = (item?.desc || '').trim();
+  const product = PRODUCTS.find(p => p.name.toLowerCase() === desc.toLowerCase());
+  const packNum = parseFloat(item?.packing || '');
+  const qty = item?.qty ?? 0;
+  return {
+    doDate: fmtIST(new Date(), 'yyyy-MM-dd'),
+    productName: product?.name || desc,
+    productCode: product?.code || '',
+    billingName: product?.billingName || '',
+    numArticles: qty ? String(qty) : '',
+    packing: item?.packing || '',
+    totalQty: qty && packNum > 0 ? String(qty * packNum) : '',
+    packagingType: item?.packingType || '',
+    partyName: o.cust || '',
+    note: `${o.soNumber || ''}${o.soNumber ? ' · ' : ''}${o.id}`,
+  };
+}
+
+const DISPATCH_BOARD_PATH = '/dispatch?view=board';
+
+export function NewStockOutward() {
   const navigate = useNavigate();
-  const { user, activeDoer, data } = useAppStore();
+  const { user, activeDoer, data, isReadOnlyUser } = useAppStore();
   const [searchParams] = useSearchParams();
-  // Embedded (Dispatch board) mode is always "create new" — never reads the URL.
-  const movementId = embedded ? null : searchParams.get('movementId');
+  const movementId = searchParams.get('movementId');
   const isEditing = !!movementId;
 
-  // Where to go after Save / Back / Cancel.
-  const goBack = () => (embedded ? onCancel?.() : navigate('/stock-movements'));
-  const afterSave = () => (embedded ? onSaved?.() : navigate('/stock-movements'));
+  // 2026-10-06: opened from the Dispatch board's Step 6 "DO issued ✓".
+  // Always "create new" — ignored when editing an existing entry.
+  const orderRef = searchParams.get('orderRef') || '';
+  const fromDispatch = !isEditing && searchParams.get('fromDispatch') === '1' && !!orderRef;
+  const dispatchRound = Number(searchParams.get('round')) || 1;
+  const dispatchPlannedAt = searchParams.get('plannedAt') || '';
+  const dispatchRemark = searchParams.get('remark') || '';
+  const dispatchOrder = fromDispatch ? data.orders.find(o => o.id === orderRef) : undefined;
 
-  const [form, setForm] = useState(() => ({ ...emptyForm, ...(prefill || {}) }));
+  // Where to go on Back / Cancel.
+  const goBack = () => navigate(fromDispatch ? DISPATCH_BOARD_PATH : '/stock-movements');
+
+  const [form, setForm] = useState(emptyForm);
+  // Set when the Outward entry saved but Step 6 could not be marked done —
+  // the form is then replaced by a message, so Save can't be clicked twice.
+  const [stepProblem, setStepProblem] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -493,6 +528,76 @@ export function NewStockOutward({ embedded = false, prefill, onSaved, onCancel }
     loadPartyTransporters();
     return () => { cancelled = true; };
   }, []);
+
+  // 2026-10-06: Dispatch prefill. Runs ONCE, as soon as the order is found
+  // in the store (orders may still be loading on a direct page open) — the
+  // ref stops it from running again and overwriting what the user typed.
+  // Transporter / Fulfilment Type are filled here from the customer's
+  // preferred transporter if the customers query above has already
+  // finished; if it finishes later, its own fill-if-empty does the same.
+  const dispatchPrefilled = useRef(false);
+  useEffect(() => {
+    if (!dispatchOrder || dispatchPrefilled.current) return;
+    dispatchPrefilled.current = true;
+    const prefill = outwardPrefillFor(dispatchOrder);
+    const party = prefill.partyName || '';
+    setForm(f => ({
+      ...f,
+      ...prefill,
+      transporter: f.transporter || transporterByParty[party] || '',
+      fulfilmentType: f.fulfilmentType || fulfilmentTypeByParty[party] || '',
+    }));
+  }, [dispatchOrder]);
+
+  // 2026-10-06: marks Dispatch Step 6 done after the Outward entry saved —
+  // same dispatch_steps row + activity log runStepAction in Dispatch.tsx
+  // writes. Returns '' on success, or the reason it could not be done.
+  const markDispatchStepDone = async (): Promise<string> => {
+    if (!canActOnDispatchBoard(user?.email) || isReadOnlyUser) return 'you do not have permission to act on the Dispatch board';
+    try {
+      // Already marked (page opened twice / browser Back)? Don't add a second row.
+      const { data: already, error: checkErr } = await supabase.from('dispatch_steps').select('id')
+        .eq('order_id', orderRef).eq('round', dispatchRound).eq('step_no', 6).eq('status', 'done').limit(1);
+      if (checkErr) throw checkErr;
+      if (already && already.length > 0) return '';
+      const { data: inserted, error: stepErr } = await supabase.from('dispatch_steps').insert({
+        order_id: orderRef,
+        round: dispatchRound,
+        step_no: 6,
+        status: 'done',
+        planned_at: dispatchPlannedAt || null,
+        done_at: new Date().toISOString(),
+        done_by: user?.email ?? null,
+        remark: dispatchRemark.trim() || null,
+      }).select('*');
+      if (stepErr) throw stepErr;
+      logActivity({
+        module: 'dispatch_steps', recordId: orderRef,
+        recordLabel: `${dispatchOrder?.soNumber || orderRef} · Step 6 Transporter & DO · Done (DO issued ✓)`,
+        action: 'insert', after: inserted?.[0],
+      });
+      return '';
+    } catch (err: any) {
+      return err?.message || JSON.stringify(err);
+    }
+  };
+
+  // After a successful save: plain Stock Movements goes back to its list;
+  // from Dispatch, Step 6 is marked done first, then back to the board.
+  const afterSave = async () => {
+    if (!fromDispatch) { navigate('/stock-movements'); return; }
+    const problem = await markDispatchStepDone();
+    if (problem) { setStepProblem(problem); return; }
+    navigate(DISPATCH_BOARD_PATH);
+  };
+
+  const retryDispatchStep = async () => {
+    setSaving(true);
+    const problem = await markDispatchStepDone();
+    setSaving(false);
+    if (problem) { setStepProblem(problem); return; }
+    navigate(DISPATCH_BOARD_PATH);
+  };
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -817,7 +922,7 @@ export function NewStockOutward({ embedded = false, prefill, onSaved, onCancel }
       }).eq('id', movementId);
 
       if (moveErr) { setError(moveErr.message); setSaving(false); return; }
-      afterSave();
+      await afterSave();
       setSaving(false);
       return;
     }
@@ -883,7 +988,7 @@ export function NewStockOutward({ embedded = false, prefill, onSaved, onCancel }
       }
     }
 
-    afterSave();
+    await afterSave();
     setSaving(false);
   };
 
@@ -896,20 +1001,42 @@ export function NewStockOutward({ embedded = false, prefill, onSaved, onCancel }
     );
   }
 
+  // 2026-10-06: Outward entry is saved, but Step 6 was not marked done.
+  // Shown instead of the form so the entry can't be saved a second time.
+  if (stepProblem) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
+        <div className="font-serif text-xl text-blk">Outward entry saved{form.doNumber ? ` (${form.doNumber})` : ''}</div>
+        <div className="text-[12.5px] text-red-mrt font-bold max-w-[560px]">
+          But Dispatch Step 6 could not be marked done: {stepProblem}. The card is still in Step 06. Do not fill the Outward form again.
+        </div>
+        <div className="flex gap-2 mt-2">
+          <Button variant="primary" onClick={retryDispatchStep} disabled={saving}>{saving ? 'Trying…' : 'Try again'}</Button>
+          <Button variant="secondary" onClick={goBack} disabled={saving}>Back to Dispatch board</Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
       <div className="pt-5 px-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">{embedded ? 'Dispatch · Step 06 · Issue DO' : 'Stock Movements Module'}</div>
+            <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">{fromDispatch ? 'Dispatch · Step 06 · Issue DO' : 'Stock Movements Module'}</div>
             <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">
               {isEditing ? <>Edit <em className="italic text-red-mrt">Outward Entry</em></> : <>Log <em className="italic text-red-mrt">New Outward</em></>}
             </h1>
             <p className="text-xs text-g500 mt-1 font-light">
               {isEditing ? 'Update a previously logged Delivery Order stock outward.' : 'Record a Delivery Order stock outward — replaces the Delivery Order Sale Google Form.'}
             </p>
+            {fromDispatch && dispatchOrder && (
+              <p className="text-[12px] text-blk mt-1 font-semibold">
+                <span className="font-mono">{dispatchOrder.soNumber || dispatchOrder.id}</span> · {dispatchOrder.cust}
+              </p>
+            )}
           </div>
-          <Button variant="secondary" onClick={goBack}>{embedded ? 'Close' : 'Back'}</Button>
+          <Button variant="secondary" onClick={goBack}>Back</Button>
         </div>
       </div>
 
