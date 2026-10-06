@@ -71,7 +71,7 @@
 // above) or by getting corrected through Stock Movements.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, Warehouse, PackageCheck } from 'lucide-react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, PackageCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
@@ -79,7 +79,7 @@ import { StockLot } from '../lib/types';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 
-function mapRow(r: any): StockLot {
+export function mapRow(r: any): StockLot {
   return {
     id: r.id,
     serialNo: r.serial_no ?? undefined,
@@ -120,7 +120,17 @@ function mapRow(r: any): StockLot {
 // showing a bare "0" instead of "—" was confusing/looked like a bug.
 const num = (v?: number) => (v === undefined || v === null || v === 0 ? '—' : v.toLocaleString('en-IN'));
 
-export function StockSummary() {
+// 2026-10-06: this is now the "Stock Summary" TAB of the Stock Register page
+// (src/pages/StockRegister.tsx), which owns the page header, the stat boxes
+// and the tab toggle. Table, columns, data and search are unchanged.
+//   tabs          — the [Stock Summary] [Stock Book] toggle, shown first in the toolbar
+//   onOpenLot     — a Lot No was clicked → open its Stock Book
+//   onLotsChanged — a lot was finished / the list refreshed → refresh the stat boxes
+export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
+  tabs?: React.ReactNode;
+  onOpenLot?: (lotNo: string) => void;
+  onLotsChanged?: () => void;
+} = {}) {
   const { user, activeDoer, data } = useAppStore();
   const [lots, setLots] = useState<StockLot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,7 +171,7 @@ export function StockSummary() {
       // falling back to the raw login email — was raw user?.email only.
       updated_by: activeDoer?.email ?? user?.email ?? null,
     }).eq('id', lot.id);
-    if (!error) setLots(prev => prev.filter(l => l.id !== lot.id));
+    if (!error) { setLots(prev => prev.filter(l => l.id !== lot.id)); onLotsChanged?.(); }
   };
 
   const toggleSort = (col: string) => {
@@ -222,17 +232,10 @@ export function StockSummary() {
   );
 
   return (
-    <div className="flex flex-col h-full animate-in fade-in duration-300">
-      <div className="pt-5 px-6">
-        <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">Inventory</div>
-        <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight flex items-center gap-2">
-          <Warehouse size={20} className="text-red-mrt shrink-0" />
-          Stock <em className="italic text-red-mrt">Summary</em>
-        </h1>
-        <p className="text-xs text-g500 mt-1 font-light">Lot-wise raw-material stock, split by party / godown.</p>
-      </div>
-
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
+        {tabs}
+        {tabs && <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>}
         <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[240px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
           <Search size={11} className="text-g400 shrink-0" />
           <input
@@ -246,7 +249,7 @@ export function StockSummary() {
 
         <button
           type="button"
-          onClick={load}
+          onClick={() => { load(); onLotsChanged?.(); }}
           title="Refresh"
           className="inline-flex items-center justify-center h-7 w-7 rounded-[3px] text-g500 hover:bg-g100 hover:text-blk transition-colors"
         >
@@ -305,7 +308,15 @@ export function StockSummary() {
                         (no longer sortable — sorting by "position in the list" is
                         meaningless once it's computed rather than stored). */}
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g500 whitespace-nowrap">{idx + 1}</td>
-                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{l.whLotNo || '—'}</td>
+                    {/* 2026-10-06: Lot No opens that lot's Stock Book (outward passbook). */}
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">
+                      {l.whLotNo && onOpenLot ? (
+                        <button type="button" onClick={() => onOpenLot(l.whLotNo!)} title="Open this lot's Stock Book"
+                          className="font-mono font-bold text-red-mrt underline underline-offset-2 hover:opacity-70">
+                          {l.whLotNo}
+                        </button>
+                      ) : (l.whLotNo || '—')}
+                    </td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.factLotNo || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600 whitespace-nowrap">{l.productCode || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center font-semibold text-blk min-w-[200px]">{l.productName}</td>

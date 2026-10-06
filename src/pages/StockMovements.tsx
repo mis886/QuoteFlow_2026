@@ -76,7 +76,7 @@ import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollb
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { FinishedLotsTable } from '../components/FinishedLotsTable';
 
-function mapRow(r: any): StockMovement {
+export function mapRow(r: any): StockMovement {
   return {
     id: r.id,
     type: r.type,
