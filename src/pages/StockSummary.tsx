@@ -1,4 +1,4 @@
-// Stock Summary (module renamed from "Stockbook" on 2026-10-06) — lot-wise raw-material stock ledger, by godown/party.
+// Stock Summary — lot-wise raw-material stock ledger, by godown/party.
 // Migrated from the "Stock Lot Godown Wise" tab of the HIMALAYA STOCK
 // SUMMARY Google Sheet; managed directly in EnqBoss from here on.
 // Self-contained (own Supabase queries, no global store plumbing) — same
