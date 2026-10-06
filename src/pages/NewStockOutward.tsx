@@ -747,10 +747,10 @@ export function NewStockOutward() {
         // no_of_barrels is a lot-wide field deliberately decoupled from the
         // real per-warehouse barrel count and is null on plenty of real
         // rows (e.g. lot W0686-R: qty_reliable=7, no_of_barrels=null).
-        // Stockbook.tsx stopped displaying no_of_barrels for the same
+        // StockSummary.tsx stopped displaying no_of_barrels for the same
         // reason — qty_* is the only trustworthy barrel count left.
         if (!f.numArticles.trim()) next.numArticles = String(qtyAtWarehouse);
-        // Same packing/packingDetail fallback Stockbook.tsx's own Packing
+        // Same packing/packingDetail fallback StockSummary.tsx's own Packing
         // column uses: the legacy numeric `packing` column wins when set,
         // otherwise fall back to the text `packing_detail` column Inward
         // actually writes.
@@ -763,7 +763,7 @@ export function NewStockOutward() {
         // stock_lots.inward_date is a plain `date` column (not timestamptz —
         // see 20260901060000_create_stock_lots_table.sql), so it comes back
         // as an already-"YYYY-MM-DD" string with no time component to strip,
-        // same as NewStockInward.tsx/Stockbook.tsx's own inward_date reads.
+        // same as NewStockInward.tsx/StockSummary.tsx's own inward_date reads.
         if (!f.lotDate.trim()) next.lotDate = existing.inward_date || '';
 
         // Same barrels×packing auto-calc onNumArticlesChange/onPackingChange

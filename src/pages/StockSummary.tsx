@@ -1,4 +1,4 @@
-// Stockbook — lot-wise raw-material stock ledger, by godown/party.
+// Stock Summary (module renamed from "Stockbook" on 2026-10-06) — lot-wise raw-material stock ledger, by godown/party.
 // Migrated from the "Stock Lot Godown Wise" tab of the HIMALAYA STOCK
 // SUMMARY Google Sheet; managed directly in EnqBoss from here on.
 // Self-contained (own Supabase queries, no global store plumbing) — same
@@ -11,14 +11,14 @@
 // request — editing a lot's numbers directly here bypassed Stock Movements'
 // Inward/Outward forms and could silently diverge from them (this is the
 // same root cause as the "No of Barrels" removal earlier today — see
-// StockLotModal.tsx's own comment and stock_movements_module.md). Stockbook
+// StockLotModal.tsx's own comment and stock_movements_module.md). Stock Summary
 // is now purely a read-only ledger view; all changes to a lot's quantities
 // go through Stock Movements (src/pages/StockMovements.tsx) instead.
 // StockLotModal.tsx itself is left on disk unused rather than deleted, in
 // case anything still references it.
 //
 // 2026-09-05 (later, same day): Delete was asked back — user wants to be
-// able to remove a whole row/lot from Stockbook, just not edit its numbers
+// able to remove a whole row/lot from Stock Summary, just not edit its numbers
 // directly (Edit is deliberately NOT restored — that's the part that caused
 // the earlier confusion). Delete here is a plain confirm-then-delete of the
 // stock_lots row, same as it worked before the removal above — it does NOT
@@ -66,7 +66,7 @@
 // no longer tracked as its own party column.
 //
 // 2026-09-12: Delete removed again — users should no longer be able to
-// delete a stock lot row directly from Stockbook. Lots now leave the
+// delete a stock lot row directly from Stock Summary. Lots now leave the
 // ledger only via the Finished Lot flow (see `isDepleted`/handleFinish
 // above) or by getting corrected through Stock Movements.
 
@@ -120,7 +120,7 @@ function mapRow(r: any): StockLot {
 // showing a bare "0" instead of "—" was confusing/looked like a bug.
 const num = (v?: number) => (v === undefined || v === null || v === 0 ? '—' : v.toLocaleString('en-IN'));
 
-export function Stockbook() {
+export function StockSummary() {
   const { user, activeDoer, data } = useAppStore();
   const [lots, setLots] = useState<StockLot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,7 +151,7 @@ export function Stockbook() {
   useEffect(() => { load(); }, []);
 
   const handleFinish = async (lot: StockLot) => {
-    if (!window.confirm(`Mark stock lot "${lot.productName}" (${lot.whLotNo || lot.factLotNo || 'no lot no.'}) as finished? It will move out of Stockbook into the Finished Lots tab in Stock Movements.`)) return;
+    if (!window.confirm(`Mark stock lot "${lot.productName}" (${lot.whLotNo || lot.factLotNo || 'no lot no.'}) as finished? It will move out of Stock Summary into the Finished Lots tab in Stock Movements.`)) return;
     const { error } = await supabase.from('stock_lots').update({
       is_finished: true,
       finished_at: new Date().toISOString(),
@@ -227,7 +227,7 @@ export function Stockbook() {
         <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">Inventory</div>
         <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight flex items-center gap-2">
           <Warehouse size={20} className="text-red-mrt shrink-0" />
-          Stock <em className="italic text-red-mrt">Book</em>
+          Stock <em className="italic text-red-mrt">Summary</em>
         </h1>
         <p className="text-xs text-g500 mt-1 font-light">Lot-wise raw-material stock, split by party / godown.</p>
       </div>
@@ -281,7 +281,7 @@ export function Stockbook() {
                 <SortTh col="make" label="Make" />
                 <Th label="Remark" />
                 {/* 2026-09-21: the "Created / Updated By" column was removed
-                    from Stockbook at the user's request — still shown in
+                    from Stock Summary at the user's request — still shown in
                     Stock Movements and Dispatch. */}
                 <th className="sticky top-0 z-10 bg-g100 px-[13px] py-[9px] border-b border-g200 w-[130px]" />
               </tr>

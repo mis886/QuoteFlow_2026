@@ -632,7 +632,7 @@ export interface Ticket {
   updated_at?: string;
 }
 
-// Stockbook module — lot-wise raw-material stock ledger, migrated from the
+// Stock Summary module — lot-wise raw-material stock ledger, migrated from the
 // "Stock Lot Godown Wise" tab of the HIMALAYA STOCK SUMMARY Google Sheet.
 // Quantity is split across whichever party/godown currently holds it.
 // See supabase/migrations/20260901060000_create_stock_lots_table.sql.
@@ -640,7 +640,7 @@ export interface Ticket {
 // dropped from the table entirely. op_qty/unit/packaging_type were also
 // dropped and merged into no_of_barrels/mou/packing_type — the same
 // columns the Stock Inward form (NewStockInward.tsx) writes to — so data
-// entered via Inward now shows up in Stockbook instead of landing in
+// entered via Inward now shows up in Stock Summary instead of landing in
 // columns nobody displayed. See
 // supabase/migrations/20260904130000_stockbook_drop_type_tanker_merge_columns.sql.
 export interface StockLot {
@@ -652,7 +652,7 @@ export interface StockLot {
   productName: string;
   inwardDate?: string;        // ISO date
   sampleOff: boolean;
-  // No of Barrels used to be its own field here — removed from the Stockbook
+  // No of Barrels used to be its own field here — removed from the Stock Summary
   // UI 2026-09-05 (see StockLotModal.tsx's comment): it was editable
   // independently of the qty_* party columns below and could silently
   // diverge from the real per-warehouse barrel count that Stock Movements'
@@ -686,7 +686,7 @@ export interface StockLot {
 
 // Stock Movements module — append-only inward/outward ledger, replacing the
 // "Stock Inward" Google Form. Saving an inward entry also upserts the
-// matching stock_lots row (by wh_lot_no) so Stockbook's running balances
+// matching stock_lots row (by wh_lot_no) so Stock Summary's running balances
 // stay correct — this table is the immutable transaction log, stock_lots
 // is the current-balance view. See src/pages/StockMovements.tsx and
 // supabase/migrations/20260903060000_create_stock_movements_table.sql.

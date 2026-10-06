@@ -109,8 +109,8 @@ body {
 .floating-h-scrollbar-track::-webkit-scrollbar-track { background: transparent; }
 .floating-h-scrollbar-track::-webkit-scrollbar-thumb { background: var(--color-g300); border-radius: 9px; }
 
-/* Stockbook / Stock Movements table scroll container (tableScrollRef in
-   Stockbook.tsx and StockMovements.tsx) — this element has its own native
+/* Stock Summary / Stock Movements table scroll container (tableScrollRef in
+   StockSummary.tsx and StockMovements.tsx) — this element has its own native
    scrollbars (both axes) PLUS the custom floating ones from
    FloatingHorizontalScrollbar.tsx/FloatingVerticalScrollbar.tsx, which mirror
    it and are meant to be the only ones the user sees/uses. Scoped to this

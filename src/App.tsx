@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './store';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
@@ -27,7 +27,7 @@ import { IntelligenceBoard } from './pages/IntelligenceBoard';
 import { DoerKPI } from './pages/DoerKPI';
 import { DoerDetail } from './pages/DoerDetail';
 import { Tickets } from './pages/Tickets';
-import { Stockbook } from './pages/Stockbook';
+import { StockSummary } from './pages/StockSummary';
 import { StockMovements } from './pages/StockMovements';
 import { NewStockInward } from './pages/NewStockInward';
 import { NewStockOutward } from './pages/NewStockOutward';
@@ -98,7 +98,9 @@ export default function App() {
                   <Route path="quotes/new" element={<NewQuote />} />
                   <Route path="orders" element={<Orders />} />
                   <Route path="orders/new" element={<NewOrder />} />
-                  <Route path="stockbook" element={<Stockbook />} />
+                  <Route path="stock-summary" element={<StockSummary />} />
+                  {/* 2026-10-06: module renamed Stock Summary → Stock Summary; old bookmarks still work. */}
+                  <Route path="stockbook" element={<Navigate to="/stock-summary" replace />} />
                   <Route path="stock-movements" element={<StockMovements />} />
                   <Route path="stock-movements/new" element={<NewStockInward />} />
                   <Route path="stock-movements/new-outward" element={<NewStockOutward />} />

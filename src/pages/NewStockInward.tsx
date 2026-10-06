@@ -7,8 +7,8 @@
 // Save logic (moved here from the old StockInwardModal.tsx) does two things
 // client-side, no DB trigger:
 //   1. Inserts one row into stock_movements (the immutable audit trail).
-//   2. Upserts the matching stock_lots row by wh_lot_no, so Stockbook's
-//      running party/godown balances stay correct without Stockbook.tsx
+//   2. Upserts the matching stock_lots row by wh_lot_no, so Stock Summary's
+//      running party/godown balances stay correct without StockSummary.tsx
 //      itself changing at all.
 //
 // Column ownership: no_of_barrels / packing_type / mou / packing_detail are
@@ -22,7 +22,7 @@
 // party/godown (i.e. No of Barrels), not Total Quantity — quantity/total_qty
 // is the only place Total Quantity (barrels × packing) is meant to show up.
 // Previously both were being set to the same Total Quantity value, which
-// made Stockbook's per-party column redundant with its own Total Quantity
+// made Stock Summary's per-party column redundant with its own Total Quantity
 // column instead of showing barrel counts.
 // product_code is the one exception: it reuses stock_lots' existing column
 // (also edited via StockLotModal.tsx), the same way product_name/wh_lot_no/
@@ -57,7 +57,7 @@
 // references it.
 //
 // 2026-09-05 (bugfix, same day): editing an entry was creating a duplicate
-// row in Stockbook instead of updating the original one. Root cause: the
+// row in Stock Summary instead of updating the original one. Root cause: the
 // save() edit-mode logic re-found "the new lot" via a fresh lot-no lookup
 // after reversing the old one, instead of reusing one fixed row throughout —
 // any mismatch between those two lookups (e.g. this movement's lot having
@@ -126,7 +126,7 @@ export function NewStockInward() {
   // should always re-find the same row, but any mismatch (a rename, or a
   // lot that never got created for this movement in the first place) made
   // it fall into the insert-a-new-lot branch, so editing an entry could
-  // spin off a duplicate row in Stockbook instead of updating the original
+  // spin off a duplicate row in Stock Summary instead of updating the original
   // one. Tying the edit to the id captured here removes that ambiguity.
   const [original, setOriginal] = useState<{ warehouse: string; whLotNo: string; totalQty: number; noOfBarrels: string; lotId: string | null } | null>(null);
 
@@ -319,7 +319,7 @@ export function NewStockInward() {
     // lookup didn't land on the same row (e.g. the lot for this movement had
     // never been created, a separate known issue), it silently created a
     // brand-new stock_lots row instead — editing an entry could spin off a
-    // duplicate in Stockbook rather than updating the original. Using the id
+    // duplicate in Stock Summary rather than updating the original. Using the id
     // captured at load time removes that ambiguity. The only remaining
     // lookup-by-lot-no fallback is for a movement whose lot truly doesn't
     // exist yet (original.lotId is null) — same as a fresh Inward entry.

@@ -1,5 +1,5 @@
 // One-off uploader: pushes the 7 COA PDFs that were found in Google Drive to
-// fill the last gaps in Stockbook's COA column, into Supabase Storage at the
+// fill the last gaps in Stock Summary's COA column, into Supabase Storage at the
 // exact paths already recorded in coa_document.storage_path / stock_lots.coa_url.
 //
 // Background: on 2026-09-02 the coa_document rows and stock_lots.coa_url
@@ -78,7 +78,7 @@ async function main() {
   console.log(`Uploaded: ${uploaded}`);
   console.log(`Failed: ${failed}`);
   if (uploaded > 0) {
-    console.log(`\nThese should now open from the Stockbook COA column for: H0046, 240503, 260322 (H0456.pdf), W1034, W1036 (x2 lots), 260346, 240437.`);
+    console.log(`\nThese should now open from the Stock Summary COA column for: H0046, 240503, 260322 (H0456.pdf), W1034, W1036 (x2 lots), 260346, 240437.`);
   }
 }
 

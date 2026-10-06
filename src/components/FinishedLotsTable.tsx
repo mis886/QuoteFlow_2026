@@ -1,13 +1,13 @@
 // Finished Lots — the "Finished Lots" tab of Stock Movements
-// (src/pages/StockMovements.tsx). Visually mirrors Stockbook.tsx's table
-// (src/pages/Stockbook.tsx) — same column set/order, same search bar
+// (src/pages/StockMovements.tsx). Visually mirrors StockSummary.tsx's table
+// (src/pages/StockSummary.tsx) — same column set/order, same search bar
 // treatment, same fonts/spacing/borders/sticky-header styling. Reads
 // public.stock_lots filtered to is_finished = true — rows land here when
-// Stockbook's "Finished Lot" button (shown once a lot's Total Quantity
+// Stock Summary's "Finished Lot" button (shown once a lot's Total Quantity
 // hits 0) is clicked, which sets is_finished/finished_at on that same
-// stock_lots row (see Stockbook.tsx's handleFinish()) rather than moving
+// stock_lots row (see StockSummary.tsx's handleFinish()) rather than moving
 // the data to a separate table. Self-contained (own Supabase query, own
-// state) — no shared state with Stockbook.tsx, same convention
+// state) — no shared state with StockSummary.tsx, same convention
 // StockMovements.tsx uses for its own separate mapRow().
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -52,7 +52,7 @@ function mapRow(r: any): StockLot {
   };
 }
 
-// Same "0 reads as —" rule as Stockbook.tsx's own num().
+// Same "0 reads as —" rule as StockSummary.tsx's own num().
 const num = (v?: number) => (v === undefined || v === null || v === 0 ? '—' : v.toLocaleString('en-IN'));
 
 export function FinishedLotsTable() {
@@ -67,7 +67,7 @@ export function FinishedLotsTable() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   // Single scroll container for both axes — same sticky-header requirement
-  // (and the same nested-overflow gotcha) as Stockbook.tsx's own tableScrollRef.
+  // (and the same nested-overflow gotcha) as StockSummary.tsx's own tableScrollRef.
   const tableScrollRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {

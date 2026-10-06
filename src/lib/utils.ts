@@ -1036,7 +1036,7 @@ export function nameTier(name: string, query: string, exactMatches: (string | un
 
 // 2026-09-19: resolves a stored created_by/updated_by value (an email) to
 // the matching team_roster member's display name, at the user's request —
-// Stockbook/Finished Lots/Stock Movements/Dispatch all show "Created By"/
+// Stock Summary/Finished Lots/Stock Movements/Dispatch all show "Created By"/
 // "Updated By" as a name where one is known, falling back to the raw email
 // (same style Sampling.tsx already shows created_by in) when no roster
 // member matches, or '' when there's no value at all (nothing shown).

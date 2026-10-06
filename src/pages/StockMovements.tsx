@@ -1,6 +1,6 @@
 // Stock Movements — inward/outward stock entry ledger, replacing the
 // "Stock Inward" / "Delivery Order Sale" Google Forms. Self-contained (own
-// Supabase queries, no global store plumbing), same pattern as Stockbook.tsx.
+// Supabase queries, no global store plumbing), same pattern as StockSummary.tsx.
 // Both Inward and Outward are fully functional — see src/pages/NewStockInward.tsx
 // and src/pages/NewStockOutward.tsx for the add forms (full pages, same
 // convention as NewEnquiry/NewOrder — not modals) and
@@ -52,14 +52,14 @@
 // 2026-09-12: added a third "Finished Lots" tab alongside Inward/Outward.
 // It renders src/components/FinishedLotsTable.tsx, a self-contained
 // component (own Supabase query, own state) that visually mirrors
-// Stockbook.tsx's table — it does NOT share `movements`/`search`/`load()`
+// StockSummary.tsx's table — it does NOT share `movements`/`search`/`load()`
 // above, since those are Inward/Outward-specific (stock_movements rows,
 // warehouse/DO-number search fields) and don't apply to finished-goods
 // lots. It reads public.stock_lots filtered to is_finished = true: rows
-// land there via Stockbook's "Finished Lot" button (shown once a lot's
+// land there via Stock Summary's "Finished Lot" button (shown once a lot's
 // Total Quantity hits 0), which sets is_finished/finished_at on that row
-// (see Stockbook.tsx's handleFinish()) so it drops out of the active
-// Stockbook ledger and appears here instead. The shared search box / New
+// (see StockSummary.tsx's handleFinish()) so it drops out of the active
+// Stock Summary ledger and appears here instead. The shared search box / New
 // Inward/Outward button / entry count in the toolbar below are hidden
 // while this tab is active, same as before — they're Inward/Outward-only
 // concepts and don't apply to this tab's own self-contained toolbar.
@@ -179,7 +179,7 @@ export function StockMovements() {
   }, []);
 
   const handleDelete = async (m: StockMovement) => {
-    if (!window.confirm(`Delete this ${m.type} entry for "${m.productName}" (${m.whLotNo || 'no lot no.'})? This also reverses its effect on the matching Stockbook lot, if one is found.`)) return;
+    if (!window.confirm(`Delete this ${m.type} entry for "${m.productName}" (${m.whLotNo || 'no lot no.'})? This also reverses its effect on the matching Stock Summary lot, if one is found.`)) return;
 
     const partyCol = m.type === 'inward' ? INWARD_PARTY_COLUMN[m.warehouse] : OUTWARD_PARTY_COLUMN[m.warehouse];
     const whLotNo = (m.whLotNo || '').trim();
@@ -204,13 +204,13 @@ export function StockMovements() {
             // Total Quantity above zero — e.g. it was the sole Inward entry
             // that ever created this lot. Leaving behind a zeroed-out row
             // (every descriptive field still filled in, but every quantity
-            // column reading 0) reads as a stale "ghost" lot in Stockbook,
+            // column reading 0) reads as a stale "ghost" lot in Stock Summary,
             // not as "this entry was undone" — so the whole stock_lots row
             // is removed instead of updated to a zero. If OTHER movements
             // still reference this same wh_lot_no, they simply won't find a
             // matching lot next time (same as any Stock Movements entry
             // whose lot was never created / already deleted directly from
-            // Stockbook) rather than corrupting a lot that's still in use.
+            // Stock Summary) rather than corrupting a lot that's still in use.
             await supabase.from('stock_lots').delete().eq('id', lot.id);
           } else {
             await supabase.from('stock_lots').update({

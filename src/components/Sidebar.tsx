@@ -97,7 +97,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             badge={sentQuotesCount > 0 ? { text: sentQuotesCount.toString(), className: 'bg-sR' } : undefined} dataTour="nav-quotations" />
           <NavItem to="/orders" icon={<ShoppingCart size={15} />} label="Orders" active={isActive('/orders')} collapsed={collapsed}
             badge={activeOrdersCount > 0 ? { text: activeOrdersCount.toString(), className: 'bg-sW' } : undefined} dataTour="nav-orders" />
-          <NavItem to="/stockbook" icon={<Warehouse size={15} />} label="Stockbook" active={isActive('/stockbook')} collapsed={collapsed} dataTour="nav-stockbook" />
+          <NavItem to="/stock-summary" icon={<Warehouse size={15} />} label="Stock Summary" active={isActive('/stock-summary')} collapsed={collapsed} dataTour="nav-stock-summary" />
           <NavItem to="/stock-movements" icon={<ArrowLeftRight size={15} />} label="Stock Movements" active={isActive('/stock-movements')} collapsed={collapsed} dataTour="nav-stock-movements" />
           <NavItem to="/dispatch" icon={<Truck size={15} />} label="Dispatch" active={isActive('/dispatch')} collapsed={collapsed} dataTour="nav-dispatch" />
           <NavItem to="/followups" icon={<Phone size={15} />} label="Follow-Ups" active={isActive('/followups')} collapsed={collapsed}
