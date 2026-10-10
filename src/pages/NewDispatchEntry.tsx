@@ -11,6 +11,7 @@ import { useProductCatalog } from '../hooks/useProductCatalog';
 import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
+import { DocFileActions } from '../components/DocFileActions';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
 // entry is being saved as "Dispatch → Sent" (every save is one now — see
@@ -240,6 +241,21 @@ export function NewDispatchEntry() {
   // Save (via coaTouched, same as every other Documents Attachment field).
   const [coaFiles, setCoaFiles] = useState<{ url: string; name: string }[]>([]);
   const [coaTouched, setCoaTouched] = useState(false);
+  // 2026-10-10: the COA urls that were on the entry when it was loaded — i.e.
+  // SAVED ones. A COA attached in this session is in coaFiles straight away
+  // but is not saved until Save, so it gets no View / Download buttons.
+  const [savedCoaUrls, setSavedCoaUrls] = useState<Set<string>>(new Set());
+
+  // 2026-10-10: View + Download buttons on saved documents — ONLY when this
+  // page is showing an entry that is already saved, i.e. one that sits in the
+  // Dispatched or Email Sent tab. Decided from the loaded record, never from
+  // the URL: existingEntryId is set only once a saved dispatch entry has been
+  // loaded (Create Dispatch = ?orderRef=, no saved entry → 'create'), and
+  // every saved entry is Email Sent when emailSentAt is set, else Dispatched
+  // (same rule as the two tabs in Dispatch.tsx).
+  const savedDispatchEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : undefined;
+  const docStage: 'create' | 'dispatched' | 'emailSent' = !savedDispatchEntry ? 'create' : savedDispatchEntry.emailSentAt ? 'emailSent' : 'dispatched';
+  const showDocActions = docStage === 'dispatched' || docStage === 'emailSent';
   // Once at least one COA is attached, the search/upload panel hides behind
   // a "+ Add COA" link (mirroring Invoice/Eway Bill and LR) and this toggles
   // it back open to attach another. With nothing attached yet, the panel is
@@ -414,7 +430,9 @@ export function NewDispatchEntry() {
         invoiceEwayBill: buildDocSlots(existing.invoiceEwayBillFiles, existing.invoiceEwayBillUrl, existing.invoiceEwayBillName),
         lr: buildDocSlots(existing.lrFiles, existing.lrUrl, existing.lrName),
       });
-      setCoaFiles(existing.coaFiles && existing.coaFiles.length ? existing.coaFiles : (existing.coaUrl ? [{ url: existing.coaUrl, name: existing.coaName || 'COA' }] : []));
+      const loadedCoaFiles = existing.coaFiles && existing.coaFiles.length ? existing.coaFiles : (existing.coaUrl ? [{ url: existing.coaUrl, name: existing.coaName || 'COA' }] : []);
+      setCoaFiles(loadedCoaFiles);
+      setSavedCoaUrls(new Set(loadedCoaFiles.map(f => f.url)));
       setInvoiceNumber(existing.invoiceNumber || '');
       // Reopening a saved dispatch entry must show what was actually
       // dispatched, not the order's own (unchanged) confirmed quantities —
@@ -927,10 +945,18 @@ export function NewDispatchEntry() {
                                   <Upload size={13} className="text-g500 shrink-0" />
                                   <span className={`truncate ${slot.kind === 'new' ? '' : 'text-emerald-600'}`}>{slot.kind === 'new' ? slot.file.name : slot.name}</span>
                                 </div>
-                                <a href={slot.kind === 'new' ? slot.localUrl : slot.url} target="_blank" rel="noopener noreferrer" title={`Open ${field.label}`}
-                                  className="p-1.5 text-g400 hover:text-blue-600 transition-colors shrink-0" onClick={e => e.stopPropagation()}>
-                                  <ExternalLink size={14} />
-                                </a>
+                                {/* 2026-10-10: a SAVED file of a Dispatched / Email Sent
+                                    entry gets View + Download (in place of the open
+                                    icon). Create Dispatch, and a file picked but not
+                                    saved yet, keep the open icon exactly as before. */}
+                                {showDocActions && slot.kind === 'existing' ? (
+                                  <DocFileActions url={slot.url} name={slot.name} />
+                                ) : (
+                                  <a href={slot.kind === 'new' ? slot.localUrl : slot.url} target="_blank" rel="noopener noreferrer" title={`Open ${field.label}`}
+                                    className="p-1.5 text-g400 hover:text-blue-600 transition-colors shrink-0" onClick={e => e.stopPropagation()}>
+                                    <ExternalLink size={14} />
+                                  </a>
+                                )}
                                 {!isFieldLocked && (
                                   <button type="button" title="Remove" onClick={() => removeMultiDocSlot(field.key, slot.id)} className="text-g400 hover:text-red-mrt text-[16px] shrink-0">×</button>
                                 )}
@@ -977,12 +1003,16 @@ export function NewDispatchEntry() {
                             <ExternalLink size={14} />
                           </a>
                         )}
-                        {!file && existingUrl && (
+                        {/* 2026-10-10: saved file of a Dispatched / Email Sent entry →
+                            View + Download; otherwise the open icon as before. */}
+                        {!file && existingUrl && (showDocActions ? (
+                          <DocFileActions url={existingUrl} name={existingName || field.label} />
+                        ) : (
                           <a href={existingUrl} target="_blank" rel="noopener noreferrer" title={`Open ${field.label}`}
                             className="p-1.5 text-g400 hover:text-blue-600 transition-colors" onClick={e => e.stopPropagation()}>
                             <ExternalLink size={14} />
                           </a>
-                        )}
+                        ))}
                         {(file || existingUrl || existingName) && !isFieldLocked && (
                           <button type="button" title="Remove" onClick={() => handleDocRemove(field.key)} className="text-g400 hover:text-red-mrt text-[16px]">×</button>
                         )}
@@ -1009,15 +1039,26 @@ export function NewDispatchEntry() {
                 <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[6px]">COA</label>
                 {coaFiles.length > 0 && (
                   <div className="flex flex-col gap-1.5 mb-2">
-                    {coaFiles.map(f => (
+                    {coaFiles.map(f => {
+                      // 2026-10-10: saved COA of a Dispatched / Email Sent entry →
+                      // [name] [View] [Download] [Remove]. The two are links, so
+                      // this fieldset's read-only lock doesn't disable them. A COA
+                      // attached but not saved yet, and Create Dispatch, keep the
+                      // old "View PDF" row.
+                      const withActions = showDocActions && savedCoaUrls.has(f.url);
+                      return (
                       <div key={f.url} className="flex items-center justify-between gap-2 bg-g100 border border-g200 rounded-[3px] px-2.5 py-2">
                         <div className="min-w-0">
                           <div className="text-[12px] font-semibold text-blk truncate">{f.name}</div>
-                          <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-[10.5px] text-red-mrt hover:underline">View PDF</a>
+                          {!withActions && <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-[10.5px] text-red-mrt hover:underline">View PDF</a>}
                         </div>
-                        <button type="button" onClick={() => removeCoaFile(f.url)} className="p-1 text-g400 hover:text-red-mrt shrink-0" title="Remove"><X size={14} /></button>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          {withActions && <DocFileActions url={f.url} name={f.name} />}
+                          <button type="button" onClick={() => removeCoaFile(f.url)} className="p-1 text-g400 hover:text-red-mrt shrink-0" title="Remove"><X size={14} /></button>
+                        </div>
                       </div>
-                    ))}
+                      );
+                    })}
                     {!showCoaPicker && (
                       <button type="button" onClick={() => setShowCoaPicker(true)} className="text-[11px] text-blue-600 hover:text-blue-800 font-medium text-left">
                         + Add COA
