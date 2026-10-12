@@ -65,11 +65,11 @@
 // concepts and don't apply to this tab's own self-contained toolbar.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Plus, RefreshCw, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { fmtDate, normalizeSearchText, doerLabel } from '../lib/utils';
+import { fmtDate, fmtIST, normalizeSearchText, doerLabel } from '../lib/utils';
 import { StockMovement } from '../lib/types';
 import { Button } from '../components/ui';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
@@ -101,6 +101,7 @@ export function mapRow(r: any): StockMovement {
     transporter: r.transporter ?? undefined,
     otherTransporter: r.other_transporter ?? undefined,
     fulfilmentType: r.fulfilment_type ?? undefined,
+    emailSentAt: r.email_sent_at ?? undefined,
     note: r.note ?? undefined,
     noOfBarrels: r.no_of_barrels ?? undefined,
     mou: r.mou ?? undefined,
@@ -115,6 +116,21 @@ export function mapRow(r: any): StockMovement {
     updated_at: r.updated_at ?? undefined,
   };
 }
+
+// 2026-10-12: Outward tab's own sub-tabs + pills, same idea as Dispatch's
+// Dispatched / Email Sent + Delivery / Self Pickup (see Dispatch.tsx).
+//   Saved      = email_sent_at is null     Email Sent = email_sent_at is set
+// 'not_set' covers older entries saved before Fulfilment Type became
+// required (empty or "Both") — its pill only shows while such entries exist,
+// so they never drop out of sight.
+type MovementTab = 'inward' | 'outward' | 'finished';
+type OutwardSub = 'saved' | 'emailSent';
+type OutwardType = 'delivery' | 'self_pickup' | 'not_set';
+const outwardTypeOf = (m: StockMovement): OutwardType =>
+  m.fulfilmentType === 'Delivery' ? 'delivery' : m.fulfilmentType === 'Self Pickup' ? 'self_pickup' : 'not_set';
+const OUTWARD_TYPE_LABEL: Record<OutwardType, string> = { delivery: 'Delivery', self_pickup: 'Self Pickup', not_set: 'Not Set' };
+
+const pillCls = (active: boolean) => `px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${active ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`;
 
 const num = (v?: number) => (v === undefined || v === null ? '—' : v.toLocaleString('en-IN'));
 
@@ -145,7 +161,28 @@ export function StockMovements() {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'inward' | 'outward' | 'finished'>('inward');
+  // 2026-10-12: tab / Outward sub-tab / pill come from the URL
+  // (?tab=outward&sub=saved|emailSent&type=delivery|self_pickup) and are
+  // written back on every switch, so a refresh stays on the same view and
+  // NewStockOutward.tsx can send the user back to the right one. Inward is
+  // the default and keeps a bare URL.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState<MovementTab>(() => {
+    const t = searchParams.get('tab');
+    return t === 'outward' || t === 'finished' ? t : 'inward';
+  });
+  const [outwardSub, setOutwardSub] = useState<OutwardSub>(() =>
+    searchParams.get('sub') === 'emailSent' ? 'emailSent' : 'saved');
+  const [outwardType, setOutwardType] = useState<OutwardType>(() => {
+    const t = searchParams.get('type');
+    return t === 'self_pickup' || t === 'not_set' ? t : 'delivery';
+  });
+  const syncUrl = (t: MovementTab, sub: OutwardSub, type: OutwardType) => {
+    setSearchParams(t === 'outward' ? { tab: t, sub, type } : t === 'finished' ? { tab: t } : {}, { replace: true });
+  };
+  const switchTab = (t: MovementTab) => { setTab(t); syncUrl(t, outwardSub, outwardType); };
+  const switchOutwardSub = (sub: OutwardSub) => { setOutwardSub(sub); syncUrl(tab, sub, outwardType); };
+  const switchOutwardType = (type: OutwardType) => { setOutwardType(type); syncUrl(tab, outwardSub, type); };
   const [finishedCount, setFinishedCount] = useState(0);
   // Single scroll container for both axes, shared by whichever tab
   // (Inward/Outward) is currently rendered — sticky headers below need to
@@ -237,10 +274,26 @@ export function StockMovements() {
   const inwardCount = movements.filter(m => m.type === 'inward').length;
   const outwardCount = movements.filter(m => m.type === 'outward').length;
 
+  // Outward sub-tab + pill counts (not narrowed by the search box, same as
+  // the Inward / Outward tab counts above).
+  const outwardMovements = movements.filter(m => m.type === 'outward');
+  const savedCount = outwardMovements.filter(m => !m.emailSentAt).length;
+  const emailSentCount = outwardMovements.length - savedCount;
+  const isEmailSentSub = tab === 'outward' && outwardSub === 'emailSent';
+  const activeOutward = outwardMovements.filter(m => !!m.emailSentAt === (outwardSub === 'emailSent'));
+  const deliveryCount = activeOutward.filter(m => outwardTypeOf(m) === 'delivery').length;
+  const selfPickupCount = activeOutward.filter(m => outwardTypeOf(m) === 'self_pickup').length;
+  const notSetCount = activeOutward.length - deliveryCount - selfPickupCount;
+  const outwardColCount = isEmailSentSub ? 16 : 15;
+
   const filtered = useMemo(() => {
     const q = normalizeSearchText(search.trim());
-    return movements.filter(m => {
+    const rows = movements.filter(m => {
       if (m.type !== tab) return false;
+      if (tab === 'outward') {
+        if (!!m.emailSentAt !== (outwardSub === 'emailSent')) return false;
+        if (outwardTypeOf(m) !== outwardType) return false;
+      }
       if (!q) return true;
       const hay = normalizeSearchText([
         m.whLotNo, m.stockCategory, m.productName, m.warehouse, m.make, m.remark,
@@ -248,7 +301,12 @@ export function StockMovements() {
       ].filter(Boolean).join(' '));
       return hay.includes(q);
     });
-  }, [movements, search, tab]);
+    // Email Sent: newest email first. Everything else keeps load() order
+    // (newest entry first).
+    return tab === 'outward' && outwardSub === 'emailSent'
+      ? rows.sort((a, b) => (b.emailSentAt || '').localeCompare(a.emailSentAt || ''))
+      : rows;
+  }, [movements, search, tab, outwardSub, outwardType]);
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -264,19 +322,19 @@ export function StockMovements() {
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
           <div
-            onClick={() => setTab('inward')}
+            onClick={() => switchTab('inward')}
             className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${tab === 'inward' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
           >
             Inward ({inwardCount})
           </div>
           <div
-            onClick={() => setTab('outward')}
+            onClick={() => switchTab('outward')}
             className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${tab === 'outward' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
           >
             Outward ({outwardCount})
           </div>
           <div
-            onClick={() => setTab('finished')}
+            onClick={() => switchTab('finished')}
             className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${tab === 'finished' ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
           >
             Finished Lots ({finishedCount})
@@ -332,6 +390,33 @@ export function StockMovements() {
         )}
       </div>
 
+      {tab === 'outward' && (
+        <div className="flex items-center gap-2 px-6 py-2 bg-white border-b border-g200 flex-wrap">
+          <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
+            <div onClick={() => switchOutwardSub('saved')} className={pillCls(outwardSub === 'saved')}>
+              Saved ({savedCount})
+            </div>
+            <div onClick={() => switchOutwardSub('emailSent')} className={pillCls(outwardSub === 'emailSent')}>
+              Email Sent ({emailSentCount})
+            </div>
+          </div>
+          <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
+          <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
+            <div onClick={() => switchOutwardType('delivery')} className={`flex items-center gap-1.5 ${pillCls(outwardType === 'delivery')}`}>
+              <span className="w-[7px] h-[7px] rounded-full bg-sN shrink-0" /> Delivery ({deliveryCount})
+            </div>
+            <div onClick={() => switchOutwardType('self_pickup')} className={`flex items-center gap-1.5 ${pillCls(outwardType === 'self_pickup')}`}>
+              <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup ({selfPickupCount})
+            </div>
+            {(notSetCount > 0 || outwardType === 'not_set') && (
+              <div onClick={() => switchOutwardType('not_set')} className={`flex items-center gap-1.5 ${pillCls(outwardType === 'not_set')}`}>
+                <span className="w-[7px] h-[7px] rounded-full bg-g400 shrink-0" /> Not Set ({notSetCount})
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {tab === 'finished' ? (
         <FinishedLotsTable />
       ) : tab === 'outward' ? (
@@ -342,6 +427,7 @@ export function StockMovements() {
                 <tr>
                   <Th label="DO Date" />
                   <Th label="DO Number" />
+                  {isEmailSentSub && <Th label="Email Sent On" />}
                   <Th label="Lot No" />
                   <Th label="Product Name" />
                   <Th label="Warehouse" />
@@ -359,14 +445,17 @@ export function StockMovements() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={15} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
+                  <tr><td colSpan={outwardColCount} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={15} className="text-center p-8 text-g400 text-[13px]">No outward entries match this filter</td></tr>
+                  <tr><td colSpan={outwardColCount} className="text-center p-8 text-g400 text-[13px]">{search.trim() ? 'No outward entries match this filter' : `No ${OUTWARD_TYPE_LABEL[outwardType]} outward entries ${isEmailSentSub ? 'emailed yet' : 'saved'}`}</td></tr>
                 ) : (
                   filtered.map(m => (
                     <tr key={m.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
                       <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{fmtDate(m.doDate)}</td>
                       <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{m.doNumber || '—'}</td>
+                      {isEmailSentSub && (
+                        <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.emailSentAt ? fmtIST(new Date(m.emailSentAt), 'dd-MMM-yyyy hh:mm a') : '—'}</td>
+                      )}
                       <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{m.whLotNo || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top font-semibold text-blk min-w-[180px]">{m.productName}</td>
                       <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.warehouse}</td>

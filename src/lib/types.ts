@@ -733,6 +733,10 @@ export interface StockMovement {
   transporter?: string;
   otherTransporter?: string;
   fulfilmentType?: string;
+  // 2026-10-12: stock_movements.email_sent_at — set when Outward's "Email to
+  // Client" succeeds; moves the entry from Saved to Email Sent in
+  // StockMovements.tsx's Outward tab.
+  emailSentAt?: string;
   note?: string;
   created_by?: string;
   created_at?: string;

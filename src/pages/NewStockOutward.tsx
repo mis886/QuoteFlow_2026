@@ -389,6 +389,18 @@ export function outwardPrefillFor(o: Order): OutwardPrefill {
 
 const DISPATCH_BOARD_PATH = '/dispatch?view=board';
 
+// 2026-10-12: Fulfilment Type is now required and must be one of these two
+// ("Both" is a customer-level value, not something one Outward entry can be).
+const FULFILMENT_TYPES = ['Delivery', 'Self Pickup'];
+
+// The Outward list view (StockMovements.tsx) an entry belongs in — Saved or
+// Email Sent sub-tab, Delivery / Self Pickup pill. Same URL params that page
+// reads on load.
+const outwardListPath = (emailSent: boolean, fulfilmentType?: string | null) => {
+  const type = fulfilmentType === 'Self Pickup' ? 'self_pickup' : fulfilmentType === 'Delivery' ? 'delivery' : 'not_set';
+  return `/stock-movements?tab=outward&sub=${emailSent ? 'emailSent' : 'saved'}&type=${type}`;
+};
+
 export function NewStockOutward() {
   const navigate = useNavigate();
   const { user, activeDoer, data, isReadOnlyUser } = useAppStore();
@@ -405,10 +417,16 @@ export function NewStockOutward() {
   const dispatchRemark = searchParams.get('remark') || '';
   const dispatchOrder = fromDispatch ? data.orders.find(o => o.id === orderRef) : undefined;
 
-  // Where to go on Back / Cancel.
-  const goBack = () => navigate(fromDispatch ? DISPATCH_BOARD_PATH : '/stock-movements');
-
   const [form, setForm] = useState(emptyForm);
+  // 2026-10-12: stock_movements.email_sent_at of the entry being edited
+  // (null = still in the Saved sub-tab). Set by markOutwardEmailSent below.
+  const [emailSentAt, setEmailSentAt] = useState<string | null>(null);
+  // Set when Save is clicked with no Fulfilment Type — shown under the field.
+  const [fulfilmentError, setFulfilmentError] = useState(false);
+
+  // Where to go on Back / Cancel.
+  const goBack = () => navigate(fromDispatch ? DISPATCH_BOARD_PATH : outwardListPath(!!emailSentAt, form.fulfilmentType || 'Delivery'));
+
   // Set when the Outward entry saved but Step 6 could not be marked done —
   // the form is then replaced by a message, so Save can't be clicked twice.
   const [stepProblem, setStepProblem] = useState('');
@@ -470,6 +488,7 @@ export function NewStockOutward() {
         totalQty: data.total_qty ?? 0,
         numArticles: data.num_articles || '',
       });
+      setEmailSentAt(data.email_sent_at || null);
       setLoadingMovement(false);
     })();
     return () => { cancelled = true; };
@@ -507,7 +526,9 @@ export function NewStockOutward() {
         // might have a fulfilment_type on file even without a
         // preferred_transporter, so this is checked before that guard runs.
         const fulfilmentType = (row.fulfilment_type || '').trim();
-        if (name && fulfilmentType) fulfilmentMap[name] = fulfilmentType;
+        // 2026-10-12: only Delivery / Self Pickup are auto-filled — a "Both"
+        // customer leaves the (now required) field empty for the user to pick.
+        if (name && FULFILMENT_TYPES.includes(fulfilmentType)) fulfilmentMap[name] = fulfilmentType;
         if (!name || !transporter) continue;
         if (!(name in map)) { map[name] = transporter; names.push(name); }
         transporterSet.add(transporter);
@@ -585,7 +606,8 @@ export function NewStockOutward() {
   // After a successful save: plain Stock Movements goes back to its list;
   // from Dispatch, Step 6 is marked done first, then back to the board.
   const afterSave = async () => {
-    if (!fromDispatch) { navigate('/stock-movements'); return; }
+    // 2026-10-12: back to the Outward sub-tab + pill this entry now sits in.
+    if (!fromDispatch) { navigate(outwardListPath(!!emailSentAt, form.fulfilmentType)); return; }
     const problem = await markDispatchStepDone();
     if (problem) { setStepProblem(problem); return; }
     navigate(DISPATCH_BOARD_PATH);
@@ -864,8 +886,46 @@ export function NewStockOutward() {
     await downloadOutwardDOCX(buildOutwardData(), customer, data.settings, data.signatories.find(s => s.is_default), unit);
   };
 
+  // 2026-10-12: "Email to Client" only works on a saved entry — its
+  // email_sent_at needs a stock_movements row to be written to.
+  const openEmailModal = () => {
+    if (!movementId) { setError('Please save the outward entry first'); return; }
+    setError('');
+    setShowEmailModal(true);
+  };
+
+  // 2026-10-12: stamps email_sent_at on this entry after "Email to Client"
+  // succeeds (SendEmailModal's onSent — a failed send never gets here), same
+  // pattern as markDispatchEmailSent in src/store/index.tsx. Writes only
+  // that column; sending again just refreshes the time. Then goes to the
+  // Email Sent sub-tab, under the pill of the entry's SAVED Fulfilment Type.
+  const markOutwardEmailSent = async () => {
+    if (!movementId) return;
+    const sentAt = new Date().toISOString();
+    try {
+      const { data: rows, error: updErr } = await supabase.from('stock_movements')
+        .update({ email_sent_at: sentAt }).eq('id', movementId).select('id, do_number, fulfilment_type');
+      if (updErr) throw updErr;
+      if (!rows || rows.length === 0) throw new Error('entry not found');
+      logActivity({
+        module: 'stock_movements', recordId: movementId,
+        recordLabel: `${rows[0].do_number || form.doNumber || movementId} · Outward · Email to Client sent`,
+        action: 'update', before: { email_sent_at: emailSentAt }, after: { email_sent_at: sentAt },
+      });
+      setEmailSentAt(sentAt);
+      navigate(outwardListPath(true, rows[0].fulfilment_type));
+    } catch (err: any) {
+      setError(`Email was sent, but it could not be recorded: ${err?.message || 'unknown error'}`);
+    }
+  };
+
   const save = async () => {
     if (!isValid) { setError('Please fill in all required fields.'); return; }
+    if (!FULFILMENT_TYPES.includes(form.fulfilmentType)) {
+      setFulfilmentError(true);
+      setError('Please select Fulfilment Type (Delivery or Self Pickup).');
+      return;
+    }
     setSaving(true);
     setError('');
 
@@ -1175,13 +1235,22 @@ export function NewStockOutward() {
                 </div>
               )}
               <div>
-                <label className={labelCls}>Fulfilment Type</label>
-                <select className={selectCls} value={form.fulfilmentType} onChange={set('fulfilmentType')}>
+                <label className={labelCls}>Fulfilment Type <span className="text-red-mrt">*</span></label>
+                {/* 2026-10-12: required, Delivery / Self Pickup only. An old
+                    entry saved as "Both" still shows its value here, but
+                    Save asks for one of the two. */}
+                <select
+                  className={`${selectCls} ${fulfilmentError ? 'border-red-mrt' : ''}`}
+                  value={form.fulfilmentType}
+                  onChange={e => { setFulfilmentError(false); setError(''); set('fulfilmentType')(e); }}
+                >
                   <option value="">Select...</option>
-                  <option value="Delivery">Delivery</option>
-                  <option value="Self Pickup">Self Pickup</option>
-                  <option value="Both">Both</option>
+                  {FULFILMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {form.fulfilmentType && !FULFILMENT_TYPES.includes(form.fulfilmentType) && (
+                    <option value={form.fulfilmentType}>{form.fulfilmentType}</option>
+                  )}
                 </select>
+                {fulfilmentError && <p className="text-red-mrt text-[11px] mt-1">Please select Delivery or Self Pickup.</p>}
               </div>
             </div>
             <div className="mt-3">
@@ -1206,7 +1275,7 @@ export function NewStockOutward() {
           <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M4 2v12h8V6l-4-4H4zm1 1h2v3h2V3h1.172L11 3.828V13H5V3zm2 6v3h2v-3H7z" /></svg>
           DOCX
         </button>
-        <button type="button" onClick={() => setShowEmailModal(true)} disabled={saving}
+        <button type="button" onClick={openEmailModal} disabled={saving}
           className="bg-blk text-white font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-g700 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 flex items-center gap-2">
           <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M2 4h12v8H2zM3 5l5 3.5L13 5v-.5L8 8 3 4.5V5z" /></svg>
           Email to Client
@@ -1224,7 +1293,7 @@ export function NewStockOutward() {
           settings={data.settings}
           defaultSignatory={data.signatories.find(s => s.is_default)}
           onClose={() => setShowEmailModal(false)}
-          onSent={() => setShowEmailModal(false)}
+          onSent={() => { setShowEmailModal(false); markOutwardEmailSent(); }}
         />
       )}
     </div>

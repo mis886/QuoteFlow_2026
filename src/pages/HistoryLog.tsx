@@ -39,6 +39,9 @@ const MODULE_LABELS: Record<string, string> = {
   // Dispatch Board step clicks (Done / Skip / Hold / Resume) — record_id is
   // the order's ORD-… number (see runStepAction in src/pages/Dispatch.tsx).
   dispatch_steps: 'Dispatch Board',
+  // Outward "Email to Client" sent (see markOutwardEmailSent in
+  // src/pages/NewStockOutward.tsx) — record_label carries the DO Number.
+  stock_movements: 'Stock Movements',
 };
 const moduleLabel = (m: string) => MODULE_LABELS[m] ?? m;
 
