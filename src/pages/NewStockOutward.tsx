@@ -415,6 +415,9 @@ export function NewStockOutward() {
   const dispatchRound = Number(searchParams.get('round')) || 1;
   const dispatchPlannedAt = searchParams.get('plannedAt') || '';
   const dispatchRemark = searchParams.get('remark') || '';
+  // 2026-10-12: a Self Pickup card's Step 6 opens this form with Fulfilment
+  // Type prefilled as Self Pickup (still editable).
+  const dispatchFulfilment = fromDispatch && searchParams.get('fulfilment') === 'self_pickup' ? 'Self Pickup' : '';
   const dispatchOrder = fromDispatch ? data.orders.find(o => o.id === orderRef) : undefined;
 
   const [form, setForm] = useState(emptyForm);
@@ -566,7 +569,7 @@ export function NewStockOutward() {
       ...f,
       ...prefill,
       transporter: f.transporter || transporterByParty[party] || '',
-      fulfilmentType: f.fulfilmentType || fulfilmentTypeByParty[party] || '',
+      fulfilmentType: dispatchFulfilment || f.fulfilmentType || fulfilmentTypeByParty[party] || '',
     }));
   }, [dispatchOrder]);
 

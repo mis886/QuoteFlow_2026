@@ -34,7 +34,7 @@ export const DISPATCH_STEPS: StepDef[] = [
   { no: 3, title: 'Management Approval', subtitle: 'Confirm with management', how: 'WhatsApp / Phone', tatHours: 1, auto: false, rule: 'Only if bills are overdue' },
   { no: 4, title: 'Collect Payment', subtitle: 'Request & receive overdue payment', how: 'WhatsApp / Phone', tatHours: 1, auto: false, rule: 'Only if management says yes' },
   { no: 5, title: 'Material Check', subtitle: 'Material available or not', how: 'WhatsApp', tatHours: 1, auto: false },
-  { no: 6, title: 'Transporter & DO', subtitle: 'Transporter confirmation & issue DO', how: 'Manual', tatHours: 12, auto: false, rule: 'Delivery only — Self Pickup skips this' },
+  { no: 6, title: 'Transporter & DO', subtitle: 'Transporter confirmation & issue DO', how: 'Manual', tatHours: 12, auto: false },
   { no: 7, title: 'Pickup', subtitle: 'Check pickup of material', how: 'Phone', tatHours: 24, auto: false },
   { no: 8, title: 'Invoice', subtitle: 'Prepare invoice', how: 'Tally → Dispatch entry', tatHours: 1, auto: true, autoRule: 'Moves when a dispatch entry is saved' },
   { no: 9, title: 'Get LR', subtitle: 'Get LR from transporter', how: 'WhatsApp → Mail', tatHours: 24, auto: true, rule: 'Delivery only — Self Pickup skips this', autoRule: 'Moves when an LR file is uploaded' },
@@ -218,8 +218,18 @@ export interface OrderPosition {
   skipped: StepNo[];          // skipped steps in the current round
 }
 
-const autoSkips = (order: Order, stepNo: StepNo, fulfillment: DispatchFulfillmentType | 'not_set') =>
-  (stepNo === 1 && !needsPaymentCheck(order.pay)) || (stepNo === 6 && fulfillment === 'self_pickup');
+const autoSkips = (order: Order, stepNo: StepNo) => stepNo === 1 && !needsPaymentCheck(order.pay);
+
+// 2026-10-12: Step 6 "Transporter & DO" now applies to Self Pickup too. Until
+// then it was auto-skipped for Self Pickup, so a round that got past it has
+// no Step 6 row. Such a round — a Step 7 row already exists, or a dispatch
+// entry closed it — keeps showing Step 6 as skipped, so no card moves back.
+const selfPickupPassedStep6 = (
+  records: DispatchStepRecord[],
+  round: number,
+  fulfillment: DispatchFulfillmentType | 'not_set',
+  closed: boolean,
+) => fulfillment === 'self_pickup' && (closed || records.some(r => r.round === round && r.stepNo === 7));
 
 interface RoundWalk {
   history: OrderStepHistory[];
@@ -245,6 +255,8 @@ function walkRound(
   const skipped: StepNo[] = [];
   let prevDone = roundStart;
   let position: OrderPosition | null = null;
+  const passedStep6 = selfPickupPassedStep6(records, round, fulfillment, closed);
+  const skips = (stepNo: StepNo) => autoSkips(order, stepNo) || (stepNo === 6 && passedStep6);
 
   for (let s = round === 1 ? 1 : 5; s <= 7; s++) {
     const stepNo = s as StepNo;
@@ -257,7 +269,7 @@ function walkRound(
 
     if (position) {
       // Already found the current step — the rest are still to come.
-      history.push({ stepNo, state: autoSkips(order, stepNo, fulfillment) ? 'skipped' : 'upcoming' });
+      history.push({ stepNo, state: skips(stepNo) ? 'skipped' : 'upcoming' });
       continue;
     }
     if (finished) {
@@ -266,7 +278,7 @@ function walkRound(
       prevDone = finished.doneAt || prevDone;
       continue;
     }
-    if (autoSkips(order, stepNo, fulfillment)) {
+    if (skips(stepNo)) {
       skipped.push(stepNo);
       history.push({ stepNo, state: 'skipped' });
       continue;

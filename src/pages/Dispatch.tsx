@@ -231,6 +231,9 @@ export function Dispatch() {
       });
       // Remark typed in the drawer travels along, so it is still saved on the step.
       if (remark?.trim()) params.set('remark', remark.trim());
+      // 2026-10-12: Step 6 now runs for Self Pickup too — the form opens with
+      // Fulfilment Type already set to Self Pickup.
+      if (card.fulfillment === 'self_pickup') params.set('fulfilment', 'self_pickup');
       navigate(`/stock-movements/new-outward?${params.toString()}`);
       return;
     }
