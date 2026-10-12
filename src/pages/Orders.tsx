@@ -37,7 +37,7 @@ function punchedAtClass(createdAt: string): { text: string; title?: string } {
 
 export function Orders() {
   const store = useAppStore();
-  const { data, user, updateOrder, deleteOrder, openAttachmentModal, sendOrderToDispatch, isAdmin } = store;
+  const { data, user, updateOrder, deleteOrder, openAttachmentModal, sendOrderToDispatch, isAdmin, isReadOnlyUser } = store;
   const canDelete = canDeleteRecords(user?.email);
   const canConfirmPmt = canConfirmPayment(user?.email);
   const canComplete = canCompleteOrder(user?.email);
@@ -452,18 +452,22 @@ export function Orders() {
                                   </Button>
                                 );
                               }
-                              // Green button: only for allowed logins (sales@/mis@/shishir@).
-                              if (!canSendDispatch) return null;
+                              // Green button: shown to every login, clickable only for
+                              // allowed ones (sales@/mis@/shishir@). Everyone else (and
+                              // the read-only login) gets it faded + disabled with a
+                              // tooltip. sendOrderToDispatch in the store stays the real lock.
+                              const canSend = canSendDispatch && !isReadOnlyUser;
                               const sending = sendingToDispatchId === o.id;
                               return (
                                 <Button
                                   size="sm"
                                   variant="success"
-                                  disabled={sending}
-                                  className="active:scale-95 transition-transform"
+                                  disabled={sending || !canSend}
+                                  title={canSend ? undefined : 'Only Sales / MIS / Shishir can send to Dispatch'}
+                                  className={canSend ? 'active:scale-95 transition-transform' : 'cursor-not-allowed disabled:pointer-events-auto disabled:opacity-60'}
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    if (sending) return;
+                                    if (sending || !canSend) return;
                                     setSendingToDispatchId(o.id);
                                     try {
                                       const so = await sendOrderToDispatch(o.id);
