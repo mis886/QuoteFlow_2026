@@ -202,6 +202,11 @@ export function Dispatch() {
     }
     return new Set([...byOrder].filter(([, recs]) => lastStepClick(recs)).map(([id]) => id));
   }, [stepRecords]);
+  // Step 6 "DO issued ✓" also saved an Outward entry (the DO), which reduced
+  // stock. Undo removes ONLY the Step 6 dispatch_steps row — never the
+  // stock_movements row, stock_lots or the DO number.
+  const undoesStep6Do = (click: LastStepClick) =>
+    click.kind === 'delete' && click.rows.some(r => r.stepNo === 6 && r.status === 'done');
   const [undoBusy, setUndoBusy] = useState(false);
   // The click waiting in the in-app confirm box (Cancel = nothing changes).
   const [undoTarget, setUndoTarget] = useState<{ order: Order; click: LastStepClick } | null>(null);
@@ -216,7 +221,10 @@ export function Dispatch() {
     const what = describeStepClick(click);
     setUndoBusy(true);
     try {
-      const label = `${order.soNumber || order.id} · Undo · ${what}`;
+      // A Step 6 undo leaves the Outward entry (DO) and the stock alone — the log says so.
+      const label = undoesStep6Do(click)
+        ? `${order.soNumber || order.id} · Undo · Step 6 ${stepDef(6).title} — DO not deleted`
+        : `${order.soNumber || order.id} · Undo · ${what}`;
       if (click.kind === 'delete') {
         const ids = click.rows.map(r => r.id);
         const { data: deleted, error } = await supabase.from('dispatch_steps').delete().in('id', ids).select('id');
@@ -807,7 +815,7 @@ export function Dispatch() {
         const by = click.kind === 'delete' ? click.rows[0].doneBy : click.row.doneBy;
         const when = fmtIST(new Date(click.at), 'dd MMM, hh:mm a');
         // Step 6 "DO issued ✓" also saved an Outward entry — Undo leaves it alone.
-        const undoesDo = click.kind === 'delete' && click.rows.some(r => r.stepNo === 6 && r.status === 'done');
+        const undoesDo = undoesStep6Do(click);
         return (
           <ConfirmDialog
             title={`Undo the last step for ${order.soNumber || order.id}?`}
@@ -820,7 +828,9 @@ export function Dispatch() {
             <div className="text-g500">({when}{by ? ` by ${doerLabel(by, data.roster)}` : ''})</div>
             <div className="mt-2">The card moves back to where it was. Dispatch entries and the order's status are not changed.</div>
             {undoesDo && (
-              <div className="mt-2 font-semibold text-[#8A4500]">The DO (Outward entry) is not deleted — delete it from Stock Movements → Outward if needed.</div>
+              <div className="mt-2 font-semibold text-[#8A4500] bg-[#FFF3E0] border border-[#E9730C]/40 rounded-[4px] px-2.5 py-2">
+                This only moves the card back to Step 6. The DO (Outward entry) is NOT deleted and the stock is NOT put back. If the DO was wrong, delete it from Stock Movements → Outward — that will restore the stock.
+              </div>
             )}
           </ConfirmDialog>
         );
