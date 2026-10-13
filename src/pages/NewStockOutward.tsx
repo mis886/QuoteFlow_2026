@@ -172,8 +172,8 @@ import { PACKAGING_TYPES } from '../lib/stockMovementOptions';
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { Loader2 } from 'lucide-react';
-import { StockMovement, Order } from '../lib/types';
-import { fmtIST, canActOnDispatchBoard } from '../lib/utils';
+import { StockMovement, Order, DispatchEntry } from '../lib/types';
+import { fmtIST, canActOnDispatchBoard, remainingByLine } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
 import { downloadOutwardDOCX } from '../lib/outwardDocx';
@@ -388,11 +388,13 @@ export function outwardPrefillFor(o: Order): OutwardPrefill {
   };
 }
 
-// Barrels the order asks for — same line outwardPrefillFor takes the product from.
-export function orderBarrelsFor(o: Order): number | null {
+// Barrels of the order still REMAINING to dispatch (order qty minus every
+// dispatch entry so far) — for the same line outwardPrefillFor takes the
+// product from.
+export function orderBarrelsFor(o: Order, entries: DispatchEntry[]): number | null {
   const item = o.items.find(i => i.qty > 0) || o.items[0];
-  const qty = Number(item?.qty) || 0;
-  return qty > 0 ? qty : null;
+  if (!item) return null;
+  return remainingByLine(o, entries).get(item.seq) ?? 0;
 }
 
 const DISPATCH_BOARD_PATH = '/dispatch?view=board';
@@ -482,8 +484,9 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
   const dispatchFulfilment = fromDispatch && searchParams.get('fulfilment') === 'self_pickup' ? 'Self Pickup' : '';
   const dispatchOrder = fromDispatch ? data.orders.find(o => o.id === orderRef) : undefined;
 
-  // Barrels the order asks for (Board flow only) — shown as "Order needs".
-  const orderBarrels = dispatchOrder ? orderBarrelsFor(dispatchOrder) : null;
+  // Barrels the order still has left to dispatch (Board flow only) — shown
+  // as "Order needs (remaining)".
+  const orderBarrels = dispatchOrder ? orderBarrelsFor(dispatchOrder, data.dispatchEntries) : null;
 
   // 2026-10-13: a draft saved earlier for this same form (see readOutwardDraft)
   // is restored once, on open — it wins over the order prefill and the loaded
@@ -1369,7 +1372,7 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
                   </>
                 ))}
                 {fromDispatch && orderBarrels !== null && (
-                  <p className="text-g600 text-[11px] mt-0.5">Order needs: <strong className="text-blk">{orderBarrels} barrels</strong></p>
+                  <p className="text-g600 text-[11px] mt-0.5">Order needs (remaining): <strong className="text-blk">{orderBarrels} barrels</strong></p>
                 )}
               </div>
               <div>
@@ -1483,7 +1486,7 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
           onConfirm={() => { setConfirmAllStock(false); save(true); }}
           onCancel={() => setConfirmAllStock(false)}
         >
-          You are dispatching all {currentLotStock.available} barrels of Lot {currentLotStock.lotNo} at {currentLotStock.warehouse}, but the order needs {orderBarrels}. Continue?
+          You are dispatching all {currentLotStock.available} barrels of Lot {currentLotStock.lotNo} at {currentLotStock.warehouse}, but the order needs {orderBarrels} (remaining). Continue?
         </ConfirmDialog>
       )}
 
