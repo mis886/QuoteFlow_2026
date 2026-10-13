@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, CircleDashed, Pencil, Undo2, X } from 'lucide-react';
-import { fmtIST, doerLabel } from '../lib/utils';
+import { fmtIST, doerLabel, formatINR, resolveAdjustments, maxItemGstRate, remainingByLine, punchedAtClass } from '../lib/utils';
 import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
   BoardCard, BoardOrderCard, DispatchStepRecord, OrderStepHistory, StepAction, StepRecordStatus,
@@ -9,7 +9,8 @@ import {
 } from '../lib/dispatchFlow';
 import { StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot } from './DispatchBoard';
 import { ConfirmDialog } from './ConfirmDialog';
-import { Button } from './ui';
+import { LineItemsPanel } from './LineItemsPanel';
+import { Badge, Button } from './ui';
 
 // <input type="datetime-local"> works in the browser's local time.
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -27,6 +28,16 @@ export interface StepEditPatch { status: StepRecordStatus; doneAt: string | null
 // order info, steps 1–10 with Planned / Actual / Delay, every dispatch entry
 // of the order, a remark box and the current step's buttons. Nothing here
 // changes an order's status.
+// 2026-10-13: the order info block now shows the same details as the
+// Dispatch → Order Pending for Dispatch table, incl. its line-items table.
+
+const fmtDate = (d?: string) => d ? fmtIST(new Date(d), 'dd-MMM-yyyy') : '--';
+const Field = ({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) => (
+  <div className={wide ? 'col-span-2 sm:col-span-3' : undefined}>
+    <div className="font-mono text-[8.5px] font-bold uppercase tracking-[1.5px] text-g400 mb-0.5">{label}</div>
+    <div className="text-blk break-words">{children}</div>
+  </div>
+);
 
 const fmtWhen = (iso?: string) => iso ? `${fmtIST(new Date(iso), 'dd MMM')}, ${fmtIST(new Date(iso), 'hh:mm a').replace(/^0/, '')}` : '—';
 const ms = (iso?: string) => (iso ? new Date(iso).getTime() : NaN);
@@ -103,10 +114,11 @@ function StepRow({ step, now, roster, onEdit }: { step: OrderStepHistory; now: n
 }
 
 export function DispatchDrawer({
-  order, entries, records, fulfillment, orderCard, now, roster, canAct, busy, onAction, onResume,
+  order, site, entries, records, fulfillment, orderCard, now, roster, canAct, busy, onAction, onResume,
   canUndo, undoBusy, onUndo, openedFrom, canDelete, onSaveStep, onDelete, onClose,
 }: {
   order: Order;
+  site?: string;                       // the customer's unit / site label, if any
   entries: DispatchEntry[];            // this order's entries
   records: DispatchStepRecord[];       // this order's step records
   fulfillment: BoardOrderCard['fulfillment'];
@@ -117,7 +129,7 @@ export function DispatchDrawer({
   busy: boolean;
   onAction: (card: BoardOrderCard, action: StepAction, remark?: string) => Promise<void> | void;
   onResume: (card: BoardOrderCard, remark?: string) => Promise<void> | void;
-  canUndo: boolean;                    // ADMIN_EMAILS only
+  canUndo: boolean;                    // same logins as the step buttons
   undoBusy: boolean;
   onUndo: () => void;
   // The card that was clicked — Edit / Delete act on it (the order for an
@@ -182,9 +194,14 @@ export function DispatchDrawer({
   const lastClick = lastStepClick(records);
   const realEntries = entries.filter(e => !isImportedEntry(e))
     .sort((a, b) => (ms(a.created_at) || 0) - (ms(b.created_at) || 0));
-  const items = orderCard
-    ? orderCard.remaining
-    : order.items.map(i => ({ desc: i.desc, qty: Number(i.qty) || 0 }));
+  // Order value + line items, calculated the same way as the Pending table.
+  const subTotal = order.items.reduce((s, i) => s + i.total, 0);
+  const itemGst = order.items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
+  const grandTotal = resolveAdjustments(order.adjustments, subTotal, itemGst, maxItemGstRate(order.items)).grand;
+  // Partial dispatch: show a "Remaining" column once any line has gone out.
+  const remaining = remainingByLine(order, entries);
+  const partlyDispatched = order.items.some(i => (remaining.get(i.seq) ?? 0) < (Number(i.qty) || 0));
+  const punched = order.created_at ? punchedAtClass(order.created_at) : null;
   // 2026-10-06: the remark box + step buttons show for every login while the
   // order is on steps 1–7; canAct only decides whether they are enabled.
   const hasStepActions = !!orderCard && orderCard.column <= 7;
@@ -195,7 +212,7 @@ export function DispatchDrawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-      <div className="relative w-full max-w-[460px] h-full bg-white border-l border-g200 shadow-[-8px_0_24px_rgba(0,0,0,0.08)] flex flex-col animate-in slide-in-from-right duration-200">
+      <div className="relative w-full max-w-[460px] lg:max-w-[640px] h-full bg-white border-l border-g200 shadow-[-8px_0_24px_rgba(0,0,0,0.08)] flex flex-col animate-in slide-in-from-right duration-200">
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-g200">
           <div className="flex items-start justify-between gap-3">
@@ -213,25 +230,34 @@ export function DispatchDrawer({
 
         <div className="flex-1 overflow-y-auto">
           {/* Order info */}
-          <div className="px-4 py-3 border-b border-g200 grid grid-cols-2 gap-x-4 gap-y-2.5 text-[12px]">
-            <div className="col-span-2">
-              <div className="font-mono text-[8.5px] font-bold uppercase tracking-[1.5px] text-g400 mb-0.5">Item</div>
-              {items.length ? items.map((l, i) => (
-                <div key={i} className="text-blk">{(l.desc || 'Item').trim()} × {l.qty}</div>
-              )) : <div className="text-g400">—</div>}
-            </div>
-            <div>
-              <div className="font-mono text-[8.5px] font-bold uppercase tracking-[1.5px] text-g400 mb-0.5">Payment terms</div>
-              <div className="text-blk">{order.pay || '—'}</div>
-            </div>
-            <div>
-              <div className="font-mono text-[8.5px] font-bold uppercase tracking-[1.5px] text-g400 mb-0.5">Type</div>
-              <div className="text-blk"><TypeDot type={fulfillment} /></div>
-            </div>
-            <div className="col-span-2">
-              <div className="font-mono text-[8.5px] font-bold uppercase tracking-[1.5px] text-g400 mb-0.5">Sent to dispatch</div>
-              <div className="text-blk">{fmtWhen(order.sentToDispatchAt)}</div>
-            </div>
+          <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5 text-[12px]">
+            <Field label="SO No."><span className="font-mono text-[11px] font-bold text-sW">{order.soNumber || '—'}</span></Field>
+            <Field label="Order Ref"><span className="font-mono text-[11px] font-bold text-sQ">{order.id}</span></Field>
+            <Field label="Status"><Badge status={order.status} /></Field>
+            <Field label="Customer - Unit" wide>
+              <span className="font-semibold">{order.cust}</span>{site ? <span className="text-g500"> — {site}</span> : null}
+            </Field>
+            <Field label="PO Number"><span className="font-mono text-[11px] font-bold text-g700">{order.poNo || '—'}</span></Field>
+            <Field label="PO Date">{fmtDate(order.poDate)}</Field>
+            <Field label="Schedule Date">{fmtDate(order.scheduleDate)}</Field>
+            <Field label="Order Value"><span className="font-mono font-bold">{formatINR(Math.round(grandTotal))}</span></Field>
+            <Field label="Payment terms">{order.pay || '—'}</Field>
+            <Field label="Fulfillment"><TypeDot type={fulfillment} /></Field>
+            <Field label="Punched At">
+              {punched ? <span className={punched.text} title={punched.title}>{fmtDate(order.created_at)}</span> : <span className="text-g600">--</span>}
+            </Field>
+            <Field label="Sent to dispatch">{fmtWhen(order.sentToDispatchAt)}</Field>
+          </div>
+          {/* Line items — same table as the Pending tab's expanded row; scrolls
+              sideways inside the drawer. */}
+          <div className="border-b border-g200">
+            <LineItemsPanel
+              title={`Order Line Items -- ${order.soNumber ? `${order.soNumber} / ` : ''}${order.id}`}
+              items={order.items}
+              grand={grandTotal}
+              remaining={partlyDispatched ? remaining : undefined}
+              scroll
+            />
           </div>
 
           {/* Steps 1–10 */}
@@ -241,7 +267,7 @@ export function DispatchDrawer({
               <div className="flex items-center gap-1.5 flex-nowrap">
                 {canUndo && lastClick && (
                   <button type="button" onClick={onUndo} disabled={undoBusy}
-                    title={`Admins only — takes back: ${describeStepClick(lastClick)}`}
+                    title={`Takes back: ${describeStepClick(lastClick)}`}
                     className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-mrt border border-red-mrt/40 rounded-[4px] px-2 py-[3px] hover:bg-red-lt transition-colors disabled:opacity-50 disabled:cursor-wait">
                     <Undo2 size={11} /> Undo last step
                   </button>

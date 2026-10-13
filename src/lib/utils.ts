@@ -432,7 +432,18 @@ export const canActOnDispatchBoard = (email: string | null | undefined): boolean
 // IST). Orders sent to Dispatch before this (and entries saved before it)
 // start their current step's timer from here instead of from the original
 // send time, so the board didn't open with everything already late.
-export const BOARD_GO_LIVE_AT = '2026-09-30T06:00:00Z';
+// "Punched At" recency colouring (Dispatch table + Dispatch Board drawer;
+// Orders.tsx has its own copy): today = green, within 7 days = amber, older = neutral.
+export function punchedAtClass(createdAt: string): { text: string; title?: string } {
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const punched = new Date(createdAt); punched.setHours(0, 0, 0, 0);
+  const days = Math.round((now.getTime() - punched.getTime()) / 86400000);
+  if (days === 0) return { text: 'text-emerald-600 font-semibold', title: 'Punched today' };
+  if (days <= 7) return { text: 'text-amber-600 font-semibold', title: `${days} day(s) ago` };
+  return { text: 'text-g600' };
+}
+
+export const BOARD_GO_LIVE_AT ='2026-09-30T06:00:00Z';
 
 // An order's status is LOCKED once it's been sent to Dispatch
 // (sentToDispatchAt) or has any dispatch entry. Non-admins can't change the

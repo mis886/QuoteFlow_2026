@@ -3,10 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, List, Columns3, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
-import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
-import { Order, OrderItem, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, stepDef, lastStepClick, describeStepClick,BoardCard, BoardOrderCard, DispatchStepRecord, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
-import { DispatchBoard, AutoTag, StepActionButtons } from '../components/DispatchBoard';
+import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
+import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
+import { buildBoard, mapStepFromDB, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
+import { DispatchBoard, AutoTag, StepActionButtons, UndoLink } from '../components/DispatchBoard';
+import { LineItemsPanel } from '../components/LineItemsPanel';
 import { DispatchDrawer, StepEditPatch } from '../components/DispatchDrawer';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
@@ -20,16 +21,6 @@ const thBase = 'font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text
 const thCls = `${thBase} text-left`;
 const thRightCls = `${thBase} text-right`;
 const pillCls = (active: boolean) => `px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${active ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`;
-
-// Same "Punched At" recency colouring as Orders.tsx: today = green, within 7 days = amber, older = neutral.
-function punchedAtClass(createdAt: string): { text: string; title?: string } {
-  const now = new Date(); now.setHours(0, 0, 0, 0);
-  const punched = new Date(createdAt); punched.setHours(0, 0, 0, 0);
-  const days = Math.round((now.getTime() - punched.getTime()) / 86400000);
-  if (days === 0) return { text: 'text-emerald-600 font-semibold', title: 'Punched today' };
-  if (days <= 7) return { text: 'text-amber-600 font-semibold', title: `${days} day(s) ago` };
-  return { text: 'text-g600' };
-}
 
 const fulfillmentLabel = (t: SubType) => t === 'self_pickup' ? 'Self Pickup' : t === 'delivery' ? 'Delivery' : 'Not Set';
 
@@ -49,67 +40,9 @@ function SoCell({ soNumber, hasOrder }: { soNumber?: string; hasOrder: boolean }
   return hasOrder ? <span className="font-mono text-[10.5px] text-g400" title="Generating SO number…">…</span> : <span className="text-g400">—</span>;
 }
 
-// Expanded line-item table, shared by all three tabs.
-function LineItemsPanel({ title, items, grand }: { title: string; items: OrderItem[]; grand: number }) {
-  const subTotal = items.reduce((s, i) => s + i.total, 0);
-  const itemGst = items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
-  return (
-    <div className="p-[10px_16px]">
-      <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sW mb-[7px]">{title}</div>
-      {items.length === 0 ? (
-        <div className="text-g400 text-[11.5px] py-2">No line items recorded.</div>
-      ) : (
-        <table className="w-full border-collapse text-[11.5px] m-0 mb-2">
-          <thead className="bg-g100">
-            <tr>
-              <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">#</th>
-              <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Product Name</th>
-              <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">HSN Code</th>
-              <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">No of Barrels</th>
-              <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Packing</th>
-              <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Total Qty</th>
-              <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-left border-b border-g200">Packing Type</th>
-              <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Unit Rate (₹)</th>
-              <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">GST%</th>
-              <th className="font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 text-right border-b border-g200">Amount (₹)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map(i => {
-              const packNum = parseFloat(i.packing || '');
-              const totalQty = i.qty > 0 && packNum > 0 ? i.qty * packNum : null;
-              return (
-                <tr key={i.seq}>
-                  <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px] text-g400 w-6">{i.seq}</td>
-                  <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
-                  <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px]">{i.hsn || '—'}</td>
-                  <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
-                  <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11px] text-right">{i.packing || '—'}</td>
-                  <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{totalQty ?? '—'}</td>
-                  <td className="px-2.5 py-1.5 border-b border-g100 text-blk text-[11px] text-g600">{i.packingType || '—'}</td>
-                  <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-right">{formatINR(i.agreedRate)}</td>
-                  <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-right">{i.gst}%</td>
-                  <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono font-bold text-right">{formatINR(i.total)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-      {items.length > 0 && (
-        <div className="flex justify-end pt-2 border-t border-g200 gap-5 items-center">
-          <span className="text-[12px] text-g600">Sub-Total: <strong className="text-blk font-bold font-mono">{formatINR(subTotal)}</strong></span>
-          <span className="text-[12px] text-g600">GST: <strong className="text-blk font-bold font-mono">{formatINR(Math.round(itemGst))}</strong></span>
-          <span className="text-[13px] text-red-mrt font-bold font-mono tracking-tight">Grand: {formatINR(Math.round(grand))}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, isAdmin, removeOrderFromDispatch } = useAppStore();
+  const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch } = useAppStore();
   const canDelete = canDeleteRecords(user?.email);
 
   // Initial tab/pill come from the URL (?tab=pending|dispatched|emailSent
@@ -243,24 +176,44 @@ export function Dispatch() {
   // 2026-10-06: step buttons are shown to every login; canAct decides whether
   // they can be clicked (disabled + tooltip otherwise). The guards inside
   // runStepAction / resumeHold / handleStepAction stay as the real lock.
-  const renderBoardActions = (card: BoardCard) => card.kind === 'order'
-    ? <StepActionButtons card={card} busy={busyCardKey === card.key} canAct={canActOnBoard} onAction={handleStepAction} onResume={resumeHold} />
-    : null;
+  // 2026-10-13: an order card also gets a small "↶ Undo" link under its step
+  // buttons — only for logins allowed to undo, and only when the order has a
+  // last step click to take back.
+  const renderBoardActions = (card: BoardCard) => card.kind === 'order' ? (
+    <>
+      <StepActionButtons card={card} busy={busyCardKey === card.key} canAct={canActOnBoard} onAction={handleStepAction} onResume={resumeHold} />
+      {canUndoOnBoard && ordersWithUndo.has(card.order.id) && <UndoLink busy={undoBusy} onUndo={() => requestUndo(card.order)} />}
+    </>
+  ) : null;
 
-  // Admin-only "Undo last step" (drawer): takes back the order's most recent
-  // step 1–7 click — deletes that click's dispatch_steps rows, or un-resumes
-  // a resumed hold. Only dispatch_steps is touched; never dispatch entries,
-  // the order, or its status.
-  const canUndoOnBoard = isAdmin && !isReadOnlyUser;
+  // "Undo last step" (card link + drawer button): takes back the order's most
+  // recent step 1–7 click — deletes that click's dispatch_steps rows, or
+  // un-resumes a resumed hold. Only dispatch_steps is touched; never dispatch
+  // entries, the order, its status, or a Step 6 Outward entry (DO).
+  // 2026-10-13: was ADMIN_EMAILS only — now everyone who can click the step
+  // buttons (canActOnDispatchBoard, not the read-only login).
+  const canUndoOnBoard = canActOnBoard;
+  const ordersWithUndo = useMemo(() => {
+    const byOrder = new Map<string, DispatchStepRecord[]>();
+    for (const r of stepRecords) {
+      const list = byOrder.get(r.orderId) || [];
+      list.push(r);
+      byOrder.set(r.orderId, list);
+    }
+    return new Set([...byOrder].filter(([, recs]) => lastStepClick(recs)).map(([id]) => id));
+  }, [stepRecords]);
   const [undoBusy, setUndoBusy] = useState(false);
-  const undoLastStep = async (order: Order) => {
+  // The click waiting in the in-app confirm box (Cancel = nothing changes).
+  const [undoTarget, setUndoTarget] = useState<{ order: Order; click: LastStepClick } | null>(null);
+  const requestUndo = (order: Order) => {
     if (!canUndoOnBoard || undoBusy) return;
     const click = lastStepClick(stepRecords.filter(r => r.orderId === order.id));
-    if (!click) return;
+    if (click) setUndoTarget({ order, click });
+  };
+  const confirmUndo = async () => {
+    if (!undoTarget || !canUndoOnBoard || undoBusy) return;
+    const { order, click } = undoTarget;
     const what = describeStepClick(click);
-    const by = click.kind === 'delete' ? click.rows[0].doneBy : click.row.doneBy;
-    const when = fmtIST(new Date(click.at), 'dd MMM, hh:mm a');
-    if (!confirm(`Undo the last step for ${order.soNumber || order.id}?\n\n${what}\n(${when}${by ? ` by ${doerLabel(by, data.roster)}` : ''})\n\nThe card moves back to where it was. Dispatch entries and the order's status are not changed.`)) return;
     setUndoBusy(true);
     try {
       const label = `${order.soNumber || order.id} · Undo · ${what}`;
@@ -285,6 +238,7 @@ export function Dispatch() {
       alert(`Undo failed: ${err?.message || JSON.stringify(err)}`);
     } finally {
       setUndoBusy(false);
+      setUndoTarget(null);
     }
   };
 
@@ -837,13 +791,38 @@ export function Dispatch() {
             onResume={resumeHold}
             canUndo={canUndoOnBoard}
             undoBusy={undoBusy}
-            onUndo={() => undoLastStep(o)}
+            onUndo={() => requestUndo(o)}
+            site={siteLabel(customerOfDoc(o, data.customers), o.siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId)}
             openedFrom={boardCards.find(c => c.key === drawerCard?.key) ?? drawerCard!}
             canDelete={canDelete}
             onSaveStep={(rec, patch) => saveStepEdit(o, rec, patch)}
             onDelete={requestDelete}
             onClose={closeDrawer}
           />
+        );
+      })()}
+
+      {undoTarget && (() => {
+        const { order, click } = undoTarget;
+        const by = click.kind === 'delete' ? click.rows[0].doneBy : click.row.doneBy;
+        const when = fmtIST(new Date(click.at), 'dd MMM, hh:mm a');
+        // Step 6 "DO issued ✓" also saved an Outward entry — Undo leaves it alone.
+        const undoesDo = click.kind === 'delete' && click.rows.some(r => r.stepNo === 6 && r.status === 'done');
+        return (
+          <ConfirmDialog
+            title={`Undo the last step for ${order.soNumber || order.id}?`}
+            confirmLabel="Undo"
+            busy={undoBusy}
+            onConfirm={confirmUndo}
+            onCancel={() => setUndoTarget(null)}
+          >
+            <div className="font-semibold text-blk">{describeStepClick(click)}</div>
+            <div className="text-g500">({when}{by ? ` by ${doerLabel(by, data.roster)}` : ''})</div>
+            <div className="mt-2">The card moves back to where it was. Dispatch entries and the order's status are not changed.</div>
+            {undoesDo && (
+              <div className="mt-2 font-semibold text-[#8A4500]">The DO (Outward entry) is not deleted — delete it from Stock Movements → Outward if needed.</div>
+            )}
+          </ConfirmDialog>
         );
       })()}
 

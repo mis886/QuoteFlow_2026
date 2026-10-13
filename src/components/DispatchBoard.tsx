@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Pause, Play } from 'lucide-react';
+import { Clock, Pause, Play, Undo2 } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
 import { Button } from './ui';
 import {
@@ -111,6 +111,22 @@ export function StepActionButtons({ card, busy, canAct, onAction, onResume }: {
           {a.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Small "↶ Undo" link under an order card's step buttons — takes back the
+ * order's last step click (after a confirm box). The page renders it only
+ * for logins allowed to undo, and only when there is a click to take back.
+ */
+export function UndoLink({ busy, onUndo }: { busy: boolean; onUndo: () => void }) {
+  return (
+    <div className="flex justify-end -mt-0.5">
+      <button type="button" onClick={onUndo} disabled={busy} title="Undo the last step on this order"
+        className="inline-flex items-center gap-1 text-[11px] font-semibold text-g600 hover:text-red-mrt hover:underline transition-colors disabled:opacity-50 disabled:cursor-wait">
+        <Undo2 size={11} /> Undo
+      </button>
     </div>
   );
 }
