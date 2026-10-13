@@ -829,7 +829,7 @@ export function Dispatch() {
             <div className="mt-2">The card moves back to where it was. Dispatch entries and the order's status are not changed.</div>
             {undoesDo && (
               <div className="mt-2 font-semibold text-[#8A4500] bg-[#FFF3E0] border border-[#E9730C]/40 rounded-[4px] px-2.5 py-2">
-                This only moves the card back to Step 6. The DO (Outward entry) is NOT deleted and the stock is NOT put back. If the DO was wrong, delete it from Stock Movements → Outward — that will restore the stock.
+                This only moves the card back to Step 6. The DO (Outward entry) is NOT deleted and the stock is NOT put back. If the DO was wrong, ask MIS / Shishir to delete it from Stock Movements → Outward — that will restore the stock.
               </div>
             )}
           </ConfirmDialog>

@@ -3,7 +3,7 @@ import type { MergeResult, Customer, Site, Contact, DataStore, Enquiry, Order, O
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { calculateAgeHours, generateId, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS } from '../lib/utils';
+import { calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { User } from '@supabase/supabase-js';
 
@@ -1201,6 +1201,9 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteDispatchEntry = async (id: string) => {
+    // Same allow-list as the Delete buttons (mis@ / shishir@), so it can't
+    // be triggered any other way by someone who isn't allowed.
+    if (!canDeleteRecords(user?.email)) throw new Error('Only MIS / Shishir can delete dispatch entries');
     const before = data.dispatchEntries.find(d => d.id === id);
     const { error } = await supabase.from('dispatch_entries').delete().eq('id', id);
     if (!error) {
@@ -1564,6 +1567,7 @@ const mapEnquiryToDB = (e: any) => {
   // dispatch entries. If the steps delete fails, sent_to_dispatch_at is put
   // back so nothing is left half-changed. Returns the deleted step rows.
   const removeOrderFromDispatch = async (orderId: string): Promise<any[]> => {
+    if (!canDeleteRecords(user?.email)) throw new Error('Only MIS / Shishir can remove orders from the Dispatch board');
     const before = data.orders.find(o => o.id === orderId);
     const entryCount = data.dispatchEntries.filter(e => e.orderId === orderId).length;
     if (entryCount > 0) throw new Error(`This order has ${entryCount} dispatch entr${entryCount === 1 ? 'y' : 'ies'}. Delete those entries first.`);

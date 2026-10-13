@@ -69,9 +69,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Plus, RefreshCw, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { fmtDate, fmtIST, normalizeSearchText, doerLabel } from '../lib/utils';
+import { fmtDate, fmtIST, normalizeSearchText, doerLabel, canDeleteRecords } from '../lib/utils';
+import { logActivity } from '../lib/activityLog';
 import { StockMovement } from '../lib/types';
 import { Button } from '../components/ui';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { FinishedLotsTable } from '../components/FinishedLotsTable';
@@ -157,7 +159,23 @@ const Th = ({ label, align }: { label: string; align?: 'right' }) => (
 
 export function StockMovements() {
   const navigate = useNavigate();
-  const { user, activeDoer, data } = useAppStore();
+  const { user, activeDoer, data, isReadOnlyUser } = useAppStore();
+  // 2026-10-13: deleting an Inward / Outward (DO) entry is for mis@ and
+  // shishir@ only (canDeleteRecords) — nobody else sees the Delete button.
+  const canDelete = canDeleteRecords(user?.email) && !isReadOnlyUser;
+  // The entry waiting in the in-app confirm box (Cancel = nothing changes).
+  const [deleteTarget, setDeleteTarget] = useState<StockMovement | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      await handleDelete(deleteTarget);
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -216,7 +234,8 @@ export function StockMovements() {
   }, []);
 
   const handleDelete = async (m: StockMovement) => {
-    if (!window.confirm(`Delete this ${m.type} entry for "${m.productName}" (${m.whLotNo || 'no lot no.'})? This also reverses its effect on the matching Stock Summary lot, if one is found.`)) return;
+    // The real lock — the button is hidden for everyone else, this stops any other path.
+    if (!canDelete) return;
 
     const partyCol = m.type === 'inward' ? INWARD_PARTY_COLUMN[m.warehouse] : OUTWARD_PARTY_COLUMN[m.warehouse];
     const whLotNo = (m.whLotNo || '').trim();
@@ -268,7 +287,16 @@ export function StockMovements() {
     }
 
     const { error } = await supabase.from('stock_movements').delete().eq('id', m.id);
-    if (!error) setMovements(prev => prev.filter(x => x.id !== m.id));
+    if (!error) {
+      setMovements(prev => prev.filter(x => x.id !== m.id));
+      logActivity({
+        module: 'stock_movements', recordId: m.id,
+        recordLabel: m.type === 'outward'
+          ? `DO ${m.doNumber || '—'} · ${m.productName} · Lot ${m.whLotNo || '—'}`
+          : `Inward · Lot ${m.whLotNo || '—'} · ${m.productName}`,
+        action: 'delete', before: m,
+      });
+    }
   };
 
   const inwardCount = movements.filter(m => m.type === 'inward').length;
@@ -485,7 +513,7 @@ export function StockMovements() {
                                 the user's request — matching the Button style
                                 already used in Dispatch and Sampling. */}
                             <Button size="sm" variant="secondary" onClick={() => navigate(`/stock-movements/new-outward?movementId=${m.id}`)}>Edit</Button>
-                            <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(m)}>Delete</Button>
+                            {canDelete && <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => setDeleteTarget(m)}>Delete</Button>}
                           </div>
                           {/* 2026-09-21: shows just the name of whoever made the most
                               recent change — updated_by if the entry's been edited since
@@ -564,7 +592,7 @@ export function StockMovements() {
                                 user's request — matching the Button style already used
                                 in Dispatch and Sampling. */}
                             <Button size="sm" variant="secondary" onClick={() => navigate(`/stock-movements/new?movementId=${m.id}`)}>Edit</Button>
-                            <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(m)}>Delete</Button>
+                            {canDelete && <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => setDeleteTarget(m)}>Delete</Button>}
                           </div>
                           {/* 2026-09-21: shows just the name of whoever made the most
                               recent change — updated_by if the entry's been edited since
@@ -587,6 +615,18 @@ export function StockMovements() {
           <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
           <FloatingVerticalScrollbar containerRef={tableScrollRef} horizontalContainerRef={tableScrollRef} />
         </div>
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title={`Delete this ${deleteTarget.type} entry for "${deleteTarget.productName}" (${deleteTarget.whLotNo || 'no lot no.'})?`}
+          confirmLabel="Delete"
+          busy={deleting}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+        >
+          This also reverses its effect on the matching Stock Summary lot, if one is found.
+        </ConfirmDialog>
       )}
     </div>
   );
