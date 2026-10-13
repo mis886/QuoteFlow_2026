@@ -365,11 +365,22 @@ async function insertOutwardWithRetry(
 // embedded / prefill / onSaved / onCancel props are gone.
 export type OutwardPrefill = Partial<typeof emptyForm>;
 
+// The order line a DO is being made for. 2026-10-13: the given line (the
+// "Product (from order)" picker) if there is one, else the first line that
+// still has barrels left to dispatch, else — as before — the first line with
+// a qty.
+export function orderLineFor(o: Order, entries: DispatchEntry[], seq?: number | null) {
+  const picked = seq != null ? o.items.find(i => i.seq === seq) : undefined;
+  if (picked) return picked;
+  const remaining = remainingByLine(o, entries);
+  return o.items.find(i => (remaining.get(i.seq) ?? 0) > 0) || o.items.find(i => i.qty > 0) || o.items[0];
+}
+
 // Builds the Dispatch prefill from an order (moved here from Dispatch.tsx
-// on 2026-10-06). Uses the first item with qty > 0; product is matched
+// on 2026-10-06). Uses orderLineFor's line; product is matched
 // against PRODUCTS by name (case-insensitive), falling back to the raw text.
-export function outwardPrefillFor(o: Order): OutwardPrefill {
-  const item = o.items.find(i => i.qty > 0) || o.items[0];
+export function outwardPrefillFor(o: Order, entries: DispatchEntry[], seq?: number | null): OutwardPrefill {
+  const item = orderLineFor(o, entries, seq);
   const desc = (item?.desc || '').trim();
   const product = PRODUCTS.find(p => p.name.toLowerCase() === desc.toLowerCase());
   // 2026-10-13: No of Barrels / Total Quantity are NOT prefilled from the
@@ -391,8 +402,8 @@ export function outwardPrefillFor(o: Order): OutwardPrefill {
 // Barrels of the order still REMAINING to dispatch (order qty minus every
 // dispatch entry so far) — for the same line outwardPrefillFor takes the
 // product from.
-export function orderBarrelsFor(o: Order, entries: DispatchEntry[]): number | null {
-  const item = o.items.find(i => i.qty > 0) || o.items[0];
+export function orderBarrelsFor(o: Order, entries: DispatchEntry[], seq?: number | null): number | null {
+  const item = orderLineFor(o, entries, seq);
   if (!item) return null;
   return remainingByLine(o, entries).get(item.seq) ?? 0;
 }
@@ -408,7 +419,7 @@ const DISPATCH_BOARD_PATH = '/dispatch?view=board';
 // A draft older than 24 hours is ignored. Everything is wrapped in try/catch —
 // a browser with storage blocked just works without drafts.
 const DRAFT_MAX_AGE_MS = 24 * 3600000;
-type OutwardDraft = { savedAt: number; form: typeof emptyForm; orderBarrels: number | null };
+type OutwardDraft = { savedAt: number; form: typeof emptyForm; orderBarrels: number | null; orderLineSeq: number | null };
 
 function readOutwardDraft(key: string): OutwardDraft | null {
   try {
@@ -423,13 +434,13 @@ function readOutwardDraft(key: string): OutwardDraft | null {
     for (const k of Object.keys(emptyForm) as (keyof typeof emptyForm)[]) {
       if (typeof d.form[k] === 'string') form[k] = d.form[k];
     }
-    return { savedAt: d.savedAt, form, orderBarrels: typeof d.orderBarrels === 'number' ? d.orderBarrels : null };
+    return { savedAt: d.savedAt, form, orderBarrels: typeof d.orderBarrels === 'number' ? d.orderBarrels : null, orderLineSeq: typeof d.orderLineSeq === 'number' ? d.orderLineSeq : null };
   } catch {
     return null;
   }
 }
-function writeOutwardDraft(key: string, form: typeof emptyForm, orderBarrels: number | null) {
-  try { localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), form, orderBarrels })); } catch { /* storage unavailable */ }
+function writeOutwardDraft(key: string, form: typeof emptyForm, orderBarrels: number | null, orderLineSeq: number | null) {
+  try { localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), form, orderBarrels, orderLineSeq })); } catch { /* storage unavailable */ }
 }
 function clearOutwardDraft(key: string) {
   try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
@@ -484,15 +495,27 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
   const dispatchFulfilment = fromDispatch && searchParams.get('fulfilment') === 'self_pickup' ? 'Self Pickup' : '';
   const dispatchOrder = fromDispatch ? data.orders.find(o => o.id === orderRef) : undefined;
 
-  // Barrels the order still has left to dispatch (Board flow only) — shown
-  // as "Order needs (remaining)".
-  const orderBarrels = dispatchOrder ? orderBarrelsFor(dispatchOrder, data.dispatchEntries) : null;
-
   // 2026-10-13: a draft saved earlier for this same form (see readOutwardDraft)
   // is restored once, on open — it wins over the order prefill and the loaded
   // record. `restored` drives the "Restored your unsaved changes" note.
   const [initialDraft] = useState(() => readOutwardDraft(draftKey));
   const restored = !!initialDraft;
+  // The order line picked in "Product (from order)" (null = the default line,
+  // see orderLineFor). Kept in the draft too.
+  const [orderLineSeq, setOrderLineSeq] = useState<number | null>(() => initialDraft?.orderLineSeq ?? null);
+  // Barrels the order still has left to dispatch (Board flow only) — shown
+  // as "Order needs (remaining)".
+  const orderBarrels = dispatchOrder ? orderBarrelsFor(dispatchOrder, data.dispatchEntries, orderLineSeq) : null;
+  // Order lines that still have barrels left — 2 or more get the
+  // "Product (from order)" picker at the top of the form.
+  const orderLinesLeft = dispatchOrder
+    ? (() => {
+      const remaining = remainingByLine(dispatchOrder, data.dispatchEntries);
+      return dispatchOrder.items.map(i => ({ seq: i.seq, desc: (i.desc || '').trim(), left: remaining.get(i.seq) ?? 0 })).filter(l => l.left > 0);
+    })()
+    : [];
+  const currentOrderLineSeq = dispatchOrder ? orderLineFor(dispatchOrder, data.dispatchEntries, orderLineSeq)?.seq ?? null : null;
+
   const [form, setForm] = useState(() => initialDraft?.form ?? emptyForm);
   // Draft bookkeeping. Nothing is written until the user has actually touched
   // the form AND it differs from how it looked before they did (so just
@@ -501,13 +524,15 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
   formRef.current = form;
   const orderBarrelsRef = useRef(orderBarrels);
   orderBarrelsRef.current = orderBarrels;
+  const orderLineSeqRef = useRef(orderLineSeq);
+  orderLineSeqRef.current = orderLineSeq;
   const interacted = useRef(restored);
   const draftBaseline = useRef<string | null>(null);
   const draftOff = useRef(false);   // set after Save / Cancel / Discard — no more writes
   const flushDraft = () => {
     if (draftOff.current || !interacted.current) return;
     if (draftBaseline.current !== null && JSON.stringify(formRef.current) === draftBaseline.current) return;
-    writeOutwardDraft(draftKey, formRef.current, orderBarrelsRef.current);
+    writeOutwardDraft(draftKey, formRef.current, orderBarrelsRef.current, orderLineSeqRef.current);
   };
   const dropDraft = () => { draftOff.current = true; clearOutwardDraft(draftKey); };
   const markInteracted = () => { interacted.current = true; };
@@ -670,7 +695,7 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
   useEffect(() => {
     if (!dispatchOrder || dispatchPrefilled.current) return;
     dispatchPrefilled.current = true;
-    const prefill = outwardPrefillFor(dispatchOrder);
+    const prefill = outwardPrefillFor(dispatchOrder, data.dispatchEntries, orderLineSeq);
     const party = prefill.partyName || '';
     setForm(f => ({
       ...f,
@@ -773,6 +798,27 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
       const packing = parseNum(v);
       const totalQty = barrels !== null && packing !== null ? String(barrels * packing) : f.totalQty;
       return { ...f, packing: v, totalQty };
+    });
+  };
+
+  // "Product (from order)" picker: re-applies that order line's prefill —
+  // product name / code, billing name, packing, packing type — and nothing
+  // else. Warehouse, Lot No and No of Barrels stay as the user left them;
+  // Total Quantity follows the new packing, same as typing a packing does.
+  const pickOrderLine = (seq: number) => {
+    if (!dispatchOrder) return;
+    const p = outwardPrefillFor(dispatchOrder, data.dispatchEntries, seq);
+    setOrderLineSeq(seq);
+    setForm(f => {
+      const packing = p.packing ?? '';
+      const barrels = parseNum(f.numArticles);
+      const pack = parseNum(packing);
+      return {
+        ...f,
+        productName: p.productName ?? '', productCode: p.productCode ?? '', billingName: p.billingName ?? '',
+        packing, packagingType: p.packagingType ?? '',
+        totalQty: barrels !== null && pack !== null ? String(barrels * pack) : f.totalQty,
+      };
     });
   };
 
@@ -960,7 +1006,7 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
     if (!interacted.current) { draftBaseline.current = JSON.stringify(form); return; }
     const timer = setTimeout(flushDraft, 500);
     return () => clearTimeout(timer);
-  }, [form, loadingMovement]);
+  }, [form, orderLineSeq, loadingMovement]);
   useEffect(() => () => flushDraft(), []);
 
   // Stock line under No of Barrels — only while it still belongs to the
@@ -1291,6 +1337,21 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
               <span className="font-semibold">Restored your unsaved changes</span>
               <span>·</span>
               <button type="button" className="font-semibold underline hover:text-red-mrt" onClick={() => { dropDraft(); onReset(); }}>Discard</button>
+            </div>
+          )}
+          {/* 2026-10-13: an order with 2+ product lines still to dispatch —
+              pick which line this DO is for. */}
+          {fromDispatch && orderLinesLeft.length >= 2 && (
+            <div className={cardCls}>
+              <div className={sectionHeaderCls}>Product (from order)</div>
+              <div className="max-w-[520px]">
+                <select className={selectCls} value={currentOrderLineSeq ?? ''} onChange={e => pickOrderLine(Number(e.target.value))}>
+                  {currentOrderLineSeq !== null && !orderLinesLeft.some(l => l.seq === currentOrderLineSeq) && (
+                    <option value={currentOrderLineSeq}>{(dispatchOrder?.items.find(i => i.seq === currentOrderLineSeq)?.desc || 'Item').trim()} — 0 barrels left</option>
+                  )}
+                  {orderLinesLeft.map(l => <option key={l.seq} value={l.seq}>{l.desc || 'Item'} — {l.left} barrels left</option>)}
+                </select>
+              </div>
             </div>
           )}
           <div className={cardCls}>
