@@ -1,18 +1,14 @@
-name: Build and deploy
+name: Build and deploy (manual only — do not use)
 
+# 2026-10-13: the `push` trigger was REMOVED. This workflow used to run
+# `wrangler deploy` on every push to main, which showed up in the Cloudflare
+# dashboard as "Manually deployed · Wrangler · by mis" next to Cloudflare's
+# own build of the same commit — two deployers racing each other.
+# The live site is now deployed ONLY by Cloudflare's own build from GitHub
+# main (Workers Builds). Nothing starts this workflow by itself any more; it
+# can only be started by hand from the Actions tab, and should not be.
 on:
-  workflow_dispatch: {}   # allow manual runs from the Actions tab
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'index.html'
-      - 'vite.config.*'
-      - 'wrangler.toml'
-      - 'package*.json'
-      - 'tailwind.config.*'
-      - 'tsconfig*.json'
+  workflow_dispatch: {}
 
 jobs:
   build-and-deploy:
