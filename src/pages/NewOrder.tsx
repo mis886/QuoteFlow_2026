@@ -269,6 +269,11 @@ export function NewOrder() {
         if (q.phone) setPhone(q.phone);
         // Carry the customer's enquiry doc number forward (editable).
         if (q.custEnquiryDocNo) setCustEnquiryDocNo(q.custEnquiryDocNo);
+        // Carry "Notes from Management" forward (editable): the quote's own
+        // note, else its linked enquiry's — never over something already typed.
+        const enqNote = q.enqRef ? data.enquiries.find(e => e.id === q.enqRef)?.managementNotes : undefined;
+        const carriedNote = q.managementNotes || enqNote || '';
+        if (carriedNote) setManagementNotes(prev => prev || carriedNote);
         // Preserve manual contact if quote had no contactId
         setContactManual(!q.contactId && !!(q.contact || q.email));
         // Authorized Signatory is intentionally NOT carried forward from the

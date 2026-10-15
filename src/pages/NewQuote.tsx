@@ -329,6 +329,9 @@ export function NewQuote() {
         setContact(enq.contact); setEmail(enq.email); setPhone(enq.phone || '');
         // Carry the customer's enquiry doc number forward (editable).
         if (enq.custEnqDocNo) setCustEnquiryDocNo(enq.custEnqDocNo);
+        // Carry "Notes from Management" forward too (editable) — never over
+        // something already typed in the field.
+        if (enq.managementNotes) setManagementNotes(prev => prev || enq.managementNotes || '');
         // If the enquiry had no contactId the details were typed manually — preserve them
         setContactManual(!enq.contactId && !!(enq.contact || enq.email));
         const cr = customerOfDoc(enq, data.customers);
