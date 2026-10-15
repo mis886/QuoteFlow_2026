@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
 import { Button } from '../components/ui';
@@ -388,6 +388,17 @@ export function NewOrder() {
   const confirmLeave = () =>
     !dirty || window.confirm('You have unsaved changes. Leave without saving?');
 
+  // 2026-10-15: partial-dispatch edit lock. Once an order has a dispatch
+  // entry, a line's No of Barrels can't go below what is already dispatched
+  // for it, lines with dispatched barrels can't be removed, and no line is
+  // renumbered (each dispatch entry points at the order line by its seq).
+  // New lines can still be added. No admin override.
+  const dispatchedForLine = useMemo(
+    () => (editOrderId ? dispatchedByLine(editOrderId, data.dispatchEntries) : new Map<number, number>()),
+    [editOrderId, data.dispatchEntries],
+  );
+  const orderHasDispatch = !!editOrderId && data.dispatchEntries.some(e => e.orderId === editOrderId);
+
   // Item helpers
   const updateItem = (idx: number, field: keyof OrderItem, value: any) => {
     const ni = [...items];
@@ -407,8 +418,14 @@ export function NewOrder() {
     ni[idx] = updated;
     setItems(ni);
   };
-  const addItem = () => setItems([...items, { seq: items.length + 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', priceBasis: 'Per kg', agreedRate: 0, gst: 18, total: 0 }]);
-  const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx).map((it, i) => ({ ...it, seq: i + 1 }))); };
+  const addItem = () => setItems([...items, { seq: items.reduce((m, it) => Math.max(m, Number(it.seq) || 0), 0) + 1, desc: '', mat: '', hsn: '', qty: 1, uom: 'pcs', packing: '', packingType: '', priceBasis: 'Per kg', agreedRate: 0, gst: 18, total: 0 }]);
+  const removeItem = (idx: number) => {
+    if (items.length === 1) return;
+    if ((dispatchedForLine.get(items[idx].seq) || 0) > 0) return;   // has dispatched barrels — locked
+    const left = items.filter((_, i) => i !== idx);
+    // Renumbering would point existing dispatch entries at the wrong line.
+    setItems(orderHasDispatch ? left : left.map((it, i) => ({ ...it, seq: i + 1 })));
+  };
 
   const subTotal = items.reduce((s, i) => s + i.total, 0);
   // GST (and Insurance, if the customer wants it) is calculated on the FULL
@@ -455,6 +472,10 @@ export function NewOrder() {
     else if (poTrimmed.length < 3) e.poNo = 'PO Number looks too short — enter the customer PO reference';
     if (!custName) e.custName = 'Customer is required';
     if (items.some(i => !i.desc || Number(i.qty) <= 0)) e.items = 'All items need a description and quantity > 0';
+    else {
+      const below = items.find(i => Number(i.qty) < (dispatchedForLine.get(i.seq) || 0));
+      if (below) e.items = `${below.desc || `Line ${below.seq}`}: already dispatched ${dispatchedForLine.get(below.seq)} — No of Barrels can't go below this`;
+    }
     // Quote ref is compulsory when this order was converted from a quote.
     // Without it the attachment chain (ENQ → Quote → Order) is broken.
     if (quoteRef && !linkedQuoteRef) e.quoteRef = 'Quote reference is missing — cannot save without it';
@@ -1088,8 +1109,13 @@ export function NewOrder() {
                             />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="number" min="1" value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '' }); }}
-                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center ${errors.items && Number(item.qty) <= 0 ? 'text-red-mrt' : 'text-blk'}`} />
+                            <input type="number" min={Math.max(1, dispatchedForLine.get(item.seq) || 0)} value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '' }); }}
+                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center ${(errors.items && Number(item.qty) <= 0) || Number(item.qty) < (dispatchedForLine.get(item.seq) || 0) ? 'text-red-mrt' : 'text-blk'}`} />
+                            {(dispatchedForLine.get(item.seq) || 0) > 0 && (
+                              <div className={`text-[10px] leading-tight mt-0.5 text-center ${Number(item.qty) < (dispatchedForLine.get(item.seq) || 0) ? 'text-red-mrt font-semibold' : 'text-g500'}`}>
+                                Already dispatched: {dispatchedForLine.get(item.seq)} — can't go below this
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" value={item.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk" />
@@ -1144,7 +1170,8 @@ export function NewOrder() {
                           )}
                           <td className="px-3 py-[5px] border border-g400 align-middle text-right font-mono text-[12px] font-bold text-blk">{formatINR(item.total)}</td>
                           <td className="px-1 py-[5px] border border-g400 align-middle">
-                            <button type="button" onClick={() => removeItem(idx)} disabled={items.length === 1} className="text-g400 hover:text-red-mrt p-1 transition-colors disabled:opacity-30" title="Remove">
+                            <button type="button" onClick={() => removeItem(idx)} disabled={items.length === 1 || (dispatchedForLine.get(item.seq) || 0) > 0} className="text-g400 hover:text-red-mrt p-1 transition-colors disabled:opacity-30"
+                              title={(dispatchedForLine.get(item.seq) || 0) > 0 ? 'Barrels of this line are already dispatched — it cannot be removed' : 'Remove'}>
                               <svg viewBox="0 0 16 16" width="13" height="13" className="fill-current"><path d="M5.5 1h5v1h-5V1zM3 3v1h10V3H3zm1 2v9h8V5H4zm2 1h1v7H6V6zm3 0h1v7H9V6z" /></svg>
                             </button>
                           </td>

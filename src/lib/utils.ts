@@ -467,19 +467,37 @@ export const isLockedStatusChangeAllowed = (
 
 // Partial dispatch: one order (one Order No. + SO No.) can have many dispatch
 // entries. Per order line (matched by seq): order qty (No of Barrels) minus
-// that line's qty summed across ALL of the order's entries, floored at 0. A
-// legacy entry saved without its own items counts as the whole order.
+// that line's qty summed across ALL of the order's entries, floored at 0.
+// 2026-10-15: an entry saved without its own items counts as 0 (it used to
+// count as the WHOLE order dispatched) and is reported with console.warn.
 type QtyLine = { seq: number; qty: number };
-export function remainingByLine(
-  order: { id: string; items: QtyLine[] },
-  entries: { orderId: string; items?: QtyLine[] }[],
+// Each empty entry is warned about once per page load — this runs for every
+// order on every render.
+const warnedEmptyEntries = new Set<string>();
+export function dispatchedByLine(
+  orderId: string,
+  entries: { id?: string; orderId: string; items?: QtyLine[] }[],
 ): Map<number, number> {
   const dispatched = new Map<number, number>();
   for (const e of entries) {
-    if (e.orderId !== order.id) continue;
-    const lines = e.items && e.items.length ? e.items : order.items;
-    for (const l of lines) dispatched.set(l.seq, (dispatched.get(l.seq) || 0) + (Number(l.qty) || 0));
+    if (e.orderId !== orderId) continue;
+    if (!e.items || !e.items.length) {
+      const key = `${orderId}:${e.id ?? ''}`;
+      if (warnedEmptyEntries.has(key)) continue;
+      warnedEmptyEntries.add(key);
+      console.warn(`Dispatch entry ${e.id ?? '(no id)'} of ${orderId} has no line items — counted as 0 barrels dispatched.`);
+      continue;
+    }
+    for (const l of e.items) dispatched.set(l.seq, (dispatched.get(l.seq) || 0) + (Number(l.qty) || 0));
   }
+  return dispatched;
+}
+
+export function remainingByLine(
+  order: { id: string; items: QtyLine[] },
+  entries: { id?: string; orderId: string; items?: QtyLine[] }[],
+): Map<number, number> {
+  const dispatched = dispatchedByLine(order.id, entries);
   const remaining = new Map<number, number>();
   for (const l of order.items) remaining.set(l.seq, Math.max(0, (Number(l.qty) || 0) - (dispatched.get(l.seq) || 0)));
   return remaining;

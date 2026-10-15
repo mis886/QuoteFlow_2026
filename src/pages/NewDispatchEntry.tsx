@@ -559,8 +559,8 @@ export function NewDispatchEntry() {
     const remaining = remainingByLine(selectedOrder, data.dispatchEntries);
     const ownSaved = new Map<number, number>();
     if (existingEntry) {
-      const ownLines = existingEntry.items && existingEntry.items.length ? existingEntry.items : selectedOrder.items;
-      for (const l of ownLines) ownSaved.set(l.seq, (ownSaved.get(l.seq) || 0) + (Number(l.qty) || 0));
+      // An entry with no line items counts as 0 (same rule as remainingByLine).
+      for (const l of existingEntry.items || []) ownSaved.set(l.seq, (ownSaved.get(l.seq) || 0) + (Number(l.qty) || 0));
     }
     for (const i of items) {
       const qty = Number(i.qty) || 0;
@@ -571,6 +571,31 @@ export function NewDispatchEntry() {
     if (!items.some(i => (Number(i.qty) || 0) > 0)) { setError('Enter No of Barrels for at least one line.'); return; }
     setSaving(true);
     setError('');
+    // 2026-10-15: save-time re-check against the DATABASE, not this page's
+    // copy — another dispatch for the same order may have been saved since
+    // the page loaded. Blocks if any line no longer has enough barrels left.
+    try {
+      const { data: freshRows, error: freshErr } = await supabase
+        .from('dispatch_entries').select('id, order_id, items').eq('order_id', selectedOrderId);
+      if (freshErr) throw freshErr;
+      const fresh = (freshRows || [])
+        .filter(r => r.id !== existingEntryId)   // this entry's own saved qty is being replaced
+        .map(r => ({ id: r.id as string, orderId: r.order_id as string, items: (r.items || []) as { seq: number; qty: number }[] }));
+      const freshRemaining = remainingByLine(selectedOrder, fresh);
+      for (const i of items) {
+        const qty = Number(i.qty) || 0;
+        const left = freshRemaining.get(i.seq) || 0;
+        if (qty > left) {
+          setError(`${i.desc || 'Item'}: Only ${left} barrels left now — another dispatch was saved. Please refresh.`);
+          setSaving(false);
+          return;
+        }
+      }
+    } catch (err: any) {
+      setError(`Could not re-check the remaining barrels: ${err?.message || 'check your connection'}. Nothing was saved.`);
+      setSaving(false);
+      return;
+    }
     try {
       // A dispatch never creates an order or changes an order's items or
       // status — a partial dispatch keeps the same order (Order No. + SO No.)
