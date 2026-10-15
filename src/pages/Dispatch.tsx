@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, List, Columns3, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
-import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
+import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 import { buildBoard, mapStepFromDB, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
 import { DispatchBoard, AutoTag, StepActionButtons, UndoLink } from '../components/DispatchBoard';
@@ -59,6 +59,9 @@ export function Dispatch() {
     searchParams.get('type') === 'self_pickup' ? 'self_pickup' : 'delivery');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  // Order Pending for Dispatch: All, or only orders already partly dispatched
+  // (?pending=partial in the URL).
+  const [pendingFilter, setPendingFilter] = useState<'all' | 'partial'>(() => searchParams.get('pending') === 'partial' ? 'partial' : 'all');
 
   // Table (this page as it always was) vs the Kanban Board view — kept in
   // the URL as ?view=board so a refresh stays on the board.
@@ -382,8 +385,15 @@ export function Dispatch() {
   const selfPickupCount = activeEntries.filter(e => e.fulfillmentType === 'self_pickup').length;
 
   // Keep the URL in step so a refresh stays on the same tab/pill/view.
-  const syncUrl = (t: DispatchTab, type: DispatchFulfillmentType, v: 'table' | 'board' = view) =>
-    setSearchParams({ ...(t === 'pending' ? {} : { tab: t, type }), ...(v === 'board' ? { view: 'board' } : {}) }, { replace: true });
+  const syncUrl = (t: DispatchTab, type: DispatchFulfillmentType, v: 'table' | 'board' = view, pf: 'all' | 'partial' = pendingFilter) =>
+    setSearchParams({
+      ...(t === 'pending' ? (pf === 'partial' ? { pending: 'partial' } : {}) : { tab: t, type }),
+      ...(v === 'board' ? { view: 'board' } : {}),
+    }, { replace: true });
+  const switchPendingFilter = (pf: 'all' | 'partial') => {
+    setPendingFilter(pf);
+    syncUrl(tab, subType, view, pf);
+  };
   const switchTab = (t: DispatchTab) => {
     setTab(t);
     setExpandedRow(null);
@@ -409,12 +419,29 @@ export function Dispatch() {
       o.items.some(i => (i.desc || '').toLowerCase().includes(qs));
   };
 
-  const visiblePending = useMemo(
+  // Barrels per pending order: ordered (sum of line qty), remaining
+  // (totalRemaining) and dispatched (the difference). Display only.
+  const pendingQty = useMemo(() => {
+    const m = new Map<string, { ordered: number; dispatched: number; remaining: number }>();
+    for (const o of pendingOrders) {
+      const ordered = o.items.reduce((s, i) => s + (Number(i.qty) || 0), 0);
+      const remaining = totalRemaining(o, data.dispatchEntries);
+      m.set(o.id, { ordered, remaining, dispatched: Math.max(0, ordered - remaining) });
+    }
+    return m;
+  }, [pendingOrders, data.dispatchEntries]);
+  const isPartlyDispatched = (o: Order) => (pendingQty.get(o.id)?.dispatched ?? 0) > 0;
+
+  // Search first; the All / Partly dispatched pill then narrows what's left
+  // (its counts are shown before that last step).
+  const searchedPending = useMemo(
     () => pendingOrders
       .filter(o => orderMatches(o, o.id))
       .sort((a, b) => (b.created_at || b.poDate || '').localeCompare(a.created_at || a.poDate || '')),
     [pendingOrders, qs],
   );
+  const partlyDispatchedCount = searchedPending.filter(isPartlyDispatched).length;
+  const visiblePending = pendingFilter === 'partial' ? searchedPending.filter(isPartlyDispatched) : searchedPending;
 
   const visibleEntries = useMemo(
     () => activeEntries
@@ -575,6 +602,13 @@ export function Dispatch() {
           />
         </div>
 
+        {tab === 'pending' && (
+          <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
+            <div onClick={() => switchPendingFilter('all')} className={pillCls(pendingFilter === 'all')}>All ({searchedPending.length})</div>
+            <div onClick={() => switchPendingFilter('partial')} className={pillCls(pendingFilter === 'partial')}>Partly dispatched ({partlyDispatchedCount})</div>
+          </div>
+        )}
+
         <div className="ml-auto font-mono text-[10px] text-g500">
           {tab === 'pending' ? `${rowCount} order(s)` : `${rowCount} entr${rowCount === 1 ? 'y' : 'ies'}`}
         </div>
@@ -597,6 +631,9 @@ export function Dispatch() {
                   <th className={thCls}>PO Date</th>
                   <th className={thCls}>Schedule Date</th>
                   <th className={thCls}>Items</th>
+                  <th className={thRightCls}>Ordered</th>
+                  <th className={thRightCls}>Dispatched</th>
+                  <th className={thRightCls}>Remaining</th>
                   <th className={thRightCls}>Order Value</th>
                   <th className={thCls}>Fulfillment</th>
                   <th className={thCls}>Punched At</th>
@@ -606,8 +643,8 @@ export function Dispatch() {
               </thead>
               <tbody>
                 {visiblePending.length === 0 ? (
-                  <tr><td colSpan={12} className="text-center p-8 text-g400 text-[13px]">
-                    {qs ? 'No matching orders' : 'No confirmed orders pending for dispatch'}
+                  <tr><td colSpan={15} className="text-center p-8 text-g400 text-[13px]">
+                    {qs ? 'No matching orders' : pendingFilter === 'partial' ? 'No partly dispatched orders' : 'No confirmed orders pending for dispatch'}
                   </td></tr>
                 ) : (
                   visiblePending.map(o => {
@@ -616,6 +653,7 @@ export function Dispatch() {
                     const grandTotal = resolveAdjustments(o.adjustments, subTotal, itemGst, maxItemGstRate(o.items)).grand;
                     const isExpanded = expandedRow === o.id;
                     const sl = siteLabel(customerOfDoc(o, data.customers), o.siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId);
+                    const qty = pendingQty.get(o.id) ?? { ordered: 0, dispatched: 0, remaining: 0 };
                     return (
                       <React.Fragment key={o.id}>
                         <tr
@@ -639,6 +677,10 @@ export function Dispatch() {
                               {o.items.length} item(s)
                             </span>
                           </td>
+                          <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px]">{qty.ordered}</td>
+                          <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px]">{qty.dispatched}</td>
+                          <td className={`px-[13px] py-[10px] align-top text-right font-mono text-[12px] ${qty.dispatched > 0 ? 'font-bold text-amber-600' : ''}`}
+                            title={qty.dispatched > 0 ? 'Partly dispatched' : undefined}>{qty.remaining}</td>
                           <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
                           <td className="px-[13px] py-[10px] align-top">{fulfillmentLabel(orderFulfillment(o))}</td>
                           <td className="px-[13px] py-[10px] align-top text-[11.5px] whitespace-nowrap">
@@ -654,8 +696,9 @@ export function Dispatch() {
                         </tr>
                         {isExpanded && (
                           <tr className="bg-sW/[0.02] border-b-2 border-sW">
-                            <td colSpan={12} className="p-0">
-                              <LineItemsPanel title={`Order Line Items -- ${o.soNumber ? `${o.soNumber} / ` : ''}${o.id}`} items={o.items} grand={grandTotal} />
+                            <td colSpan={15} className="p-0">
+                              <LineItemsPanel title={`Order Line Items -- ${o.soNumber ? `${o.soNumber} / ` : ''}${o.id}`} items={o.items} grand={grandTotal}
+                                remaining={remainingByLine(o, data.dispatchEntries)} showDispatched />
                             </td>
                           </tr>
                         )}
