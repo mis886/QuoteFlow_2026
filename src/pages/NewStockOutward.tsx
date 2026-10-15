@@ -410,42 +410,6 @@ export function orderBarrelsFor(o: Order, entries: DispatchEntry[], seq?: number
 
 const DISPATCH_BOARD_PATH = '/dispatch?view=board';
 
-// ── Unsaved draft (2026-10-13) ──────────────────────────────────────────────
-// What the user typed is kept in localStorage, so leaving the form and coming
-// back doesn't lose it. One draft per "thing being filled in":
-//   from the Dispatch board → outwardDraft:dispatch:<orderRef>:<round>
-//   plain New Outward       → outwardDraft:new
-//   editing an entry        → outwardDraft:edit:<movementId>
-// A draft older than 24 hours is ignored. Everything is wrapped in try/catch —
-// a browser with storage blocked just works without drafts.
-const DRAFT_MAX_AGE_MS = 24 * 3600000;
-type OutwardDraft = { savedAt: number; form: typeof emptyForm; orderBarrels: number | null; orderLineSeq: number | null };
-
-function readOutwardDraft(key: string): OutwardDraft | null {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const d = JSON.parse(raw);
-    if (!d || typeof d.savedAt !== 'number' || Date.now() - d.savedAt > DRAFT_MAX_AGE_MS || !d.form || typeof d.form !== 'object') {
-      localStorage.removeItem(key);
-      return null;
-    }
-    const form = { ...emptyForm };
-    for (const k of Object.keys(emptyForm) as (keyof typeof emptyForm)[]) {
-      if (typeof d.form[k] === 'string') form[k] = d.form[k];
-    }
-    return { savedAt: d.savedAt, form, orderBarrels: typeof d.orderBarrels === 'number' ? d.orderBarrels : null, orderLineSeq: typeof d.orderLineSeq === 'number' ? d.orderLineSeq : null };
-  } catch {
-    return null;
-  }
-}
-function writeOutwardDraft(key: string, form: typeof emptyForm, orderBarrels: number | null, orderLineSeq: number | null) {
-  try { localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), form, orderBarrels, orderLineSeq })); } catch { /* storage unavailable */ }
-}
-function clearOutwardDraft(key: string) {
-  try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
-}
-
 // Warehouse + Lot No as one comparable key (lot match is case-insensitive).
 const lotKeyOf = (warehouse: string, lotNo: string) => `${warehouse}|${lotNo.trim().toLowerCase()}`;
 
@@ -461,22 +425,39 @@ const outwardListPath = (emailSent: boolean, fulfilmentType?: string | null) => 
   return `/stock-movements?tab=outward&sub=${emailSent ? 'emailSent' : 'saved'}&type=${type}`;
 };
 
+// 2026-10-15: the "unsaved draft" (added 2026-10-13) was removed at the
+// user's request — leaving the form without Save keeps NOTHING, and the form
+// always opens clean: the order prefill (from the Dispatch board), an empty
+// form (plain New Outward) or the saved record (Edit). Old drafts the
+// previous version left in localStorage ("outwardDraft:…") are deleted here
+// so they can never come back.
+function clearOldOutwardDrafts() {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('outwardDraft:')) keys.push(k);
+    }
+    keys.forEach(k => localStorage.removeItem(k));
+  } catch { /* storage unavailable — nothing to clean */ }
+}
+
 // The page itself is a thin shell: the form below is re-created from scratch
 // (fresh state, fresh prefill / saved record) whenever the thing being filled
-// in changes, or when the user clicks "Discard" on a restored draft.
+// in changes (another order / round, another entry, or plain New Outward).
 export function NewStockOutward() {
   const [searchParams] = useSearchParams();
   const movementId = searchParams.get('movementId');
   const orderRef = searchParams.get('orderRef') || '';
   const fromDispatch = !movementId && searchParams.get('fromDispatch') === '1' && !!orderRef;
-  const draftKey = movementId ? `outwardDraft:edit:${movementId}`
-    : fromDispatch ? `outwardDraft:dispatch:${orderRef}:${Number(searchParams.get('round')) || 1}`
-    : 'outwardDraft:new';
-  const [resetCount, setResetCount] = useState(0);
-  return <OutwardForm key={`${draftKey}#${resetCount}`} draftKey={draftKey} onReset={() => setResetCount(n => n + 1)} />;
+  const formKey = movementId ? `edit:${movementId}`
+    : fromDispatch ? `dispatch:${orderRef}:${Number(searchParams.get('round')) || 1}`
+    : 'new';
+  useEffect(() => { clearOldOutwardDrafts(); }, []);
+  return <OutwardForm key={formKey} />;
 }
 
-function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => void }) {
+function OutwardForm() {
   const navigate = useNavigate();
   const { user, activeDoer, data, isReadOnlyUser } = useAppStore();
   const [searchParams] = useSearchParams();
@@ -495,14 +476,9 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
   const dispatchFulfilment = fromDispatch && searchParams.get('fulfilment') === 'self_pickup' ? 'Self Pickup' : '';
   const dispatchOrder = fromDispatch ? data.orders.find(o => o.id === orderRef) : undefined;
 
-  // 2026-10-13: a draft saved earlier for this same form (see readOutwardDraft)
-  // is restored once, on open — it wins over the order prefill and the loaded
-  // record. `restored` drives the "Restored your unsaved changes" note.
-  const [initialDraft] = useState(() => readOutwardDraft(draftKey));
-  const restored = !!initialDraft;
   // The order line picked in "Product (from order)" (null = the default line,
-  // see orderLineFor). Kept in the draft too.
-  const [orderLineSeq, setOrderLineSeq] = useState<number | null>(() => initialDraft?.orderLineSeq ?? null);
+  // see orderLineFor).
+  const [orderLineSeq, setOrderLineSeq] = useState<number | null>(null);
   // Barrels the order still has left to dispatch (Board flow only) — shown
   // as "Order needs (remaining)".
   const orderBarrels = dispatchOrder ? orderBarrelsFor(dispatchOrder, data.dispatchEntries, orderLineSeq) : null;
@@ -516,35 +492,14 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
     : [];
   const currentOrderLineSeq = dispatchOrder ? orderLineFor(dispatchOrder, data.dispatchEntries, orderLineSeq)?.seq ?? null : null;
 
-  const [form, setForm] = useState(() => initialDraft?.form ?? emptyForm);
-  // Draft bookkeeping. Nothing is written until the user has actually touched
-  // the form AND it differs from how it looked before they did (so just
-  // opening an entry never leaves a stale copy behind).
-  const formRef = useRef(form);
-  formRef.current = form;
-  const orderBarrelsRef = useRef(orderBarrels);
-  orderBarrelsRef.current = orderBarrels;
-  const orderLineSeqRef = useRef(orderLineSeq);
-  orderLineSeqRef.current = orderLineSeq;
-  const interacted = useRef(restored);
-  const draftBaseline = useRef<string | null>(null);
-  const draftOff = useRef(false);   // set after Save / Cancel / Discard — no more writes
-  const flushDraft = () => {
-    if (draftOff.current || !interacted.current) return;
-    if (draftBaseline.current !== null && JSON.stringify(formRef.current) === draftBaseline.current) return;
-    writeOutwardDraft(draftKey, formRef.current, orderBarrelsRef.current, orderLineSeqRef.current);
-  };
-  const dropDraft = () => { draftOff.current = true; clearOutwardDraft(draftKey); };
-  const markInteracted = () => { interacted.current = true; };
+  const [form, setForm] = useState(emptyForm);
 
   // No of Barrels auto-fill bookkeeping (see the Lot No lookup below):
   //   userBarrelsKey — the Warehouse + Lot No the user typed their OWN No of
-  //     Barrels for; the auto-fill leaves that value alone. A restored draft's
-  //     No of Barrels counts as typed.
+  //     Barrels for; the auto-fill leaves that value alone.
   //   autoBarrels — the value the auto-fill last put in, so a stale one can be
   //     cleared when the Warehouse / Lot No moves to a lot with no stock.
-  const userBarrelsKey = useRef<string | null>(
-    initialDraft?.form.numArticles.trim() ? lotKeyOf(initialDraft.form.warehouse, initialDraft.form.lotNo) : null);
+  const userBarrelsKey = useRef<string | null>(null);
   const autoBarrels = useRef<string | null>(null);
   // Stock found for the current Warehouse + Lot No (null = none / not looked up).
   const [lotStock, setLotStock] = useState<{ key: string; warehouse: string; lotNo: string; available: number } | null>(null);
@@ -556,9 +511,8 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
   // Set when Save is clicked with no Fulfilment Type — shown under the field.
   const [fulfilmentError, setFulfilmentError] = useState(false);
 
-  // Where to go on Back / Cancel. Leaving on purpose throws the draft away.
-  const goBack = () => { dropDraft(); leave(); };
-  const leave = () => navigate(fromDispatch ? DISPATCH_BOARD_PATH : outwardListPath(!!emailSentAt, form.fulfilmentType || 'Delivery'));
+  // Where to go on Back / Cancel.
+  const goBack = () => navigate(fromDispatch ? DISPATCH_BOARD_PATH : outwardListPath(!!emailSentAt, form.fulfilmentType || 'Delivery'));
 
   // Set when the Outward entry saved but Step 6 could not be marked done —
   // the form is then replaced by a message, so Save can't be clicked twice.
@@ -589,9 +543,7 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
         return;
       }
       const isKnownWarehouse = WAREHOUSES.includes(data.warehouse);
-      // A restored draft wins over the saved record (original / emailSentAt
-      // below are still taken from the record, so Save reverses the right stock).
-      if (!restored) setForm({
+      setForm({
         warehouse: isKnownWarehouse ? data.warehouse : (data.warehouse ? 'Other' : ''),
         otherWarehouse: isKnownWarehouse ? '' : (data.warehouse || ''),
         doNumber: data.do_number || '',
@@ -691,7 +643,7 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
   // Transporter / Fulfilment Type are filled here from the customer's
   // preferred transporter if the customers query above has already
   // finished; if it finishes later, its own fill-if-empty does the same.
-  const dispatchPrefilled = useRef(restored);   // a restored draft wins over the prefill
+  const dispatchPrefilled = useRef(false);
   useEffect(() => {
     if (!dispatchOrder || dispatchPrefilled.current) return;
     dispatchPrefilled.current = true;
@@ -741,7 +693,6 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
   // After a successful save: plain Stock Movements goes back to its list;
   // from Dispatch, Step 6 is marked done first, then back to the board.
   const afterSave = async () => {
-    dropDraft();   // saved — nothing unsaved left to keep
     // 2026-10-12: back to the Outward sub-tab + pill this entry now sits in.
     if (!fromDispatch) { navigate(outwardListPath(!!emailSentAt, form.fulfilmentType)); return; }
     const problem = await markDispatchStepDone();
@@ -837,10 +788,6 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
   useEffect(() => {
     if (isEditing) return;
     const warehouse = form.warehouse;
-    // 2026-10-13: a restored draft keeps its DO Number on load — it is only
-    // regenerated once the Warehouse is actually changed.
-    if (initialDraft && initialDraft.form.doNumber && initialDraft.form.warehouse === warehouse
-      && formRef.current.doNumber === initialDraft.form.doNumber) return;
     if (!DO_NUMBER_PREFIX[warehouse]) {
       setForm(f => (f.doNumber ? { ...f, doNumber: '' } : f));
       return;
@@ -997,17 +944,6 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
 
     return () => { cancelled = true; clearTimeout(timer); };
   }, [form.warehouse, form.lotNo]);
-
-  // Draft: written ~500ms after the last change, and once more when the page
-  // is left (so the last keystrokes aren't lost). Until the user touches the
-  // form, the current state is only remembered as the "untouched" baseline.
-  useEffect(() => {
-    if (loadingMovement) return;
-    if (!interacted.current) { draftBaseline.current = JSON.stringify(form); return; }
-    const timer = setTimeout(flushDraft, 500);
-    return () => clearTimeout(timer);
-  }, [form, orderLineSeq, loadingMovement]);
-  useEffect(() => () => flushDraft(), []);
 
   // Stock line under No of Barrels — only while it still belongs to the
   // Warehouse + Lot No currently in the form.
@@ -1329,16 +1265,8 @@ function OutwardForm({ draftKey, onReset }: { draftKey: string; onReset: () => v
         </div>
       </div>
 
-      {/* Any typing / picking in the form marks it as touched (for the draft). */}
-      <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto" onInputCapture={markInteracted} onChangeCapture={markInteracted} onClickCapture={markInteracted}>
+      <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="flex flex-col gap-[14px]">
-          {restored && (
-            <div className="flex items-center gap-2 bg-[#FFF3E0] border border-[#E9730C]/40 text-[#8A4500] rounded-[4px] px-3 py-2 text-[12px]">
-              <span className="font-semibold">Restored your unsaved changes</span>
-              <span>·</span>
-              <button type="button" className="font-semibold underline hover:text-red-mrt" onClick={() => { dropDraft(); onReset(); }}>Discard</button>
-            </div>
-          )}
           {/* 2026-10-13: an order with 2+ product lines still to dispatch —
               pick which line this DO is for. */}
           {fromDispatch && orderLinesLeft.length >= 2 && (
