@@ -4,7 +4,7 @@ import { Clock, Pause, Play, Undo2 } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
 import { Button } from './ui';
 import {
-  DISPATCH_STEPS, DISPATCH_DOER_NAME, STEP_ACTIONS, BoardCard, BoardOrderCard, ColumnNo, StepAction, StepDef, fmtDuration, TimeState, doPendingText,
+  DISPATCH_STEPS, DISPATCH_DOER_NAME, STEP_ACTIONS, BoardCard, BoardOrderCard, ColumnNo, StepAction, StepDef, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed,
 } from '../lib/dispatchFlow';
 
 // Kanban "Board view" of the Dispatch module: a step strip + one 268px column
@@ -79,12 +79,17 @@ const RedButton = ({ children, onClick }: { children: React.ReactNode; onClick: 
  * disabled, greyed out, with a tooltip. Who is allowed did not change.
  */
 export const STEP_BUTTONS_LOCKED_TIP = 'Only Admin / Samata can update dispatch steps';
-export function StepActionButtons({ card, busy, canAct, onAction, onResume }: {
+export const step6Label = (card: BoardOrderCard) =>
+  step6AlreadyEmailed(card) ? 'Mark Step 6 done (DO already emailed)' : 'Open DO → Email to Client';
+
+export function StepActionButtons({ card, busy, canAct, onAction, onResume, omitStep6MarkDone }: {
   card: BoardOrderCard;
   busy: boolean;
   canAct: boolean;
   onAction: (card: BoardOrderCard, action: StepAction) => void;
   onResume: (card: BoardOrderCard) => void;
+  // The drawer shows "Mark Step 6 done" in its Step 6 row instead.
+  omitStep6MarkDone?: boolean;
 }) {
   if (card.column > 7) return null;
   const base = `text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[6px] transition-colors disabled:opacity-50 ${canAct ? 'disabled:cursor-wait' : 'disabled:cursor-not-allowed'}`;
@@ -103,10 +108,14 @@ export function StepActionButtons({ card, busy, canAct, onAction, onResume }: {
     );
   }
   // 2026-10-16: Step 6 with a DO already saved — the button opens that DO
-  // (edit mode) to email it; the email is what completes Step 6.
-  const actions = card.position.step === 6 && card.doPending
-    ? (STEP_ACTIONS[6] || []).map(a => a.primary ? { ...a, label: 'Open DO → Email to Client' } : a)
-    : STEP_ACTIONS[card.position.step] || [];
+  // (edit mode) to email it; the email is what completes Step 6. If every DO
+  // is already emailed, it marks Step 6 done instead (no email is sent).
+  const actions = (card.position.step === 6 && card.doPending
+    ? (STEP_ACTIONS[6] || []).map(a => a.primary ? { ...a, label: step6Label(card) } : a)
+    : STEP_ACTIONS[card.position.step] || [])
+    // "Mark Step 6 done" is for board logins only (hidden, not greyed, for others).
+    .filter(a => !((omitStep6MarkDone || !canAct) && a.primary && step6AlreadyEmailed(card)));
+  if (!actions.length) return null;
   return (
     <div className={`flex gap-1.5 ${canAct ? '' : 'cursor-not-allowed'}`} title={tip}>
       {actions.map(a => (

@@ -6,8 +6,9 @@ import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
   BoardCard, BoardOrderCard, DispatchStepRecord, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
   drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastStepClick, describeStepClick, allowedStepStatuses,
+  step6AlreadyEmailed, STEP_ACTIONS,
 } from '../lib/dispatchFlow';
-import { StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot } from './DispatchBoard';
+import { StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot, step6Label } from './DispatchBoard';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LineItemsPanel } from './LineItemsPanel';
 import { Badge, Button } from './ui';
@@ -56,9 +57,10 @@ function StepIcon({ step, late }: { step: OrderStepHistory; late: boolean }) {
   return <span className="w-[18px] h-[18px] rounded-full border-2 border-g300 bg-white inline-block" />;
 }
 
-function StepRow({ step, now, roster, onEdit, doLines }: {
+function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
   step: OrderStepHistory; now: number; roster: TeamMember[]; onEdit?: () => void;
   doLines?: { text: string; pending: boolean }[];   // Step 6: the round's linked DOs
+  rowAction?: { label: string; busy: boolean; onClick: () => void };   // Step 6: "Mark Step 6 done (DO already emailed)"
 }) {
   const def = stepDef(step.stepNo);
   const planned = ms(step.plannedAt);
@@ -114,6 +116,12 @@ function StepRow({ step, now, roster, onEdit, doLines }: {
         {doLines?.map(l => (
           <div key={l.text} className={`text-[11px] mt-0.5 ${l.pending ? 'text-amber-700 font-semibold' : 'text-g600'}`}>{l.text}</div>
         ))}
+        {rowAction && (
+          <button type="button" onClick={rowAction.onClick} disabled={rowAction.busy}
+            className="mt-1.5 text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[5px] bg-blk text-white hover:bg-dark transition-colors disabled:opacity-50 disabled:cursor-wait">
+            {rowAction.label}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -218,6 +226,10 @@ export function DispatchDrawer({
   const step6DoLines = linkedDOs.filter(d => d.round === focusRound).map(d => d.emailSentAt
     ? { text: `DO ${d.doNumber || '—'} emailed ${fmtWhen(d.emailSentAt)}`, pending: false }
     : { text: `DO ${d.doNumber || '—'} saved, email pending`, pending: true });
+  // Every DO already emailed but no Step 6 row — the Step 6 row gets "Mark
+  // Step 6 done (DO already emailed)" (board logins only; no email is sent).
+  const markStep6Action = orderCard && canAct && step6AlreadyEmailed(orderCard)
+    ? (STEP_ACTIONS[6] || []).find(a => a.primary) : undefined;
 
   const act = async (card: BoardOrderCard, action: StepAction) => { if (!canAct) return; await onAction(card, action, remark); setRemark(''); };
   const resume = async (card: BoardOrderCard) => { if (!canAct) return; await onResume(card, remark); setRemark(''); };
@@ -297,7 +309,11 @@ export function DispatchDrawer({
                 )}
               </div>
             </div>
-            {steps.map(s => <StepRow key={s.stepNo} step={s} now={now} roster={roster} onEdit={() => openStepEditor(s)} doLines={s.stepNo === 6 ? step6DoLines : undefined} />)}
+            {steps.map(s => (
+              <StepRow key={s.stepNo} step={s} now={now} roster={roster} onEdit={() => openStepEditor(s)}
+                doLines={s.stepNo === 6 ? step6DoLines : undefined}
+                rowAction={s.stepNo === 6 && markStep6Action ? { label: step6Label(orderCard!), busy, onClick: () => act(orderCard!, markStep6Action) } : undefined} />
+            ))}
           </div>
 
           {/* Dispatch entries */}
@@ -339,7 +355,7 @@ export function DispatchDrawer({
                 placeholder="Remark (saved with the next button you press)"
                 className="w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[4px] p-[7px_9px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
             )}
-            {hasStepActions && <StepActionButtons card={orderCard} busy={busy} canAct={canAct} onAction={act} onResume={resume} />}
+            {hasStepActions && <StepActionButtons card={orderCard} busy={busy} canAct={canAct} onAction={act} onResume={resume} omitStep6MarkDone />}
             {orderCard.column === 8 && (
               <button type="button" onClick={() => navigate(`/dispatch/new?orderRef=${order.id}&toSent=1&from=board`)}
                 className="w-full bg-red-mrt hover:bg-red-h text-white text-[12px] font-semibold rounded-[4px] px-2.5 py-[7px] transition-colors">

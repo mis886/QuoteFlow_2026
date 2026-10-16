@@ -5,7 +5,7 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
 import { DispatchBoard, AutoTag, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { LineItemsPanel } from '../components/LineItemsPanel';
 import { DispatchDrawer, StepEditPatch } from '../components/DispatchDrawer';
@@ -157,6 +157,52 @@ export function Dispatch() {
     }
   };
 
+  // 2026-10-16: every DO of the round is already emailed but there's no Step 6
+  // row (emailed by a login without board access, or Step 6 was undone) —
+  // "Mark Step 6 done (DO already emailed)" writes the same row the Outward
+  // form's markDispatchStepDone writes on email, timed at the latest DO email,
+  // with the same "already marked" check. No email is sent.
+  const markStep6DoneFromEmail = async (card: BoardOrderCard, remark?: string) => {
+    const p = card.doPending;
+    if (!canActOnBoard || busyCardKey || !p || !step6AlreadyEmailed(card)) return;
+    setBusyCardKey(card.key);
+    try {
+      const { data: already, error: checkErr } = await supabase.from('dispatch_steps').select('*')
+        .eq('order_id', card.order.id).eq('round', card.position.round).eq('step_no', 6).eq('status', 'done').limit(1);
+      if (checkErr) throw checkErr;
+      if (already && already.length > 0) {
+        // Someone already marked it — just catch up with that row.
+        const rec = mapStepFromDB(already[0]);
+        setStepRecords(prev => prev.some(r => r.id === rec.id) ? prev : [...prev, rec]);
+        return;
+      }
+      const latest = p.dos.map(d => d.emailSentAt).filter((v): v is string => !!v)
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime()).pop();
+      const { data: inserted, error } = await supabase.from('dispatch_steps').insert({
+        order_id: card.order.id,
+        round: card.position.round,
+        step_no: 6,
+        status: 'done',
+        planned_at: card.position.plannedAt ?? null,
+        done_at: latest ?? new Date().toISOString(),
+        done_by: user?.email ?? null,
+        remark: remark?.trim() || null,
+      }).select('*');
+      if (error) throw error;
+      setStepRecords(prev => [...prev, ...(inserted || []).map(mapStepFromDB)]);
+      const doNos = p.dos.map(d => d.doNumber || '—').join(', ');
+      logActivity({
+        module: 'dispatch_steps', recordId: card.order.id,
+        recordLabel: stepLogLabel(card.order, 6, `Done (DO ${doNos} already emailed)`),
+        action: 'insert', after: inserted?.[0],
+      });
+    } catch (err: any) {
+      alert(`Could not save: ${err?.message || JSON.stringify(err)}`);
+    } finally {
+      setBusyCardKey(null);
+    }
+  };
+
   // 2026-10-05: Step 6 "DO issued ✓" no longer marks the step done straight
   // away — the Stock Movements Outward form has to be saved first.
   // 2026-10-06: that form now opens as a normal FULL PAGE (like New Enquiry)
@@ -170,6 +216,7 @@ export function Dispatch() {
   const handleStepAction = (card: BoardOrderCard, action: StepAction, remark?: string) => {
     if (card.position.step === 6 && action.primary) {
       if (!canActOnBoard || busyCardKey) return;
+      if (step6AlreadyEmailed(card)) return markStep6DoneFromEmail(card, remark);
       const params = new URLSearchParams({
         ...(card.doPending ? { movementId: card.doPending.open.id } : {}),
         fromDispatch: '1',

@@ -153,6 +153,10 @@ export function doPendingFor(linked: LinkedDO[], orderId: string, round: number)
   return { dos, notEmailed, open: notEmailed[0] || latest };
 }
 
+/** At Step 6, every linked DO of the round already emailed — Step 6 can be marked done without a new email. */
+export const step6AlreadyEmailed = (card: { position: OrderPosition; doPending?: DoPending }) =>
+  card.position.step === 6 && !card.position.hold && !!card.doPending && card.doPending.notEmailed.length === 0;
+
 /** The amber line on a Step 6 card / drawer row. */
 export function doPendingText(p: DoPending): string {
   const one = p.dos.length === 1 ? p.dos[0] : null;
@@ -161,10 +165,11 @@ export function doPendingText(p: DoPending): string {
       ? `DO ${one.doNumber || '—'} saved · Email not sent yet — Step 6 completes when the DO is emailed to the client.`
       : `${p.dos.length} DOs saved · ${p.notEmailed.length} not emailed — Step 6 completes when every DO is emailed to the client.`;
   }
-  // Every DO emailed but Step 6 not done — it was undone after the email.
+  // Every DO emailed but Step 6 not done (emailed by a login without board
+  // access, or Step 6 was undone) — "Mark Step 6 done" completes it.
   return one
-    ? `DO ${one.doNumber || '—'} emailed · Step 6 not completed — email the DO again to complete Step 6.`
-    : `${p.dos.length} DOs emailed · Step 6 not completed — email a DO again to complete Step 6.`;
+    ? `DO ${one.doNumber || '—'} already emailed · Step 6 not marked done yet.`
+    : `${p.dos.length} DOs already emailed · Step 6 not marked done yet.`;
 }
 
 // ── Undo last step (admins) ───────────────────────────────────────────────
