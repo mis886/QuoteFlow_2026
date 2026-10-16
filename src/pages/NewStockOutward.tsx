@@ -503,6 +503,19 @@ function OutwardForm() {
   const autoBarrels = useRef<string | null>(null);
   // Stock found for the current Warehouse + Lot No (null = none / not looked up).
   const [lotStock, setLotStock] = useState<{ key: string; warehouse: string; lotNo: string; available: number } | null>(null);
+  // 2026-10-16: the matched lot's Packing / Packing Type / MOU. While the
+  // form's Warehouse + Lot No still match it, those three fields come from
+  // the lot and are locked — only No of Barrels is edited. The ref mirrors it
+  // for setForm updaters (order prefill / product picker) so they never put
+  // the order line's packing back over the lot's.
+  type LotDetails = { key: string; lotNo: string; packing: string; packagingType: string; weightType: string };
+  const [lotDetails, setLotDetailsState] = useState<LotDetails | null>(null);
+  const lotDetailsRef = useRef<LotDetails | null>(null);
+  const setLotDetails = (d: LotDetails | null) => { lotDetailsRef.current = d; setLotDetailsState(d); };
+  const lockedLotFor = (f: typeof emptyForm) => {
+    const d = lotDetailsRef.current;
+    return d && d.key === lotKeyOf(f.warehouse, f.lotNo) ? d : null;
+  };
   // Board flow: "you are dispatching ALL barrels but the order needs fewer" confirm.
   const [confirmAllStock, setConfirmAllStock] = useState(false);
   // 2026-10-12: stock_movements.email_sent_at of the entry being edited
@@ -652,6 +665,8 @@ function OutwardForm() {
     setForm(f => ({
       ...f,
       ...prefill,
+      // A lot already matched keeps its own packing (see lotDetails).
+      ...(lockedLotFor(f) ? { packing: f.packing, packagingType: f.packagingType } : {}),
       transporter: f.transporter || transporterByParty[party] || '',
       fulfilmentType: dispatchFulfilment || f.fulfilmentType || fulfilmentTypeByParty[party] || '',
     }));
@@ -761,13 +776,15 @@ function OutwardForm() {
     const p = outwardPrefillFor(dispatchOrder, data.dispatchEntries, seq);
     setOrderLineSeq(seq);
     setForm(f => {
-      const packing = p.packing ?? '';
+      // 2026-10-16: a matched lot's packing stays — only the product changes.
+      const locked = lockedLotFor(f);
+      const packing = locked ? f.packing : (p.packing ?? '');
       const barrels = parseNum(f.numArticles);
       const pack = parseNum(packing);
       return {
         ...f,
         productName: p.productName ?? '', productCode: p.productCode ?? '', billingName: p.billingName ?? '',
-        packing, packagingType: p.packagingType ?? '',
+        packing, packagingType: locked ? f.packagingType : (p.packagingType ?? ''),
         totalQty: barrels !== null && pack !== null ? String(barrels * pack) : f.totalQty,
       };
     });
@@ -831,9 +848,17 @@ function OutwardForm() {
   // to what is actually being sent; save() only ever deducts what is in the
   // field. While editing, nothing in the form is changed — the lookup only
   // feeds the "Available (after this DO)" line.
+  // 2026-10-16: once a lot matches, Packing (packing, else packing_detail),
+  // Packing Type, MOU and Lot Date are OVERWRITTEN from the lot (no longer
+  // "only if empty" — the order line's packing must not win), and Total
+  // Quantity = No of Barrels × the lot's Packing. Packing / Packing Type / MOU
+  // are then locked (see lotDetails). Product / Billing / Party / Transporter /
+  // Note stay as before (fill-if-empty, so the order's values win). Edit mode
+  // still changes nothing — it only records the lot so Packing shows locked.
   useEffect(() => {
     setLotWarning('');
     setLotStock(null);
+    setLotDetails(null);
     const warehouse = form.warehouse;
     const lotNo = form.lotNo.trim();
     const partyCol = PARTY_COLUMN[warehouse];
@@ -858,15 +883,39 @@ function OutwardForm() {
       if (cancelled) return;
 
       const existing = data?.[0];
+      // Same packing/packingDetail fallback StockSummary.tsx's own Packing
+      // column uses: the legacy numeric `packing` column wins when set,
+      // otherwise fall back to the text `packing_detail` column Inward
+      // actually writes.
+      const lot: LotDetails | null = existing ? {
+        key, lotNo,
+        packing: existing.packing != null ? String(existing.packing) : (existing.packing_detail || ''),
+        packagingType: existing.packing_type || '',
+        weightType: existing.mou || '',
+      } : null;
       if (isEditing) {
-        if (existing) setLotStock({ key, warehouse, lotNo, available: Number(existing[partyCol]) || 0 });
+        if (existing) {
+          setLotStock({ key, warehouse, lotNo, available: Number(existing[partyCol]) || 0 });
+          setLotDetails(lot);
+        }
         return;
       }
-      if (!existing) { clearStaleAuto(); return; } // no match — likely a brand-new lot, nothing to fill in
+      if (!existing || !lot) { clearStaleAuto(); return; } // no match — likely a brand-new lot, nothing to fill in
+      setLotDetails(lot);
+
+      // The lot's own details — always overwritten, for this Warehouse + Lot No only.
+      const withLotDetails = (f: typeof emptyForm) => ({
+        ...f,
+        packing: lot.packing,
+        packagingType: lot.packagingType,
+        weightType: lot.weightType,
+        lotDate: existing.inward_date || f.lotDate,
+      });
 
       const qtyAtWarehouse = existing[partyCol];
       if (!qtyAtWarehouse || qtyAtWarehouse <= 0) {
         setLotWarning(`No stock found for this lot at ${warehouse}.`);
+        setForm(f => (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo ? f : withLotDetails(f)));
         clearStaleAuto();
         return;
       }
@@ -879,7 +928,7 @@ function OutwardForm() {
         // already changed one of the two fields again.
         if (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo) return f;
 
-        const next = { ...f };
+        const next = withLotDetails(f);
         if (!f.productName.trim()) next.productName = existing.product_name || '';
         // 2026-09-08: prefer the lot's own product_code (written directly by
         // NewStockInward.tsx's dropdown at lot creation) over re-deriving it
@@ -910,33 +959,18 @@ function OutwardForm() {
           next.numArticles = String(qtyAtWarehouse);
           autoBarrels.current = next.numArticles;
         }
-        // Same packing/packingDetail fallback StockSummary.tsx's own Packing
-        // column uses: the legacy numeric `packing` column wins when set,
-        // otherwise fall back to the text `packing_detail` column Inward
-        // actually writes.
-        if (!f.packing.trim()) {
-          const fallbackPacking = existing.packing != null ? String(existing.packing) : (existing.packing_detail || '');
-          if (fallbackPacking) next.packing = fallbackPacking;
-        }
-        if (!f.packagingType.trim()) next.packagingType = existing.packing_type || '';
-        if (!f.weightType.trim()) next.weightType = existing.mou || '';
-        // stock_lots.inward_date is a plain `date` column (not timestamptz —
-        // see 20260901060000_create_stock_lots_table.sql), so it comes back
-        // as an already-"YYYY-MM-DD" string with no time component to strip,
-        // same as NewStockInward.tsx/StockSummary.tsx's own inward_date reads.
-        if (!f.lotDate.trim()) next.lotDate = existing.inward_date || '';
+        // Packing / Packing Type / MOU / Lot Date already come from the lot
+        // (withLotDetails above). stock_lots.inward_date is a plain `date`
+        // column, so it is already "YYYY-MM-DD".
 
-        // Same barrels×packing auto-calc onNumArticlesChange/onPackingChange
-        // use, run once here so Total Quantity ends up populated too —
-        // never from stock_lots.quantity directly, which is the lot's
-        // total remaining stock across every party, not this transaction.
-        // 2026-10-13: recalculated (not just filled when empty) whenever
-        // No of Barrels was auto-set above.
-        if (autoFillBarrels || !f.totalQty.trim()) {
-          const barrels = parseNum(next.numArticles);
-          const packing = parseNum(next.packing);
-          if (barrels !== null && packing !== null) next.totalQty = String(barrels * packing);
-        }
+        // Same barrels×packing auto-calc onNumArticlesChange uses — never
+        // from stock_lots.quantity directly, which is the lot's total
+        // remaining stock across every party, not this transaction.
+        // 2026-10-16: always recalculated, since Packing is now always the
+        // lot's (the user's own barrels × the lot's packing).
+        const barrels = parseNum(next.numArticles);
+        const packing = parseNum(next.packing);
+        if (barrels !== null && packing !== null) next.totalQty = String(barrels * packing);
 
         return next;
       });
@@ -949,6 +983,16 @@ function OutwardForm() {
   // Warehouse + Lot No currently in the form.
   const currentLotStock = lotStock && lotStock.key === lotKeyOf(form.warehouse, form.lotNo) ? lotStock : null;
   const enteredBarrels = parseNum(form.numArticles);
+  // 2026-10-16: lot matched → Packing / Packing Type / MOU are locked.
+  const lockedLot = lotDetails && lotDetails.key === lotKeyOf(form.warehouse, form.lotNo) ? lotDetails : null;
+  // Order line packing vs the lot's (Board flow) — an amber note only, never blocks.
+  const orderPacking = dispatchOrder ? String(orderLineFor(dispatchOrder, data.dispatchEntries, orderLineSeq)?.packing ?? '').trim() : '';
+  const packingMismatch = (() => {
+    if (!lockedLot || !orderPacking || !lockedLot.packing.trim()) return false;
+    const a = parseNum(orderPacking), b = parseNum(lockedLot.packing);
+    return a !== null && b !== null ? a !== b : orderPacking.toLowerCase() !== lockedLot.packing.trim().toLowerCase();
+  })();
+  const lockedCls = 'bg-g100 text-g600 cursor-not-allowed';
 
   // 2026-09-07: Number of Articles ("No of Barrels" now) and Total Quantity
   // became required here too, matching Inward's Quantity section exactly —
@@ -1366,7 +1410,11 @@ function OutwardForm() {
               </div>
               <div>
                 <label className={labelCls}>Packing</label>
-                <input className={inputCls} value={form.packing} onChange={onPackingChange} />
+                <input className={`${inputCls} ${lockedLot ? lockedCls : ''}`} value={form.packing} onChange={onPackingChange} readOnly={!!lockedLot} />
+                {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
+                {packingMismatch && lockedLot && (
+                  <p className="text-amber-600 text-[11px] mt-0.5">Order packing is {orderPacking} per barrel, but lot {lockedLot.lotNo} is {lockedLot.packing} — the lot's packing is used.</p>
+                )}
               </div>
               <div>
                 <label className={labelCls}>Total Quantity <span className="text-red-mrt">*</span></label>
@@ -1374,17 +1422,19 @@ function OutwardForm() {
               </div>
               <div>
                 <label className={labelCls}>Packing Type</label>
-                <select className={selectCls} value={form.packagingType} onChange={set('packagingType')}>
+                <select className={`${selectCls} ${lockedLot ? lockedCls : ''}`} value={form.packagingType} onChange={set('packagingType')} disabled={!!lockedLot}>
                   <option value="">Select...</option>
                   {packagingTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
+                {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
               </div>
               <div>
                 <label className={labelCls}>MOU (Measure of Unit)</label>
-                <select className={selectCls} value={form.weightType} onChange={set('weightType')}>
+                <select className={`${selectCls} ${lockedLot ? lockedCls : ''}`} value={form.weightType} onChange={set('weightType')} disabled={!!lockedLot}>
                   <option value="">Select...</option>
                   {weightTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
+                {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
               </div>
             </div>
           </div>
