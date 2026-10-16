@@ -669,7 +669,8 @@ function OutwardForm() {
       setTransporterOptions([...Array.from(transporterSet).sort(), 'Other']);
       // Prefilled Party Name (Dispatch board) never goes through the
       // combobox onChange, so fill Transporter / Fulfilment Type here the
-      // same way picking the party by hand would — only if still empty.
+      // same way picking the party by hand would — only if still empty, so an
+      // order's own Fulfilment Type set by the prefill is never overwritten.
       setForm(f => f.partyName ? {
         ...f,
         transporter: f.transporter || map[f.partyName] || '',
@@ -692,13 +693,18 @@ function OutwardForm() {
     dispatchPrefilled.current = true;
     const prefill = outwardPrefillFor(dispatchOrder, data.dispatchEntries, orderLineSeq);
     const party = prefill.partyName || '';
+    const orderFulfilment = dispatchOrder.fulfillmentType === 'delivery' ? 'Delivery'
+      : dispatchOrder.fulfillmentType === 'self_pickup' ? 'Self Pickup' : '';
     setForm(f => ({
       ...f,
       ...prefill,
       // A lot already matched keeps its own product / packing (see lotDetails).
       ...(lockedLotFor(f) ? { productName: f.productName, productCode: f.productCode, packing: f.packing, packagingType: f.packagingType } : {}),
       transporter: f.transporter || transporterByParty[party] || '',
-      fulfilmentType: dispatchFulfilment || f.fulfilmentType || fulfilmentTypeByParty[party] || '',
+      // 2026-10-16: the ORDER's own Fulfilment Type wins, then the Board URL,
+      // then whatever is already in (the customer's type, if the customers
+      // query finished first). Still editable.
+      fulfilmentType: orderFulfilment || dispatchFulfilment || f.fulfilmentType || fulfilmentTypeByParty[party] || '',
     }));
   }, [dispatchOrder]);
 
