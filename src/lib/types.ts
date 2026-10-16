@@ -704,6 +704,7 @@ export interface StockMovement {
   stockCategory?: string;
   factLotNo?: string;        // inward only — stock_movements.fact_lot_no
   productName: string;
+  billingName?: string;      // outward only — stock_movements.billing_name (2026-10-16); printed on the DO PDF/DOCX
   inwardDate?: string;       // stock_movements.inward_date — Inward's "Inward Date"; also holds Outward's own "Lot Date" (shared DB column)
   lotQty?: number;
   packing?: number;          // outward's own "Packing" field (stock_movements.packing) — NOT the same as packingDetail below

@@ -87,6 +87,7 @@ export function mapRow(r: any): StockMovement {
     stockCategory: r.stock_category ?? undefined,
     factLotNo: r.fact_lot_no ?? undefined,
     productName: r.product_name,
+    billingName: r.billing_name ?? undefined,
     inwardDate: r.inward_date ?? undefined,
     lotQty: r.lot_qty ?? undefined,
     packing: r.packing ?? undefined,
@@ -312,7 +313,7 @@ export function StockMovements() {
   const deliveryCount = activeOutward.filter(m => outwardTypeOf(m) === 'delivery').length;
   const selfPickupCount = activeOutward.filter(m => outwardTypeOf(m) === 'self_pickup').length;
   const notSetCount = activeOutward.length - deliveryCount - selfPickupCount;
-  const outwardColCount = isEmailSentSub ? 16 : 15;
+  const outwardColCount = isEmailSentSub ? 17 : 16;
 
   const filtered = useMemo(() => {
     const q = normalizeSearchText(search.trim());
@@ -458,6 +459,7 @@ export function StockMovements() {
                   {isEmailSentSub && <Th label="Email Sent On" />}
                   <Th label="Lot No" />
                   <Th label="Product Name" />
+                  <Th label="Billing Name" />
                   <Th label="Warehouse" />
                   <Th label="Party Name" />
                   <Th label="Transporter" />
@@ -486,6 +488,7 @@ export function StockMovements() {
                       )}
                       <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{m.whLotNo || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top font-semibold text-blk min-w-[180px]">{m.productName}</td>
+                      <td className="px-[13px] py-[9px] align-top text-g600 min-w-[140px]">{m.billingName || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.warehouse}</td>
                       <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap max-w-[180px] truncate" title={m.partyName === 'Other' ? m.otherParty : m.partyName}>
                         {m.partyName === 'Other' ? (m.otherParty || 'Other') : (m.partyName || '—')}

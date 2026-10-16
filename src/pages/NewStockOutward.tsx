@@ -340,11 +340,12 @@ async function insertOutwardWithRetry(
   warehouse: string,
   onRetryDoNumber: (doNumber: string) => void,
   maxAttempts = 3
-): Promise<{ error: any }> {
+): Promise<{ error: any; saved?: Record<string, any> }> {
   let attemptPayload = payload;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const { error } = await supabase.from('stock_movements').insert(attemptPayload);
-    if (!error) return { error: null };
+    // `saved` = the payload that actually went in (with the final DO Number), for the activity log.
+    if (!error) return { error: null, saved: attemptPayload };
     if (error.code !== '23505' || attempt === maxAttempts - 1) return { error };
     const nextDoNumber = await generateNextDoNumber(warehouse);
     attemptPayload = { ...attemptPayload, do_number: nextDoNumber };
@@ -547,6 +548,8 @@ function OutwardForm() {
   // may fold a legacy warehouse value (e.g. "WADA", no longer in this
   // form's own WAREHOUSES list) into 'Other'+otherWarehouse for display.
   const [original, setOriginal] = useState<{ warehouse: string; lotNo: string; totalQty: number; numArticles: string } | null>(null);
+  // The full stock_movements row as loaded for editing — the activity log's "before".
+  const originalRow = useRef<Record<string, any> | null>(null);
 
   useEffect(() => {
     if (!movementId) return;
@@ -574,7 +577,9 @@ function OutwardForm() {
         // Name combobox's own onChange already uses, same as
         // OutwardEditModal.tsx did.
         productCode: codeForProductName(data.product_name || ''),
-        billingName: billingNameForProductName(data.product_name || ''),
+        // 2026-10-16: the saved billing_name; entries saved before it existed
+        // fall back to the catalogue lookup.
+        billingName: data.billing_name || billingNameForProductName(data.product_name || ''),
         numArticles: data.num_articles || '',
         packing: data.packing?.toString() ?? '',
         totalQty: data.total_qty?.toString() ?? '',
@@ -587,6 +592,7 @@ function OutwardForm() {
         fulfilmentType: data.fulfilment_type || '',
         note: data.note || '',
       });
+      originalRow.current = data;
       setOriginal({
         warehouse: data.warehouse || '',
         lotNo: (data.wh_lot_no || '').trim(),
@@ -1030,14 +1036,16 @@ function OutwardForm() {
   // of the shared StockMovement interface. generateOutwardPDF/
   // downloadOutwardDOCX both read it via `(movement as any).productCode`,
   // so it's widened on here rather than added to StockMovement itself.
-  const buildOutwardData = (): StockMovement & { productCode?: string; billingName?: string } => ({
+  // 2026-10-16: billingName — in Edit mode the form holds the SAVED
+  // billing_name (see the load effect), so PDF/DOCX/Email match the DO as created.
+  const buildOutwardData = (): StockMovement & { productCode?: string } => ({
     id: movementId || '',
     type: 'outward',
     warehouse: isOtherWarehouse ? form.otherWarehouse.trim() : form.warehouse,
     whLotNo: form.lotNo.trim() || undefined,
     productName: form.productName.trim(),
     productCode: form.productCode || undefined,
-    billingName: form.billingName || undefined,
+    billingName: form.billingName.trim() || undefined,
     doNumber: form.doNumber.trim() || undefined,
     doDate: form.doDate || undefined,
     inwardDate: form.lotDate || undefined,
@@ -1149,10 +1157,11 @@ function OutwardForm() {
       await adjustLot(newPartyCol, lotNo, -(totalQty ?? 0), -(numArticles ?? 0), actingEmail);
 
       // 3. Update the stock_movements row itself.
-      const { error: moveErr } = await supabase.from('stock_movements').update({
+      const updatePayload = {
         warehouse: warehouseToSave,
         wh_lot_no: lotNo || null,
         product_name: form.productName.trim(),
+        billing_name: form.billingName.trim() || null,
         do_number: form.doNumber.trim(),
         do_date: form.doDate || null,
         inward_date: form.lotDate || null,
@@ -1172,9 +1181,15 @@ function OutwardForm() {
         // this; see the migration that added them alongside dispatch_entries.updated_by).
         updated_at: new Date().toISOString(),
         updated_by: actingEmail ?? null,
-      }).eq('id', movementId);
+      };
+      const { error: moveErr } = await supabase.from('stock_movements').update(updatePayload).eq('id', movementId);
 
       if (moveErr) { setError(moveErr.message); setSaving(false); return; }
+      logActivity({
+        module: 'stock_movements', recordId: movementId,
+        recordLabel: `DO ${updatePayload.do_number || '—'} · ${updatePayload.product_name} · Lot ${lotNo || '—'}`,
+        action: 'update', before: originalRow.current ?? undefined, after: { ...originalRow.current, ...updatePayload },
+      });
       await afterSave();
       setSaving(false);
       return;
@@ -1185,6 +1200,7 @@ function OutwardForm() {
       warehouse: warehouseToSave,
       wh_lot_no: lotNo || null,
       product_name: form.productName.trim(),
+      billing_name: form.billingName.trim() || null,
       do_number: form.doNumber.trim(),
       do_date: form.doDate || null,
       inward_date: form.lotDate || null,
@@ -1206,12 +1222,17 @@ function OutwardForm() {
     // under concurrent saves for the same warehouse gets one fresh number
     // and a retry instead of a raw DB error — see that function's comment
     // and the stock_movements_do_number_unique migration.
-    const { error: moveErr } = await insertOutwardWithRetry(
+    const { error: moveErr, saved } = await insertOutwardWithRetry(
       movementPayload,
       form.warehouse,
       doNumber => setForm(f => ({ ...f, doNumber }))
     );
     if (moveErr) { setError(moveErr.message || 'Failed to save entry.'); setSaving(false); return; }
+    logActivity({
+      module: 'stock_movements', recordId: saved?.do_number || movementPayload.do_number,
+      recordLabel: `DO ${saved?.do_number || '—'} · ${movementPayload.product_name} · Lot ${lotNo || '—'}`,
+      action: 'insert', after: saved,
+    });
 
     // Best-effort stock_lots decrement — only when there's a lot to match
     // against and the warehouse is one of the known parties. Never blocks
