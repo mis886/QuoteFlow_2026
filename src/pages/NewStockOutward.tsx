@@ -377,23 +377,24 @@ export function orderLineFor(o: Order, entries: DispatchEntry[], seq?: number | 
 }
 
 // Builds the Dispatch prefill from an order (moved here from Dispatch.tsx
-// on 2026-10-06). Uses orderLineFor's line; product is matched
-// against PRODUCTS by name (case-insensitive), falling back to the raw text.
+// on 2026-10-06). Uses orderLineFor's line.
+// 2026-10-16: Billing Name = the order line's product name, exactly as in the
+// order. Product Name / Code and Packing / Packing Type start EMPTY — they
+// come from the lot once Warehouse + Lot No match (see the Lot No auto-fill).
 export function outwardPrefillFor(o: Order, entries: DispatchEntry[], seq?: number | null): OutwardPrefill {
   const item = orderLineFor(o, entries, seq);
   const desc = (item?.desc || '').trim();
-  const product = PRODUCTS.find(p => p.name.toLowerCase() === desc.toLowerCase());
   // 2026-10-13: No of Barrels / Total Quantity are NOT prefilled from the
   // order any more — they come from the lot's stock at the chosen Warehouse
   // (see the Lot No auto-fill). The order qty is shown next to the field as
   // "Order needs" instead (orderBarrelsFor below).
   return {
     doDate: fmtIST(new Date(), 'yyyy-MM-dd'),
-    productName: product?.name || desc,
-    productCode: product?.code || '',
-    billingName: product?.billingName || '',
-    packing: item?.packing || '',
-    packagingType: item?.packingType || '',
+    productName: '',
+    productCode: '',
+    billingName: desc,
+    packing: '',
+    packagingType: '',
     partyName: o.cust || '',
     note: `${o.soNumber || ''}${o.soNumber ? ' · ' : ''}${o.id}`,
   };
@@ -508,7 +509,8 @@ function OutwardForm() {
   // the lot and are locked — only No of Barrels is edited. The ref mirrors it
   // for setForm updaters (order prefill / product picker) so they never put
   // the order line's packing back over the lot's.
-  type LotDetails = { key: string; lotNo: string; packing: string; packagingType: string; weightType: string };
+  // 2026-10-16: Product Name / Product Code are locked from the lot too.
+  type LotDetails = { key: string; lotNo: string; productName: string; productCode: string; packing: string; packagingType: string; weightType: string };
   const [lotDetails, setLotDetailsState] = useState<LotDetails | null>(null);
   const lotDetailsRef = useRef<LotDetails | null>(null);
   const setLotDetails = (d: LotDetails | null) => { lotDetailsRef.current = d; setLotDetailsState(d); };
@@ -516,6 +518,9 @@ function OutwardForm() {
     const d = lotDetailsRef.current;
     return d && d.key === lotKeyOf(f.warehouse, f.lotNo) ? d : null;
   };
+  // Plain New Outward: set once the user types their own Billing Name, so the
+  // catalogue lookup (product pick / lot auto-fill) stops replacing it.
+  const billingTyped = useRef(false);
   // Board flow: "you are dispatching ALL barrels but the order needs fewer" confirm.
   const [confirmAllStock, setConfirmAllStock] = useState(false);
   // 2026-10-12: stock_movements.email_sent_at of the entry being edited
@@ -665,8 +670,8 @@ function OutwardForm() {
     setForm(f => ({
       ...f,
       ...prefill,
-      // A lot already matched keeps its own packing (see lotDetails).
-      ...(lockedLotFor(f) ? { packing: f.packing, packagingType: f.packagingType } : {}),
+      // A lot already matched keeps its own product / packing (see lotDetails).
+      ...(lockedLotFor(f) ? { productName: f.productName, productCode: f.productCode, packing: f.packing, packagingType: f.packagingType } : {}),
       transporter: f.transporter || transporterByParty[party] || '',
       fulfilmentType: dispatchFulfilment || f.fulfilmentType || fulfilmentTypeByParty[party] || '',
     }));
@@ -767,27 +772,16 @@ function OutwardForm() {
     });
   };
 
-  // "Product (from order)" picker: re-applies that order line's prefill —
-  // product name / code, billing name, packing, packing type — and nothing
-  // else. Warehouse, Lot No and No of Barrels stay as the user left them;
-  // Total Quantity follows the new packing, same as typing a packing does.
+  // "Product (from order)" picker: switches the order line the DO is for.
+  // 2026-10-16: only Billing Name follows it (the selected line's product
+  // name) — Product Name / Code and Packing come from the lot, so they and
+  // Warehouse, Lot No, No of Barrels, Total Quantity stay as they are. The
+  // "Order needs" line and the packing mismatch note follow the new line.
   const pickOrderLine = (seq: number) => {
     if (!dispatchOrder) return;
     const p = outwardPrefillFor(dispatchOrder, data.dispatchEntries, seq);
     setOrderLineSeq(seq);
-    setForm(f => {
-      // 2026-10-16: a matched lot's packing stays — only the product changes.
-      const locked = lockedLotFor(f);
-      const packing = locked ? f.packing : (p.packing ?? '');
-      const barrels = parseNum(f.numArticles);
-      const pack = parseNum(packing);
-      return {
-        ...f,
-        productName: p.productName ?? '', productCode: p.productCode ?? '', billingName: p.billingName ?? '',
-        packing, packagingType: locked ? f.packagingType : (p.packagingType ?? ''),
-        totalQty: barrels !== null && pack !== null ? String(barrels * pack) : f.totalQty,
-      };
-    });
+    setForm(f => ({ ...f, billingName: p.billingName ?? '' }));
   };
 
   const isOtherWarehouse = form.warehouse === 'Other';
@@ -852,9 +846,10 @@ function OutwardForm() {
   // Packing Type, MOU and Lot Date are OVERWRITTEN from the lot (no longer
   // "only if empty" — the order line's packing must not win), and Total
   // Quantity = No of Barrels × the lot's Packing. Packing / Packing Type / MOU
-  // are then locked (see lotDetails). Product / Billing / Party / Transporter /
-  // Note stay as before (fill-if-empty, so the order's values win). Edit mode
-  // still changes nothing — it only records the lot so Packing shows locked.
+  // are then locked (see lotDetails). Product Name / Code are overwritten and
+  // locked from the lot the same way; Billing Name, Party, Transporter and
+  // Note are not taken from the lot. Edit mode still changes nothing — it
+  // only records the lot so those fields show locked.
   useEffect(() => {
     setLotWarning('');
     setLotStock(null);
@@ -887,8 +882,20 @@ function OutwardForm() {
       // column uses: the legacy numeric `packing` column wins when set,
       // otherwise fall back to the text `packing_detail` column Inward
       // actually writes.
+      // 2026-09-08: prefer the lot's own product_code (written directly by
+      // NewStockInward.tsx's dropdown at lot creation) over re-deriving it
+      // from product_name — legacy/sheet-imported lots' free-text names
+      // (e.g. "Alpha Pinene 95 % -ve") don't exactly match PRODUCTS'
+      // stricter entries (e.g. "Alpha Pinene 95% -ve 24"), so a name-based
+      // lookup silently came back blank for exactly the lots most likely
+      // to need it. codeForProductName is still tried as a best-effort
+      // fallback for the rarer case of an old lot with no product_code at
+      // all — exact match only, no fuzzy matching (a wrong code on a real
+      // Delivery Order is worse than a blank one the user fills in).
       const lot: LotDetails | null = existing ? {
         key, lotNo,
+        productName: existing.product_name || '',
+        productCode: existing.product_code || codeForProductName(existing.product_name || ''),
         packing: existing.packing != null ? String(existing.packing) : (existing.packing_detail || ''),
         packagingType: existing.packing_type || '',
         weightType: existing.mou || '',
@@ -904,8 +911,14 @@ function OutwardForm() {
       setLotDetails(lot);
 
       // The lot's own details — always overwritten, for this Warehouse + Lot No only.
+      // 2026-10-16: Product Name / Code too. Billing Name: from the Board it
+      // stays the order's product name (never touched here); plain New
+      // Outward keeps the catalogue lookup unless the user typed their own.
       const withLotDetails = (f: typeof emptyForm) => ({
         ...f,
+        productName: lot.productName,
+        productCode: lot.productCode,
+        billingName: fromDispatch || billingTyped.current ? f.billingName : billingNameForProductName(lot.productName),
         packing: lot.packing,
         packagingType: lot.packagingType,
         weightType: lot.weightType,
@@ -929,23 +942,6 @@ function OutwardForm() {
         if (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo) return f;
 
         const next = withLotDetails(f);
-        if (!f.productName.trim()) next.productName = existing.product_name || '';
-        // 2026-09-08: prefer the lot's own product_code (written directly by
-        // NewStockInward.tsx's dropdown at lot creation) over re-deriving it
-        // from product_name — legacy/sheet-imported lots' free-text names
-        // (e.g. "Alpha Pinene 95 % -ve") don't exactly match PRODUCTS'
-        // stricter entries (e.g. "Alpha Pinene 95% -ve 24"), so a name-based
-        // lookup silently came back blank for exactly the lots most likely
-        // to need it. codeForProductName is still tried as a best-effort
-        // fallback for the rarer case of an old lot with no product_code at
-        // all — exact match only, no fuzzy matching (a wrong code on a real
-        // Delivery Order is worse than a blank one the user fills in).
-        if (!f.productCode.trim()) {
-          next.productCode = existing.product_code || codeForProductName(next.productName);
-        }
-        if (!f.billingName?.trim()) {
-          next.billingName = billingNameForProductName(next.productName);
-        }
         // 2026-09-08: sourced from the party qty_* column (qtyAtWarehouse,
         // already read above to decide the "no stock" warning), NOT
         // stock_lots.no_of_barrels — per this module's 2026-09-05 fix,
@@ -1368,20 +1364,30 @@ function OutwardForm() {
               </div>
               <div>
                 <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
-                <SearchableCombobox
-                  className={inputCls}
-                  options={PRODUCT_NAME_OPTIONS}
-                  value={form.productName}
-                  onChange={v => setForm(f => ({ ...f, productName: v, productCode: codeForProductName(v), billingName: billingNameForProductName(v) }))}
-                />
+                {/* 2026-10-16: locked to the lot's product while a lot is matched. */}
+                {lockedLot ? (
+                  <input className={`${inputCls} ${lockedCls}`} value={form.productName} readOnly />
+                ) : (
+                  <SearchableCombobox
+                    className={inputCls}
+                    options={PRODUCT_NAME_OPTIONS}
+                    value={form.productName}
+                    // From the Board, Billing Name is the order's product name — picking a
+                    // product doesn't replace it; nor does it once the user typed their own.
+                    onChange={v => setForm(f => ({ ...f, productName: v, productCode: codeForProductName(v), billingName: fromDispatch || billingTyped.current ? f.billingName : billingNameForProductName(v) }))}
+                  />
+                )}
+                {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
               </div>
               <div>
                 <label className={labelCls}>Product Code</label>
                 <input className={`${inputCls} bg-g100 text-g600 cursor-not-allowed`} value={form.productCode} readOnly />
+                {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
               </div>
               <div>
                 <label className={labelCls}>Billing Name</label>
-                <input className={`${inputCls} bg-g100 text-g600 cursor-not-allowed`} value={form.billingName} readOnly />
+                {/* 2026-10-16: editable. From the Board it starts as the order's product name. */}
+                <input className={inputCls} value={form.billingName} onChange={e => { billingTyped.current = true; set('billingName')(e); }} />
               </div>
             </div>
           </div>
