@@ -4,7 +4,7 @@ import { Check, CircleDashed, Pencil, Undo2, X } from 'lucide-react';
 import { fmtIST, doerLabel, formatINR, resolveAdjustments, maxItemGstRate, remainingByLine, punchedAtClass } from '../lib/utils';
 import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
-  BoardCard, BoardOrderCard, DispatchStepRecord, OrderStepHistory, StepAction, StepRecordStatus,
+  BoardCard, BoardOrderCard, DispatchStepRecord, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
   drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastStepClick, describeStepClick, allowedStepStatuses,
 } from '../lib/dispatchFlow';
 import { StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot } from './DispatchBoard';
@@ -56,7 +56,10 @@ function StepIcon({ step, late }: { step: OrderStepHistory; late: boolean }) {
   return <span className="w-[18px] h-[18px] rounded-full border-2 border-g300 bg-white inline-block" />;
 }
 
-function StepRow({ step, now, roster, onEdit }: { step: OrderStepHistory; now: number; roster: TeamMember[]; onEdit?: () => void }) {
+function StepRow({ step, now, roster, onEdit, doLines }: {
+  step: OrderStepHistory; now: number; roster: TeamMember[]; onEdit?: () => void;
+  doLines?: { text: string; pending: boolean }[];   // Step 6: the round's linked DOs
+}) {
   const def = stepDef(step.stepNo);
   const planned = ms(step.plannedAt);
   const actual = ms(step.doneAt);
@@ -108,19 +111,23 @@ function StepRow({ step, now, roster, onEdit }: { step: OrderStepHistory; now: n
         {step.remark && (
           <div className={`text-[11px] mt-0.5 ${step.remark === 'Invoice no. missing' ? 'text-[#9A0000] font-semibold' : 'text-g600'}`}>{step.remark}</div>
         )}
+        {doLines?.map(l => (
+          <div key={l.text} className={`text-[11px] mt-0.5 ${l.pending ? 'text-amber-700 font-semibold' : 'text-g600'}`}>{l.text}</div>
+        ))}
       </div>
     </div>
   );
 }
 
 export function DispatchDrawer({
-  order, site, entries, records, fulfillment, orderCard, now, roster, canAct, busy, onAction, onResume,
+  order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onResume,
   canUndo, undoBusy, onUndo, openedFrom, canDelete, onSaveStep, onDelete, onClose,
 }: {
   order: Order;
   site?: string;                       // the customer's unit / site label, if any
   entries: DispatchEntry[];            // this order's entries
   records: DispatchStepRecord[];       // this order's step records
+  linkedDOs?: LinkedDO[];              // this order's DOs (stock_movements.order_id)
   fulfillment: BoardOrderCard['fulfillment'];
   orderCard?: BoardOrderCard;          // present while the order is still on the board
   now: number;
@@ -205,6 +212,12 @@ export function DispatchDrawer({
   // 2026-10-06: the remark box + step buttons show for every login while the
   // order is on steps 1–7; canAct only decides whether they are enabled.
   const hasStepActions = !!orderCard && orderCard.column <= 7;
+  // 2026-10-16: Step 6 row — the DOs of the round the drawer's steps 5–7
+  // come from (the open round, else the last closed one): saved / emailed.
+  const focusRound = orderCard ? orderCard.position.round : realEntries.length;
+  const step6DoLines = linkedDOs.filter(d => d.round === focusRound).map(d => d.emailSentAt
+    ? { text: `DO ${d.doNumber || '—'} emailed ${fmtWhen(d.emailSentAt)}`, pending: false }
+    : { text: `DO ${d.doNumber || '—'} saved, email pending`, pending: true });
 
   const act = async (card: BoardOrderCard, action: StepAction) => { if (!canAct) return; await onAction(card, action, remark); setRemark(''); };
   const resume = async (card: BoardOrderCard) => { if (!canAct) return; await onResume(card, remark); setRemark(''); };
@@ -284,7 +297,7 @@ export function DispatchDrawer({
                 )}
               </div>
             </div>
-            {steps.map(s => <StepRow key={s.stepNo} step={s} now={now} roster={roster} onEdit={() => openStepEditor(s)} />)}
+            {steps.map(s => <StepRow key={s.stepNo} step={s} now={now} roster={roster} onEdit={() => openStepEditor(s)} doLines={s.stepNo === 6 ? step6DoLines : undefined} />)}
           </div>
 
           {/* Dispatch entries */}

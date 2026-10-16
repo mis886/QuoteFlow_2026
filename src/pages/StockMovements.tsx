@@ -105,6 +105,8 @@ export function mapRow(r: any): StockMovement {
     otherTransporter: r.other_transporter ?? undefined,
     fulfilmentType: r.fulfilment_type ?? undefined,
     emailSentAt: r.email_sent_at ?? undefined,
+    orderId: r.order_id ?? undefined,
+    dispatchRound: r.dispatch_round ?? undefined,
     note: r.note ?? undefined,
     noOfBarrels: r.no_of_barrels ?? undefined,
     mou: r.mou ?? undefined,

@@ -738,6 +738,11 @@ export interface StockMovement {
   // Client" succeeds; moves the entry from Saved to Email Sent in
   // StockMovements.tsx's Outward tab.
   emailSentAt?: string;
+  // 2026-10-16: stock_movements.order_id / dispatch_round — a DO issued from
+  // the Dispatch Board's Step 6 is linked to its order + round (null for a
+  // plain New Outward). Step 6 completes when the linked DO is emailed.
+  orderId?: string;
+  dispatchRound?: number;
   note?: string;
   created_by?: string;
   created_at?: string;

@@ -340,12 +340,21 @@ async function insertOutwardWithRetry(
   warehouse: string,
   onRetryDoNumber: (doNumber: string) => void,
   maxAttempts = 3
-): Promise<{ error: any; saved?: Record<string, any> }> {
+): Promise<{ error: any; saved?: Record<string, any>; id?: string }> {
   let attemptPayload = payload;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const { error } = await supabase.from('stock_movements').insert(attemptPayload);
+    // 2026-10-16: returns the new row's id (a Board save reopens it in edit mode).
+    const { data: rows, error } = await supabase.from('stock_movements').insert(attemptPayload).select('id');
     // `saved` = the payload that actually went in (with the final DO Number), for the activity log.
-    if (!error) return { error: null, saved: attemptPayload };
+    if (!error) {
+      let id: string | undefined = rows?.[0]?.id;
+      if (!id) {
+        // Inserted but not returned — DO Number is unique, so look it up.
+        const { data: found } = await supabase.from('stock_movements').select('id').eq('do_number', attemptPayload.do_number).limit(1);
+        id = found?.[0]?.id;
+      }
+      return { error: null, saved: attemptPayload, id };
+    }
     if (error.code !== '23505' || attempt === maxAttempts - 1) return { error };
     const nextDoNumber = await generateNextDoNumber(warehouse);
     attemptPayload = { ...attemptPayload, do_number: nextDoNumber };
@@ -452,7 +461,9 @@ export function NewStockOutward() {
   const movementId = searchParams.get('movementId');
   const orderRef = searchParams.get('orderRef') || '';
   const fromDispatch = !movementId && searchParams.get('fromDispatch') === '1' && !!orderRef;
-  const formKey = movementId ? `edit:${movementId}`
+  // 2026-10-16: `saved` changes after every save from the Board, so the form
+  // reloads the entry fresh (edit mode) instead of keeping stale state.
+  const formKey = movementId ? `edit:${movementId}:${searchParams.get('saved') || ''}`
     : fromDispatch ? `dispatch:${orderRef}:${Number(searchParams.get('round')) || 1}`
     : 'new';
   useEffect(() => { clearOldOutwardDrafts(); }, []);
@@ -469,7 +480,11 @@ function OutwardForm() {
   // 2026-10-06: opened from the Dispatch board's Step 6 "DO issued ✓".
   // Always "create new" — ignored when editing an existing entry.
   const orderRef = searchParams.get('orderRef') || '';
-  const fromDispatch = !isEditing && searchParams.get('fromDispatch') === '1' && !!orderRef;
+  // 2026-10-16: boardLink = opened from the Board, new DO OR an existing one
+  // ("Open DO → Email to Client") — Back goes to the board. fromDispatch
+  // stays "new DO from the Board" only (order prefill, Billing Name rules…).
+  const boardLink = searchParams.get('fromDispatch') === '1' && !!orderRef;
+  const fromDispatch = !isEditing && boardLink;
   const dispatchRound = Number(searchParams.get('round')) || 1;
   const dispatchPlannedAt = searchParams.get('plannedAt') || '';
   const dispatchRemark = searchParams.get('remark') || '';
@@ -531,11 +546,14 @@ function OutwardForm() {
   const [fulfilmentError, setFulfilmentError] = useState(false);
 
   // Where to go on Back / Cancel.
-  const goBack = () => navigate(fromDispatch ? DISPATCH_BOARD_PATH : outwardListPath(!!emailSentAt, form.fulfilmentType || 'Delivery'));
+  const goBack = () => navigate(boardLink ? DISPATCH_BOARD_PATH : outwardListPath(!!emailSentAt, form.fulfilmentType || 'Delivery'));
+  // 2026-10-16: the order + round this DO belongs to (stock_movements.order_id /
+  // dispatch_round) — from the saved row in edit mode, else from the Board URL.
+  const [linkedOrder, setLinkedOrder] = useState<{ orderId: string; round: number } | null>(
+    fromDispatch ? { orderId: orderRef, round: dispatchRound } : null);
+  // Green note after Email to Client completed Step 6 (or why it didn't).
+  const [emailResult, setEmailResult] = useState<{ ok: boolean; msg: string; retry?: boolean } | null>(null);
 
-  // Set when the Outward entry saved but Step 6 could not be marked done —
-  // the form is then replaced by a message, so Save can't be clicked twice.
-  const [stepProblem, setStepProblem] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -593,6 +611,7 @@ function OutwardForm() {
         note: data.note || '',
       });
       originalRow.current = data;
+      setLinkedOrder(data.order_id && data.dispatch_round ? { orderId: data.order_id, round: data.dispatch_round } : null);
       setOriginal({
         warehouse: data.warehouse || '',
         lotNo: (data.wh_lot_no || '').trim(),
@@ -683,56 +702,85 @@ function OutwardForm() {
     }));
   }, [dispatchOrder]);
 
-  // 2026-10-06: marks Dispatch Step 6 done after the Outward entry saved —
-  // same dispatch_steps row + activity log runStepAction in Dispatch.tsx
-  // writes. Returns '' on success, or the reason it could not be done.
-  const markDispatchStepDone = async (): Promise<string> => {
-    if (!canActOnDispatchBoard(user?.email) || isReadOnlyUser) return 'you do not have permission to act on the Dispatch board';
+  // Marks Dispatch Step 6 done — same dispatch_steps row + activity log
+  // runStepAction in Dispatch.tsx writes.
+  // 2026-10-16: called when the DO is EMAILED (not on save any more), with
+  // the DO's own order + round and the email time. Step 6 is written only
+  // once EVERY DO linked to that order + round has been emailed, and never
+  // twice (the "already marked" check).
+  type StepResult = { kind: 'done' } | { kind: 'waiting'; notEmailed: number } | { kind: 'error'; msg: string };
+  const markDispatchStepDone = async (link: { orderId: string; round: number }, doneAt: string): Promise<StepResult> => {
+    if (!canActOnDispatchBoard(user?.email) || isReadOnlyUser) return { kind: 'error', msg: 'you do not have permission to act on the Dispatch board' };
     try {
-      // Already marked (page opened twice / browser Back)? Don't add a second row.
+      const { data: others, error: othersErr } = await supabase.from('stock_movements').select('id')
+        .eq('order_id', link.orderId).eq('dispatch_round', link.round).is('email_sent_at', null);
+      if (othersErr) throw othersErr;
+      const notEmailed = (others || []).filter(r => r.id !== movementId).length;
+      if (notEmailed > 0) return { kind: 'waiting', notEmailed };
+      // Already marked (page opened twice / email sent again)? Don't add a second row.
       const { data: already, error: checkErr } = await supabase.from('dispatch_steps').select('id')
-        .eq('order_id', orderRef).eq('round', dispatchRound).eq('step_no', 6).eq('status', 'done').limit(1);
+        .eq('order_id', link.orderId).eq('round', link.round).eq('step_no', 6).eq('status', 'done').limit(1);
       if (checkErr) throw checkErr;
-      if (already && already.length > 0) return '';
+      if (already && already.length > 0) return { kind: 'done' };
       const { data: inserted, error: stepErr } = await supabase.from('dispatch_steps').insert({
-        order_id: orderRef,
-        round: dispatchRound,
+        order_id: link.orderId,
+        round: link.round,
         step_no: 6,
         status: 'done',
         planned_at: dispatchPlannedAt || null,
-        done_at: new Date().toISOString(),
+        done_at: doneAt,
         done_by: user?.email ?? null,
         remark: dispatchRemark.trim() || null,
       }).select('*');
       if (stepErr) throw stepErr;
+      const so = data.orders.find(o => o.id === link.orderId)?.soNumber;
       logActivity({
-        module: 'dispatch_steps', recordId: orderRef,
-        recordLabel: `${dispatchOrder?.soNumber || orderRef} · Step 6 Transporter & DO · Done (DO issued ✓)`,
+        module: 'dispatch_steps', recordId: link.orderId,
+        recordLabel: `${so || link.orderId} · Step 6 Transporter & DO · Done (DO ${form.doNumber || '—'} emailed)`,
         action: 'insert', after: inserted?.[0],
       });
-      return '';
+      return { kind: 'done' };
     } catch (err: any) {
-      return err?.message || JSON.stringify(err);
+      return { kind: 'error', msg: err?.message || JSON.stringify(err) };
     }
   };
 
-  // After a successful save: plain Stock Movements goes back to its list;
-  // from Dispatch, Step 6 is marked done first, then back to the board.
-  const afterSave = async () => {
+  // The Board URL for this DO in edit mode — where a Board save lands, and
+  // what "Open DO → Email to Client" opens.
+  const boardEditUrl = (id: string) => {
+    const p = new URLSearchParams({ movementId: id, fromDispatch: '1', orderRef, round: String(dispatchRound) });
+    if (dispatchPlannedAt) p.set('plannedAt', dispatchPlannedAt);
+    if (dispatchRemark.trim()) p.set('remark', dispatchRemark.trim());
+    p.set('saved', String(Date.now()));
+    return `/stock-movements/new-outward?${p.toString()}`;
+  };
+
+  // After a successful save: plain Stock Movements goes back to its list.
+  // 2026-10-16: from the Board, Step 6 is NOT marked done any more — the form
+  // stays open on the saved entry (edit mode) with a "click Email to Client"
+  // banner; Step 6 completes when the DO is emailed (markOutwardEmailSent).
+  const afterSave = async (savedId?: string) => {
+    if (boardLink) {
+      const id = savedId || movementId;
+      navigate(id ? boardEditUrl(id) : DISPATCH_BOARD_PATH, { replace: true });
+      return;
+    }
     // 2026-10-12: back to the Outward sub-tab + pill this entry now sits in.
-    if (!fromDispatch) { navigate(outwardListPath(!!emailSentAt, form.fulfilmentType)); return; }
-    const problem = await markDispatchStepDone();
-    if (problem) { setStepProblem(problem); return; }
-    navigate(DISPATCH_BOARD_PATH);
+    navigate(outwardListPath(!!emailSentAt, form.fulfilmentType));
   };
 
   const retryDispatchStep = async () => {
+    if (!linkedOrder || !emailSentAt) return;
     setSaving(true);
-    const problem = await markDispatchStepDone();
+    const r = await markDispatchStepDone(linkedOrder, emailSentAt);
     setSaving(false);
-    if (problem) { setStepProblem(problem); return; }
-    navigate(DISPATCH_BOARD_PATH);
+    setEmailResult(stepResultNote(r));
   };
+
+  const stepResultNote = (r: StepResult): { ok: boolean; msg: string; retry?: boolean } =>
+    r.kind === 'done' ? { ok: true, msg: 'Email sent — Step 6 completed.' }
+    : r.kind === 'waiting' ? { ok: false, msg: `Email sent. ${r.notEmailed} other DO${r.notEmailed === 1 ? '' : 's'} for this order ${r.notEmailed === 1 ? 'is' : 'are'} not emailed yet — Step 6 completes when every DO is emailed.` }
+    : { ok: false, msg: `Email sent, but Dispatch Step 6 could not be marked done: ${r.msg}.`, retry: true };
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -1092,6 +1140,11 @@ function OutwardForm() {
   // pattern as markDispatchEmailSent in src/store/index.tsx. Writes only
   // that column; sending again just refreshes the time. Then goes to the
   // Email Sent sub-tab, under the pill of the entry's SAVED Fulfilment Type.
+  // 2026-10-16: a DO linked to a Board order (order_id + dispatch_round)
+  // also completes Dispatch Step 6 here, then stays on the page with an
+  // "Email sent — Step 6 completed" note and a Back to Board button. A login
+  // not allowed on the board still sends the email; Step 6 is left for
+  // MIS / Samata.
   const markOutwardEmailSent = async () => {
     if (!movementId) return;
     const sentAt = new Date().toISOString();
@@ -1106,6 +1159,14 @@ function OutwardForm() {
         action: 'update', before: { email_sent_at: emailSentAt }, after: { email_sent_at: sentAt },
       });
       setEmailSentAt(sentAt);
+      if (linkedOrder) {
+        if (!canActOnDispatchBoard(user?.email) || isReadOnlyUser) {
+          setEmailResult({ ok: false, msg: 'Email sent. Step 6 will be completed by MIS / Samata.' });
+          return;
+        }
+        setEmailResult(stepResultNote(await markDispatchStepDone(linkedOrder, sentAt)));
+        return;
+      }
       navigate(outwardListPath(true, rows[0].fulfilment_type));
     } catch (err: any) {
       setError(`Email was sent, but it could not be recorded: ${err?.message || 'unknown error'}`);
@@ -1216,20 +1277,24 @@ function OutwardForm() {
       fulfilment_type: form.fulfilmentType || null,
       note: form.note.trim() || null,
       created_by: activeDoer?.email ?? user?.email ?? null,
+      // 2026-10-16: a DO made from the Board is linked to its order + round,
+      // so the Board knows it's saved and Step 6 completes when it's emailed.
+      order_id: fromDispatch ? orderRef : null,
+      dispatch_round: fromDispatch ? dispatchRound : null,
     };
 
     // insertOutwardWithRetry (not a plain insert) so a DO Number collision
     // under concurrent saves for the same warehouse gets one fresh number
     // and a retry instead of a raw DB error — see that function's comment
     // and the stock_movements_do_number_unique migration.
-    const { error: moveErr, saved } = await insertOutwardWithRetry(
+    const { error: moveErr, saved, id: newId } = await insertOutwardWithRetry(
       movementPayload,
       form.warehouse,
       doNumber => setForm(f => ({ ...f, doNumber }))
     );
     if (moveErr) { setError(moveErr.message || 'Failed to save entry.'); setSaving(false); return; }
     logActivity({
-      module: 'stock_movements', recordId: saved?.do_number || movementPayload.do_number,
+      module: 'stock_movements', recordId: newId || saved?.do_number || movementPayload.do_number,
       recordLabel: `DO ${saved?.do_number || '—'} · ${movementPayload.product_name} · Lot ${lotNo || '—'}`,
       action: 'insert', after: saved,
     });
@@ -1262,7 +1327,7 @@ function OutwardForm() {
       }
     }
 
-    await afterSave();
+    await afterSave(newId);
     setSaving(false);
   };
 
@@ -1287,43 +1352,53 @@ function OutwardForm() {
     );
   }
 
-  // 2026-10-06: Outward entry is saved, but Step 6 was not marked done.
-  // Shown instead of the form so the entry can't be saved a second time.
-  if (stepProblem) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
-        <div className="font-serif text-xl text-blk">Outward entry saved{form.doNumber ? ` (${form.doNumber})` : ''}</div>
-        <div className="text-[12.5px] text-red-mrt font-bold max-w-[560px]">
-          But Dispatch Step 6 could not be marked done: {stepProblem}. The card is still in Step 06. Do not fill the Outward form again.
-        </div>
-        <div className="flex gap-2 mt-2">
-          <Button variant="primary" onClick={retryDispatchStep} disabled={saving}>{saving ? 'Trying…' : 'Try again'}</Button>
-          <Button variant="secondary" onClick={goBack} disabled={saving}>Back to Dispatch board</Button>
-        </div>
-      </div>
-    );
-  }
+  // 2026-10-16: the order this DO belongs to (header line) — new DO from the
+  // Board, or a saved DO linked to an order.
+  const headerOrder = dispatchOrder || data.orders.find(o => o.id === (linkedOrder?.orderId || (boardLink ? orderRef : '')));
+  // A saved DO linked to a Board order that isn't emailed yet.
+  const awaitingEmail = isEditing && !!linkedOrder && !emailSentAt && !emailResult;
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
       <div className="pt-5 px-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">{fromDispatch ? 'Dispatch · Step 06 · Issue DO' : 'Stock Movements Module'}</div>
+            <div className="font-mono text-[9px] font-bold tracking-[3px] uppercase text-red-mrt mb-1">{boardLink ? 'Dispatch · Step 06 · Issue DO' : 'Stock Movements Module'}</div>
             <h1 className="font-serif text-2xl text-blk tracking-tight leading-tight">
               {isEditing ? <>Edit <em className="italic text-red-mrt">Outward Entry</em></> : <>Log <em className="italic text-red-mrt">New Outward</em></>}
             </h1>
             <p className="text-xs text-g500 mt-1 font-light">
               {isEditing ? 'Update a previously logged Delivery Order stock outward.' : 'Record a Delivery Order stock outward — replaces the Delivery Order Sale Google Form.'}
             </p>
-            {fromDispatch && dispatchOrder && (
+            {(boardLink || linkedOrder) && headerOrder && (
               <p className="text-[12px] text-blk mt-1 font-semibold">
-                <span className="font-mono">{dispatchOrder.soNumber || dispatchOrder.id}</span> · {dispatchOrder.cust}
+                <span className="font-mono">{headerOrder.soNumber || headerOrder.id}</span> · {headerOrder.cust}
               </p>
             )}
           </div>
           <Button variant="secondary" onClick={goBack}>Back</Button>
         </div>
+        {/* 2026-10-16: Step 6 completes when the DO is EMAILED, not on save. */}
+        {awaitingEmail && (
+          <div className="mt-3 border border-amber-300 bg-amber-50 text-amber-800 rounded-[4px] px-3 py-2 text-[12.5px] font-semibold">
+            DO {form.doNumber || '—'} saved. Click Email to Client to complete Step 6.
+          </div>
+        )}
+        {/* Opened from the Board after Step 6 was undone — the DO was already emailed once. */}
+        {boardLink && isEditing && !!linkedOrder && !!emailSentAt && !emailResult && (
+          <div className="mt-3 border border-amber-300 bg-amber-50 text-amber-800 rounded-[4px] px-3 py-2 text-[12.5px] font-semibold">
+            DO {form.doNumber || '—'} was emailed {fmtIST(new Date(emailSentAt), 'dd-MMM-yyyy hh:mm a')}. Click Email to Client again to complete Step 6.
+          </div>
+        )}
+        {emailResult && (
+          <div className={`mt-3 border rounded-[4px] px-3 py-2 text-[12.5px] font-semibold flex flex-wrap items-center gap-2 ${emailResult.ok ? 'border-green-300 bg-green-50 text-green-800' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+            <span className="flex-1 min-w-[200px]">{emailResult.msg}</span>
+            {emailResult.retry && (
+              <Button size="sm" variant="secondary" onClick={retryDispatchStep} disabled={saving}>{saving ? 'Trying…' : 'Try again'}</Button>
+            )}
+            <Button size="sm" variant="primary" onClick={() => navigate(DISPATCH_BOARD_PATH)}>Back to Board</Button>
+          </div>
+        )}
       </div>
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">

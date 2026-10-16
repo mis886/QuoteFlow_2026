@@ -4,7 +4,7 @@ import { Clock, Pause, Play, Undo2 } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
 import { Button } from './ui';
 import {
-  DISPATCH_STEPS, DISPATCH_DOER_NAME, STEP_ACTIONS, BoardCard, BoardOrderCard, ColumnNo, StepAction, StepDef, fmtDuration, TimeState,
+  DISPATCH_STEPS, DISPATCH_DOER_NAME, STEP_ACTIONS, BoardCard, BoardOrderCard, ColumnNo, StepAction, StepDef, fmtDuration, TimeState, doPendingText,
 } from '../lib/dispatchFlow';
 
 // Kanban "Board view" of the Dispatch module: a step strip + one 268px column
@@ -102,7 +102,11 @@ export function StepActionButtons({ card, busy, canAct, onAction, onResume }: {
       </div>
     );
   }
-  const actions = STEP_ACTIONS[card.position.step] || [];
+  // 2026-10-16: Step 6 with a DO already saved — the button opens that DO
+  // (edit mode) to email it; the email is what completes Step 6.
+  const actions = card.position.step === 6 && card.doPending
+    ? (STEP_ACTIONS[6] || []).map(a => a.primary ? { ...a, label: 'Open DO → Email to Client' } : a)
+    : STEP_ACTIONS[card.position.step] || [];
   return (
     <div className={`flex gap-1.5 ${canAct ? '' : 'cursor-not-allowed'}`} title={tip}>
       {actions.map(a => (
@@ -183,6 +187,9 @@ function Card({ card, now, onOpen, renderActions, onDelete }: {
       <TimeBar card={card} now={now} />
       {card.kind === 'order' && card.position.skipped.length > 0 && (
         <div className="text-[10.5px] text-g500">Skipped: step {card.position.skipped.join(', ')}</div>
+      )}
+      {card.kind === 'order' && card.doPending && (
+        <div className="text-[11px] font-semibold text-amber-700 leading-snug">{doPendingText(card.doPending)}</div>
       )}
       {card.kind === 'entry' && card.position.invoiceMissing && (
         <div className="text-[11px] font-semibold text-[#9A0000]">Invoice no. missing</div>

@@ -119,6 +119,54 @@ export const mapStepFromDB = (r: any): DispatchStepRecord => ({
   createdAt: r.created_at ?? undefined,
 });
 
+// ── DOs linked to an order (stock_movements.order_id, 2026-10-16) ─────────
+// Step 6 "Transporter & DO" completes when the DO is EMAILED to the client,
+// not when it is saved. A DO saved from the Board carries its order + round;
+// while any DO of the card's current round is not emailed (or Step 6 was
+// undone after the email), the card stays at Step 6 and shows it.
+export interface LinkedDO {
+  id: string;
+  doNumber?: string;
+  orderId: string;
+  round: number;
+  emailSentAt?: string;
+}
+export const mapLinkedDOFromDB = (r: any): LinkedDO => ({
+  id: r.id,
+  doNumber: r.do_number ?? undefined,
+  orderId: r.order_id,
+  round: r.dispatch_round ?? 1,
+  emailSentAt: r.email_sent_at ?? undefined,
+});
+
+export interface DoPending {
+  dos: LinkedDO[];          // every DO linked to this order + round
+  notEmailed: LinkedDO[];   // the ones not emailed yet
+  open: LinkedDO;           // what "Open DO → Email to Client" opens: first not emailed, else the latest
+}
+const doTime = (d: LinkedDO) => d.emailSentAt;
+export function doPendingFor(linked: LinkedDO[], orderId: string, round: number): DoPending | undefined {
+  const dos = linked.filter(d => d.orderId === orderId && d.round === round);
+  if (!dos.length) return undefined;
+  const notEmailed = dos.filter(d => !d.emailSentAt);
+  const latest = [...dos].sort((a, b) => byTime(doTime(a), doTime(b))).pop()!;
+  return { dos, notEmailed, open: notEmailed[0] || latest };
+}
+
+/** The amber line on a Step 6 card / drawer row. */
+export function doPendingText(p: DoPending): string {
+  const one = p.dos.length === 1 ? p.dos[0] : null;
+  if (p.notEmailed.length > 0) {
+    return one
+      ? `DO ${one.doNumber || '—'} saved · Email not sent yet — Step 6 completes when the DO is emailed to the client.`
+      : `${p.dos.length} DOs saved · ${p.notEmailed.length} not emailed — Step 6 completes when every DO is emailed to the client.`;
+  }
+  // Every DO emailed but Step 6 not done — it was undone after the email.
+  return one
+    ? `DO ${one.doNumber || '—'} emailed · Step 6 not completed — email the DO again to complete Step 6.`
+    : `${p.dos.length} DOs emailed · Step 6 not completed — email a DO again to complete Step 6.`;
+}
+
 // ── Undo last step (admins) ───────────────────────────────────────────────
 // The most recent click on an order's steps 1–7. One click can write several
 // rows in one insert (e.g. "No overdue ✓" = step 2 done + 3, 4 skipped) —
@@ -467,6 +515,9 @@ export interface BoardOrderCard {
   remaining: { desc: string; qty: number }[];
   fulfillment: DispatchFulfillmentType | 'not_set';
   state: TimeState;
+  // At Step 6 with a DO already saved for this round (see doPendingFor) —
+  // the card shows "DO saved · email not sent" and "Open DO → Email to Client".
+  doPending?: DoPending;
 }
 export interface BoardEntryCard {
   kind: 'entry';
@@ -486,6 +537,7 @@ export function buildBoard(
   records: DispatchStepRecord[],
   orderFulfillment: (o: Order) => DispatchFulfillmentType | 'not_set',
   now: number,
+  linkedDOs: LinkedDO[] = [],
 ): BoardCard[] {
   const cards: BoardCard[] = [];
   const entriesByOrder = new Map<string, DispatchEntry[]>();
@@ -514,6 +566,7 @@ export function buildBoard(
       kind: 'order', key: `o:${o.id}`, order: o, position, column: position.step, fulfillment,
       remaining: o.items.filter(i => (rem.get(i.seq) || 0) > 0).map(i => ({ desc: i.desc, qty: rem.get(i.seq) || 0 })),
       state: timeState(position.plannedAt, now, !!position.hold),
+      doPending: position.step === 6 ? doPendingFor(linkedDOs, o.id, position.round) : undefined,
     });
   }
 

@@ -5,7 +5,7 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
 import { DispatchBoard, AutoTag, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { LineItemsPanel } from '../components/LineItemsPanel';
 import { DispatchDrawer, StepEditPatch } from '../components/DispatchDrawer';
@@ -82,12 +82,20 @@ export function Dispatch() {
   // on the same 1-minute tick, so clicks made by someone else show up
   // without a page reload.
   const [stepRecords, setStepRecords] = useState<DispatchStepRecord[]>([]);
+  // 2026-10-16: DOs (Outward entries) linked to an order — loaded on the same
+  // tick, so a Step 6 card knows its DO is saved but not emailed yet.
+  const [linkedDOs, setLinkedDOs] = useState<LinkedDO[]>([]);
   useEffect(() => {
     if (view !== 'board') return;
     supabase.from('dispatch_steps').select('*').then(({ data: rows, error }) => {
       if (error) { console.error('Error loading dispatch steps:', error); return; }
       setStepRecords((rows || []).map(mapStepFromDB));
     });
+    supabase.from('stock_movements').select('id, do_number, order_id, dispatch_round, email_sent_at').not('order_id', 'is', null)
+      .then(({ data: rows, error }) => {
+        if (error) { console.error('Error loading linked DOs:', error); return; }
+        setLinkedDOs((rows || []).map(mapLinkedDOFromDB));
+      });
   }, [view, now]);
 
   // Done / Hold / Resume on steps 1–7: Samata (mum@) + ADMIN_EMAILS only;
@@ -153,13 +161,17 @@ export function Dispatch() {
   // away — the Stock Movements Outward form has to be saved first.
   // 2026-10-06: that form now opens as a normal FULL PAGE (like New Enquiry)
   // instead of a popup over the board. We only navigate here; the page
-  // (NewStockOutward.tsx, ?fromDispatch=1) prefills itself from the order,
-  // and after its save it writes the Step 6 dispatch_steps row and comes
-  // back to the board. Back/Cancel there = nothing changes.
+  // (NewStockOutward.tsx, ?fromDispatch=1) prefills itself from the order.
+  // Back/Cancel there = nothing changes.
+  // 2026-10-16: saving the DO no longer completes Step 6 — EMAILING it does
+  // (the form writes the Step 6 row then). Once a DO is saved for this round
+  // (card.doPending) the button becomes "Open DO → Email to Client" and
+  // opens that DO in edit mode instead of a new one.
   const handleStepAction = (card: BoardOrderCard, action: StepAction, remark?: string) => {
     if (card.position.step === 6 && action.primary) {
       if (!canActOnBoard || busyCardKey) return;
       const params = new URLSearchParams({
+        ...(card.doPending ? { movementId: card.doPending.open.id } : {}),
         fromDispatch: '1',
         orderRef: card.order.id,
         round: String(card.position.round),
@@ -461,8 +473,8 @@ export function Dispatch() {
 
   // ── Board view ──────────────────────────────────────────────────────────
   const boardCards = useMemo(
-    () => view === 'board' ? buildBoard(data.orders, data.dispatchEntries, stepRecords, orderFulfillment, now) : [],
-    [view, data.orders, data.dispatchEntries, data.customers, stepRecords, now],
+    () => view === 'board' ? buildBoard(data.orders, data.dispatchEntries, stepRecords, orderFulfillment, now, linkedDOs) : [],
+    [view, data.orders, data.dispatchEntries, data.customers, stepRecords, now, linkedDOs],
   );
   const boardSearchMatch = (c: BoardCard) => {
     if (!qs) return true;
@@ -832,6 +844,7 @@ export function Dispatch() {
             order={o}
             entries={data.dispatchEntries.filter(e => e.orderId === o.id)}
             records={stepRecords.filter(r => r.orderId === o.id)}
+            linkedDOs={linkedDOs.filter(d => d.orderId === o.id)}
             fulfillment={orderCard?.fulfillment ?? orderFulfillment(o)}
             orderCard={orderCard}
             now={now}
