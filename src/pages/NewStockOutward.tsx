@@ -797,34 +797,29 @@ function OutwardForm() {
     return Number.isFinite(n) ? n : null;
   };
 
-  // Auto-fills Total Quantity = No of Barrels × Packing whenever both are
-  // valid numbers — mirrors NewStockInward.tsx's onNoOfBarrelsChange/
-  // onPackingChange exactly, added 2026-09-07 when this section was made to
-  // match Inward's Quantity section field-for-field (see file header). Total
-  // Quantity stays a normal editable field otherwise; if either source is
-  // empty/invalid, it's left exactly as it is (no clearing, no NaN).
+  // 2026-10-16: No of Barrels is the ONLY editable field in the Quantity
+  // section. Packing / Packing Type / MOU come from the lot and Total
+  // Quantity is always No of Barrels × Packing (the sync effect below) —
+  // none of them can be typed in.
   const onNumArticlesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     // The user's own figure for this Warehouse + Lot No — the stock auto-fill
     // must not replace it (it does again once Warehouse or Lot No changes).
     userBarrelsKey.current = lotKeyOf(form.warehouse, form.lotNo);
-    setForm(f => {
-      const barrels = parseNum(v);
-      const packing = parseNum(f.packing);
-      const totalQty = barrels !== null && packing !== null ? String(barrels * packing) : f.totalQty;
-      return { ...f, numArticles: v, totalQty };
-    });
+    setForm(f => ({ ...f, numArticles: v }));
   };
 
-  const onPackingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value;
-    setForm(f => {
-      const barrels = parseNum(f.numArticles);
-      const packing = parseNum(v);
-      const totalQty = barrels !== null && packing !== null ? String(barrels * packing) : f.totalQty;
-      return { ...f, packing: v, totalQty };
-    });
-  };
+  // Total Quantity = No of Barrels × Packing, kept in step whenever either
+  // changes ('' while either is missing). save() recalculates it again.
+  const computedTotal = (() => {
+    const barrels = parseNum(form.numArticles);
+    const packing = parseNum(form.packing);
+    return barrels !== null && packing !== null ? barrels * packing : null;
+  })();
+  useEffect(() => {
+    const s = computedTotal === null ? '' : String(computedTotal);
+    setForm(f => (f.totalQty === s ? f : { ...f, totalQty: s }));
+  }, [computedTotal]);
 
   // "Product (from order)" picker: switches the order line the DO is for.
   // 2026-10-16: only Billing Name follows it (the selected line's product
@@ -872,6 +867,9 @@ function OutwardForm() {
   // column is 0/null, so the user knows their Warehouse/Lot No combination
   // looks off instead of silently getting no auto-fill and no explanation.
   const [lotWarning, setLotWarning] = useState('');
+  // The Warehouse + Lot No key whose stock_lots lookup has finished (match or
+  // not) — the "no such lot" note only shows once the lookup is done.
+  const [lotLookedUp, setLotLookedUp] = useState('');
 
   // Auto-fills the rest of the form from the matching stock_lots row once
   // both Warehouse and Lot No are filled in, added 2026-09-08 at the user's
@@ -904,6 +902,10 @@ function OutwardForm() {
   // locked from the lot the same way; Billing Name, Party, Transporter and
   // Note are not taken from the lot. Edit mode still changes nothing — it
   // only records the lot so those fields show locked.
+  // 2026-10-16: no lot matched (or Warehouse / Lot No cleared) → Packing,
+  // Packing Type and MOU are emptied (they only ever come from a lot), so
+  // Total Quantity empties too and Save is blocked (see saveBlock).
+  // Edit mode keeps the saved values.
   useEffect(() => {
     setLotWarning('');
     setLotStock(null);
@@ -911,7 +913,12 @@ function OutwardForm() {
     const warehouse = form.warehouse;
     const lotNo = form.lotNo.trim();
     const partyCol = PARTY_COLUMN[warehouse];
-    if (!lotNo || !partyCol) return;
+    const clearLotFields = () => {
+      if (isEditing) return;
+      setForm(f => (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo) ? f
+        : (f.packing || f.packagingType || f.weightType) ? { ...f, packing: '', packagingType: '', weightType: '' } : f);
+    };
+    if (!lotNo || !partyCol) { clearLotFields(); setLotLookedUp(''); return; }
     const key = lotKeyOf(warehouse, lotNo);
 
     // A value the auto-fill put in for a previous Warehouse / Lot No must not
@@ -930,6 +937,7 @@ function OutwardForm() {
         .ilike('wh_lot_no', lotNo)
         .limit(1);
       if (cancelled) return;
+      setLotLookedUp(key);
 
       const existing = data?.[0];
       // Same packing/packingDetail fallback StockSummary.tsx's own Packing
@@ -961,7 +969,8 @@ function OutwardForm() {
         }
         return;
       }
-      if (!existing || !lot) { clearStaleAuto(); return; } // no match — likely a brand-new lot, nothing to fill in
+      // No match — Save is blocked (see saveBlock); the lot fields are emptied.
+      if (!existing || !lot) { clearStaleAuto(); clearLotFields(); return; }
       setLotDetails(lot);
 
       // The lot's own details — always overwritten, for this Warehouse + Lot No only.
@@ -1050,11 +1059,30 @@ function OutwardForm() {
   // note about that). PARTY_COLUMN's decrement below already treated
   // numArticles as the barrel-count-equivalent field; this just makes that
   // relationship required rather than optional, same as Inward's.
+  // 2026-10-16: Total Quantity is no longer typed (always barrels × packing),
+  // so it isn't checked here — saveBlock below explains why it's missing.
   const isValid = !!(
     form.warehouse && (!isOtherWarehouse || form.otherWarehouse.trim()) &&
     form.doNumber.trim() && form.productName.trim() &&
-    form.numArticles.trim() && form.totalQty.trim()
+    form.numArticles.trim()
   );
+
+  // 2026-10-16: Save needs a real lot (Packing / Total come only from it), a
+  // packing on that lot, and — for a new DO — stock at that warehouse. Edit
+  // mode skips the stock check: its "available" is already after this DO.
+  const saveBlock = !lockedLot ? 'Select a Warehouse and a Lot No that exists in Stock Summary.'
+    : parseNum(form.packing) === null ? `Packing missing for lot ${lockedLot.lotNo} — update the lot's packing in Stock Summary first.`
+    : !isEditing && lotWarning ? lotWarning
+    : '';
+  // Shown under the Quantity section only once the lot lookup has finished.
+  const showSaveBlock = !!saveBlock && (!!lockedLot || (!!form.lotNo.trim() && lotLookedUp === lotKeyOf(form.warehouse, form.lotNo)) || (!!form.warehouse && !PARTY_COLUMN[form.warehouse]));
+  // Edit mode: an old entry whose saved Total ≠ its barrels × packing.
+  const savedTotalMismatch = (() => {
+    const r = originalRow.current;
+    if (!isEditing || !r) return false;
+    const b = parseNum(String(r.num_articles ?? '')), p = parseNum(String(r.packing ?? '')), t = r.total_qty;
+    return b !== null && p !== null && t != null && Number(t) !== b * p;
+  })();
 
   // 2026-09-08: keep an out-of-list Packing Type/MOU value visible in its
   // <select> — needed now that the Lot No auto-fill above can set either
@@ -1175,6 +1203,7 @@ function OutwardForm() {
 
   const save = async (confirmedAllStock = false) => {
     if (!isValid) { setError('Please fill in all required fields.'); return; }
+    if (saveBlock) { setError(saveBlock); return; }
     if (!FULFILMENT_TYPES.includes(form.fulfilmentType)) {
       setFulfilmentError(true);
       setError('Please select Fulfilment Type (Delivery or Self Pickup).');
@@ -1193,10 +1222,13 @@ function OutwardForm() {
 
     const warehouseToSave = isOtherWarehouse ? form.otherWarehouse.trim() : form.warehouse;
     const lotNo = form.lotNo.trim();
-    const totalQty = num(form.totalQty);
     // The party column tracks Number of Articles (barrel/article count),
     // not Total Quantity — see the file-header comment above.
     const numArticles = num(form.numArticles);
+    // 2026-10-16: recalculated here (never read from the field), so the saved
+    // total_qty and the stock deduction are always barrels × packing.
+    const packingNum = num(form.packing);
+    const totalQty = numArticles !== null && packingNum !== null ? numArticles * packingNum : null;
 
     // Editing an existing entry: ported from OutwardEditModal.tsx's own
     // save() — reverse the OLD decrement, re-apply the NEW one, then update
@@ -1512,7 +1544,9 @@ function OutwardForm() {
               </div>
               <div>
                 <label className={labelCls}>Packing</label>
-                <input className={`${inputCls} ${lockedLot ? lockedCls : ''}`} value={form.packing} onChange={onPackingChange} readOnly={!!lockedLot} />
+                {/* 2026-10-16: Packing / Total Quantity / Packing Type / MOU are
+                    always read-only — only No of Barrels is typed. */}
+                <input className={`${inputCls} ${lockedCls}`} value={form.packing} readOnly />
                 {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
                 {packingMismatch && lockedLot && (
                   <p className="text-amber-600 text-[11px] mt-0.5">Order packing is {orderPacking} per barrel, but lot {lockedLot.lotNo} is {lockedLot.packing} — the lot's packing is used.</p>
@@ -1520,25 +1554,33 @@ function OutwardForm() {
               </div>
               <div>
                 <label className={labelCls}>Total Quantity <span className="text-red-mrt">*</span></label>
-                <input type="number" className={inputCls} value={form.totalQty} onChange={set('totalQty')} />
+                <input className={`${inputCls} ${lockedCls}`} value={form.totalQty} readOnly />
+                <p className="text-g500 text-[11px] mt-1">= No of Barrels × Packing</p>
+                {savedTotalMismatch && computedTotal !== null && (
+                  <p className="text-amber-600 text-[11px] mt-0.5">Recalculated from barrels × packing (saved: {String(originalRow.current?.total_qty)})</p>
+                )}
               </div>
               <div>
                 <label className={labelCls}>Packing Type</label>
-                <select className={`${selectCls} ${lockedLot ? lockedCls : ''}`} value={form.packagingType} onChange={set('packagingType')} disabled={!!lockedLot}>
-                  <option value="">Select...</option>
+                <select className={`${selectCls} ${lockedCls}`} value={form.packagingType} disabled>
+                  <option value="">—</option>
                   {packagingTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
                 {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
               </div>
               <div>
                 <label className={labelCls}>MOU (Measure of Unit)</label>
-                <select className={`${selectCls} ${lockedLot ? lockedCls : ''}`} value={form.weightType} onChange={set('weightType')} disabled={!!lockedLot}>
-                  <option value="">Select...</option>
+                <select className={`${selectCls} ${lockedCls}`} value={form.weightType} disabled>
+                  <option value="">—</option>
                   {weightTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
                 {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
               </div>
             </div>
+            {/* 2026-10-16: why Save is blocked (no lot / no packing / no stock). */}
+            {showSaveBlock && saveBlock !== lotWarning && (
+              <p className="text-amber-700 text-[11.5px] font-semibold mt-2">{saveBlock}</p>
+            )}
           </div>
 
           <div className={cardCls}>
