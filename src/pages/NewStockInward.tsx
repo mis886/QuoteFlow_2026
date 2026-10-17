@@ -74,7 +74,7 @@ import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabas
 import { Button } from '../components/ui';
 import { SearchableCombobox } from '../components/SearchableCombobox';
 import { StockMovementWarehouse } from '../lib/types';
-import { PACKAGING_TYPES } from '../lib/stockMovementOptions';
+import { usePackingTypes } from '../hooks/usePackingTypes';
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { Loader2, Search, X } from 'lucide-react';
 
@@ -112,6 +112,13 @@ export function NewStockInward() {
   const isEditing = !!movementId;
 
   const [form, setForm] = useState(emptyForm);
+  const packingTypes = usePackingTypes();
+  // Keep a legacy saved value (pre-2026-10-17 list) visible when editing,
+  // since a native <select> shows blank for a value with no matching <option>.
+  const packingTypeOptions =
+    form.packagingType && !packingTypes.includes(form.packagingType)
+      ? [...packingTypes, form.packagingType]
+      : packingTypes;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [loadingMovement, setLoadingMovement] = useState(isEditing);
@@ -596,7 +603,7 @@ export function NewStockInward() {
                 <label className={labelCls}>Packing Type</label>
                 <select className={selectCls} value={form.packagingType} onChange={set('packagingType')}>
                   <option value="">Select...</option>
-                  {PACKAGING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {packingTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div>

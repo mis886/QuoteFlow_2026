@@ -164,7 +164,7 @@ import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui';
 import { SearchableCombobox } from '../components/SearchableCombobox';
-import { PACKAGING_TYPES } from '../lib/stockMovementOptions';
+import { usePackingTypes } from '../hooks/usePackingTypes';
 // 2026-09-07: Product Name now draws from the same PRODUCTS list Inward
 // uses (instead of stockMovementOptions.ts's plain-string PRODUCT_NAMES),
 // so a Product Code can be looked up on selection — see the file-header
@@ -195,7 +195,7 @@ const billingNameForProductName = (name: string): string => PRODUCTS.find(p => p
 
 // MOU's own fixed option pair — pulled out to a const (was inline <option>s)
 // so the component below can widen it with an out-of-list auto-filled value
-// the same way it already does for PACKAGING_TYPES.
+// the same way it already does for Packing Type.
 const MOU_OPTIONS = ['KG', 'LTR'];
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow";
@@ -510,6 +510,7 @@ function OutwardForm() {
   const currentOrderLineSeq = dispatchOrder ? orderLineFor(dispatchOrder, data.dispatchEntries, orderLineSeq)?.seq ?? null : null;
 
   const [form, setForm] = useState(emptyForm);
+  const packingTypes = usePackingTypes();
 
   // No of Barrels auto-fill bookkeeping (see the Lot No lookup below):
   //   userBarrelsKey — the Warehouse + Lot No the user typed their OWN No of
@@ -1098,9 +1099,9 @@ function OutwardForm() {
   // why auto-filled Packing Type/MOU were rendering as blank "Select..."
   // despite the value being set in form state.
   const packagingTypeOptions =
-    form.packagingType && !PACKAGING_TYPES.includes(form.packagingType)
-      ? [...PACKAGING_TYPES, form.packagingType]
-      : PACKAGING_TYPES;
+    form.packagingType && !packingTypes.includes(form.packagingType)
+      ? [...packingTypes, form.packagingType]
+      : packingTypes;
   const weightTypeOptions =
     form.weightType && form.weightType !== 'KG' && form.weightType !== 'LTR'
       ? [...MOU_OPTIONS, form.weightType]

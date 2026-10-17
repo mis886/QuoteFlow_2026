@@ -1,5 +1,6 @@
-// Shared fixed option lists for the Stock Movements module. PACKAGING_TYPES
-// is genuinely shared (Inward + both Outward forms). PRODUCT_NAMES is NOT
+// Shared fixed option lists for the Stock Movements module. (Packing Type
+// used to live here as PACKAGING_TYPES; since 2026-10-17 Inward and Outward
+// read it from the packing_types table via usePackingTypes.) PRODUCT_NAMES is NOT
 // used by Inward (which has always drawn Product Name/Code from PRODUCTS in
 // stockInwardProducts.ts) and, as of 2026-09-07, is no longer used by
 // NewStockOutward.tsx's "create" form either — that form switched to
@@ -36,9 +37,4 @@ export const PRODUCT_NAMES = [
   'Loose Turpentine', 'Loose DHM Tops white', 'Loose DHM Tops Yellow', 'Loose-Gamma Terpinene 98',
   'Loose DL-Limonene Bhilai', 'Methyl Pentanone HB', 'DL Limonene', 'Terpinyl Acetate', 'DELTA 3 CARENE',
   'Ester Gum', 'EUCALYPTUS OIL', 'Delta 3 carene', 'ROSIN Aegentina',
-];
-
-export const PACKAGING_TYPES = [
-  'HDPE barrel', 'MS', 'Bag', 'Carboy', 'MS Barrel', 'Drum', 'New HTPL HDPE', 'Carbouys', 'MS Patra',
-  'HDPE', 'GI patra', 'BOX', 'Used GI Drum', 'MS EPOXY', 'Tanker', 'New GI DRUM',
 ];
