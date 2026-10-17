@@ -17,8 +17,10 @@ export function PackingTypeSelect({ options, value, onChange }: Props) {
       onChange={e => onChange(e.target.value)}
       className={`w-full bg-transparent outline-none font-sans text-[12px] cursor-pointer ${value ? 'text-blk' : 'text-g400'}`}
     >
-      <option value="">Select packing type</option>
-      {opts.map(o => <option key={o} value={o} className="text-blk">{o}</option>)}
+      {/* Dark open list (charcoal g800 + white) so it reads clearly; without
+          this the options inherit the select's grey placeholder text. */}
+      <option value="" className="bg-g800 text-white">Select packing type</option>
+      {opts.map(o => <option key={o} value={o} className="bg-g800 text-white">{o}</option>)}
     </select>
   );
 }
