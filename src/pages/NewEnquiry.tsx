@@ -7,7 +7,7 @@ import { Enquiry, LineItem, Urgency, CustomerTier, Customer } from '../lib/types
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
-import { OptionSearch } from '../components/OptionSearch';
+import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 
@@ -557,12 +557,10 @@ export function NewEnquiry() {
                                 : <span className="text-g300 text-[11px]">—</span>}
                             </td>
                             <td className="px-3 py-[5px] border border-g400 align-middle">
-                              <OptionSearch
+                              <PackingTypeSelect
                                 options={packingTypeOptions}
                                 value={item.packingType || ''}
                                 onChange={val => updateItem(idx, 'packingType', val)}
-                                placeholder="Packing type…"
-                                showAllOnFocus
                               />
                             </td>
                             <td className="px-1 py-[5px] border border-g400 align-middle">

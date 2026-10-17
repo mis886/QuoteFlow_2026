@@ -7,7 +7,7 @@ import { QuoteItem, Quote, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { ProductSearch } from '../components/ProductSearch';
-import { OptionSearch } from '../components/OptionSearch';
+import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { generateQuotePDF } from '../lib/pdfGenerator';
@@ -1183,12 +1183,10 @@ export function NewQuote() {
                             {(() => { const p = parseFloat(item.packing || ''); const t = item.qty * p; return (p > 0 && item.qty > 0) ? <span className="font-mono text-[11px] text-g500">{Number.isInteger(t) ? t : t}</span> : <span className="text-g300 text-[11px]">—</span>; })()}
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <OptionSearch
+                            <PackingTypeSelect
                               options={packingTypeOptions}
                               value={item.packingType || ''}
                               onChange={val => updateItem(idx, 'packingType', val)}
-                              placeholder="Packing type…"
-                              showAllOnFocus
                             />
                           </td>
                           <td className="px-1 py-[3px] border border-g400 align-middle">

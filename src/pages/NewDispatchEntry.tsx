@@ -5,7 +5,7 @@ import { Button } from '../components/ui';
 import { customerOfDoc, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, remainingByLine, totalRemaining } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
-import { OptionSearch } from '../components/OptionSearch';
+import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
@@ -1215,12 +1215,10 @@ export function NewDispatchEntry() {
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle bg-g100 text-center font-mono text-[11px] text-g500">{totalQty ?? '—'}</td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <OptionSearch
+                            <PackingTypeSelect
                               options={packingTypeOptions}
                               value={i.packingType || ''}
                               onChange={val => updateItem(idx, 'packingType', val)}
-                              placeholder="Packing type…"
-                              showAllOnFocus
                             />
                           </td>
                           <td className="px-1 py-[3px] border border-g400 align-middle">
