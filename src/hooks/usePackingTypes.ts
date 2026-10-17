@@ -8,18 +8,17 @@ export function usePackingTypes(): string[] {
     supabase
       .from('packing_types')
       .select('name')
+      .order('sort_order')
       .order('name')
       .then(({ data, error }) => {
         if (error) {
           console.warn('[usePackingTypes] DB fetch failed:', error.message);
-          setTypes(['Tanker']);
+          setTypes([]);
           return;
         }
         if (data) {
-          const names = data.map((r: { name: string }) => r.name);
-          // Ensure Tanker is present even if the DB row hasn't been inserted yet
-          if (!names.includes('Tanker')) names.push('Tanker');
-          setTypes(names.sort());
+          // Keep the DB order (sort_order, then name) — don't re-sort here
+          setTypes(data.map((r: { name: string }) => r.name));
         }
       });
   }, []);
