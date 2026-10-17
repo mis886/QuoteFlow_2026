@@ -1220,7 +1220,7 @@ export function NewDispatchEntry() {
                               value={i.packingType || ''}
                               onChange={val => updateItem(idx, 'packingType', val)}
                               placeholder="Packing type…"
-                              freeText
+                              showAllOnFocus
                             />
                           </td>
                           <td className="px-1 py-[3px] border border-g400 align-middle">

@@ -8,11 +8,15 @@ interface Props {
   placeholder?: string;
   /** When true, every keystroke commits the typed value â€” free text is accepted, not just picks. */
   freeText?: boolean;
+  /** When true, focusing/clicking lists every option regardless of the current text; filtering starts once the user types. */
+  showAllOnFocus?: boolean;
 }
 
-export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€¦', freeText = false }: Props) {
+export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€¦', freeText = false, showAllOnFocus = false }: Props) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
+  // showAllOnFocus: true once the user has typed since the list was opened
+  const [typed, setTyped] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -26,9 +30,9 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
+    if (!q || (showAllOnFocus && !typed)) return options;
     return options.filter(o => o.toLowerCase().includes(q));
-  }, [query, options]);
+  }, [query, options, showAllOnFocus, typed]);
 
   useEffect(() => { setActiveIdx(0); }, [filtered.length]);
 
@@ -41,6 +45,7 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€
 
   const closeAndRevert = () => {
     setOpen(false);
+    setTyped(false);
     if (!freeText) setQuery(committedRef.current);
   };
 
@@ -64,6 +69,7 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€
     committedRef.current = opt;
     setQuery(opt);
     setOpen(false);
+    setTyped(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -83,6 +89,7 @@ export function OptionSearch({ options, value, onChange, placeholder = 'Searchâ€
         placeholder={placeholder}
         onChange={e => {
           setQuery(e.target.value);
+          setTyped(true);
           if (freeText) onChange(e.target.value); // free-text mode: commit every keystroke
           if (!open) calcPos();
           setOpen(true);
