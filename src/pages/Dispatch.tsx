@@ -762,7 +762,7 @@ export function Dispatch() {
               <tbody>
                 {visiblePending.length === 0 ? (
                   <tr><td colSpan={15} className="text-center p-8 text-g400 text-[13px]">
-                    {qs ? 'No matching orders' : pendingFilter === 'partial' ? 'No partly dispatched orders' : 'No confirmed orders pending for dispatch'}
+                    {qs ? 'No matching orders' : pendingFilter === 'partial' ? 'No partially dispatched orders' : 'No confirmed orders pending for dispatch'}
                   </td></tr>
                 ) : (
                   visiblePending.map(o => {
