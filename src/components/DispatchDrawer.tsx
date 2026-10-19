@@ -127,6 +127,12 @@ function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
   );
 }
 
+// A dispatch entry's button names the step it is waiting on (8 invoice no.,
+// 9 LR, 10 email); Done entries just open for viewing. Every label goes to
+// the same entry page (/dispatch/new?entryId=…).
+const entryActionLabel = (col: 8 | 9 | 10 | 11) =>
+  col === 8 ? 'Add invoice no. →' : col === 9 ? 'Upload LR →' : col === 10 ? 'Email to Client →' : 'Open →';
+
 export function DispatchDrawer({
   order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onResume,
   canUndo, undoBusy, onUndo, openedFrom, canDelete, onSaveStep, onDelete, onClose,
@@ -220,6 +226,8 @@ export function DispatchDrawer({
   // 2026-10-06: the remark box + step buttons show for every login while the
   // order is on steps 1–7; canAct only decides whether they are enabled.
   const hasStepActions = !!orderCard && orderCard.column <= 7;
+  // Opened from an entry row that is still waiting on step 8, 9 or 10 (not Done).
+  const entryWaiting = openedFrom.kind === 'entry' && openedFrom.column !== 11;
   // 2026-10-16: Step 6 row — the DOs of the round the drawer's steps 5–7
   // come from (the open round, else the last closed one): saved / emailed.
   const focusRound = orderCard ? orderCard.position.round : realEntries.length;
@@ -337,7 +345,7 @@ export function DispatchDrawer({
                         </div>
                       </div>
                       <button type="button" onClick={() => navigate(`/dispatch/new?entryId=${e.id}&from=board`)}
-                        className="text-[11px] font-semibold text-red-mrt hover:underline shrink-0">Open →</button>
+                        className="text-[11px] font-semibold text-red-mrt hover:underline shrink-0">{entryActionLabel(pos.column)}</button>
                     </div>
                   );
                 })}
@@ -347,16 +355,22 @@ export function DispatchDrawer({
         </div>
 
         {/* Remark + current step's buttons */}
-        {(hasStepActions || orderCard?.column === 8) && orderCard && (
+        {((orderCard && (hasStepActions || orderCard.column === 8)) || entryWaiting) && (
           <div className="border-t border-g200 px-4 py-3 flex flex-col gap-2 bg-cream">
-            {hasStepActions && (
+            {entryWaiting && openedFrom.kind === 'entry' && (
+              <button type="button" onClick={() => navigate(`/dispatch/new?entryId=${openedFrom.entry.id}&from=board`)}
+                className="w-full bg-red-mrt hover:bg-red-h text-white text-[12px] font-semibold rounded-[4px] px-2.5 py-[7px] transition-colors">
+                {entryActionLabel(openedFrom.column)}
+              </button>
+            )}
+            {orderCard && hasStepActions && (
               <textarea value={remark} onChange={e => setRemark(e.target.value)} rows={2}
                 disabled={!canAct} title={canAct ? undefined : STEP_BUTTONS_LOCKED_TIP}
                 placeholder="Remark (saved with the next button you press)"
                 className="w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[4px] p-[7px_9px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
             )}
-            {hasStepActions && <StepActionButtons card={orderCard} busy={busy} canAct={canAct} onAction={act} onResume={resume} omitStep6MarkDone />}
-            {orderCard.column === 8 && (
+            {orderCard && hasStepActions && <StepActionButtons card={orderCard} busy={busy} canAct={canAct} onAction={act} onResume={resume} omitStep6MarkDone />}
+            {orderCard?.column === 8 && (
               <button type="button" onClick={() => navigate(`/dispatch/new?orderRef=${order.id}&toSent=1&from=board`)}
                 className="w-full bg-red-mrt hover:bg-red-h text-white text-[12px] font-semibold rounded-[4px] px-2.5 py-[7px] transition-colors">
                 Create Dispatch Entry →
