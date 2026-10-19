@@ -1,16 +1,13 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Clock, Pause, Play, Undo2 } from 'lucide-react';
+import { Pause, Play, Undo2 } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
-import { Button } from './ui';
 import {
-  DISPATCH_STEPS, DISPATCH_DOER_NAME, STEP_ACTIONS, BoardCard, BoardOrderCard, ColumnNo, StepAction, StepDef, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed,
+  DISPATCH_STEPS, STEP_ACTIONS, BoardCard, BoardOrderCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck,
 } from '../lib/dispatchFlow';
 
-// Kanban "Board view" of the Dispatch module: a step strip + one 268px column
-// per step (1–10, Done). Cards are built by buildBoard() in dispatchFlow.ts;
-// this file only draws them. Red buttons open the existing Dispatch screens
-// (NewDispatchEntry.tsx) — they never change anything by themselves.
+// "Board" view of the Dispatch module — since 2026-10-19 a LIST: step tiles
+// + one row per card (built by buildBoard() in dispatchFlow.ts). This file
+// only draws them; the drawer (DispatchDrawer.tsx) holds the step buttons.
 
 const fmtClock = (iso: string, now: number) => {
   const d = new Date(iso);
@@ -62,13 +59,6 @@ export const TypeDot = ({ type }: { type: string }) => type === 'self_pickup'
 
 export const AutoTag = () => (
   <span className="font-mono text-[8.5px] font-bold tracking-[1px] uppercase bg-[#E8F0FD] text-[#1D4ED8] rounded-[3px] px-[5px] py-[1px]">Auto</span>
-);
-
-const RedButton = ({ children, onClick }: { children: React.ReactNode; onClick: () => void }) => (
-  <button type="button" onClick={onClick}
-    className="w-full bg-red-mrt hover:bg-red-h text-white text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[6px] transition-colors">
-    {children}
-  </button>
 );
 
 /**
@@ -152,167 +142,215 @@ const itemSummary =(lines: { desc: string; qty: number }[]) => {
 
 const stepLabel = (no: ColumnNo) => no === 11 ? 'DONE' : `STEP ${String(no).padStart(2, '0')}`;
 
-function Card({ card, now, onOpen, renderActions, onDelete }: {
-  card: BoardCard; now: number;
-  onOpen?: (card: BoardCard) => void;
-  renderActions?: (card: BoardCard) => React.ReactNode;
-  onDelete?: (card: BoardCard) => void;
-}) {
-  const navigate = useNavigate();
+// ── List view (2026-10-19) ────────────────────────────────────────────────
+// Replaced the 11 kanban columns with: clickable step tiles (filter) + one
+// compact row per card + 10 progress dots. Clicking a row opens the same
+// DispatchDrawer as before, where every step button / Undo / Edit / Delete
+// lives — so the workflow rules are unchanged, only the layout is new.
+
+type DotState = 'done' | 'current' | 'hold' | 'skipped' | 'upcoming';
+
+/** One dot per step 1–10, worked out from the card's position. */
+function progressDots(card: BoardCard): DotState[] {
+  const out: DotState[] = [];
+  const selfPickup = card.fulfillment === 'self_pickup';
+  for (let n = 1; n <= 10; n++) {
+    if (card.kind === 'order') {
+      const cur = card.position.step;
+      if (card.position.skipped.includes(n as StepNo)) out.push('skipped');
+      else if (n < cur) out.push('done');
+      else if (n === cur) out.push(card.position.hold ? 'hold' : 'current');
+      else if (n === 9 && selfPickup) out.push('skipped');
+      else out.push('upcoming');
+    } else {
+      // Entry cards: steps 1–7 are already behind them.
+      const col = card.column;
+      if (n <= 7) out.push(n === 1 && card.order && !needsPaymentCheck(card.order.pay) ? 'skipped' : 'done');
+      else if (n === 9 && selfPickup) out.push('skipped');
+      else if (col === 11 || n < col) out.push('done');
+      else if (n === col) out.push('current');
+      else out.push('upcoming');
+    }
+  }
+  return out;
+}
+
+const DOT_CLS: Record<DotState, string> = {
+  done: 'bg-[#107E3E]',
+  current: 'bg-[#2563EB] ring-[3px] ring-[#2563EB]/30',
+  hold: 'bg-[#E9730C] ring-[3px] ring-[#E9730C]/30',
+  skipped: 'border-[1.5px] border-dashed border-g400 bg-transparent',
+  upcoming: 'bg-g300',
+};
+const DOT_WORD: Record<DotState, string> = {
+  done: 'Done', current: 'Now', hold: 'On hold', skipped: 'Skipped', upcoming: 'Waiting',
+};
+
+// Most urgent first.
+const STATE_RANK: Record<TimeState, number> = { late: 0, due_soon: 1, hold: 2, on_time: 3, none: 4, done: 5 };
+
+const PAGE = 100;
+
+function Row({ card, now, onOpen }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void }) {
   const order = card.order;
-  const soNumber = order?.soNumber;
   const orderId = card.kind === 'order' ? card.order.id : card.entry.orderId;
   const lines = card.kind === 'order'
     ? card.remaining
     : (card.entry.items || []).filter(i => Number(i.qty) > 0).map(i => ({ desc: i.desc, qty: Number(i.qty) }));
+  const step = DISPATCH_STEPS[card.column - 1];
+  const dots = progressDots(card);
+  const open = () => onOpen?.(card);
 
   return (
-    <div className="bg-white border border-[#E2DFDA] rounded-[6px] p-[10px_11px] shadow-[0_1px_2px_rgba(0,0,0,0.04)] flex flex-col gap-[6px]">
-      <div className="flex items-center justify-between gap-2">
-        <button type="button" onClick={() => onOpen?.(card)} disabled={!onOpen}
-          className="font-mono text-[11.5px] font-bold text-red-mrt hover:underline disabled:no-underline disabled:cursor-default text-left truncate">
-          {soNumber || '—'}
-        </button>
-        <span className="font-mono text-[10px] text-g500 shrink-0">{orderId}</span>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
+      className="grid grid-cols-[150px_minmax(200px,1.6fr)_120px_minmax(180px,1.2fr)_150px_190px] gap-3 items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors"
+    >
+      {/* Order */}
+      <div className="flex flex-col gap-[2px] min-w-0">
+        <span className="font-mono text-[12px] font-bold text-red-mrt truncate">{order?.soNumber || '—'}</span>
+        <span className="font-mono text-[10.5px] text-g500 truncate">
+          {card.kind === 'entry' && card.entry.invoiceNumber ? `INV ${card.entry.invoiceNumber}` : orderId}
+        </span>
       </div>
-      <div className="text-[13.5px] font-semibold text-blk leading-tight truncate" title={order?.cust}>{order?.cust || '—'}</div>
-      <div className="flex items-center justify-between gap-2 text-[12px] text-g600">
-        <span className="truncate" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
-        <span className="text-[11px] text-g700 shrink-0"><TypeDot type={card.fulfillment} /></span>
+
+      {/* Customer · product */}
+      <div className="flex flex-col gap-[2px] min-w-0">
+        <span className="text-[13.5px] font-semibold text-blk truncate" title={order?.cust}>{order?.cust || '—'}</span>
+        <span className="text-[12px] text-g600 truncate" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
       </div>
-      <div className="flex items-center justify-between gap-2">
-        <span className="bg-g100 text-g700 text-[10.5px] rounded-[3px] px-2 py-[1px] truncate">{order?.pay || 'No terms'}</span>
-        {card.kind === 'order' ? (
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-g700 shrink-0">
-            <span className="w-[18px] h-[18px] rounded-full bg-blk text-white text-[9.5px] font-bold inline-flex items-center justify-center">{DISPATCH_DOER_NAME[0]}</span>
-            {DISPATCH_DOER_NAME}
-          </span>
-        ) : (
-          <span className="font-mono text-[10px] font-bold bg-[#F3EEFF] text-[#5B21B6] rounded-[3px] px-1.5 py-[1px] shrink-0 truncate max-w-[130px]">
-            INV {card.entry.invoiceNumber || '—'}
-          </span>
+
+      {/* Type + payment terms */}
+      <div className="flex flex-col gap-[3px] min-w-0 text-[12px] text-g700">
+        <TypeDot type={card.fulfillment} />
+        <span className="text-[10.5px] text-g500 truncate" title={order?.pay}>{order?.pay || 'No terms'}</span>
+      </div>
+
+      {/* Current step + any flag */}
+      <div className="flex flex-col gap-[2px] min-w-0">
+        <span className="flex items-center gap-1.5">
+          <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(card.column)}</span>
+          {step?.auto && card.column !== 11 && <AutoTag />}
+        </span>
+        <span className="text-[13px] text-blk truncate">{step?.title}</span>
+        {card.kind === 'order' && card.doPending && (
+          <span className="text-[10.5px] font-semibold text-amber-700 leading-snug truncate" title={doPendingText(card.doPending)}>{doPendingText(card.doPending)}</span>
+        )}
+        {card.kind === 'entry' && card.position.invoiceMissing && (
+          <span className="text-[10.5px] font-semibold text-[#9A0000]">Invoice no. missing</span>
         )}
       </div>
-      <TimeBar card={card} now={now} />
-      {card.kind === 'order' && card.position.skipped.length > 0 && (
-        <div className="text-[10.5px] text-g500">Skipped: step {card.position.skipped.join(', ')}</div>
-      )}
-      {card.kind === 'order' && card.doPending && (
-        <div className="text-[11px] font-semibold text-amber-700 leading-snug">{doPendingText(card.doPending)}</div>
-      )}
-      {card.kind === 'entry' && card.position.invoiceMissing && (
-        <div className="text-[11px] font-semibold text-[#9A0000]">Invoice no. missing</div>
-      )}
-      {renderActions?.(card)}
-      {card.kind === 'order' && card.column === 8 && (
-        <RedButton onClick={() => navigate(`/dispatch/new?orderRef=${card.order.id}&toSent=1&from=board`)}>Create Dispatch Entry →</RedButton>
-      )}
-      {card.kind === 'entry' && card.column === 8 && (
-        <RedButton onClick={() => navigate(`/dispatch/new?entryId=${card.entry.id}&from=board`)}>Open entry →</RedButton>
-      )}
-      {card.kind === 'entry' && card.column === 9 && (
-        <RedButton onClick={() => navigate(`/dispatch/new?entryId=${card.entry.id}&from=board`)}>Upload LR →</RedButton>
-      )}
-      {card.kind === 'entry' && card.column === 10 && (
-        <RedButton onClick={() => navigate(`/dispatch/new?entryId=${card.entry.id}&from=board`)}>Email to Client →</RedButton>
-      )}
-      {/* Admins only (the page passes onDelete only for canDeleteRecords). */}
-      {onDelete && (
-        <div className="flex justify-end -mt-0.5">
-          <Button size="sm" variant="ghost" className="h-[22px] px-2 text-red-500 hover:text-red-700 hover:bg-red-50"
-            title={card.kind === 'order' ? 'Remove this order from the Dispatch board' : 'Delete this dispatch entry'}
-            onClick={() => onDelete(card)}>
-            Delete
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
 
-function ColumnHeader({ step, count }: { step: StepDef; count: number }) {
-  return (
-    <div className="p-[10px_11px_9px] border-b border-g200 flex flex-col gap-[3px]">
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-[9px] font-bold tracking-[1.5px] text-red-mrt shrink-0">{stepLabel(step.no)}</span>
-        <span className="text-[13px] font-bold text-blk truncate">{step.title}</span>
-        <span className="ml-auto min-w-[22px] h-[22px] px-1.5 rounded-full bg-white border border-g200 text-[11px] font-bold text-g700 inline-flex items-center justify-center shrink-0">{count}</span>
+      {/* 10 dots */}
+      <div className="flex items-center gap-[5px]">
+        {dots.map((d, i) => (
+          <span key={i} title={`Step ${String(i + 1).padStart(2, '0')} · ${DISPATCH_STEPS[i].title} · ${DOT_WORD[d]}`}
+            className={`w-[9px] h-[9px] rounded-full shrink-0 box-border ${DOT_CLS[d]}`} />
+        ))}
       </div>
-      <div className="text-[11px] text-g500">{step.subtitle}</div>
-      {step.how && (
-        <div className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.5px] text-g500">
-          <span className="truncate">{step.how}</span>
-          <span>·</span>
-          <Clock size={10} className="shrink-0" />
-          <span className="shrink-0">{step.tatHours}h</span>
-          {step.auto && <span className="ml-auto shrink-0"><AutoTag /></span>}
-        </div>
-      )}
-      {step.rule && <div className="text-[10.5px] text-[#5B21B6] leading-snug">{step.rule}</div>}
-      {step.autoRule && <div className="text-[10.5px] text-[#1D4ED8] leading-snug">{step.autoRule}</div>}
+
+      {/* Due / late */}
+      <div className="min-w-0">
+        <TimeBar card={card} now={now} />
+      </div>
     </div>
   );
 }
 
-export function DispatchBoard({ cards, now, onOpen, renderActions, onDelete }: {
+export function DispatchBoard({ cards, now, onOpen }: {
   cards: BoardCard[];
   now: number;
   onOpen?: (card: BoardCard) => void;
+  // Kept so Dispatch.tsx doesn't need to change; step buttons and Delete now
+  // live only in the drawer.
   renderActions?: (card: BoardCard) => React.ReactNode;
-  onDelete?: (card: BoardCard) => void;   // admins only
+  onDelete?: (card: BoardCard) => void;
 }) {
+  const [stepFilter, setStepFilter] = React.useState<ColumnNo | 'all'>('all');
+  const [limit, setLimit] = React.useState(PAGE);
+  React.useEffect(() => { setLimit(PAGE); }, [stepFilter, cards.length]);
+
   const byColumn = new Map<ColumnNo, BoardCard[]>();
   for (const c of cards) {
     const list = byColumn.get(c.column) || [];
     list.push(c);
     byColumn.set(c.column, list);
   }
-  // Most urgent first: latest-planned last; Done newest email first.
-  for (const [col, list] of byColumn) {
-    list.sort((a, b) => col === 11
-      ? ((b.kind === 'entry' && b.entry.emailSentAt) || '').localeCompare((a.kind === 'entry' && a.entry.emailSentAt) || '')
-      : (a.position.plannedAt || '').localeCompare(b.position.plannedAt || ''));
-  }
+
+  const shown = (stepFilter === 'all' ? [...cards] : [...(byColumn.get(stepFilter) || [])]).sort((a, b) => {
+    const r = STATE_RANK[a.state] - STATE_RANK[b.state];
+    if (r) return r;
+    if (a.column === 11 && b.column === 11) {
+      return ((b.kind === 'entry' && b.entry.emailSentAt) || '').localeCompare((a.kind === 'entry' && a.entry.emailSentAt) || '');
+    }
+    return (a.position.plannedAt || '').localeCompare(b.position.plannedAt || '');
+  });
+  const totalDelayed = cards.filter(c => c.state === 'late').length;
+
+  const tiles: { key: ColumnNo | 'all'; top: string; title: string; count: number; delayed: number }[] = [
+    { key: 'all', top: 'ALL', title: 'All orders', count: cards.length, delayed: totalDelayed },
+    ...DISPATCH_STEPS.map(s => {
+      const list = byColumn.get(s.no) || [];
+      return { key: s.no, top: stepLabel(s.no), title: s.title, count: list.length, delayed: list.filter(c => c.state === 'late').length };
+    }),
+  ];
 
   return (
     <div className="flex-1 min-h-0 flex flex-col px-6 pb-5 pt-[14px] gap-3">
-      {/* Step strip */}
-      <div className="grid grid-cols-11 gap-[6px] shrink-0">
-        {DISPATCH_STEPS.map(step => {
-          const list = byColumn.get(step.no) || [];
-          const delayed = list.filter(c => c.state === 'late').length;
+      {/* Step tiles — click to show only that step */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-[6px] shrink-0">
+        {tiles.map(t => {
+          const on = stepFilter === t.key;
           return (
-            <div key={step.no} className="bg-white border border-g200 rounded-[6px] p-[7px_8px] min-w-0">
+            <button key={String(t.key)} type="button" onClick={() => setStepFilter(t.key)} aria-pressed={on}
+              className={`text-left rounded-[6px] p-[7px_8px] min-w-0 border transition-colors ${on ? 'border-red-mrt bg-red-lt' : 'border-g200 bg-white hover:bg-g100'}`}>
               <div className="flex items-start justify-between gap-1">
-                <span className="font-mono text-[8.5px] font-bold tracking-[1px] text-red-mrt">{stepLabel(step.no)}</span>
-                <span className="text-[15px] font-bold text-blk leading-none">{list.length}</span>
+                <span className="font-mono text-[8.5px] font-bold tracking-[1px] text-red-mrt">{t.top}</span>
+                <span className={`text-[15px] font-bold leading-none ${t.count ? 'text-blk' : 'text-g400'}`}>{t.count}</span>
               </div>
-              <div className="text-[11px] text-g700 truncate mt-[3px]" title={step.title}>{step.title}</div>
-              <div className={`text-[10px] mt-[1px] ${delayed ? 'text-[#9A0000] font-semibold' : 'text-g400'}`}>{delayed ? `${delayed} delayed` : '—'}</div>
-            </div>
+              <div className="text-[11px] text-g700 truncate mt-[3px]" title={t.title}>{t.title}</div>
+              <div className={`text-[10px] mt-[1px] ${t.delayed ? 'text-[#9A0000] font-semibold' : 'text-g400'}`}>{t.delayed ? `${t.delayed} delayed` : '—'}</div>
+            </button>
           );
         })}
       </div>
 
-      {/* Columns */}
-      <div className="board-scroll-x flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
-        <div className="flex gap-3 h-full w-max">
-          {DISPATCH_STEPS.map(step => {
-            const list = byColumn.get(step.no) || [];
-            return (
-              <div key={step.no} className="w-[268px] shrink-0 h-full flex flex-col bg-g100 border border-g200 rounded-[6px] min-h-0">
-                <ColumnHeader step={step} count={list.length} />
-                <div className="board-scroll-y flex-1 min-h-0 overflow-y-auto p-[8px] flex flex-col gap-[8px]">
-                  {list.length === 0 ? (
-                    <div className="border border-dashed border-g300 rounded-[6px] text-center text-[11.5px] text-g400 py-6">No orders at this step</div>
-                  ) : list.map(card => (
-                    <Card key={card.key} card={card} now={now} onOpen={onOpen} renderActions={renderActions} onDelete={onDelete} />
-                  ))}
+      {/* List */}
+      <div className="flex-1 min-h-0 bg-white border border-g200 rounded-[6px] overflow-auto">
+        <div className="min-w-[1000px]">
+          <div className="sticky top-0 z-[1] grid grid-cols-[150px_minmax(200px,1.6fr)_120px_minmax(180px,1.2fr)_150px_190px] gap-3 px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">
+            <div>Order</div><div>Customer · Product</div><div>Type</div><div>Current step</div><div>Progress</div><div>Due</div>
+          </div>
+          {shown.length === 0 ? (
+            <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
+          ) : (
+            <>
+              {shown.slice(0, limit).map(card => <Row key={card.key} card={card} now={now} onOpen={onOpen} />)}
+              {shown.length > limit && (
+                <div className="flex justify-center py-3 border-t border-g200">
+                  <button type="button" onClick={() => setLimit(l => l + PAGE)}
+                    className="text-[12px] font-semibold text-red-mrt hover:underline">
+                    Show more ({shown.length - limit} left)
+                  </button>
                 </div>
-              </div>
-            );
-          })}
+              )}
+            </>
+          )}
         </div>
+      </div>
+
+      {/* Dot legend */}
+      <div className="flex flex-wrap items-center gap-4 text-[11px] text-g600 shrink-0">
+        <span className="font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">Progress dots</span>
+        {(['done', 'current', 'hold', 'skipped', 'upcoming'] as DotState[]).map(d => (
+          <span key={d} className="inline-flex items-center gap-1.5">
+            <span className={`w-[9px] h-[9px] rounded-full box-border ${DOT_CLS[d]}`} />{DOT_WORD[d]}
+          </span>
+        ))}
+        <span className="ml-auto text-g500">{shown.length} shown · click a row for steps &amp; actions</span>
       </div>
     </div>
   );

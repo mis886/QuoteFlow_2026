@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, List, Columns3, CheckCircle2 } from 'lucide-react';
+import { Search, List, Rows3, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
@@ -582,7 +582,7 @@ export function Dispatch() {
             <List size={12} /> Table
           </div>
           <div onClick={() => switchView('board')} className={`flex items-center gap-1.5 ${pillCls(view === 'board')}`}>
-            <Columns3 size={12} /> Board
+            <Rows3 size={12} /> List
           </div>
         </div>
         <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
