@@ -191,7 +191,9 @@ const STATE_RANK: Record<TimeState, number> = { late: 0, due_soon: 1, hold: 2, o
 
 const PAGE = 100;
 
-function Row({ card, now, onOpen }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void }) {
+type OrderQty = { ordered: number; dispatched: number; remaining: number };
+
+function Row({ card, now, onOpen, qty }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty }) {
   const order = card.order;
   const orderId = card.kind === 'order' ? card.order.id : card.entry.orderId;
   const lines = card.kind === 'order'
@@ -207,7 +209,7 @@ function Row({ card, now, onOpen }: { card: BoardCard; now: number; onOpen?: (ca
       tabIndex={0}
       onClick={open}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
-      className="grid grid-cols-[150px_minmax(200px,1.6fr)_120px_minmax(180px,1.2fr)_150px_190px] gap-3 items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors"
+      className="grid grid-cols-[150px_minmax(200px,1.6fr)_120px_80px_80px_80px_minmax(180px,1.2fr)_150px_190px] gap-3 items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors"
     >
       {/* Order */}
       <div className="flex flex-col gap-[2px] min-w-0">
@@ -227,6 +229,13 @@ function Row({ card, now, onOpen }: { card: BoardCard; now: number; onOpen?: (ca
       <div className="flex flex-col gap-[3px] min-w-0 text-[12px] text-g700">
         <TypeDot type={card.fulfillment} />
         <span className="text-[10.5px] text-g500 truncate" title={order?.pay}>{order?.pay || 'No terms'}</span>
+      </div>
+
+      {/* Barrels — the ORDER's ordered / dispatched / remaining, every row */}
+      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
+      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
+      <div className={`text-right font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
+        {qty ? qty.remaining : '—'}
       </div>
 
       {/* Current step + any flag */}
@@ -260,9 +269,12 @@ function Row({ card, now, onOpen }: { card: BoardCard; now: number; onOpen?: (ca
   );
 }
 
-export function DispatchBoard({ cards, now, onOpen }: {
+export function DispatchBoard({ cards, now, onOpen, qty }: {
   cards: BoardCard[];
   now: number;
+  // Barrels per order id (Dispatch.tsx's boardQty) — same numbers as the
+  // Table's Order Pending for Dispatch.
+  qty?: Map<string, OrderQty>;
   onOpen?: (card: BoardCard) => void;
   // Kept so Dispatch.tsx doesn't need to change; step buttons and Delete now
   // live only in the drawer.
@@ -320,15 +332,20 @@ export function DispatchBoard({ cards, now, onOpen }: {
 
       {/* List */}
       <div className="flex-1 min-h-0 bg-white border border-g200 rounded-[6px] overflow-auto">
-        <div className="min-w-[1000px]">
-          <div className="sticky top-0 z-[1] grid grid-cols-[150px_minmax(200px,1.6fr)_120px_minmax(180px,1.2fr)_150px_190px] gap-3 px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">
-            <div>Order</div><div>Customer · Product</div><div>Type</div><div>Current step</div><div>Progress</div><div>Due</div>
+        <div className="min-w-[1240px]">
+          <div className="sticky top-0 z-[1] grid grid-cols-[150px_minmax(200px,1.6fr)_120px_80px_80px_80px_minmax(180px,1.2fr)_150px_190px] gap-3 px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">
+            <div>Order</div><div>Customer · Product</div><div>Type</div>
+            <div className="text-right">Ordered</div><div className="text-right">Dispatched</div><div className="text-right">Remaining</div>
+            <div>Current step</div><div>Progress</div><div>Due</div>
           </div>
           {shown.length === 0 ? (
             <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
           ) : (
             <>
-              {shown.slice(0, limit).map(card => <Row key={card.key} card={card} now={now} onOpen={onOpen} />)}
+              {shown.slice(0, limit).map(card => (
+                <Row key={card.key} card={card} now={now} onOpen={onOpen}
+                  qty={qty?.get(card.kind === 'order' ? card.order.id : card.entry.orderId)} />
+              ))}
               {shown.length > limit && (
                 <div className="flex justify-center py-3 border-t border-g200">
                   <button type="button" onClick={() => setLimit(l => l + PAGE)}

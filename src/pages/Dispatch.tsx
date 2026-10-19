@@ -66,7 +66,7 @@ export function Dispatch() {
   // Table (this page as it always was) vs the Kanban Board view — kept in
   // the URL as ?view=board so a refresh stays on the board.
   const [view, setView] = useState<'table' | 'board'>(() => searchParams.get('view') === 'board' ? 'board' : 'table');
-  const [boardFilter, setBoardFilter] = useState<'all' | 'delayed' | 'hold'>('all');
+  const [boardFilter, setBoardFilter] = useState<'all' | 'delayed' | 'hold' | 'partial'>('all');
   const [boardType, setBoardType] = useState<'both' | DispatchFulfillmentType>('both');
   // Board timers ("Due in 12 min", "Late by 1h 20m") re-evaluate every minute.
   const [now, setNow] = useState(() => Date.now());
@@ -533,11 +533,34 @@ export function Dispatch() {
   };
   // Type + search narrow everything; the All/Delayed/On hold pills then
   // filter what's left (their counts are shown before that last step).
+  // Barrels per order shown on the List — same numbers as pendingQty above
+  // (Order Pending for Dispatch). Entry rows show their order's numbers.
+  const boardQty = useMemo(() => {
+    const m = new Map<string, { ordered: number; dispatched: number; remaining: number }>();
+    for (const c of boardCards) {
+      const orderId = c.kind === 'order' ? c.order.id : c.entry.orderId;
+      if (m.has(orderId)) continue;
+      const o = c.order ?? data.orders.find(x => x.id === orderId);
+      if (!o) continue;
+      const ordered = o.items.reduce((s, i) => s + (Number(i.qty) || 0), 0);
+      const remaining = totalRemaining(o, data.dispatchEntries);
+      m.set(orderId, { ordered, remaining, dispatched: Math.max(0, ordered - remaining) });
+    }
+    return m;
+  }, [boardCards, data.dispatchEntries]);
+  // Order rows only, already partly dispatched — the Table's "Partly dispatched".
+  const isBoardPartial = (c: BoardCard) => {
+    if (c.kind !== 'order') return false;
+    const q = boardQty.get(c.order.id);
+    return !!q && q.dispatched > 0 && q.remaining > 0;
+  };
   const boardBase = boardCards.filter(c => (boardType === 'both' || c.fulfillment === boardType) && boardSearchMatch(c));
   const boardDelayedCount = boardBase.filter(c => c.state === 'late').length;
   const boardHoldCount = boardBase.filter(c => c.state === 'hold').length;
+  const boardPartialCount = boardBase.filter(isBoardPartial).length;
   const boardVisible = boardFilter === 'delayed' ? boardBase.filter(c => c.state === 'late')
     : boardFilter === 'hold' ? boardBase.filter(c => c.state === 'hold')
+    : boardFilter === 'partial' ? boardBase.filter(isBoardPartial)
     : boardBase;
   // Header count boxes — whole board, ignoring filters/search.
   const headerCounts = {
@@ -593,6 +616,7 @@ export function Dispatch() {
               <div onClick={() => setBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardBase.length})</div>
               <div onClick={() => setBoardFilter('delayed')} className={pillCls(boardFilter === 'delayed')}>Delayed ({boardDelayedCount})</div>
               <div onClick={() => setBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
+              <div onClick={() => setBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partly dispatched ({boardPartialCount})</div>
             </div>
             <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
             <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
@@ -675,7 +699,7 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard cards={boardVisible} now={now} onOpen={openDrawer} renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
+        <DispatchBoard cards={boardVisible} qty={boardQty} now={now} onOpen={openDrawer} renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
       ) : (
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
