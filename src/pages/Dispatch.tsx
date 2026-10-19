@@ -5,8 +5,8 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN } from '../lib/dispatchFlow';
-import { DispatchBoard, AutoTag, StepActionButtons, UndoLink } from '../components/DispatchBoard';
+import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, entryPosition } from '../lib/dispatchFlow';
+import { DispatchBoard, DeliveredOrderRow, AutoTag, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { LineItemsPanel } from '../components/LineItemsPanel';
 import { DispatchDrawer, StepEditPatch } from '../components/DispatchDrawer';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -66,7 +66,7 @@ export function Dispatch() {
   // Table (this page as it always was) vs the Kanban Board view — kept in
   // the URL as ?view=board so a refresh stays on the board.
   const [view, setView] = useState<'table' | 'board'>(() => searchParams.get('view') === 'board' ? 'board' : 'table');
-  const [boardFilter, setBoardFilter] = useState<'all' | 'delayed' | 'hold' | 'partial'>('all');
+  const [boardFilter, setBoardFilter] = useState<'all' | 'delayed' | 'hold' | 'partial' | 'delivered'>('all');
   const [boardType, setBoardType] = useState<'both' | DispatchFulfillmentType>('both');
   // Board timers ("Due in 12 min", "Late by 1h 20m") re-evaluate every minute.
   const [now, setNow] = useState(() => Date.now());
@@ -531,24 +531,51 @@ export function Dispatch() {
       || (!!o && normalizeSearchText(o.cust).includes(normalizeSearchText(qs)))
       || (c.kind === 'entry' && (c.entry.invoiceNumber || '').toLowerCase().includes(qs));
   };
-  // Type + search narrow everything; the All/Delayed/On hold pills then
-  // filter what's left (their counts are shown before that last step).
+  // List → Delivered (all time, separate from buildBoard, which keeps only
+  // the last 7 days of Done and skips imported entries): one row per entry
+  // whose email was sent OR whose order is marked Delivered (imported ones
+  // included), plus one row per Delivered order that has no entry at all.
+  const deliveredCards = useMemo<BoardEntryCard[]>(() => {
+    if (view !== 'board') return [];
+    const ordersById = new Map(data.orders.map(o => [o.id, o]));
+    const out: BoardEntryCard[] = [];
+    for (const e of data.dispatchEntries) {
+      const order = ordersById.get(e.orderId);
+      if (!e.emailSentAt && order?.status !== 'Delivered') continue;
+      out.push({
+        kind: 'entry', key: `d:${e.id}`, entry: e, order, position: entryPosition(e),
+        column: DONE_COLUMN, fulfillment: e.fulfillmentType, state: 'done',
+      });
+    }
+    return out;
+  }, [view, data.orders, data.dispatchEntries]);
+  const deliveredOrderRows = useMemo<DeliveredOrderRow[]>(() => {
+    if (view !== 'board') return [];
+    const withEntry = new Set(data.dispatchEntries.map(e => e.orderId));
+    return data.orders
+      .filter(o => o.status === 'Delivered' && !withEntry.has(o.id))
+      .map(o => ({ order: o, fulfillment: orderFulfillment(o) }));
+  }, [view, data.orders, data.dispatchEntries, data.customers]);
+
   // Barrels per order shown on the List — same numbers as pendingQty above
   // (Order Pending for Dispatch). Entry rows show their order's numbers.
   const boardQty = useMemo(() => {
     const m = new Map<string, { ordered: number; dispatched: number; remaining: number }>();
-    for (const c of boardCards) {
-      const orderId = c.kind === 'order' ? c.order.id : c.entry.orderId;
-      if (m.has(orderId)) continue;
-      const o = c.order ?? data.orders.find(x => x.id === orderId);
-      if (!o) continue;
+    const add = (o: Order | undefined) => {
+      if (!o || m.has(o.id)) return;
       const ordered = o.items.reduce((s, i) => s + (Number(i.qty) || 0), 0);
       const remaining = totalRemaining(o, data.dispatchEntries);
-      m.set(orderId, { ordered, remaining, dispatched: Math.max(0, ordered - remaining) });
+      m.set(o.id, { ordered, remaining, dispatched: Math.max(0, ordered - remaining) });
+    };
+    for (const c of [...boardCards, ...deliveredCards]) {
+      add(c.kind === 'order' ? c.order : c.order ?? data.orders.find(x => x.id === c.entry.orderId));
     }
+    for (const r of deliveredOrderRows) add(r.order);
     return m;
-  }, [boardCards, data.dispatchEntries]);
-  // Order rows only, already partly dispatched — the Table's "Partly dispatched".
+  }, [boardCards, deliveredCards, deliveredOrderRows, data.dispatchEntries]);
+  // Type + search narrow everything; the pills then filter what's left
+  // (their counts are shown before that last step).
+  // Order rows only, already partly dispatched — the Table's "Partially Dispatched".
   const isBoardPartial = (c: BoardCard) => {
     if (c.kind !== 'order') return false;
     const q = boardQty.get(c.order.id);
@@ -558,9 +585,16 @@ export function Dispatch() {
   const boardDelayedCount = boardBase.filter(c => c.state === 'late').length;
   const boardHoldCount = boardBase.filter(c => c.state === 'hold').length;
   const boardPartialCount = boardBase.filter(isBoardPartial).length;
+  const deliveredBase = deliveredCards.filter(c => (boardType === 'both' || c.fulfillment === boardType) && boardSearchMatch(c));
+  const deliveredOrdersBase = deliveredOrderRows.filter(r => (boardType === 'both' || r.fulfillment === boardType) && (!qs
+    || (r.order.soNumber || '').toLowerCase().includes(qs)
+    || r.order.id.toLowerCase().includes(qs)
+    || normalizeSearchText(r.order.cust).includes(normalizeSearchText(qs))));
+  const boardDeliveredCount = deliveredBase.length + deliveredOrdersBase.length;
   const boardVisible = boardFilter === 'delayed' ? boardBase.filter(c => c.state === 'late')
     : boardFilter === 'hold' ? boardBase.filter(c => c.state === 'hold')
     : boardFilter === 'partial' ? boardBase.filter(isBoardPartial)
+    : boardFilter === 'delivered' ? deliveredBase
     : boardBase;
   // Header count boxes — whole board, ignoring filters/search.
   const headerCounts = {
@@ -616,7 +650,8 @@ export function Dispatch() {
               <div onClick={() => setBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardBase.length})</div>
               <div onClick={() => setBoardFilter('delayed')} className={pillCls(boardFilter === 'delayed')}>Delayed ({boardDelayedCount})</div>
               <div onClick={() => setBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
-              <div onClick={() => setBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partly dispatched ({boardPartialCount})</div>
+              <div onClick={() => setBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partially Dispatched ({boardPartialCount})</div>
+              <div onClick={() => setBoardFilter('delivered')} className={pillCls(boardFilter === 'delivered')}>Delivered ({boardDeliveredCount})</div>
             </div>
             <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
             <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
@@ -688,7 +723,7 @@ export function Dispatch() {
         {tab === 'pending' && (
           <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
             <div onClick={() => switchPendingFilter('all')} className={pillCls(pendingFilter === 'all')}>All ({searchedPending.length})</div>
-            <div onClick={() => switchPendingFilter('partial')} className={pillCls(pendingFilter === 'partial')}>Partly dispatched ({partlyDispatchedCount})</div>
+            <div onClick={() => switchPendingFilter('partial')} className={pillCls(pendingFilter === 'partial')}>Partially Dispatched ({partlyDispatchedCount})</div>
           </div>
         )}
 
@@ -699,7 +734,7 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard cards={boardVisible} qty={boardQty} now={now} onOpen={openDrawer} renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
+        <DispatchBoard cards={boardVisible} qty={boardQty} deliveredOrders={boardFilter === 'delivered' ? deliveredOrdersBase : undefined} now={now} onOpen={openDrawer} renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
       ) : (
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
@@ -763,7 +798,7 @@ export function Dispatch() {
                           <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px]">{qty.ordered}</td>
                           <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px]">{qty.dispatched}</td>
                           <td className={`px-[13px] py-[10px] align-top text-right font-mono text-[12px] ${qty.dispatched > 0 ? 'font-bold text-amber-600' : ''}`}
-                            title={qty.dispatched > 0 ? 'Partly dispatched' : undefined}>{qty.remaining}</td>
+                            title={qty.dispatched > 0 ? 'Partially dispatched' : undefined}>{qty.remaining}</td>
                           <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
                           <td className="px-[13px] py-[10px] align-top">{fulfillmentLabel(orderFulfillment(o))}</td>
                           <td className="px-[13px] py-[10px] align-top text-[11.5px] whitespace-nowrap">

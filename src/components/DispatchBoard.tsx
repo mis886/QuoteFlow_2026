@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pause, Play, Undo2 } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
+import type { Order } from '../lib/types';
 import {
   DISPATCH_STEPS, STEP_ACTIONS, BoardCard, BoardOrderCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck,
 } from '../lib/dispatchFlow';
@@ -36,7 +37,8 @@ export function TimeBar({ card, now }: { card: BoardCard; now: number }) {
   const plannedAt = card.position.plannedAt;
   let text: string;
   if (state === 'hold' && card.kind === 'order') text = `On hold · ${card.position.hold?.reason || ''}`;
-  else if (state === 'done' && card.kind === 'entry') text = `Email sent ${card.entry.emailSentAt ? fmtClock(card.entry.emailSentAt, now) : ''}`;
+  // A done entry with no email = its order was marked Delivered (List → Delivered).
+  else if (state === 'done' && card.kind === 'entry') text = card.entry.emailSentAt ? `Email sent ${fmtClock(card.entry.emailSentAt, now)}` : 'Marked delivered';
   else if (!plannedAt) text = 'No start time';
   else if (state === 'late') text = `Late by ${fmtDuration(now - new Date(plannedAt).getTime())}`;
   else if (state === 'due_soon') text = `Due in ${fmtDuration(new Date(plannedAt).getTime() - now)}`;
@@ -269,12 +271,61 @@ function Row({ card, now, onOpen, qty }: { card: BoardCard; now: number; onOpen?
   );
 }
 
-export function DispatchBoard({ cards, now, onOpen, qty }: {
+// List → Delivered: an order marked Delivered that has no dispatch entry at
+// all. Not a BoardCard (nothing to place on a step), so it gets its own
+// read-only row with the same columns — not clickable, no dots or timer.
+export interface DeliveredOrderRow {
+  order: Order;
+  fulfillment: string;
+}
+
+function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: OrderQty }) {
+  const o = row.order;
+  const lines = (o.items || []).filter(i => Number(i.qty) > 0).map(i => ({ desc: i.desc, qty: Number(i.qty) }));
+  return (
+    <div className="grid grid-cols-[150px_minmax(200px,1.6fr)_120px_80px_80px_80px_minmax(180px,1.2fr)_150px_190px] gap-3 items-center px-4 py-[10px] border-b border-g200 last:border-b-0">
+      <div className="flex flex-col gap-[2px] min-w-0">
+        <span className="font-mono text-[12px] font-bold text-red-mrt truncate">{o.soNumber || '—'}</span>
+        <span className="font-mono text-[10.5px] text-g500 truncate">{o.id}</span>
+      </div>
+      <div className="flex flex-col gap-[2px] min-w-0">
+        <span className="text-[13.5px] font-semibold text-blk truncate" title={o.cust}>{o.cust || '—'}</span>
+        <span className="text-[12px] text-g600 truncate" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
+      </div>
+      <div className="flex flex-col gap-[3px] min-w-0 text-[12px] text-g700">
+        <TypeDot type={row.fulfillment} />
+        <span className="text-[10.5px] text-g500 truncate" title={o.pay}>{o.pay || 'No terms'}</span>
+      </div>
+      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
+      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
+      <div className={`text-right font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
+        {qty ? qty.remaining : '—'}
+      </div>
+      <div className="flex flex-col gap-[2px] min-w-0">
+        <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(11)}</span>
+        <span className="text-[13px] text-blk truncate">Marked delivered</span>
+      </div>
+      <div />
+      <div className="min-w-0 text-[11px] text-g400">—</div>
+    </div>
+  );
+}
+
+type ListItem = { kind: 'card'; card: BoardCard } | { kind: 'deliveredOrder'; row: DeliveredOrderRow };
+
+// Newest-first key for Done rows: email sent, else entry created, else order date.
+const doneKey = (it: ListItem) => it.kind === 'deliveredOrder'
+  ? (it.row.order.created_at || it.row.order.poDate || '')
+  : it.card.kind === 'entry' ? (it.card.entry.emailSentAt || it.card.entry.created_at || '') : '';
+
+export function DispatchBoard({ cards, now, onOpen, qty, deliveredOrders = [] }: {
   cards: BoardCard[];
   now: number;
   // Barrels per order id (Dispatch.tsx's boardQty) — same numbers as the
   // Table's Order Pending for Dispatch.
   qty?: Map<string, OrderQty>;
+  // List → Delivered only: orders marked Delivered with no dispatch entry.
+  deliveredOrders?: DeliveredOrderRow[];
   onOpen?: (card: BoardCard) => void;
   // Kept so Dispatch.tsx doesn't need to change; step buttons and Delete now
   // live only in the drawer.
@@ -283,7 +334,7 @@ export function DispatchBoard({ cards, now, onOpen, qty }: {
 }) {
   const [stepFilter, setStepFilter] = React.useState<ColumnNo | 'all'>('all');
   const [limit, setLimit] = React.useState(PAGE);
-  React.useEffect(() => { setLimit(PAGE); }, [stepFilter, cards.length]);
+  React.useEffect(() => { setLimit(PAGE); }, [stepFilter, cards.length, deliveredOrders.length]);
 
   const byColumn = new Map<ColumnNo, BoardCard[]>();
   for (const c of cards) {
@@ -292,21 +343,31 @@ export function DispatchBoard({ cards, now, onOpen, qty }: {
     byColumn.set(c.column, list);
   }
 
-  const shown = (stepFilter === 'all' ? [...cards] : [...(byColumn.get(stepFilter) || [])]).sort((a, b) => {
-    const r = STATE_RANK[a.state] - STATE_RANK[b.state];
+  // Delivered orders without an entry sit under Done.
+  const items: ListItem[] = [
+    ...(stepFilter === 'all' ? cards : (byColumn.get(stepFilter) || [])).map(card => ({ kind: 'card' as const, card })),
+    ...(stepFilter === 'all' || stepFilter === 11 ? deliveredOrders.map(row => ({ kind: 'deliveredOrder' as const, row })) : []),
+  ];
+  const shown = items.sort((a, b) => {
+    const sa: TimeState = a.kind === 'card' ? a.card.state : 'done';
+    const sb: TimeState = b.kind === 'card' ? b.card.state : 'done';
+    const r = STATE_RANK[sa] - STATE_RANK[sb];
     if (r) return r;
-    if (a.column === 11 && b.column === 11) {
-      return ((b.kind === 'entry' && b.entry.emailSentAt) || '').localeCompare((a.kind === 'entry' && a.entry.emailSentAt) || '');
-    }
-    return (a.position.plannedAt || '').localeCompare(b.position.plannedAt || '');
+    const colA = a.kind === 'card' ? a.card.column : 11;
+    const colB = b.kind === 'card' ? b.card.column : 11;
+    if (colA === 11 && colB === 11) return doneKey(b).localeCompare(doneKey(a));
+    const pa = a.kind === 'card' ? a.card.position.plannedAt || '' : '';
+    const pb = b.kind === 'card' ? b.card.position.plannedAt || '' : '';
+    return pa.localeCompare(pb);
   });
   const totalDelayed = cards.filter(c => c.state === 'late').length;
 
   const tiles: { key: ColumnNo | 'all'; top: string; title: string; count: number; delayed: number }[] = [
-    { key: 'all', top: 'ALL', title: 'All orders', count: cards.length, delayed: totalDelayed },
+    { key: 'all', top: 'ALL', title: 'All orders', count: cards.length + deliveredOrders.length, delayed: totalDelayed },
     ...DISPATCH_STEPS.map(s => {
       const list = byColumn.get(s.no) || [];
-      return { key: s.no, top: stepLabel(s.no), title: s.title, count: list.length, delayed: list.filter(c => c.state === 'late').length };
+      const extra = s.no === 11 ? deliveredOrders.length : 0;
+      return { key: s.no, top: stepLabel(s.no), title: s.title, count: list.length + extra, delayed: list.filter(c => c.state === 'late').length };
     }),
   ];
 
@@ -342,9 +403,11 @@ export function DispatchBoard({ cards, now, onOpen, qty }: {
             <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
           ) : (
             <>
-              {shown.slice(0, limit).map(card => (
-                <Row key={card.key} card={card} now={now} onOpen={onOpen}
-                  qty={qty?.get(card.kind === 'order' ? card.order.id : card.entry.orderId)} />
+              {shown.slice(0, limit).map(it => it.kind === 'card' ? (
+                <Row key={it.card.key} card={it.card} now={now} onOpen={onOpen}
+                  qty={qty?.get(it.card.kind === 'order' ? it.card.order.id : it.card.entry.orderId)} />
+              ) : (
+                <DeliveredOrderRowView key={`do:${it.row.order.id}`} row={it.row} qty={qty?.get(it.row.order.id)} />
               ))}
               {shown.length > limit && (
                 <div className="flex justify-center py-3 border-t border-g200">
