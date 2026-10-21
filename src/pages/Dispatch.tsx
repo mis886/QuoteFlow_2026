@@ -40,7 +40,8 @@ function SoCell({ soNumber, hasOrder }: { soNumber?: string; hasOrder: boolean }
   return hasOrder ? <span className="font-mono text-[10.5px] text-g400" title="Generating SO number…">…</span> : <span className="text-g400">—</span>;
 }
 
-const BOARD_PILLS = ['all', 'active', 'delayed', 'hold', 'partial', 'delivered'] as const;
+// 'active' / 'delayed' pills were removed — an old ?pill= value falls back to All.
+const BOARD_PILLS = ['all', 'hold', 'partial', 'delivered'] as const;
 type BoardPill = typeof BOARD_PILLS[number];
 
 export function Dispatch() {
@@ -69,11 +70,11 @@ export function Dispatch() {
   // Table (this page as it always was) vs the Kanban Board view — kept in
   // the URL as ?view=board so a refresh stays on the board.
   const [view, setView] = useState<'table' | 'board'>(() => searchParams.get('view') === 'board' ? 'board' : 'table');
-  // Opens on Active (the working list); All adds every delivered/done row.
-  // ?pill=… (e.g. Back from an entry opened in List → Delivered) picks another.
+  // Opens on All. ?pill=… (e.g. Back from an entry opened in List →
+  // Delivered) picks another; anything unknown falls back to All.
   const [boardFilter, setBoardFilter] = useState<BoardPill>(() => {
     const p = searchParams.get('pill');
-    return BOARD_PILLS.includes(p as BoardPill) ? p as BoardPill : 'active';
+    return BOARD_PILLS.includes(p as BoardPill) ? p as BoardPill : 'all';
   });
   const [boardType, setBoardType] = useState<'both' | DispatchFulfillmentType>('both');
   // Board timers ("Due in 12 min", "Late by 1h 20m") re-evaluate every minute.
@@ -487,14 +488,14 @@ export function Dispatch() {
   const syncUrl = (t: DispatchTab, type: DispatchFulfillmentType, v: 'table' | 'board' = view, pf: 'all' | 'partial' = pendingFilter) =>
     setSearchParams({
       ...(t === 'pending' ? (pf === 'partial' ? { pending: 'partial' } : {}) : { tab: t, type }),
-      ...(v === 'board' ? { view: 'board', ...(boardFilter !== 'active' ? { pill: boardFilter } : {}) } : {}),
+      ...(v === 'board' ? { view: 'board', ...(boardFilter !== 'all' ? { pill: boardFilter } : {}) } : {}),
     }, { replace: true });
-  // List pills — kept in the URL (?pill=, none for Active) so a refresh or
+  // List pills — kept in the URL (?pill=, none for All) so a refresh or
   // Back from an entry lands on the same pill.
   const switchBoardFilter = (f: BoardPill) => {
     setBoardFilter(f);
     const p = new URLSearchParams(searchParams);
-    if (f === 'active') p.delete('pill'); else p.set('pill', f);
+    if (f === 'all') p.delete('pill'); else p.set('pill', f);
     setSearchParams(p, { replace: true });
   };
   const switchPendingFilter = (pf: 'all' | 'partial') => {
@@ -645,7 +646,6 @@ export function Dispatch() {
     return !!q && q.dispatched > 0 && q.remaining > 0;
   };
   const boardBase = boardCards.filter(c => (boardType === 'both' || c.fulfillment === boardType) && boardSearchMatch(c));
-  const boardDelayedCount = boardBase.filter(c => c.state === 'late').length;
   const boardHoldCount = boardBase.filter(c => c.state === 'hold').length;
   const boardPartialCount = boardBase.filter(isBoardPartial).length;
   const deliveredBase = deliveredCards.filter(c => (boardType === 'both' || c.fulfillment === boardType) && boardSearchMatch(c));
@@ -657,16 +657,15 @@ export function Dispatch() {
   const delayedRows = boardBase.filter(c => c.state === 'late');
   const holdRows = boardBase.filter(c => c.state === 'hold');
   const partialRows = boardBase.filter(isBoardPartial);
-  // All = union of every pill's rows, each order/entry once; a row that is
-  // in an active list and in Delivered keeps its active version.
+  // All = union of every row list, each order/entry once; a row that is in
+  // an active list and in Delivered keeps its active version. Active
+  // (boardBase) and Delayed no longer have pills but still feed All.
   const allRows = unionBoardRows([boardBase, delayedRows, holdRows, partialRows, deliveredBase], deliveredOrdersBase);
   const boardAllCount = allRows.cards.length + allRows.deliveredOrders.length;
-  const boardVisible = boardFilter === 'delayed' ? delayedRows
-    : boardFilter === 'hold' ? holdRows
+  const boardVisible = boardFilter === 'hold' ? holdRows
     : boardFilter === 'partial' ? partialRows
     : boardFilter === 'delivered' ? deliveredBase
-    : boardFilter === 'all' ? allRows.cards
-    : boardBase;
+    : allRows.cards;
   const boardVisibleDeliveredOrders = boardFilter === 'delivered' ? deliveredOrdersBase
     : boardFilter === 'all' ? allRows.deliveredOrders
     : undefined;
@@ -722,8 +721,6 @@ export function Dispatch() {
           <>
             <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
               <div onClick={() => switchBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardAllCount})</div>
-              <div onClick={() => switchBoardFilter('active')} className={pillCls(boardFilter === 'active')}>Active ({boardBase.length})</div>
-              <div onClick={() => switchBoardFilter('delayed')} className={pillCls(boardFilter === 'delayed')}>Delayed ({boardDelayedCount})</div>
               <div onClick={() => switchBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
               <div onClick={() => switchBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partially Dispatched ({boardPartialCount})</div>
               <div onClick={() => switchBoardFilter('delivered')} className={pillCls(boardFilter === 'delivered')}>Delivered ({boardDeliveredCount})</div>
