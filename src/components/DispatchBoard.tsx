@@ -3,7 +3,7 @@ import { Pause, Play, Undo2 } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
 import type { Order } from '../lib/types';
 import {
-  DISPATCH_STEPS, STEP_ACTIONS, BoardCard, BoardOrderCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck,
+  DISPATCH_STEPS, STEP_ACTIONS, BoardCard, BoardOrderCard, BoardEntryCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck,
 } from '../lib/dispatchFlow';
 
 // "Board" view of the Dispatch module — since 2026-10-19 a LIST: step tiles
@@ -207,7 +207,17 @@ function InvoiceCell({ invoices }: { invoices: string[] }) {
   );
 }
 
-function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[] }) {
+// Column template. List → Delivered adds an Actions column (Edit / Delete),
+// paid for by trimming the others so the total width stays the same.
+const GRID = 'grid-cols-[120px_minmax(100px,1fr)_90px_80px_80px_80px_166px_130px_130px] gap-x-2';
+const GRID_ACTIONS = 'grid-cols-[120px_minmax(88px,1fr)_80px_74px_74px_74px_160px_126px_130px_66px] gap-x-1.5';
+
+// Buttons inside a clickable row: don't let a click/Enter also open the row.
+const ActionsCell = ({ children }: { children?: React.ReactNode }) => (
+  <div className="min-w-0" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>{children}</div>
+);
+
+function Row({ card, now, onOpen, qty, orderInvoices, grid, actions }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[]; grid: string; actions?: React.ReactNode }) {
   const order = card.order;
   const orderId = card.kind === 'order' ? card.order.id : card.entry.orderId;
   // An entry row is one dispatch → its own invoice. An order row (what is
@@ -228,7 +238,7 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
       tabIndex={0}
       onClick={open}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
-      className="grid grid-cols-[120px_minmax(100px,1fr)_90px_80px_80px_80px_166px_130px_130px] gap-x-2 items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors"
+      className={`grid ${grid} items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors`}
     >
       {/* Order */}
       <div className="flex flex-col gap-[2px] min-w-0">
@@ -279,6 +289,8 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
       <div className="min-w-0 flex justify-center">
         <div className="min-w-0"><TimeBar card={card} now={now} /></div>
       </div>
+
+      {actions !== undefined && <ActionsCell>{actions}</ActionsCell>}
     </div>
   );
 }
@@ -291,11 +303,17 @@ export interface DeliveredOrderRow {
   fulfillment: string;
 }
 
-function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: OrderQty }) {
+function DeliveredOrderRowView({ row, qty, grid, withActions, onOpen }: { row: DeliveredOrderRow; qty?: OrderQty; grid: string; withActions: boolean; onOpen?: (order: Order) => void }) {
   const o = row.order;
   const lines = (o.items || []).filter(i => Number(i.qty) > 0).map(i => ({ desc: i.desc, qty: Number(i.qty) }));
+  const open = () => onOpen?.(o);
   return (
-    <div className="grid grid-cols-[120px_minmax(100px,1fr)_90px_80px_80px_80px_166px_130px_130px] gap-x-2 items-center px-4 py-[10px] border-b border-g200 last:border-b-0">
+    <div
+      {...(onOpen ? {
+        role: 'button', tabIndex: 0, onClick: open,
+        onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } },
+      } : {})}
+      className={`grid ${grid} items-center px-4 py-[10px] border-b border-g200 last:border-b-0 ${onOpen ? 'hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors' : ''}`}>
       <div className="flex flex-col gap-[2px] min-w-0">
         <span className="font-mono text-[12px] font-bold text-red-mrt truncate">{o.soNumber || '—'}</span>
         <span className="font-mono text-[10.5px] text-g500 truncate">{o.id}</span>
@@ -316,6 +334,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
       </div>
       <div />
       <div className="min-w-0 text-[11px] text-g400 text-center">—</div>
+      {withActions && <div />}
     </div>
   );
 }
@@ -327,9 +346,14 @@ const doneKey = (it: ListItem) => it.kind === 'deliveredOrder'
   ? (it.row.order.created_at || it.row.order.poDate || '')
   : it.card.kind === 'entry' ? (it.card.entry.emailSentAt || it.card.entry.created_at || '') : '';
 
-export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrders = [] }: {
+export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrders = [], entryActions, onOpenDeliveredOrder }: {
   cards: BoardCard[];
   now: number;
+  // List → Delivered: Edit / Delete (+ doer) for entry rows; turns on the
+  // Actions column. Order rows get an empty cell.
+  entryActions?: (card: BoardEntryCard) => React.ReactNode;
+  // List → Delivered: click on a "Marked delivered" row (order, no entry).
+  onOpenDeliveredOrder?: (order: Order) => void;
   // Invoice numbers per order id, from its dispatch entries (Dispatch.tsx).
   invoices?: Map<string, string[]>;
   // Barrels per order id (Dispatch.tsx's boardQty) — same numbers as the
@@ -343,6 +367,8 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
   renderActions?: (card: BoardCard) => React.ReactNode;
   onDelete?: (card: BoardCard) => void;
 }) {
+  const withActions = !!entryActions;
+  const grid = withActions ? GRID_ACTIONS : GRID;
   const [stepFilter, setStepFilter] = React.useState<ColumnNo | 'all'>('all');
   const [limit, setLimit] = React.useState(PAGE);
   React.useEffect(() => { setLimit(PAGE); }, [stepFilter, cards.length, deliveredOrders.length]);
@@ -404,22 +430,25 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
 
       {/* List */}
       <div className="flex-1 min-h-0 bg-white border border-g200 rounded-[6px] overflow-auto">
-        <div className="min-w-[1072px]">
-          <div className="sticky top-0 z-[1] grid grid-cols-[120px_minmax(100px,1fr)_90px_80px_80px_80px_166px_130px_130px] gap-x-2 items-center px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">
+        <div className={withActions ? 'min-w-[1078px]' : 'min-w-[1072px]'}>
+          <div className={`sticky top-0 z-[1] grid ${grid} items-center px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500`}>
             <div>Order</div><div>Customer · Product</div><div className="text-center">Invoice No</div>
             <div className="text-center">Ordered</div><div className="text-center">Dispatched</div><div className="text-center">Remaining</div>
             <div className="pl-4">Current step</div><div className="text-center">Progress</div><div className="text-center">Due</div>
+            {withActions && <div>Actions</div>}
           </div>
           {shown.length === 0 ? (
             <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
           ) : (
             <>
               {shown.slice(0, limit).map(it => it.kind === 'card' ? (
-                <Row key={it.card.key} card={it.card} now={now} onOpen={onOpen}
+                <Row key={it.card.key} card={it.card} now={now} onOpen={onOpen} grid={grid}
                   qty={qty?.get(it.card.kind === 'order' ? it.card.order.id : it.card.entry.orderId)}
-                  orderInvoices={it.card.kind === 'order' ? invoices?.get(it.card.order.id) : undefined} />
+                  orderInvoices={it.card.kind === 'order' ? invoices?.get(it.card.order.id) : undefined}
+                  actions={entryActions ? (it.card.kind === 'entry' ? entryActions(it.card) : null) : undefined} />
               ) : (
-                <DeliveredOrderRowView key={`do:${it.row.order.id}`} row={it.row} qty={qty?.get(it.row.order.id)} />
+                <DeliveredOrderRowView key={`do:${it.row.order.id}`} row={it.row} qty={qty?.get(it.row.order.id)}
+                  grid={grid} withActions={withActions} onOpen={onOpenDeliveredOrder} />
               ))}
               {shown.length > limit && (
                 <div className="flex justify-center py-3 border-t border-g200">

@@ -40,9 +40,12 @@ function SoCell({ soNumber, hasOrder }: { soNumber?: string; hasOrder: boolean }
   return hasOrder ? <span className="font-mono text-[10.5px] text-g400" title="Generating SO number…">…</span> : <span className="text-g400">—</span>;
 }
 
+const BOARD_PILLS = ['all', 'active', 'delayed', 'hold', 'partial', 'delivered'] as const;
+type BoardPill = typeof BOARD_PILLS[number];
+
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch } = useAppStore();
+  const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel } = useAppStore();
   const canDelete = canDeleteRecords(user?.email);
 
   // Initial tab/pill come from the URL (?tab=pending|dispatched|emailSent
@@ -67,7 +70,11 @@ export function Dispatch() {
   // the URL as ?view=board so a refresh stays on the board.
   const [view, setView] = useState<'table' | 'board'>(() => searchParams.get('view') === 'board' ? 'board' : 'table');
   // Opens on Active (the working list); All adds every delivered/done row.
-  const [boardFilter, setBoardFilter] = useState<'all' | 'active' | 'delayed' | 'hold' | 'partial' | 'delivered'>('active');
+  // ?pill=… (e.g. Back from an entry opened in List → Delivered) picks another.
+  const [boardFilter, setBoardFilter] = useState<BoardPill>(() => {
+    const p = searchParams.get('pill');
+    return BOARD_PILLS.includes(p as BoardPill) ? p as BoardPill : 'active';
+  });
   const [boardType, setBoardType] = useState<'both' | DispatchFulfillmentType>('both');
   // Board timers ("Due in 12 min", "Late by 1h 20m") re-evaluate every minute.
   const [now, setNow] = useState(() => Date.now());
@@ -382,6 +389,38 @@ export function Dispatch() {
     }
   };
 
+  // Table → Email Sent / Dispatched Delete button — also used by List → Delivered.
+  const deleteEntryWithConfirm = async (entry: DispatchEntry) => {
+    if (!canDelete) return;
+    if (!confirm(`Are you sure you want to delete the dispatch entry for ${entry.orderId}? This action cannot be undone.`)) return;
+    try {
+      await deleteDispatchEntry(entry.id);
+    } catch (err: any) {
+      alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
+    }
+  };
+
+  // List → Delivered: a row opens the entry form (same page as Table → Edit);
+  // its Back / Save return to List → Delivered (from=board&pill=delivered).
+  const openEntryForm = (entry: DispatchEntry) => navigate(`/dispatch/new?entryId=${entry.id}&from=board&pill=delivered`);
+  const openDeliveredCard = (card: BoardCard) => card.kind === 'entry' ? openEntryForm(card.entry) : openDrawer(card);
+  // Same Edit / Delete + doer name as the Table's Actions cell.
+  const deliveredEntryActions = (card: BoardEntryCard) => {
+    const entry = card.entry;
+    const by = entry.updatedBy || entry.createdBy;
+    return (
+      <div className="flex flex-col gap-[3px] min-w-0">
+        <div className="flex flex-wrap items-center gap-1">
+          <Button size="sm" variant="secondary" onClick={() => openEntryForm(entry)}>Edit</Button>
+          {canDelete && (
+            <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => deleteEntryWithConfirm(entry)}>Delete</Button>
+          )}
+        </div>
+        {by && <span className="text-[10px] font-mono text-g400 truncate" title={doerLabel(by, data.roster)}>{doerLabel(by, data.roster)}</span>}
+      </div>
+    );
+  };
+
   const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
 
   // Order Pending for Dispatch — read-only view of every order that was
@@ -448,8 +487,16 @@ export function Dispatch() {
   const syncUrl = (t: DispatchTab, type: DispatchFulfillmentType, v: 'table' | 'board' = view, pf: 'all' | 'partial' = pendingFilter) =>
     setSearchParams({
       ...(t === 'pending' ? (pf === 'partial' ? { pending: 'partial' } : {}) : { tab: t, type }),
-      ...(v === 'board' ? { view: 'board' } : {}),
+      ...(v === 'board' ? { view: 'board', ...(boardFilter !== 'active' ? { pill: boardFilter } : {}) } : {}),
     }, { replace: true });
+  // List pills — kept in the URL (?pill=, none for Active) so a refresh or
+  // Back from an entry lands on the same pill.
+  const switchBoardFilter = (f: BoardPill) => {
+    setBoardFilter(f);
+    const p = new URLSearchParams(searchParams);
+    if (f === 'active') p.delete('pill'); else p.set('pill', f);
+    setSearchParams(p, { replace: true });
+  };
   const switchPendingFilter = (pf: 'all' | 'partial') => {
     setPendingFilter(pf);
     syncUrl(tab, subType, view, pf);
@@ -674,12 +721,12 @@ export function Dispatch() {
         {view === 'board' ? (
           <>
             <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-              <div onClick={() => setBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardAllCount})</div>
-              <div onClick={() => setBoardFilter('active')} className={pillCls(boardFilter === 'active')}>Active ({boardBase.length})</div>
-              <div onClick={() => setBoardFilter('delayed')} className={pillCls(boardFilter === 'delayed')}>Delayed ({boardDelayedCount})</div>
-              <div onClick={() => setBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
-              <div onClick={() => setBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partially Dispatched ({boardPartialCount})</div>
-              <div onClick={() => setBoardFilter('delivered')} className={pillCls(boardFilter === 'delivered')}>Delivered ({boardDeliveredCount})</div>
+              <div onClick={() => switchBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardAllCount})</div>
+              <div onClick={() => switchBoardFilter('active')} className={pillCls(boardFilter === 'active')}>Active ({boardBase.length})</div>
+              <div onClick={() => switchBoardFilter('delayed')} className={pillCls(boardFilter === 'delayed')}>Delayed ({boardDelayedCount})</div>
+              <div onClick={() => switchBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
+              <div onClick={() => switchBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partially Dispatched ({boardPartialCount})</div>
+              <div onClick={() => switchBoardFilter('delivered')} className={pillCls(boardFilter === 'delivered')}>Delivered ({boardDeliveredCount})</div>
             </div>
             <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
             <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
@@ -762,7 +809,11 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard cards={boardVisible} qty={boardQty} invoices={boardInvoices} deliveredOrders={boardVisibleDeliveredOrders} now={now} onOpen={openDrawer} renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
+        <DispatchBoard cards={boardVisible} qty={boardQty} invoices={boardInvoices} deliveredOrders={boardVisibleDeliveredOrders} now={now}
+          onOpen={boardFilter === 'delivered' ? openDeliveredCard : openDrawer}
+          entryActions={boardFilter === 'delivered' ? deliveredEntryActions : undefined}
+          onOpenDeliveredOrder={boardFilter === 'delivered' ? (o => openDetailPanel('order', o.id)) : undefined}
+          renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
       ) : (
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
@@ -926,14 +977,7 @@ export function Dispatch() {
                               <div className="flex items-center gap-1.5 flex-nowrap">
                                 <Button size="sm" variant="secondary" onClick={() => navigate(`/dispatch/new?entryId=${entry.id}`)}>Edit</Button>
                                 {canDelete && (
-                                  <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async () => {
-                                    if (!confirm(`Are you sure you want to delete the dispatch entry for ${entry.orderId}? This action cannot be undone.`)) return;
-                                    try {
-                                      await deleteDispatchEntry(entry.id);
-                                    } catch (err: any) {
-                                      alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
-                                    }
-                                  }}>Delete</Button>
+                                  <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => deleteEntryWithConfirm(entry)}>Delete</Button>
                                 )}
                               </div>
                               {/* 2026-09-21: shows just the name of whoever made the most

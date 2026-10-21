@@ -128,7 +128,11 @@ export function NewDispatchEntry() {
   // Opened from a Dispatch Board button (&from=board) → Save / Email /
   // Back return to the Board view instead of the Table.
   const fromBoard = searchParams.get('from') === 'board';
-  const dispatchHome = fromBoard ? '/dispatch?view=board' : '/dispatch';
+  // &pill=delivered (opened from List → Delivered) → back to that pill.
+  const boardPill = searchParams.get('pill');
+  const dispatchHome = fromBoard
+    ? `/dispatch?view=board${boardPill && /^[a-z]+$/.test(boardPill) ? `&pill=${boardPill}` : ''}`
+    : '/dispatch';
   const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   // This whole page is locked to view-only for isReadOnlyUser (the Bhiwandi
