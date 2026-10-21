@@ -421,10 +421,11 @@ export function leadForUnknownCompany(
 }
 
 // Dispatch Board (Kanban): logins allowed to press Done / Hold / Resume on
-// steps 1–7 — Samata (mum@) plus the ADMIN_EMAILS logins in
-// store/index.tsx. Everyone else sees the board read-only. The Bhiwandi
-// read-only login (isReadOnlyUser) stays locked regardless.
-export const DISPATCH_BOARD_EMAILS = ['mum@himalayaterpene.com', 'mis@himalayaterpene.com', 'shishir@himalayaterpene.com', 'anil@himalayaterpene.com'];
+// steps 1–7 — Samata (mum@), Saidas Chaudhari (accounts@) plus the
+// ADMIN_EMAILS logins in store/index.tsx. Everyone else sees the board
+// read-only. The Bhiwandi read-only login (isReadOnlyUser) stays locked
+// regardless.
+export const DISPATCH_BOARD_EMAILS = ['mum@himalayaterpene.com', 'mis@himalayaterpene.com', 'shishir@himalayaterpene.com', 'anil@himalayaterpene.com', 'accounts@himalayaterpene.com'];
 export const canActOnDispatchBoard = (email: string | null | undefined): boolean =>
   DISPATCH_BOARD_EMAILS.includes((email ?? '').trim().toLowerCase());
 
