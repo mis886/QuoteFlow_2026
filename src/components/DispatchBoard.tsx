@@ -228,7 +228,7 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
       tabIndex={0}
       onClick={open}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
-      className="grid grid-cols-[120px_minmax(140px,1fr)_90px_72px_72px_72px_150px_130px_130px] gap-x-2 items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors"
+      className="grid grid-cols-[120px_minmax(100px,1fr)_90px_80px_80px_80px_166px_130px_130px] gap-x-2 items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors"
     >
       {/* Order */}
       <div className="flex flex-col gap-[2px] min-w-0">
@@ -252,8 +252,8 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
         {qty ? qty.remaining : '—'}
       </div>
 
-      {/* Current step + any flag */}
-      <div className="flex flex-col gap-[2px] min-w-0">
+      {/* Current step + any flag (pl-4: room after the Remaining number) */}
+      <div className="flex flex-col gap-[2px] min-w-0 pl-4">
         <span className="flex items-center gap-1.5">
           <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(card.column)}</span>
           {step?.auto && card.column !== 11 && <AutoTag />}
@@ -295,7 +295,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
   const o = row.order;
   const lines = (o.items || []).filter(i => Number(i.qty) > 0).map(i => ({ desc: i.desc, qty: Number(i.qty) }));
   return (
-    <div className="grid grid-cols-[120px_minmax(140px,1fr)_90px_72px_72px_72px_150px_130px_130px] gap-x-2 items-center px-4 py-[10px] border-b border-g200 last:border-b-0">
+    <div className="grid grid-cols-[120px_minmax(100px,1fr)_90px_80px_80px_80px_166px_130px_130px] gap-x-2 items-center px-4 py-[10px] border-b border-g200 last:border-b-0">
       <div className="flex flex-col gap-[2px] min-w-0">
         <span className="font-mono text-[12px] font-bold text-red-mrt truncate">{o.soNumber || '—'}</span>
         <span className="font-mono text-[10.5px] text-g500 truncate">{o.id}</span>
@@ -310,7 +310,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
       <div className={`text-right font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
         {qty ? qty.remaining : '—'}
       </div>
-      <div className="flex flex-col gap-[2px] min-w-0">
+      <div className="flex flex-col gap-[2px] min-w-0 pl-4">
         <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(11)}</span>
         <span className="text-[13px] text-blk truncate">Marked delivered</span>
       </div>
@@ -405,10 +405,10 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
       {/* List */}
       <div className="flex-1 min-h-0 bg-white border border-g200 rounded-[6px] overflow-auto">
         <div className="min-w-[1072px]">
-          <div className="sticky top-0 z-[1] grid grid-cols-[120px_minmax(140px,1fr)_90px_72px_72px_72px_150px_130px_130px] gap-x-2 px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">
+          <div className="sticky top-0 z-[1] grid grid-cols-[120px_minmax(100px,1fr)_90px_80px_80px_80px_166px_130px_130px] gap-x-2 px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">
             <div>Order</div><div>Customer · Product</div><div>Invoice No</div>
             <div className="text-right">Ordered</div><div className="text-right">Dispatched</div><div className="text-right">Remaining</div>
-            <div>Current step</div><div>Progress</div><div>Due</div>
+            <div className="pl-4">Current step</div><div>Progress</div><div>Due</div>
           </div>
           {shown.length === 0 ? (
             <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
