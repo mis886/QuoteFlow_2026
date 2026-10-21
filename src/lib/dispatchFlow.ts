@@ -536,6 +536,39 @@ export interface BoardEntryCard {
 }
 export type BoardCard = BoardOrderCard | BoardEntryCard;
 
+/** One id per real row: order rows by order id, entry rows by entry id. */
+export const boardRowId = (c: BoardCard) => c.kind === 'order' ? `o:${c.order.id}` : `e:${c.entry.id}`;
+
+/**
+ * List → "All": the union of every pill's rows, each order/entry once.
+ * Pass the active lists (Active, Delayed, On hold, Partially Dispatched)
+ * first so a row that is also in Delivered keeps its active version.
+ * Delivered orders without an entry are matched by order id.
+ */
+export function unionBoardRows<R extends { order: { id: string } }>(
+  cardLists: BoardCard[][],
+  deliveredOrders: R[],
+): { cards: BoardCard[]; deliveredOrders: R[] } {
+  const seen = new Set<string>();
+  const cards: BoardCard[] = [];
+  for (const list of cardLists) {
+    for (const c of list) {
+      const id = boardRowId(c);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      cards.push(c);
+    }
+  }
+  const orders: R[] = [];
+  for (const r of deliveredOrders) {
+    const id = `o:${r.order.id}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    orders.push(r);
+  }
+  return { cards, deliveredOrders: orders };
+}
+
 export function buildBoard(
   orders: Order[],
   entries: DispatchEntry[],

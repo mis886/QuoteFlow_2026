@@ -5,7 +5,7 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, entryPosition } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, entryPosition, unionBoardRows } from '../lib/dispatchFlow';
 import { DispatchBoard, DeliveredOrderRow, AutoTag, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { LineItemsPanel } from '../components/LineItemsPanel';
 import { DispatchDrawer, StepEditPatch } from '../components/DispatchDrawer';
@@ -607,18 +607,22 @@ export function Dispatch() {
     || r.order.id.toLowerCase().includes(qs)
     || normalizeSearchText(r.order.cust).includes(normalizeSearchText(qs))));
   const boardDeliveredCount = deliveredBase.length + deliveredOrdersBase.length;
-  // All = Active (buildBoard) + every Delivered row. An entry in both lists
-  // (e.g. emailed in the last 7 days) keeps its Active card, so it shows once.
-  const activeEntryIds = new Set(boardBase.flatMap(c => c.kind === 'entry' ? [c.entry.id] : []));
-  const allCards = [...boardBase, ...deliveredBase.filter(c => c.kind !== 'entry' || !activeEntryIds.has(c.entry.id))];
-  const boardAllCount = allCards.length + deliveredOrdersBase.length;
-  const boardVisible = boardFilter === 'delayed' ? boardBase.filter(c => c.state === 'late')
-    : boardFilter === 'hold' ? boardBase.filter(c => c.state === 'hold')
-    : boardFilter === 'partial' ? boardBase.filter(isBoardPartial)
+  const delayedRows = boardBase.filter(c => c.state === 'late');
+  const holdRows = boardBase.filter(c => c.state === 'hold');
+  const partialRows = boardBase.filter(isBoardPartial);
+  // All = union of every pill's rows, each order/entry once; a row that is
+  // in an active list and in Delivered keeps its active version.
+  const allRows = unionBoardRows([boardBase, delayedRows, holdRows, partialRows, deliveredBase], deliveredOrdersBase);
+  const boardAllCount = allRows.cards.length + allRows.deliveredOrders.length;
+  const boardVisible = boardFilter === 'delayed' ? delayedRows
+    : boardFilter === 'hold' ? holdRows
+    : boardFilter === 'partial' ? partialRows
     : boardFilter === 'delivered' ? deliveredBase
-    : boardFilter === 'all' ? allCards
+    : boardFilter === 'all' ? allRows.cards
     : boardBase;
-  const boardVisibleDeliveredOrders = boardFilter === 'delivered' || boardFilter === 'all' ? deliveredOrdersBase : undefined;
+  const boardVisibleDeliveredOrders = boardFilter === 'delivered' ? deliveredOrdersBase
+    : boardFilter === 'all' ? allRows.deliveredOrders
+    : undefined;
   // Header count boxes — follow the selected pill (and type/search).
   const headerCounts = {
     inProgress: boardVisible.filter(c => c.column !== DONE_COLUMN).length,
