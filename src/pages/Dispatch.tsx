@@ -523,13 +523,28 @@ export function Dispatch() {
     () => view === 'board' ? buildBoard(data.orders, data.dispatchEntries, stepRecords, orderFulfillment, now, linkedDOs) : [],
     [view, data.orders, data.dispatchEntries, data.customers, stepRecords, now, linkedDOs],
   );
+  // List's Invoice No column: every invoice number (dispatch_entries.invoice_number,
+  // filled at Step 08) per order id, oldest dispatch first.
+  const boardInvoices = useMemo(() => {
+    const m = new Map<string, string[]>();
+    if (view !== 'board') return m;
+    const sorted = [...data.dispatchEntries].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+    for (const e of sorted) {
+      if (!e.invoiceNumber) continue;
+      const list = m.get(e.orderId) || [];
+      list.push(e.invoiceNumber);
+      m.set(e.orderId, list);
+    }
+    return m;
+  }, [view, data.dispatchEntries]);
   const boardSearchMatch = (c: BoardCard) => {
     if (!qs) return true;
     const o = c.order;
     return (o?.soNumber || '').toLowerCase().includes(qs)
       || (c.kind === 'order' ? c.order.id : c.entry.orderId).toLowerCase().includes(qs)
       || (!!o && normalizeSearchText(o.cust).includes(normalizeSearchText(qs)))
-      || (c.kind === 'entry' && (c.entry.invoiceNumber || '').toLowerCase().includes(qs));
+      || (c.kind === 'entry' && (c.entry.invoiceNumber || '').toLowerCase().includes(qs))
+      || (c.kind === 'order' && (boardInvoices.get(c.order.id) || []).some(inv => inv.toLowerCase().includes(qs)));
   };
   // List → Delivered (all time, separate from buildBoard, which keeps only
   // the last 7 days of Done and skips imported entries): one row per entry
@@ -734,7 +749,7 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard cards={boardVisible} qty={boardQty} deliveredOrders={boardFilter === 'delivered' ? deliveredOrdersBase : undefined} now={now} onOpen={openDrawer} renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
+        <DispatchBoard cards={boardVisible} qty={boardQty} invoices={boardInvoices}deliveredOrders={boardFilter === 'delivered' ? deliveredOrdersBase : undefined} now={now} onOpen={openDrawer} renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
       ) : (
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
