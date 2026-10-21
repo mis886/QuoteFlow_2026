@@ -66,7 +66,8 @@ export function Dispatch() {
   // Table (this page as it always was) vs the Kanban Board view — kept in
   // the URL as ?view=board so a refresh stays on the board.
   const [view, setView] = useState<'table' | 'board'>(() => searchParams.get('view') === 'board' ? 'board' : 'table');
-  const [boardFilter, setBoardFilter] = useState<'all' | 'delayed' | 'hold' | 'partial' | 'delivered'>('all');
+  // Opens on Active (the working list); All adds every delivered/done row.
+  const [boardFilter, setBoardFilter] = useState<'all' | 'active' | 'delayed' | 'hold' | 'partial' | 'delivered'>('active');
   const [boardType, setBoardType] = useState<'both' | DispatchFulfillmentType>('both');
   // Board timers ("Due in 12 min", "Late by 1h 20m") re-evaluate every minute.
   const [now, setNow] = useState(() => Date.now());
@@ -606,17 +607,24 @@ export function Dispatch() {
     || r.order.id.toLowerCase().includes(qs)
     || normalizeSearchText(r.order.cust).includes(normalizeSearchText(qs))));
   const boardDeliveredCount = deliveredBase.length + deliveredOrdersBase.length;
+  // All = Active (buildBoard) + every Delivered row. An entry in both lists
+  // (e.g. emailed in the last 7 days) keeps its Active card, so it shows once.
+  const activeEntryIds = new Set(boardBase.flatMap(c => c.kind === 'entry' ? [c.entry.id] : []));
+  const allCards = [...boardBase, ...deliveredBase.filter(c => c.kind !== 'entry' || !activeEntryIds.has(c.entry.id))];
+  const boardAllCount = allCards.length + deliveredOrdersBase.length;
   const boardVisible = boardFilter === 'delayed' ? boardBase.filter(c => c.state === 'late')
     : boardFilter === 'hold' ? boardBase.filter(c => c.state === 'hold')
     : boardFilter === 'partial' ? boardBase.filter(isBoardPartial)
     : boardFilter === 'delivered' ? deliveredBase
+    : boardFilter === 'all' ? allCards
     : boardBase;
-  // Header count boxes — whole board, ignoring filters/search.
+  const boardVisibleDeliveredOrders = boardFilter === 'delivered' || boardFilter === 'all' ? deliveredOrdersBase : undefined;
+  // Header count boxes — follow the selected pill (and type/search).
   const headerCounts = {
-    inProgress: boardCards.filter(c => c.column !== DONE_COLUMN).length,
-    delayed: boardCards.filter(c => c.state === 'late').length,
-    onHold: boardCards.filter(c => c.state === 'hold').length,
-    emailSent: boardCards.filter(c => c.column === DONE_COLUMN).length,
+    inProgress: boardVisible.filter(c => c.column !== DONE_COLUMN).length,
+    delayed: boardVisible.filter(c => c.state === 'late').length,
+    onHold: boardVisible.filter(c => c.state === 'hold').length,
+    emailSent: boardVisible.filter(c => c.column === DONE_COLUMN && c.kind === 'entry' && !!c.entry.emailSentAt).length,
   };
 
   return (
@@ -662,7 +670,8 @@ export function Dispatch() {
         {view === 'board' ? (
           <>
             <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-              <div onClick={() => setBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardBase.length})</div>
+              <div onClick={() => setBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardAllCount})</div>
+              <div onClick={() => setBoardFilter('active')} className={pillCls(boardFilter === 'active')}>Active ({boardBase.length})</div>
               <div onClick={() => setBoardFilter('delayed')} className={pillCls(boardFilter === 'delayed')}>Delayed ({boardDelayedCount})</div>
               <div onClick={() => setBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
               <div onClick={() => setBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partially Dispatched ({boardPartialCount})</div>
@@ -749,7 +758,7 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard cards={boardVisible} qty={boardQty} invoices={boardInvoices}deliveredOrders={boardFilter === 'delivered' ? deliveredOrdersBase : undefined} now={now} onOpen={openDrawer} renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
+        <DispatchBoard cards={boardVisible} qty={boardQty} invoices={boardInvoices} deliveredOrders={boardVisibleDeliveredOrders} now={now} onOpen={openDrawer} renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
       ) : (
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="bg-white border border-g200 overflow-x-auto m-0">
