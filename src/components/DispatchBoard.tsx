@@ -238,7 +238,7 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
 
       {/* Customer · product */}
       <div className="flex flex-col gap-[2px] min-w-0">
-        <span className="text-[13.5px] font-semibold text-blk truncate" title={order?.cust}>{order?.cust || '—'}</span>
+        <span className="text-[13.5px] font-semibold text-blk leading-snug line-clamp-2 break-words" title={order?.cust}>{order?.cust || '—'}</span>
         <span className="text-[12px] text-g600 truncate" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
       </div>
 
@@ -301,7 +301,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
         <span className="font-mono text-[10.5px] text-g500 truncate">{o.id}</span>
       </div>
       <div className="flex flex-col gap-[2px] min-w-0">
-        <span className="text-[13.5px] font-semibold text-blk truncate" title={o.cust}>{o.cust || '—'}</span>
+        <span className="text-[13.5px] font-semibold text-blk leading-snug line-clamp-2 break-words" title={o.cust}>{o.cust || '—'}</span>
         <span className="text-[12px] text-g600 truncate" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
       </div>
       <InvoiceCell invoices={[]} />
