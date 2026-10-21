@@ -197,11 +197,11 @@ type OrderQty = { ordered: number; dispatched: number; remaining: number };
 
 // Invoice numbers stacked one per line, or a grey "—" when there are none.
 function InvoiceCell({ invoices }: { invoices: string[] }) {
-  if (!invoices.length) return <div className="font-mono text-[10.5px] text-g400">—</div>;
+  if (!invoices.length) return <div className="font-mono text-[10.5px] text-g400 text-center">—</div>;
   return (
-    <div className="flex flex-col gap-[1px] min-w-0" title={invoices.join(', ')}>
+    <div className="flex flex-col items-center gap-[1px] min-w-0" title={invoices.join(', ')}>
       {invoices.map((inv, i) => (
-        <span key={i} className="font-mono text-[10.5px] text-g500 truncate">{inv}</span>
+        <span key={i} className="font-mono text-[10.5px] text-g500 truncate max-w-full">{inv}</span>
       ))}
     </div>
   );
@@ -246,9 +246,9 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
       <InvoiceCell invoices={invoices} />
 
       {/* Barrels — the ORDER's ordered / dispatched / remaining, every row */}
-      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
-      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
-      <div className={`text-right font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
+      <div className="text-center font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
+      <div className="text-center font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
+      <div className={`text-center font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
         {qty ? qty.remaining : '—'}
       </div>
 
@@ -268,7 +268,7 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
       </div>
 
       {/* 10 dots */}
-      <div className="flex items-center gap-[4px]">
+      <div className="flex items-center justify-center gap-[4px]">
         {dots.map((d, i) => (
           <span key={i} title={`Step ${String(i + 1).padStart(2, '0')} · ${DISPATCH_STEPS[i].title} · ${DOT_WORD[d]}`}
             className={`w-[9px] h-[9px] rounded-full shrink-0 box-border ${DOT_CLS[d]}`} />
@@ -276,8 +276,8 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
       </div>
 
       {/* Due / late */}
-      <div className="min-w-0">
-        <TimeBar card={card} now={now} />
+      <div className="min-w-0 flex justify-center">
+        <div className="min-w-0"><TimeBar card={card} now={now} /></div>
       </div>
     </div>
   );
@@ -305,9 +305,9 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
         <span className="text-[12px] text-g600 truncate" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
       </div>
       <InvoiceCell invoices={[]} />
-      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
-      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
-      <div className={`text-right font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
+      <div className="text-center font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
+      <div className="text-center font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
+      <div className={`text-center font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
         {qty ? qty.remaining : '—'}
       </div>
       <div className="flex flex-col gap-[2px] min-w-0 pl-4">
@@ -315,7 +315,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
         <span className="text-[13px] text-blk truncate">Marked delivered</span>
       </div>
       <div />
-      <div className="min-w-0 text-[11px] text-g400">—</div>
+      <div className="min-w-0 text-[11px] text-g400 text-center">—</div>
     </div>
   );
 }
@@ -405,10 +405,10 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
       {/* List */}
       <div className="flex-1 min-h-0 bg-white border border-g200 rounded-[6px] overflow-auto">
         <div className="min-w-[1072px]">
-          <div className="sticky top-0 z-[1] grid grid-cols-[120px_minmax(100px,1fr)_90px_80px_80px_80px_166px_130px_130px] gap-x-2 px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">
-            <div>Order</div><div>Customer · Product</div><div>Invoice No</div>
-            <div className="text-right">Ordered</div><div className="text-right">Dispatched</div><div className="text-right">Remaining</div>
-            <div className="pl-4">Current step</div><div>Progress</div><div>Due</div>
+          <div className="sticky top-0 z-[1] grid grid-cols-[120px_minmax(100px,1fr)_90px_80px_80px_80px_166px_130px_130px] gap-x-2 items-center px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500">
+            <div>Order</div><div>Customer · Product</div><div className="text-center">Invoice No</div>
+            <div className="text-center">Ordered</div><div className="text-center">Dispatched</div><div className="text-center">Remaining</div>
+            <div className="pl-4">Current step</div><div className="text-center">Progress</div><div className="text-center">Due</div>
           </div>
           {shown.length === 0 ? (
             <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
