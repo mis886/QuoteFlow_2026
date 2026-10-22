@@ -398,7 +398,8 @@ export function Dispatch() {
       <DispatchEntryActions
         onEdit={() => openEntryForm(entry)}
         onDelete={canDelete ? () => deleteEntryWithConfirm(entry) : undefined}
-        doer={by ? doerLabel(by, data.roster) : undefined} />
+        doer={by ? doerLabel(by, data.roster) : undefined}
+        centered />
     );
   };
 

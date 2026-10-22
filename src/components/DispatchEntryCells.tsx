@@ -13,6 +13,8 @@ export const thRightCls = `${thBase} text-right`;
 const thBaseCompact = thBase.replace('px-[13px]', 'px-[9px]');
 export const thClsCompact = `${thBaseCompact} text-left`;
 const thRightClsCompact = `${thBaseCompact} text-right`;
+// `centered`: List → Delivered — every header/cell centred both ways.
+export const thCenterClsCompact = `${thBaseCompact} text-center align-middle`;
 
 // Dispatch entries bulk-imported from old "Delivered" orders (before the
 // Dispatch module existed) carry created_by = 'system-import'. They're
@@ -35,9 +37,9 @@ const dash = <span className="text-g400">—</span>;
 /** SO No. … Dispatched On (+ Email Sent On) header cells; Actions not included. */
 // `hideItemsAndTransporter`: List → Delivered leaves out Items and
 // Transporter (the Table keeps them).
-export function DispatchEntryHeadCells({ showEmailSent, compact = false, hideItemsAndTransporter = false }: { showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean }) {
-  const th = compact ? thClsCompact : thCls;
-  const thR = compact ? thRightClsCompact : thRightCls;
+export function DispatchEntryHeadCells({ showEmailSent, compact = false, hideItemsAndTransporter = false, centered = false }: { showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean; centered?: boolean }) {
+  const th = centered ? thCenterClsCompact : compact ? thClsCompact : thCls;
+  const thR = centered ? thCenterClsCompact : compact ? thRightClsCompact : thRightCls;
   return (
     <>
       <th className={th}>SO No.</th>
@@ -61,8 +63,9 @@ export function DispatchEntryHeadCells({ showEmailSent, compact = false, hideIte
  * entry (List → Delivered "Marked delivered" order) only the order's own
  * fields show; the rest are "—".
  */
-export function DispatchEntryCells({ entry, order, showEmailSent, compact = false, hideItemsAndTransporter = false }: { entry?: DispatchEntry; order?: Order; showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean }) {
-  const td = compact ? 'px-[9px] py-[10px] align-top' : 'px-[13px] py-[10px] align-top';
+export function DispatchEntryCells({ entry, order, showEmailSent, compact = false, hideItemsAndTransporter = false, centered = false }: { entry?: DispatchEntry; order?: Order; showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean; centered?: boolean }) {
+  const td = centered ? 'px-[9px] py-[10px] align-middle text-center'
+    : compact ? 'px-[9px] py-[10px] align-top' : 'px-[13px] py-[10px] align-top';
   return (
     <>
       <td className={`${td} whitespace-nowrap`}><SoCell soNumber={order?.soNumber} hasOrder={!!order && !(entry && isImportedEntry(entry))} /></td>
@@ -72,7 +75,7 @@ export function DispatchEntryCells({ entry, order, showEmailSent, compact = fals
       </td>
       <td className={`${td} font-mono text-[10.5px] break-words`}>{order?.poNo || '—'}</td>
       {!hideItemsAndTransporter && <td className={`${td} whitespace-nowrap`}>{entry ? `${entry.items?.length ?? 0} item(s)` : dash}</td>}
-      <td className={`${td} text-right font-mono text-[12px] font-bold whitespace-nowrap`}>{entry ? formatINR(Math.round(entry.value || 0)) : dash}</td>
+      <td className={`${td} ${centered ? '' : 'text-right'} font-mono text-[12px] font-bold whitespace-nowrap`}>{entry ? formatINR(Math.round(entry.value || 0)) : dash}</td>
       {!hideItemsAndTransporter && <td className={`${td} break-words`}>{entry?.transporter || '—'}</td>}
       <td className={`${td} whitespace-nowrap`}>
         {entry?.invoiceNumber
@@ -88,10 +91,10 @@ export function DispatchEntryCells({ entry, order, showEmailSent, compact = fals
 }
 
 /** Edit / Delete side by side + the last doer's name under them. */
-export function DispatchEntryActions({ onEdit, onDelete, doer }: { onEdit: () => void; onDelete?: () => void; doer?: string }) {
+export function DispatchEntryActions({ onEdit, onDelete, doer, centered = false }: { onEdit: () => void; onDelete?: () => void; doer?: string; centered?: boolean }) {
   return (
-    <div className="flex flex-col gap-[3px]">
-      <div className="flex items-center gap-1.5 flex-nowrap">
+    <div className={`flex flex-col gap-[3px] ${centered ? 'items-center' : ''}`}>
+      <div className={`flex items-center gap-1.5 flex-nowrap ${centered ? 'justify-center' : ''}`}>
         <Button size="sm" variant="secondary" onClick={onEdit}>Edit</Button>
         {onDelete && (
           <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={onDelete}>Delete</Button>

@@ -2,7 +2,7 @@ import React from 'react';
 import { Pause, Play, Undo2 } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
 import type { Order } from '../lib/types';
-import { DispatchEntryCells, DispatchEntryHeadCells, thClsCompact } from './DispatchEntryCells';
+import { DispatchEntryCells, DispatchEntryHeadCells, thCenterClsCompact } from './DispatchEntryCells';
 import {
   DISPATCH_STEPS, STEP_ACTIONS, BoardCard, BoardOrderCard, BoardEntryCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck,
 } from '../lib/dispatchFlow';
@@ -345,7 +345,9 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
 // they add up to 1076px so it fits 1366px with the sidebar open, and any
 // extra width is shared out across all columns, not dumped after Customer.
 const DELIVERED_COLS = 9;
-const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true } as const;
+// Everything centred, across and up/down (the expanded line items keep
+// their own alignment — it's a separate row).
+const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true, centered: true } as const;
 function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
   items: ListItem[];
   entryActions: (card: BoardEntryCard) => React.ReactNode;
@@ -371,7 +373,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
       <thead className="bg-g100 sticky top-0 z-[1]">
         <tr>
           <DispatchEntryHeadCells {...DELIVERED_PROPS} />
-          <th className={thClsCompact}>Actions</th>
+          <th className={thCenterClsCompact}>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -400,7 +402,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
               <tr className={`${rowCls} ${isOpen ? 'bg-sW/5' : ''}`} aria-expanded={isOpen}
                 onClick={() => renderExpanded && setExpandedKey(k => k === card.key ? null : card.key)}>
                 <DispatchEntryCells entry={card.entry} order={card.order} {...DELIVERED_PROPS} />
-                <td className="px-[9px] py-[10px] align-top whitespace-nowrap" onClick={stop} onKeyDown={stop}>{entryActions(card)}</td>
+                <td className="px-[9px] py-[10px] align-middle text-center whitespace-nowrap" onClick={stop} onKeyDown={stop}>{entryActions(card)}</td>
               </tr>
               {isOpen && (
                 <tr className="bg-sW/[0.02] border-b-2 border-sW">
