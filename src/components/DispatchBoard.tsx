@@ -4,7 +4,7 @@ import { fmtIST } from '../lib/utils';
 import type { Order } from '../lib/types';
 import { DispatchEntryCells, DispatchEntryHeadCells, thCenterClsCompact } from './DispatchEntryCells';
 import {
-  DISPATCH_STEPS, STEP_ACTIONS, BoardCard, BoardOrderCard, BoardEntryCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck,
+  DISPATCH_STEPS, DONE_COLUMN, STEP_ACTIONS, BoardCard, BoardOrderCard, BoardEntryCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck,
 } from '../lib/dispatchFlow';
 
 // "Board" view of the Dispatch module — since 2026-10-19 a LIST: step tiles
@@ -220,7 +220,7 @@ function InvoiceCell({ invoices }: { invoices: string[] }) {
 const GRID = 'grid grid-cols-[minmax(100px,100fr)_minmax(250px,250fr)_minmax(76px,76fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(120px,120fr)_minmax(118px,118fr)_minmax(112px,112fr)] gap-x-1 px-3 text-center';
 const GRID_MIN_W = 'min-w-[1072px]';
 
-function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[] }) {
+function Row({ card, now, onOpen, qty, orderInvoices, deliveredEntryIds }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[]; deliveredEntryIds?: Set<string> }) {
   const order = card.order;
   const orderId = card.kind === 'order' ? card.order.id : card.entry.orderId;
   // An entry row is one dispatch → its own invoice. An order row (what is
@@ -232,6 +232,11 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
     ? card.remaining
     : (card.entry.items || []).filter(i => Number(i.qty) > 0).map(i => ({ desc: i.desc, qty: Number(i.qty) }));
   const step = DISPATCH_STEPS[card.column - 1];
+  // Per ENTRY: Done (all steps finished) AND in the Delivered list →
+  // "Delivered" instead of "Email Sent". Order rows and entries still on a
+  // step keep their step name.
+  const stepTitle = card.kind === 'entry' && card.column === DONE_COLUMN && deliveredEntryIds?.has(card.entry.id)
+    ? 'Delivered' : step?.title;
   const dots = progressDots(card);
   const open = () => onOpen?.(card);
 
@@ -261,7 +266,7 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
           <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(card.column)}</span>
           {step?.auto && card.column !== 11 && <AutoTag />}
         </span>
-        <span className="text-[13px] text-blk truncate max-w-full" title={step?.title}>{step?.title}</span>
+        <span className="text-[13px] text-blk truncate max-w-full" title={stepTitle}>{stepTitle}</span>
         {card.kind === 'order' && card.doPending && (
           <span className="text-[10.5px] font-semibold text-amber-700 leading-snug truncate max-w-full" title={doPendingText(card.doPending)}>{doPendingText(card.doPending)}</span>
         )}
@@ -439,9 +444,12 @@ const doneKey = (it: ListItem) => it.kind === 'deliveredOrder'
   ? (it.row.order.created_at || it.row.order.poDate || '')
   : it.card.kind === 'entry' ? (it.card.entry.emailSentAt || it.card.entry.created_at || '') : '';
 
-export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrders = [], entryActions, onOpenDeliveredOrder, renderExpanded }: {
+export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrders = [], deliveredEntryIds, entryActions, onOpenDeliveredOrder, renderExpanded }: {
   cards: BoardCard[];
   now: number;
+  // Entry ids in the List → Delivered list (Dispatch.tsx deliveredCards).
+  // A Done entry row whose id is here shows "Delivered" as its step.
+  deliveredEntryIds?: Set<string>;
   // List → Delivered: clicking an entry row expands this under it (Dispatch
   // Line Items) instead of calling onOpen; click again to collapse.
   renderExpanded?: (card: BoardEntryCard) => React.ReactNode;
@@ -541,7 +549,7 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
               {shown.length === 0 ? (
                 <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
               ) : shown.slice(0, limit).map(it => it.kind === 'card' ? (
-                <Row key={it.card.key} card={it.card} now={now} onOpen={onOpen}
+                <Row key={it.card.key} card={it.card} now={now} onOpen={onOpen} deliveredEntryIds={deliveredEntryIds}
                   qty={qty?.get(it.card.kind === 'order' ? it.card.order.id : it.card.entry.orderId)}
                   orderInvoices={it.card.kind === 'order' ? invoices?.get(it.card.order.id) : undefined} />
               ) : (

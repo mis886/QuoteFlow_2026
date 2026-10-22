@@ -594,6 +594,9 @@ export function Dispatch() {
     }
     return out;
   }, [view, data.orders, data.dispatchEntries]);
+  // Entry ids in the Delivered list (all of it, before type/search) — a Done
+  // row in any other List tab whose entry is here reads "Delivered".
+  const deliveredEntryIds = useMemo(() => new Set(deliveredCards.map(c => c.entry.id)), [deliveredCards]);
   const deliveredOrderRows = useMemo<DeliveredOrderRow[]>(() => {
     if (view !== 'board') return [];
     const withEntry = new Set(data.dispatchEntries.map(e => e.orderId));
@@ -787,7 +790,7 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard cards={boardVisible} qty={boardQty} invoices={boardInvoices} deliveredOrders={boardVisibleDeliveredOrders} now={now}
+        <DispatchBoard cards={boardVisible} qty={boardQty} invoices={boardInvoices} deliveredOrders={boardVisibleDeliveredOrders} deliveredEntryIds={deliveredEntryIds} now={now}
           onOpen={boardFilter === 'delivered' ? openDeliveredCard : openDrawer}
           entryActions={boardFilter === 'delivered' ? deliveredEntryActions : undefined}
           renderExpanded={boardFilter === 'delivered' ? (c => <DispatchLineItemsPanel entry={c.entry} order={c.order} />) : undefined}
