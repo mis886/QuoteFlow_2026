@@ -4,7 +4,7 @@ import { fmtIST } from '../lib/utils';
 import type { Order } from '../lib/types';
 import { DispatchEntryCells, DispatchEntryHeadCells, thCenterClsCompact } from './DispatchEntryCells';
 import {
-  DISPATCH_STEPS, DONE_COLUMN, STEP_ACTIONS, BoardCard, BoardOrderCard, BoardEntryCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck,
+  DISPATCH_STEPS, DONE_COLUMN, STEP_ACTIONS, BoardCard, BoardOrderCard, BoardEntryCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck, entryStepBlock,
 } from '../lib/dispatchFlow';
 
 // "Board" view of the Dispatch module — since 2026-10-19 a LIST: step tiles
@@ -40,8 +40,13 @@ export function TimeBar({ card, now, wrap = false }: { card: BoardCard; now: num
   const plannedAt = card.position.plannedAt;
   let text: string;
   if (state === 'hold' && card.kind === 'order') text = `On hold · ${card.position.hold?.reason || ''}`;
-  // A done entry with no email = its order was marked Delivered (List → Delivered).
-  else if (state === 'done' && card.kind === 'entry') text = card.entry.emailSentAt ? `Email sent ${fmtClock(card.entry.emailSentAt, now)}` : 'Marked delivered';
+  // A done entry: email time if emailed, else when Step 10 was clicked; with
+  // neither, its order was marked Delivered (List → Delivered).
+  else if (state === 'done' && card.kind === 'entry') {
+    text = card.entry.emailSentAt ? `Email sent ${fmtClock(card.entry.emailSentAt, now)}`
+      : card.position.doneAt ? `Documents sent ${fmtClock(card.position.doneAt, now)}`
+      : 'Marked delivered';
+  }
   else if (!plannedAt) text = 'No start time';
   else if (state === 'late') text = `Late by ${fmtDuration(now - new Date(plannedAt).getTime())}`;
   else if (state === 'due_soon') text = `Due in ${fmtDuration(new Date(plannedAt).getTime() - now)}`;
@@ -61,10 +66,6 @@ export const TypeDot = ({ type }: { type: string }) => type === 'self_pickup'
   : type === 'delivery'
     ? <span className="inline-flex items-center gap-1 whitespace-nowrap"><span className="w-[7px] h-[7px] rounded-full bg-[#2563EB]" />Delivery</span>
     : <span className="text-g400 whitespace-nowrap">Not set</span>;
-
-export const AutoTag = () => (
-  <span className="font-mono text-[8.5px] font-bold tracking-[1px] uppercase bg-[#E8F0FD] text-[#1D4ED8] rounded-[3px] px-[5px] py-[1px]">Auto</span>
-);
 
 /**
  * Step 1–7 buttons for an order card (black = manual Done, white = second
@@ -119,6 +120,43 @@ export function StepActionButtons({ card, busy, canAct, onAction, onResume, omit
           {a.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Step 8–10 button for a dispatch entry (2026-10-22: these steps are manual):
+ * "Invoice done" / "LR received" / "Documents sent". Same lock as Steps 1–7
+ * (canAct). Step 8 stays disabled until the entry has an invoice no., Step 9
+ * until it has an LR file — with the reason in red under it. `link` is the
+ * entry-page button ("Add invoice no. →", "Upload LR →", "Email to Client →")
+ * shown next to it.
+ */
+export function EntryStepButtons({ card, busy, canAct, onAction, link }: {
+  card: BoardEntryCard;
+  busy: boolean;
+  canAct: boolean;
+  onAction: (card: BoardEntryCard, action: StepAction) => void;
+  link?: React.ReactNode;
+}) {
+  if (card.column > 10) return null;
+  const action = (STEP_ACTIONS[card.column] || [])[0];
+  if (!action) return null;
+  const blocked = entryStepBlock(card.entry, card.column);
+  const off = busy || !canAct || !!blocked;
+  const tip = !canAct ? STEP_BUTTONS_LOCKED_TIP : blocked;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-1.5 items-stretch">
+        <div className={`flex-1 ${off && !busy ? 'cursor-not-allowed' : ''}`} title={tip}>
+          <button type="button" disabled={off} title={tip} onClick={() => { if (!off) onAction(card, action); }}
+            className={`w-full text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[7px] bg-blk text-white hover:bg-dark transition-colors disabled:opacity-50 ${busy ? 'disabled:cursor-wait' : 'disabled:cursor-not-allowed'}`}>
+            {action.label}
+          </button>
+        </div>
+        {link}
+      </div>
+      {blocked && <div className="text-[11px] font-semibold text-[#9A0000]">{blocked}</div>}
     </div>
   );
 }
@@ -262,10 +300,7 @@ function Row({ card, now, onOpen, qty, orderInvoices, deliveredEntryIds }: { car
 
       {/* Current step + any flag */}
       <div className="flex flex-col items-center gap-[2px] min-w-0">
-        <span className="flex items-center justify-center gap-1.5">
-          <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(card.column)}</span>
-          {step?.auto && card.column !== 11 && <AutoTag />}
-        </span>
+        <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(card.column)}</span>
         <span className="text-[13px] text-blk truncate max-w-full" title={stepTitle}>{stepTitle}</span>
         {card.kind === 'order' && card.doPending && (
           <span className="text-[10.5px] font-semibold text-amber-700 leading-snug truncate max-w-full" title={doPendingText(card.doPending)}>{doPendingText(card.doPending)}</span>

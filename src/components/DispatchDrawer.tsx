@@ -4,11 +4,11 @@ import { Check, CircleDashed, Pencil, Undo2, X } from 'lucide-react';
 import { fmtIST, doerLabel, formatINR, resolveAdjustments, maxItemGstRate, remainingByLine, punchedAtClass } from '../lib/utils';
 import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
-  BoardCard, BoardOrderCard, DispatchStepRecord, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
-  drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastStepClick, describeStepClick, allowedStepStatuses,
+  BoardCard, BoardEntryCard, BoardOrderCard, DispatchStepRecord, LastStepClick, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
+  drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastStepClick, lastEntryStepClick, describeStepClick, allowedStepStatuses,
   step6AlreadyEmailed, STEP_ACTIONS,
 } from '../lib/dispatchFlow';
-import { StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot, step6Label } from './DispatchBoard';
+import { EntryStepButtons, StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot, step6Label } from './DispatchBoard';
 import { ConfirmDialog } from './ConfirmDialog';
 import { LineItemsPanel } from './LineItemsPanel';
 import { Badge, Button } from './ui';
@@ -92,7 +92,7 @@ function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
           <span className={`text-[12.5px] font-semibold truncate ${step.state === 'skipped' || step.state === 'upcoming' || step.state === 'not_recorded' ? 'text-g500' : 'text-blk'}`}>{def.title}</span>
           {stateLabel && <span className={`ml-auto text-[10px] font-semibold shrink-0 ${step.state === 'current' ? 'text-red-mrt' : 'text-g400'}`}>{stateLabel}</span>}
           {/* ✎ — only on steps backed by a saved row (done / skipped / hold);
-              never on auto-skips or the automatic steps 8–10. */}
+              never on auto-skips or steps nobody has clicked yet. */}
           {onEdit && step.record && (
             <button type="button" onClick={onEdit} title="Edit this step"
               className={`${stateLabel ? '' : 'ml-auto'} shrink-0 p-0.5 text-g400 hover:text-red-mrt transition-colors`}>
@@ -127,14 +127,16 @@ function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
   );
 }
 
-// A dispatch entry's button names the step it is waiting on (8 invoice no.,
-// 9 LR, 10 email); Done entries just open for viewing. Every label goes to
-// the same entry page (/dispatch/new?entryId=…).
+// A dispatch entry's link names what the entry page is for at the step it
+// is waiting on (8 invoice no., 9 LR, 10 email); Done entries just open for
+// viewing. Every label goes to the same entry page (/dispatch/new?entryId=…).
+// Since 2026-10-22 these only open the page — the step itself moves with the
+// "Invoice done" / "LR received" / "Documents sent" button next to it.
 const entryActionLabel = (col: 8 | 9 | 10 | 11) =>
   col === 8 ? 'Add invoice no. →' : col === 9 ? 'Upload LR →' : col === 10 ? 'Email to Client →' : 'Open →';
 
 export function DispatchDrawer({
-  order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onResume,
+  order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onEntryAction, onResume,
   canUndo, undoBusy, onUndo, openedFrom, canDelete, onSaveStep, onDelete, onClose,
 }: {
   order: Order;
@@ -149,10 +151,14 @@ export function DispatchDrawer({
   canAct: boolean;
   busy: boolean;
   onAction: (card: BoardOrderCard, action: StepAction, remark?: string) => Promise<void> | void;
+  // Steps 8–10 of the entry the drawer was opened from.
+  onEntryAction: (card: BoardEntryCard, action: StepAction, remark?: string) => Promise<void> | void;
   onResume: (card: BoardOrderCard, remark?: string) => Promise<void> | void;
   canUndo: boolean;                    // same logins as the step buttons
   undoBusy: boolean;
-  onUndo: () => void;
+  // The click to take back: the order's last Step 1–7 click, or — opened
+  // from an entry row — that entry's last Step 8–10 click.
+  onUndo: (click: LastStepClick) => void;
   // The card that was clicked — Edit / Delete act on it (the order for an
   // order card, that one dispatch entry for an entry card).
   openedFrom: BoardCard;
@@ -212,7 +218,7 @@ export function DispatchDrawer({
   useEffect(() => { setRemark(''); }, [order.id]);
 
   const steps = drawerSteps(order, entries, records, fulfillment, orderCard?.position);
-  const lastClick = lastStepClick(records);
+  const lastClick = openedFrom.kind === 'entry' ? lastEntryStepClick(records, openedFrom.entry.id) : lastStepClick(records);
   const realEntries = entries.filter(e => !isImportedEntry(e))
     .sort((a, b) => (ms(a.created_at) || 0) - (ms(b.created_at) || 0));
   // Order value + line items, calculated the same way as the Pending table.
@@ -240,6 +246,7 @@ export function DispatchDrawer({
     ? (STEP_ACTIONS[6] || []).find(a => a.primary) : undefined;
 
   const act = async (card: BoardOrderCard, action: StepAction) => { if (!canAct) return; await onAction(card, action, remark); setRemark(''); };
+  const actEntry = async (card: BoardEntryCard, action: StepAction) => { if (!canAct) return; await onEntryAction(card, action, remark); setRemark(''); };
   const resume = async (card: BoardOrderCard) => { if (!canAct) return; await onResume(card, remark); setRemark(''); };
 
   return (
@@ -299,7 +306,7 @@ export function DispatchDrawer({
               <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt">Steps</div>
               <div className="flex items-center gap-1.5 flex-nowrap">
                 {canUndo && lastClick && (
-                  <button type="button" onClick={onUndo} disabled={undoBusy}
+                  <button type="button" onClick={() => onUndo(lastClick)} disabled={undoBusy}
                     title={`Takes back: ${describeStepClick(lastClick)}`}
                     className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-mrt border border-red-mrt/40 rounded-[4px] px-2 py-[3px] hover:bg-red-lt transition-colors disabled:opacity-50 disabled:cursor-wait">
                     <Undo2 size={11} /> Undo last step
@@ -332,7 +339,7 @@ export function DispatchDrawer({
             ) : (
               <div className="flex flex-col gap-1.5">
                 {realEntries.map(e => {
-                  const pos = entryPosition(e);
+                  const pos = entryPosition(e, records);
                   const where = pos.column === 11 ? 'Done' : `Step ${pos.column} · ${stepDef(pos.column).title}`;
                   return (
                     <div key={e.id} className="flex items-center gap-2 border border-g200 rounded-[4px] px-2.5 py-2">
@@ -357,11 +364,22 @@ export function DispatchDrawer({
         {/* Remark + current step's buttons */}
         {((orderCard && (hasStepActions || orderCard.column === 8)) || entryWaiting) && (
           <div className="border-t border-g200 px-4 py-3 flex flex-col gap-2 bg-cream">
+            {/* Entry waiting on Step 8 / 9 / 10: remark + the step's button,
+                with the entry-page link next to it. */}
             {entryWaiting && openedFrom.kind === 'entry' && (
-              <button type="button" onClick={() => navigate(`/dispatch/new?entryId=${openedFrom.entry.id}&from=board`)}
-                className="w-full bg-red-mrt hover:bg-red-h text-white text-[12px] font-semibold rounded-[4px] px-2.5 py-[7px] transition-colors">
-                {entryActionLabel(openedFrom.column)}
-              </button>
+              <>
+                <textarea value={remark} onChange={e => setRemark(e.target.value)} rows={2}
+                  disabled={!canAct} title={canAct ? undefined : STEP_BUTTONS_LOCKED_TIP}
+                  placeholder="Remark (saved with the next button you press)"
+                  className="w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[4px] p-[7px_9px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
+                <EntryStepButtons card={openedFrom} busy={busy} canAct={canAct} onAction={actEntry}
+                  link={
+                    <button type="button" onClick={() => navigate(`/dispatch/new?entryId=${openedFrom.entry.id}&from=board`)}
+                      className="shrink-0 bg-red-mrt hover:bg-red-h text-white text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[7px] transition-colors whitespace-nowrap">
+                      {entryActionLabel(openedFrom.column)}
+                    </button>
+                  } />
+              </>
             )}
             {orderCard && hasStepActions && (
               <textarea value={remark} onChange={e => setRemark(e.target.value)} rows={2}

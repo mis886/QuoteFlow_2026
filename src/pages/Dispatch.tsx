@@ -5,8 +5,8 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, entryPosition, unionBoardRows } from '../lib/dispatchFlow';
-import { DispatchBoard, DeliveredOrderRow, AutoTag, StepActionButtons, UndoLink } from '../components/DispatchBoard';
+import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, entryPosition, entryStepBlock, unionBoardRows } from '../lib/dispatchFlow';
+import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { LineItemsPanel } from '../components/LineItemsPanel';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
 import { thCls, thRightCls, isImportedEntry, SoCell, DispatchEntryHeadCells, DispatchEntryCells, DispatchEntryActions } from '../components/DispatchEntryCells';
@@ -123,6 +123,65 @@ export function Dispatch() {
       }
     } catch (err: any) {
       alert(`Could not save: ${err?.message || JSON.stringify(err)}`);
+    } finally {
+      setBusyCardKey(null);
+    }
+  };
+
+  // 2026-10-22: Steps 8–10 of ONE dispatch entry are manual — "Invoice done"
+  // / "LR received" / "Documents sent" save a dispatch_steps row with
+  // entry_id. Steps 8 and 9 need the entry's invoice no. / LR file: checked
+  // here against the entry as saved in the database right now, and again by
+  // the database itself (trigger enforce_dispatch_entry_step_prereqs) —
+  // either refusal shows the same message and saves nothing.
+  const runEntryStepAction = async (card: BoardEntryCard, action: StepAction, remark?: string) => {
+    if (!canActOnBoard || busyCardKey) return;
+    const e = card.entry;
+    setBusyCardKey(card.key);
+    try {
+      const { data: fresh, error: freshErr } = await supabase.from('dispatch_entries')
+        .select('invoice_number, lr_files, lr_url').eq('id', e.id).single();
+      if (freshErr) throw freshErr;
+      const blocked = action.writes.map(w => entryStepBlock({
+        ...e,
+        invoiceNumber: fresh.invoice_number || undefined,
+        lrFiles: Array.isArray(fresh.lr_files) ? fresh.lr_files : undefined,
+        lrUrl: fresh.lr_url || undefined,
+      }, w.stepNo)).find(Boolean);
+      if (blocked) { showToast('err', blocked); return; }
+      // Which shipment of the order this entry closed (1, 2, …) — same as
+      // the drawer's rounds.
+      const round = data.dispatchEntries
+        .filter(x => x.orderId === e.orderId && !isImportedEntry(x))
+        .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
+        .findIndex(x => x.id === e.id) + 1 || 1;
+      const nowIso = new Date().toISOString();
+      const rows = action.writes.map((w, i) => ({
+        order_id: e.orderId,
+        entry_id: e.id,
+        round,
+        step_no: w.stepNo,
+        status: w.status,
+        planned_at: w.stepNo === card.column ? card.position.plannedAt ?? null : null,
+        done_at: nowIso,
+        done_by: user?.email ?? null,
+        remark: i === 0 && remark?.trim() ? remark.trim() : null,
+      }));
+      const { data: inserted, error } = await supabase.from('dispatch_steps').insert(rows).select('*');
+      if (error) throw error;
+      setStepRecords(prev => [...prev, ...(inserted || []).map(mapStepFromDB)]);
+      const label = card.order ? (card.order.soNumber || card.order.id) : e.orderId;
+      for (const row of inserted || []) {
+        logActivity({
+          module: 'dispatch_steps', recordId: e.orderId,
+          recordLabel: `${label} · ${e.invoiceNumber ? `INV ${e.invoiceNumber} · ` : ''}Step ${row.step_no} ${stepDef(row.step_no as StepNo).title} · Done (${action.label})`,
+          action: 'insert', after: row,
+        });
+      }
+    } catch (err: any) {
+      // The database's own refusal ("Add invoice no. first" / "Upload LR
+      // first") comes through here as the error message.
+      showToast('err', err?.message || `Could not save: ${JSON.stringify(err)}`);
     } finally {
       setBusyCardKey(null);
     }
@@ -265,10 +324,12 @@ export function Dispatch() {
   const [undoBusy, setUndoBusy] = useState(false);
   // The click waiting in the in-app confirm box (Cancel = nothing changes).
   const [undoTarget, setUndoTarget] = useState<{ order: Order; click: LastStepClick } | null>(null);
-  const requestUndo = (order: Order) => {
+  // `click` given (drawer) = exactly that click — for an entry row, its last
+  // Step 8–10 click; otherwise the order's last Step 1–7 click.
+  const requestUndo = (order: Order, click?: LastStepClick) => {
     if (!canUndoOnBoard || undoBusy) return;
-    const click = lastStepClick(stepRecords.filter(r => r.orderId === order.id));
-    if (click) setUndoTarget({ order, click });
+    const target = click ?? lastStepClick(stepRecords.filter(r => r.orderId === order.id));
+    if (target) setUndoTarget({ order, click: target });
   };
   const confirmUndo = async () => {
     if (!undoTarget || !canUndoOnBoard || undoBusy) return;
@@ -588,12 +649,12 @@ export function Dispatch() {
       const order = ordersById.get(e.orderId);
       if (!e.emailSentAt && order?.status !== 'Delivered') continue;
       out.push({
-        kind: 'entry', key: `d:${e.id}`, entry: e, order, position: entryPosition(e),
+        kind: 'entry', key: `d:${e.id}`, entry: e, order, position: entryPosition(e, stepRecords),
         column: DONE_COLUMN, fulfillment: e.fulfillmentType, state: 'done',
       });
     }
     return out;
-  }, [view, data.orders, data.dispatchEntries]);
+  }, [view, data.orders, data.dispatchEntries, stepRecords]);
   // Entry ids in the Delivered list (all of it, before type/search) — a Done
   // row in any other List tab whose entry is here reads "Delivered".
   const deliveredEntryIds = useMemo(() => new Set(deliveredCards.map(c => c.entry.id)), [deliveredCards]);
@@ -734,7 +795,6 @@ export function Dispatch() {
               <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#107E3E]" />On time</span>
               <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#E9730C]" />Due within 1h</span>
               <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#BB0000]" />Delayed</span>
-              <span className="inline-flex items-center gap-1"><AutoTag /> Moves by itself</span>
             </div>
           </>
         ) : (<>
@@ -968,12 +1028,13 @@ export function Dispatch() {
             now={now}
             roster={data.roster}
             canAct={canActOnBoard}
-            busy={!!orderCard && busyCardKey === orderCard.key}
+            busy={!!busyCardKey && (busyCardKey === orderCard?.key || busyCardKey === drawerCard?.key)}
             onAction={handleStepAction}
+            onEntryAction={runEntryStepAction}
             onResume={resumeHold}
             canUndo={canUndoOnBoard}
             undoBusy={undoBusy}
-            onUndo={() => requestUndo(o)}
+            onUndo={click => requestUndo(o, click)}
             site={siteLabel(customerOfDoc(o, data.customers), o.siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId)}
             openedFrom={boardCards.find(c => c.key === drawerCard?.key) ?? drawerCard!}
             canDelete={canDelete}
