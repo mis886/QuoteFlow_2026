@@ -2,6 +2,7 @@ import React from 'react';
 import { Pause, Play, Undo2 } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
 import type { Order } from '../lib/types';
+import { DispatchEntryCells, DispatchEntryHeadCells, thClsCompact } from './DispatchEntryCells';
 import {
   DISPATCH_STEPS, STEP_ACTIONS, BoardCard, BoardOrderCard, BoardEntryCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck,
 } from '../lib/dispatchFlow';
@@ -32,7 +33,9 @@ const TIME_DOT_CLS: Partial<Record<TimeState, string>> = {
   done: 'bg-[#107E3E]',
 };
 
-export function TimeBar({ card, now }: { card: BoardCard; now: number }) {
+// `wrap`: let long text ("Email sent 21 Oct, 3:45 pm") wrap instead of
+// being cut off with "…" (List rows); the drawer keeps one line.
+export function TimeBar({ card, now, wrap = false }: { card: BoardCard; now: number; wrap?: boolean }) {
   const state = card.state;
   const plannedAt = card.position.plannedAt;
   let text: string;
@@ -48,7 +51,7 @@ export function TimeBar({ card, now }: { card: BoardCard; now: number }) {
       {state === 'hold'
         ? <Pause size={10} className="shrink-0" />
         : <span className={`w-[6px] h-[6px] rounded-full shrink-0 ${TIME_DOT_CLS[state] || 'bg-g400'}`} />}
-      <span className="truncate" title={text}>{text}</span>
+      <span className={wrap ? 'leading-snug' : 'truncate'} title={text}>{text}</span>
     </div>
   );
 }
@@ -207,17 +210,14 @@ function InvoiceCell({ invoices }: { invoices: string[] }) {
   );
 }
 
-// Column template. List → Delivered adds an Actions column (Edit / Delete),
-// paid for by trimming the others so the total width stays the same.
-const GRID = 'grid-cols-[120px_minmax(100px,1fr)_90px_80px_80px_80px_166px_130px_130px] gap-x-2';
-const GRID_ACTIONS = 'grid-cols-[120px_minmax(88px,1fr)_80px_74px_74px_74px_160px_126px_130px_66px] gap-x-1.5';
+// Column template for every tab except Delivered (which uses the Table's
+// Email Sent columns — DeliveredTable below). Customer takes the spare
+// room; the rest are fixed so nothing stretches. Fits 1366px with the
+// sidebar open (min width 1076px).
+const GRID = 'grid grid-cols-[112px_minmax(120px,1fr)_84px_72px_72px_72px_166px_126px_156px] gap-x-2';
+const GRID_MIN_W = 'min-w-[1076px]';
 
-// Buttons inside a clickable row: don't let a click/Enter also open the row.
-const ActionsCell = ({ children }: { children?: React.ReactNode }) => (
-  <div className="min-w-0" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>{children}</div>
-);
-
-function Row({ card, now, onOpen, qty, orderInvoices, grid, actions, expanded }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[]; grid: string; actions?: React.ReactNode; expanded?: boolean }) {
+function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[] }) {
   const order = card.order;
   const orderId = card.kind === 'order' ? card.order.id : card.entry.orderId;
   // An entry row is one dispatch → its own invoice. An order row (what is
@@ -238,8 +238,7 @@ function Row({ card, now, onOpen, qty, orderInvoices, grid, actions, expanded }:
       tabIndex={0}
       onClick={open}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
-      aria-expanded={expanded}
-      className={`grid ${grid} items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors ${expanded ? 'bg-sW/5' : ''}`}
+      className={`${GRID} items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors`}
     >
       {/* Order */}
       <div className="flex flex-col gap-[2px] min-w-0">
@@ -257,11 +256,7 @@ function Row({ card, now, onOpen, qty, orderInvoices, grid, actions, expanded }:
       <InvoiceCell invoices={invoices} />
 
       {/* Barrels — the ORDER's ordered / dispatched / remaining, every row */}
-      <div className="text-center font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
-      <div className="text-center font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
-      <div className={`text-center font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
-        {qty ? qty.remaining : '—'}
-      </div>
+      <QtyCells qty={qty} />
 
       {/* Current step + any flag (pl-4: room after the Remaining number) */}
       <div className="flex flex-col gap-[2px] min-w-0 pl-4">
@@ -286,13 +281,25 @@ function Row({ card, now, onOpen, qty, orderInvoices, grid, actions, expanded }:
         ))}
       </div>
 
-      {/* Due / late */}
+      {/* Due / late — wraps rather than cutting "Email sent 21 Oct, …" off */}
       <div className="min-w-0 flex justify-center">
-        <div className="min-w-0"><TimeBar card={card} now={now} /></div>
+        <div className="min-w-0"><TimeBar card={card} now={now} wrap /></div>
       </div>
-
-      {actions !== undefined && <ActionsCell>{actions}</ActionsCell>}
     </div>
+  );
+}
+
+// Ordered / Dispatched / Remaining, right-aligned; Remaining orange while
+// part of the order is still to go.
+function QtyCells({ qty }: { qty?: OrderQty }) {
+  return (
+    <>
+      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
+      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
+      <div className={`text-right font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
+        {qty ? qty.remaining : '—'}
+      </div>
+    </>
   );
 }
 
@@ -304,17 +311,11 @@ export interface DeliveredOrderRow {
   fulfillment: string;
 }
 
-function DeliveredOrderRowView({ row, qty, grid, withActions, onOpen }: { row: DeliveredOrderRow; qty?: OrderQty; grid: string; withActions: boolean; onOpen?: (order: Order) => void }) {
+function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: OrderQty }) {
   const o = row.order;
   const lines = (o.items || []).filter(i => Number(i.qty) > 0).map(i => ({ desc: i.desc, qty: Number(i.qty) }));
-  const open = () => onOpen?.(o);
   return (
-    <div
-      {...(onOpen ? {
-        role: 'button', tabIndex: 0, onClick: open,
-        onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } },
-      } : {})}
-      className={`grid ${grid} items-center px-4 py-[10px] border-b border-g200 last:border-b-0 ${onOpen ? 'hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors' : ''}`}>
+    <div className={`${GRID} items-center px-4 py-[10px] border-b border-g200 last:border-b-0`}>
       <div className="flex flex-col gap-[2px] min-w-0">
         <span className="font-mono text-[12px] font-bold text-red-mrt truncate">{o.soNumber || '—'}</span>
         <span className="font-mono text-[10.5px] text-g500 truncate">{o.id}</span>
@@ -324,19 +325,92 @@ function DeliveredOrderRowView({ row, qty, grid, withActions, onOpen }: { row: D
         <span className="text-[12px] text-g600 truncate" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
       </div>
       <InvoiceCell invoices={[]} />
-      <div className="text-center font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
-      <div className="text-center font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
-      <div className={`text-center font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
-        {qty ? qty.remaining : '—'}
-      </div>
+      <QtyCells qty={qty} />
       <div className="flex flex-col gap-[2px] min-w-0 pl-4">
         <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(11)}</span>
         <span className="text-[13px] text-blk truncate">Marked delivered</span>
       </div>
       <div />
       <div className="min-w-0 text-[11px] text-g400 text-center">—</div>
-      {withActions && <div />}
     </div>
+  );
+}
+
+// ── List → Delivered (Both / Delivery / Self Pickup) ─────────────────────
+// The Table's Email Sent columns (DispatchEntryCells, shared with the
+// Table) + its Actions cell. A row click expands that entry's Dispatch Line
+// Items under it. "Marked delivered" orders (no entry) show "—" for the
+// entry fields and open the order. Customer takes the spare width; cells
+// use slightly tighter padding than the Table so it fits more often.
+const DELIVERED_COLS = 11;
+function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
+  items: ListItem[];
+  entryActions: (card: BoardEntryCard) => React.ReactNode;
+  renderExpanded?: (card: BoardEntryCard) => React.ReactNode;
+  onOpenOrder?: (order: Order) => void;
+}) {
+  const [expandedKey, setExpandedKey] = React.useState<string | null>(null);
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  const rowCls = 'group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-sW/5';
+  return (
+    <table className="w-full min-w-[1228px] table-fixed border-collapse text-[12.5px]">
+      <colgroup>
+        <col style={{ width: 92 }} />{/* SO No. */}
+        <col style={{ width: 100 }} />{/* Order Ref */}
+        <col />{/* Customer — takes the rest */}
+        <col style={{ width: 100 }} />{/* PO No. */}
+        <col style={{ width: 68 }} />{/* Items */}
+        <col style={{ width: 96 }} />{/* Value */}
+        <col style={{ width: 120 }} />{/* Transporter */}
+        <col style={{ width: 82 }} />{/* Invoice No. */}
+        <col style={{ width: 96 }} />{/* Dispatched On */}
+        <col style={{ width: 150 }} />{/* Email Sent On */}
+        <col style={{ width: 142 }} />{/* Actions — Edit + Delete side by side */}
+      </colgroup>
+      <thead className="bg-g100 sticky top-0 z-[1]">
+        <tr>
+          <DispatchEntryHeadCells showEmailSent compact />
+          <th className={thClsCompact}>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map(it => {
+          if (it.kind === 'deliveredOrder') {
+            const o = it.row.order;
+            return (
+              <tr key={`do:${o.id}`} className={rowCls} onClick={() => onOpenOrder?.(o)}>
+                <DispatchEntryCells order={o} showEmailSent compact />
+                <td />
+              </tr>
+            );
+          }
+          const card = it.card;
+          if (card.kind !== 'entry') {
+            return (
+              <tr key={card.key} className="border-b border-g100">
+                <DispatchEntryCells order={card.order} showEmailSent compact />
+                <td />
+              </tr>
+            );
+          }
+          const isOpen = !!renderExpanded && expandedKey === card.key;
+          return (
+            <React.Fragment key={card.key}>
+              <tr className={`${rowCls} ${isOpen ? 'bg-sW/5' : ''}`} aria-expanded={isOpen}
+                onClick={() => renderExpanded && setExpandedKey(k => k === card.key ? null : card.key)}>
+                <DispatchEntryCells entry={card.entry} order={card.order} showEmailSent compact />
+                <td className="px-[9px] py-[10px] align-top whitespace-nowrap" onClick={stop} onKeyDown={stop}>{entryActions(card)}</td>
+              </tr>
+              {isOpen && (
+                <tr className="bg-sW/[0.02] border-b-2 border-sW">
+                  <td colSpan={DELIVERED_COLS} className="p-0">{renderExpanded!(card)}</td>
+                </tr>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -371,11 +445,9 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
   renderActions?: (card: BoardCard) => React.ReactNode;
   onDelete?: (card: BoardCard) => void;
 }) {
-  const withActions = !!entryActions;
-  const grid = withActions ? GRID_ACTIONS : GRID;
+  // entryActions given = List → Delivered → the Table's Email Sent columns.
+  const deliveredLayout = !!entryActions;
   const [stepFilter, setStepFilter] = React.useState<ColumnNo | 'all'>('all');
-  const [expandedKey, setExpandedKey] = React.useState<string | null>(null);
-  const toggleExpanded = (card: BoardCard) => setExpandedKey(k => k === card.key ? null : card.key);
   const [limit, setLimit] = React.useState(PAGE);
   React.useEffect(() => { setLimit(PAGE); }, [stepFilter, cards.length, deliveredOrders.length]);
 
@@ -436,37 +508,31 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
 
       {/* List */}
       <div className="flex-1 min-h-0 bg-white border border-g200 rounded-[6px] overflow-auto">
-        <div className={withActions ? 'min-w-[1078px]' : 'min-w-[1072px]'}>
-          <div className={`sticky top-0 z-[1] grid ${grid} items-center px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500`}>
-            <div>Order</div><div>Customer · Product</div><div className="text-center">Invoice No</div>
-            <div className="text-center">Ordered</div><div className="text-center">Dispatched</div><div className="text-center">Remaining</div>
-            <div className="pl-4">Current step</div><div className="text-center">Progress</div><div className="text-center">Due</div>
-            {withActions && <div>Actions</div>}
-          </div>
-          {shown.length === 0 ? (
-            <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
+        <div className={deliveredLayout ? '' : GRID_MIN_W}>
+          {deliveredLayout ? (
+            shown.length === 0
+              ? <div className="text-center text-[12px] text-g400 py-12">No delivered entries here. Try another step or clear the search.</div>
+              : <DeliveredTable items={shown.slice(0, limit)} entryActions={entryActions!} renderExpanded={renderExpanded} onOpenOrder={onOpenDeliveredOrder} />
           ) : (
             <>
-              {shown.slice(0, limit).map(it => {
-                if (it.kind !== 'card') return (
-                  <DeliveredOrderRowView key={`do:${it.row.order.id}`} row={it.row} qty={qty?.get(it.row.order.id)}
-                    grid={grid} withActions={withActions} onOpen={onOpenDeliveredOrder} />
-                );
-                const card = it.card;
-                const expandable = !!renderExpanded && card.kind === 'entry';
-                const isOpen = expandable && expandedKey === card.key;
-                return (
-                  <React.Fragment key={card.key}>
-                    <Row card={card} now={now} onOpen={expandable ? toggleExpanded : onOpen} grid={grid} expanded={isOpen}
-                      qty={qty?.get(card.kind === 'order' ? card.order.id : card.entry.orderId)}
-                      orderInvoices={card.kind === 'order' ? invoices?.get(card.order.id) : undefined}
-                      actions={entryActions ? (card.kind === 'entry' ? entryActions(card) : null) : undefined} />
-                    {isOpen && card.kind === 'entry' && (
-                      <div className="bg-sW/[0.02] border-b-2 border-sW">{renderExpanded!(card)}</div>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+              <div className={`sticky top-0 z-[1] ${GRID} items-center px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500`}>
+                <div>Order</div><div>Customer · Product</div><div className="text-center">Invoice No</div>
+                <div className="text-right">Ordered</div><div className="text-right">Dispatched</div><div className="text-right">Remaining</div>
+                <div className="pl-4">Current step</div><div className="text-center">Progress</div><div className="text-center">Due</div>
+              </div>
+              {shown.length === 0 ? (
+                <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
+              ) : shown.slice(0, limit).map(it => it.kind === 'card' ? (
+                <Row key={it.card.key} card={it.card} now={now} onOpen={onOpen}
+                  qty={qty?.get(it.card.kind === 'order' ? it.card.order.id : it.card.entry.orderId)}
+                  orderInvoices={it.card.kind === 'order' ? invoices?.get(it.card.order.id) : undefined} />
+              ) : (
+                <DeliveredOrderRowView key={`do:${it.row.order.id}`} row={it.row} qty={qty?.get(it.row.order.id)} />
+              ))}
+            </>
+          )}
+          {shown.length > 0 && (
+            <>
               {shown.length > limit && (
                 <div className="flex justify-center py-3 border-t border-g200">
                   <button type="button" onClick={() => setLimit(l => l + PAGE)}
@@ -488,7 +554,7 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
             <span className={`w-[9px] h-[9px] rounded-full box-border ${DOT_CLS[d]}`} />{DOT_WORD[d]}
           </span>
         ))}
-        <span className="ml-auto text-g500">{shown.length} shown · click a row for steps &amp; actions</span>
+        <span className="ml-auto text-g500">{shown.length} shown · {deliveredLayout ? 'click a row for its line items' : <>click a row for steps &amp; actions</>}</span>
       </div>
     </div>
   );
