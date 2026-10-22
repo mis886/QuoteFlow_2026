@@ -1,3 +1,4 @@
+import type React from 'react';
 import { Button } from './ui';
 import { formatINR, fmtIST } from '../lib/utils';
 import type { DispatchEntry, Order } from '../lib/types';
@@ -37,13 +38,19 @@ const dash = <span className="text-g400">—</span>;
 /** SO No. … Dispatched On (+ Email Sent On) header cells; Actions not included. */
 // `hideItemsAndTransporter`: List → Delivered leaves out Items and
 // Transporter (the Table keeps them).
-export function DispatchEntryHeadCells({ showEmailSent, compact = false, hideItemsAndTransporter = false, centered = false }: { showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean; centered?: boolean }) {
+// `mergeOrder`: one "Order" column (SO No. over Order Ref, drawn by the
+// caller via DispatchEntryCells' `orderCell`) instead of two — List → Delivered.
+export function DispatchEntryHeadCells({ showEmailSent, compact = false, hideItemsAndTransporter = false, centered = false, mergeOrder = false }: { showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean; centered?: boolean; mergeOrder?: boolean }) {
   const th = centered ? thCenterClsCompact : compact ? thClsCompact : thCls;
   const thR = centered ? thCenterClsCompact : compact ? thRightClsCompact : thRightCls;
   return (
     <>
-      <th className={th}>SO No.</th>
-      <th className={th}>Order Ref</th>
+      {mergeOrder ? <th className={th}>Order</th> : (
+        <>
+          <th className={th}>SO No.</th>
+          <th className={th}>Order Ref</th>
+        </>
+      )}
       <th className={th}>Customer</th>
       <th className={th}>PO No.</th>
       {!hideItemsAndTransporter && <th className={th}>Items</th>}
@@ -63,13 +70,17 @@ export function DispatchEntryHeadCells({ showEmailSent, compact = false, hideIte
  * entry (List → Delivered "Marked delivered" order) only the order's own
  * fields show; the rest are "—".
  */
-export function DispatchEntryCells({ entry, order, showEmailSent, compact = false, hideItemsAndTransporter = false, centered = false }: { entry?: DispatchEntry; order?: Order; showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean; centered?: boolean }) {
+export function DispatchEntryCells({ entry, order, showEmailSent, compact = false, hideItemsAndTransporter = false, centered = false, mergeOrder = false, orderCell }: { entry?: DispatchEntry; order?: Order; showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean; centered?: boolean; mergeOrder?: boolean; orderCell?: React.ReactNode }) {
   const td = centered ? 'px-[9px] py-[10px] align-middle text-center'
     : compact ? 'px-[9px] py-[10px] align-top' : 'px-[13px] py-[10px] align-top';
   return (
     <>
-      <td className={`${td} whitespace-nowrap`}><SoCell soNumber={order?.soNumber} hasOrder={!!order && !(entry && isImportedEntry(entry))} /></td>
-      <td className={`${td} whitespace-nowrap`}><span className="font-mono text-[10px] font-bold text-sQ">{entry?.orderId || order?.id}</span></td>
+      {mergeOrder ? <td className={td}>{orderCell}</td> : (
+        <>
+          <td className={`${td} whitespace-nowrap`}><SoCell soNumber={order?.soNumber} hasOrder={!!order && !(entry && isImportedEntry(entry))} /></td>
+          <td className={`${td} whitespace-nowrap`}><span className="font-mono text-[10px] font-bold text-sQ">{entry?.orderId || order?.id}</span></td>
+        </>
+      )}
       <td className={`${td} break-words`}>
         <div className="font-semibold">{order?.cust || '—'}</div>
       </td>

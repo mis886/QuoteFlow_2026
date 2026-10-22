@@ -241,10 +241,7 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
       className={`${GRID} items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors`}
     >
       {/* Order */}
-      <div className="flex flex-col gap-[2px] min-w-0">
-        <span className="font-mono text-[12px] font-bold text-red-mrt truncate">{order?.soNumber || '—'}</span>
-        <span className="font-mono text-[10.5px] text-g500 truncate">{orderId}</span>
-      </div>
+      <OrderCell soNumber={order?.soNumber} orderId={orderId} />
 
       {/* Customer · product */}
       <div className="flex flex-col gap-[2px] min-w-0">
@@ -289,6 +286,18 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
   );
 }
 
+// Order column: SO number (red, bold) with the order id under it (grey).
+// List → Delivered uses it centred and, when there's no SO number, shows
+// only the order id (the other tabs show "—" for a missing SO).
+function OrderCell({ soNumber, orderId, centered = false }: { soNumber?: string; orderId?: string; centered?: boolean }) {
+  return (
+    <div className={`flex flex-col gap-[2px] min-w-0 ${centered ? 'items-center' : ''}`}>
+      {(soNumber || !centered) && <span className="font-mono text-[12px] font-bold text-red-mrt truncate max-w-full">{soNumber || '—'}</span>}
+      {orderId && <span className="font-mono text-[10.5px] text-g500 truncate max-w-full">{orderId}</span>}
+    </div>
+  );
+}
+
 // Ordered / Dispatched / Remaining, right-aligned; Remaining orange while
 // part of the order is still to go.
 function QtyCells({ qty }: { qty?: OrderQty }) {
@@ -316,10 +325,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
   const lines = (o.items || []).filter(i => Number(i.qty) > 0).map(i => ({ desc: i.desc, qty: Number(i.qty) }));
   return (
     <div className={`${GRID} items-center px-4 py-[10px] border-b border-g200 last:border-b-0`}>
-      <div className="flex flex-col gap-[2px] min-w-0">
-        <span className="font-mono text-[12px] font-bold text-red-mrt truncate">{o.soNumber || '—'}</span>
-        <span className="font-mono text-[10.5px] text-g500 truncate">{o.id}</span>
-      </div>
+      <OrderCell soNumber={o.soNumber} orderId={o.id} />
       <div className="flex flex-col gap-[2px] min-w-0">
         <span className="text-[13.5px] font-semibold text-blk leading-snug line-clamp-2 break-words" title={o.cust}>{o.cust || '—'}</span>
         <span className="text-[12px] text-g600 truncate" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
@@ -341,13 +347,16 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
 // (DispatchEntryCells, shared with the Table) + its Actions cell. A row
 // click expands that entry's Dispatch Line Items under it. "Marked
 // delivered" orders (no entry) show "—" for the entry fields and open the
-// order. Every column has a fixed width (Customer ~250px, long names wrap);
-// they add up to 1076px so it fits 1366px with the sidebar open, and any
-// extra width is shared out across all columns, not dumped after Customer.
-const DELIVERED_COLS = 9;
+// order. SO No. and Order Ref share one Order column (OrderCell, as in the
+// All tab). Every column has a fixed width (Customer ~260px, long names
+// wrap); they add up to 1074px so it fits 1366px with the sidebar open, and
+// any extra width is shared out across all columns.
+const DELIVERED_COLS = 8;
 // Everything centred, across and up/down (the expanded line items keep
 // their own alignment — it's a separate row).
-const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true, centered: true } as const;
+const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true, centered: true, mergeOrder: true } as const;
+const deliveredOrderCell = (order: Order | undefined, orderId: string | undefined) =>
+  <OrderCell soNumber={order?.soNumber} orderId={orderId || order?.id} centered />;
 function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
   items: ListItem[];
   entryActions: (card: BoardEntryCard) => React.ReactNode;
@@ -358,17 +367,16 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   const rowCls = 'group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-sW/5';
   return (
-    <table className="w-full min-w-[1076px] table-fixed border-collapse text-[12.5px]">
+    <table className="w-full min-w-[1074px] table-fixed border-collapse text-[12.5px]">
       <colgroup>
-        <col style={{ width: 88 }} />{/* SO No. */}
-        <col style={{ width: 96 }} />{/* Order Ref */}
-        <col style={{ width: 248 }} />{/* Customer — wraps */}
-        <col style={{ width: 96 }} />{/* PO No. */}
-        <col style={{ width: 92 }} />{/* Value */}
-        <col style={{ width: 78 }} />{/* Invoice No. */}
-        <col style={{ width: 94 }} />{/* Dispatched On */}
-        <col style={{ width: 146 }} />{/* Email Sent On */}
-        <col style={{ width: 138 }} />{/* Actions — Edit + Delete side by side */}
+        <col style={{ width: 112 }} />{/* Order — SO No. over Order Ref */}
+        <col style={{ width: 258 }} />{/* Customer — wraps */}
+        <col style={{ width: 106 }} />{/* PO No. */}
+        <col style={{ width: 102 }} />{/* Value */}
+        <col style={{ width: 88 }} />{/* Invoice No. */}
+        <col style={{ width: 104 }} />{/* Dispatched On */}
+        <col style={{ width: 156 }} />{/* Email Sent On */}
+        <col style={{ width: 148 }} />{/* Actions — Edit + Delete side by side */}
       </colgroup>
       <thead className="bg-g100 sticky top-0 z-[1]">
         <tr>
@@ -382,7 +390,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
             const o = it.row.order;
             return (
               <tr key={`do:${o.id}`} className={rowCls} onClick={() => onOpenOrder?.(o)}>
-                <DispatchEntryCells order={o} {...DELIVERED_PROPS} />
+                <DispatchEntryCells order={o} {...DELIVERED_PROPS} orderCell={deliveredOrderCell(o, o.id)} />
                 <td />
               </tr>
             );
@@ -391,7 +399,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
           if (card.kind !== 'entry') {
             return (
               <tr key={card.key} className="border-b border-g100">
-                <DispatchEntryCells order={card.order} {...DELIVERED_PROPS} />
+                <DispatchEntryCells order={card.order} {...DELIVERED_PROPS} orderCell={deliveredOrderCell(card.order, card.order.id)} />
                 <td />
               </tr>
             );
@@ -401,7 +409,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
             <React.Fragment key={card.key}>
               <tr className={`${rowCls} ${isOpen ? 'bg-sW/5' : ''}`} aria-expanded={isOpen}
                 onClick={() => renderExpanded && setExpandedKey(k => k === card.key ? null : card.key)}>
-                <DispatchEntryCells entry={card.entry} order={card.order} {...DELIVERED_PROPS} />
+                <DispatchEntryCells entry={card.entry} order={card.order} {...DELIVERED_PROPS} orderCell={deliveredOrderCell(card.order, card.entry.orderId)} />
                 <td className="px-[9px] py-[10px] align-middle text-center whitespace-nowrap" onClick={stop} onKeyDown={stop}>{entryActions(card)}</td>
               </tr>
               {isOpen && (
