@@ -8,6 +8,7 @@ import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, entryPosition, unionBoardRows } from '../lib/dispatchFlow';
 import { DispatchBoard, DeliveredOrderRow, AutoTag, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { LineItemsPanel } from '../components/LineItemsPanel';
+import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
 import { DispatchDrawer, StepEditPatch } from '../components/DispatchDrawer';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
@@ -401,8 +402,9 @@ export function Dispatch() {
     }
   };
 
-  // List → Delivered: a row opens the entry form (same page as Table → Edit);
-  // its Back / Save return to List → Delivered (from=board&pill=delivered).
+  // List → Delivered: a row click expands its Dispatch Line Items (like
+  // Table → Email Sent); Edit opens the entry form, whose Back / Save return
+  // to List → Delivered (from=board&pill=delivered).
   const openEntryForm = (entry: DispatchEntry) => navigate(`/dispatch/new?entryId=${entry.id}&from=board&pill=delivered`);
   const openDeliveredCard = (card: BoardCard) => card.kind === 'entry' ? openEntryForm(card.entry) : openDrawer(card);
   // Same Edit / Delete + doer name as the Table's Actions cell.
@@ -809,6 +811,7 @@ export function Dispatch() {
         <DispatchBoard cards={boardVisible} qty={boardQty} invoices={boardInvoices} deliveredOrders={boardVisibleDeliveredOrders} now={now}
           onOpen={boardFilter === 'delivered' ? openDeliveredCard : openDrawer}
           entryActions={boardFilter === 'delivered' ? deliveredEntryActions : undefined}
+          renderExpanded={boardFilter === 'delivered' ? (c => <DispatchLineItemsPanel entry={c.entry} order={c.order} />) : undefined}
           onOpenDeliveredOrder={boardFilter === 'delivered' ? (o => openDetailPanel('order', o.id)) : undefined}
           renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
       ) : (
@@ -944,7 +947,6 @@ export function Dispatch() {
                   visibleEntries.map(entry => {
                     const order = orderFor(entry);
                     const isExpanded = expandedRow === entry.id;
-                    const lineItems = (entry.items && entry.items.length > 0) ? entry.items : (order?.items || []);
                     return (
                       <React.Fragment key={entry.id}>
                         <tr
@@ -993,7 +995,7 @@ export function Dispatch() {
                         {isExpanded && (
                           <tr className="bg-sW/[0.02] border-b-2 border-sW">
                             <td colSpan={entryColCount} className="p-0">
-                              <LineItemsPanel title={`Dispatch Line Items -- ${entry.orderId}`} items={lineItems} grand={entry.value || 0} />
+                              <DispatchLineItemsPanel entry={entry} order={order} />
                             </td>
                           </tr>
                         )}

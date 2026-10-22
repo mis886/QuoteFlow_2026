@@ -217,7 +217,7 @@ const ActionsCell = ({ children }: { children?: React.ReactNode }) => (
   <div className="min-w-0" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>{children}</div>
 );
 
-function Row({ card, now, onOpen, qty, orderInvoices, grid, actions }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[]; grid: string; actions?: React.ReactNode }) {
+function Row({ card, now, onOpen, qty, orderInvoices, grid, actions, expanded }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[]; grid: string; actions?: React.ReactNode; expanded?: boolean }) {
   const order = card.order;
   const orderId = card.kind === 'order' ? card.order.id : card.entry.orderId;
   // An entry row is one dispatch → its own invoice. An order row (what is
@@ -238,7 +238,8 @@ function Row({ card, now, onOpen, qty, orderInvoices, grid, actions }: { card: B
       tabIndex={0}
       onClick={open}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
-      className={`grid ${grid} items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors`}
+      aria-expanded={expanded}
+      className={`grid ${grid} items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors ${expanded ? 'bg-sW/5' : ''}`}
     >
       {/* Order */}
       <div className="flex flex-col gap-[2px] min-w-0">
@@ -346,9 +347,12 @@ const doneKey = (it: ListItem) => it.kind === 'deliveredOrder'
   ? (it.row.order.created_at || it.row.order.poDate || '')
   : it.card.kind === 'entry' ? (it.card.entry.emailSentAt || it.card.entry.created_at || '') : '';
 
-export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrders = [], entryActions, onOpenDeliveredOrder }: {
+export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrders = [], entryActions, onOpenDeliveredOrder, renderExpanded }: {
   cards: BoardCard[];
   now: number;
+  // List → Delivered: clicking an entry row expands this under it (Dispatch
+  // Line Items) instead of calling onOpen; click again to collapse.
+  renderExpanded?: (card: BoardEntryCard) => React.ReactNode;
   // List → Delivered: Edit / Delete (+ doer) for entry rows; turns on the
   // Actions column. Order rows get an empty cell.
   entryActions?: (card: BoardEntryCard) => React.ReactNode;
@@ -370,6 +374,8 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
   const withActions = !!entryActions;
   const grid = withActions ? GRID_ACTIONS : GRID;
   const [stepFilter, setStepFilter] = React.useState<ColumnNo | 'all'>('all');
+  const [expandedKey, setExpandedKey] = React.useState<string | null>(null);
+  const toggleExpanded = (card: BoardCard) => setExpandedKey(k => k === card.key ? null : card.key);
   const [limit, setLimit] = React.useState(PAGE);
   React.useEffect(() => { setLimit(PAGE); }, [stepFilter, cards.length, deliveredOrders.length]);
 
@@ -441,15 +447,26 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
             <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
           ) : (
             <>
-              {shown.slice(0, limit).map(it => it.kind === 'card' ? (
-                <Row key={it.card.key} card={it.card} now={now} onOpen={onOpen} grid={grid}
-                  qty={qty?.get(it.card.kind === 'order' ? it.card.order.id : it.card.entry.orderId)}
-                  orderInvoices={it.card.kind === 'order' ? invoices?.get(it.card.order.id) : undefined}
-                  actions={entryActions ? (it.card.kind === 'entry' ? entryActions(it.card) : null) : undefined} />
-              ) : (
-                <DeliveredOrderRowView key={`do:${it.row.order.id}`} row={it.row} qty={qty?.get(it.row.order.id)}
-                  grid={grid} withActions={withActions} onOpen={onOpenDeliveredOrder} />
-              ))}
+              {shown.slice(0, limit).map(it => {
+                if (it.kind !== 'card') return (
+                  <DeliveredOrderRowView key={`do:${it.row.order.id}`} row={it.row} qty={qty?.get(it.row.order.id)}
+                    grid={grid} withActions={withActions} onOpen={onOpenDeliveredOrder} />
+                );
+                const card = it.card;
+                const expandable = !!renderExpanded && card.kind === 'entry';
+                const isOpen = expandable && expandedKey === card.key;
+                return (
+                  <React.Fragment key={card.key}>
+                    <Row card={card} now={now} onOpen={expandable ? toggleExpanded : onOpen} grid={grid} expanded={isOpen}
+                      qty={qty?.get(card.kind === 'order' ? card.order.id : card.entry.orderId)}
+                      orderInvoices={card.kind === 'order' ? invoices?.get(card.order.id) : undefined}
+                      actions={entryActions ? (card.kind === 'entry' ? entryActions(card) : null) : undefined} />
+                    {isOpen && card.kind === 'entry' && (
+                      <div className="bg-sW/[0.02] border-b-2 border-sW">{renderExpanded!(card)}</div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
               {shown.length > limit && (
                 <div className="flex justify-center py-3 border-t border-g200">
                   <button type="button" onClick={() => setLimit(l => l + PAGE)}
