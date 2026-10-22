@@ -33,7 +33,9 @@ export function SoCell({ soNumber, hasOrder }: { soNumber?: string; hasOrder: bo
 const dash = <span className="text-g400">—</span>;
 
 /** SO No. … Dispatched On (+ Email Sent On) header cells; Actions not included. */
-export function DispatchEntryHeadCells({ showEmailSent, compact = false }: { showEmailSent: boolean; compact?: boolean }) {
+// `hideItemsAndTransporter`: List → Delivered leaves out Items and
+// Transporter (the Table keeps them).
+export function DispatchEntryHeadCells({ showEmailSent, compact = false, hideItemsAndTransporter = false }: { showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean }) {
   const th = compact ? thClsCompact : thCls;
   const thR = compact ? thRightClsCompact : thRightCls;
   return (
@@ -42,9 +44,9 @@ export function DispatchEntryHeadCells({ showEmailSent, compact = false }: { sho
       <th className={th}>Order Ref</th>
       <th className={th}>Customer</th>
       <th className={th}>PO No.</th>
-      <th className={th}>Items</th>
+      {!hideItemsAndTransporter && <th className={th}>Items</th>}
       <th className={thR}>Value</th>
-      <th className={th}>Transporter</th>
+      {!hideItemsAndTransporter && <th className={th}>Transporter</th>}
       {/* Promised/Estimated Delivery dates stay saved and visible
           in the Edit form — this list shows Invoice No. instead. */}
       <th className={th}>Invoice No.</th>
@@ -59,7 +61,7 @@ export function DispatchEntryHeadCells({ showEmailSent, compact = false }: { sho
  * entry (List → Delivered "Marked delivered" order) only the order's own
  * fields show; the rest are "—".
  */
-export function DispatchEntryCells({ entry, order, showEmailSent, compact = false }: { entry?: DispatchEntry; order?: Order; showEmailSent: boolean; compact?: boolean }) {
+export function DispatchEntryCells({ entry, order, showEmailSent, compact = false, hideItemsAndTransporter = false }: { entry?: DispatchEntry; order?: Order; showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean }) {
   const td = compact ? 'px-[9px] py-[10px] align-top' : 'px-[13px] py-[10px] align-top';
   return (
     <>
@@ -69,9 +71,9 @@ export function DispatchEntryCells({ entry, order, showEmailSent, compact = fals
         <div className="font-semibold">{order?.cust || '—'}</div>
       </td>
       <td className={`${td} font-mono text-[10.5px] break-words`}>{order?.poNo || '—'}</td>
-      <td className={`${td} whitespace-nowrap`}>{entry ? `${entry.items?.length ?? 0} item(s)` : dash}</td>
+      {!hideItemsAndTransporter && <td className={`${td} whitespace-nowrap`}>{entry ? `${entry.items?.length ?? 0} item(s)` : dash}</td>}
       <td className={`${td} text-right font-mono text-[12px] font-bold whitespace-nowrap`}>{entry ? formatINR(Math.round(entry.value || 0)) : dash}</td>
-      <td className={`${td} break-words`}>{entry?.transporter || '—'}</td>
+      {!hideItemsAndTransporter && <td className={`${td} break-words`}>{entry?.transporter || '—'}</td>}
       <td className={`${td} whitespace-nowrap`}>
         {entry?.invoiceNumber
           ? <span className="block truncate font-mono text-[10.5px] font-semibold" title={entry.invoiceNumber}>{entry.invoiceNumber}</span>

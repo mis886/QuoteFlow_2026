@@ -337,12 +337,15 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
 }
 
 // ── List → Delivered (Both / Delivery / Self Pickup) ─────────────────────
-// The Table's Email Sent columns (DispatchEntryCells, shared with the
-// Table) + its Actions cell. A row click expands that entry's Dispatch Line
-// Items under it. "Marked delivered" orders (no entry) show "—" for the
-// entry fields and open the order. Customer takes the spare width; cells
-// use slightly tighter padding than the Table so it fits more often.
-const DELIVERED_COLS = 11;
+// The Table's Email Sent columns minus Items and Transporter
+// (DispatchEntryCells, shared with the Table) + its Actions cell. A row
+// click expands that entry's Dispatch Line Items under it. "Marked
+// delivered" orders (no entry) show "—" for the entry fields and open the
+// order. Every column has a fixed width (Customer ~250px, long names wrap);
+// they add up to 1076px so it fits 1366px with the sidebar open, and any
+// extra width is shared out across all columns, not dumped after Customer.
+const DELIVERED_COLS = 9;
+const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true } as const;
 function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
   items: ListItem[];
   entryActions: (card: BoardEntryCard) => React.ReactNode;
@@ -353,23 +356,21 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   const rowCls = 'group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-sW/5';
   return (
-    <table className="w-full min-w-[1228px] table-fixed border-collapse text-[12.5px]">
+    <table className="w-full min-w-[1076px] table-fixed border-collapse text-[12.5px]">
       <colgroup>
-        <col style={{ width: 92 }} />{/* SO No. */}
-        <col style={{ width: 100 }} />{/* Order Ref */}
-        <col />{/* Customer — takes the rest */}
-        <col style={{ width: 100 }} />{/* PO No. */}
-        <col style={{ width: 68 }} />{/* Items */}
-        <col style={{ width: 96 }} />{/* Value */}
-        <col style={{ width: 120 }} />{/* Transporter */}
-        <col style={{ width: 82 }} />{/* Invoice No. */}
-        <col style={{ width: 96 }} />{/* Dispatched On */}
-        <col style={{ width: 150 }} />{/* Email Sent On */}
-        <col style={{ width: 142 }} />{/* Actions — Edit + Delete side by side */}
+        <col style={{ width: 88 }} />{/* SO No. */}
+        <col style={{ width: 96 }} />{/* Order Ref */}
+        <col style={{ width: 248 }} />{/* Customer — wraps */}
+        <col style={{ width: 96 }} />{/* PO No. */}
+        <col style={{ width: 92 }} />{/* Value */}
+        <col style={{ width: 78 }} />{/* Invoice No. */}
+        <col style={{ width: 94 }} />{/* Dispatched On */}
+        <col style={{ width: 146 }} />{/* Email Sent On */}
+        <col style={{ width: 138 }} />{/* Actions — Edit + Delete side by side */}
       </colgroup>
       <thead className="bg-g100 sticky top-0 z-[1]">
         <tr>
-          <DispatchEntryHeadCells showEmailSent compact />
+          <DispatchEntryHeadCells {...DELIVERED_PROPS} />
           <th className={thClsCompact}>Actions</th>
         </tr>
       </thead>
@@ -379,7 +380,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
             const o = it.row.order;
             return (
               <tr key={`do:${o.id}`} className={rowCls} onClick={() => onOpenOrder?.(o)}>
-                <DispatchEntryCells order={o} showEmailSent compact />
+                <DispatchEntryCells order={o} {...DELIVERED_PROPS} />
                 <td />
               </tr>
             );
@@ -388,7 +389,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
           if (card.kind !== 'entry') {
             return (
               <tr key={card.key} className="border-b border-g100">
-                <DispatchEntryCells order={card.order} showEmailSent compact />
+                <DispatchEntryCells order={card.order} {...DELIVERED_PROPS} />
                 <td />
               </tr>
             );
@@ -398,7 +399,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
             <React.Fragment key={card.key}>
               <tr className={`${rowCls} ${isOpen ? 'bg-sW/5' : ''}`} aria-expanded={isOpen}
                 onClick={() => renderExpanded && setExpandedKey(k => k === card.key ? null : card.key)}>
-                <DispatchEntryCells entry={card.entry} order={card.order} showEmailSent compact />
+                <DispatchEntryCells entry={card.entry} order={card.order} {...DELIVERED_PROPS} />
                 <td className="px-[9px] py-[10px] align-top whitespace-nowrap" onClick={stop} onKeyDown={stop}>{entryActions(card)}</td>
               </tr>
               {isOpen && (
