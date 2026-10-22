@@ -211,11 +211,14 @@ function InvoiceCell({ invoices }: { invoices: string[] }) {
 }
 
 // Column template for every tab except Delivered (which uses the Table's
-// Email Sent columns — DeliveredTable below). Customer takes the spare
-// room; the rest are fixed so nothing stretches. Fits 1366px with the
-// sidebar open (min width 1076px).
-const GRID = 'grid grid-cols-[112px_minmax(120px,1fr)_84px_72px_72px_72px_166px_126px_156px] gap-x-2';
-const GRID_MIN_W = 'min-w-[1076px]';
+// Email Sent columns — DeliveredTable below). Everything is centred. Each
+// column is minmax(Npx, Nfr): at its minimum the row is 1072px (fits 1366px
+// with the sidebar open); on wider screens the extra width is shared out in
+// proportion across all columns instead of piling up after Customer.
+// Order 100 · Customer 250 · Invoice 76 · Ordered/Dispatched/Remaining 80 ·
+// Current step 120 · Progress 118 · Due 112, 4px gaps, 12px side padding.
+const GRID = 'grid grid-cols-[minmax(100px,100fr)_minmax(250px,250fr)_minmax(76px,76fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(120px,120fr)_minmax(118px,118fr)_minmax(112px,112fr)] gap-x-1 px-3 text-center';
+const GRID_MIN_W = 'min-w-[1072px]';
 
 function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[] }) {
   const order = card.order;
@@ -238,16 +241,13 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
       tabIndex={0}
       onClick={open}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
-      className={`${GRID} items-center px-4 py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors`}
+      className={`${GRID} items-center py-[10px] border-b border-g200 last:border-b-0 hover:bg-g100 focus:bg-g100 focus:outline-none cursor-pointer transition-colors`}
     >
       {/* Order */}
-      <OrderCell soNumber={order?.soNumber} orderId={orderId} />
+      <OrderCell soNumber={order?.soNumber} orderId={orderId} centered />
 
       {/* Customer · product */}
-      <div className="flex flex-col gap-[2px] min-w-0">
-        <span className="text-[13.5px] font-semibold text-blk leading-snug line-clamp-2 break-words" title={order?.cust}>{order?.cust || '—'}</span>
-        <span className="text-[12px] text-g600 truncate" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
-      </div>
+      <CustomerCell cust={order?.cust} lines={lines} />
 
       {/* Invoice no(s) — dispatch_entries.invoice_number (Step 08) */}
       <InvoiceCell invoices={invoices} />
@@ -255,23 +255,23 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
       {/* Barrels — the ORDER's ordered / dispatched / remaining, every row */}
       <QtyCells qty={qty} />
 
-      {/* Current step + any flag (pl-4: room after the Remaining number) */}
-      <div className="flex flex-col gap-[2px] min-w-0 pl-4">
-        <span className="flex items-center gap-1.5">
+      {/* Current step + any flag */}
+      <div className="flex flex-col items-center gap-[2px] min-w-0">
+        <span className="flex items-center justify-center gap-1.5">
           <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(card.column)}</span>
           {step?.auto && card.column !== 11 && <AutoTag />}
         </span>
-        <span className="text-[13px] text-blk truncate">{step?.title}</span>
+        <span className="text-[13px] text-blk truncate max-w-full" title={step?.title}>{step?.title}</span>
         {card.kind === 'order' && card.doPending && (
-          <span className="text-[10.5px] font-semibold text-amber-700 leading-snug truncate" title={doPendingText(card.doPending)}>{doPendingText(card.doPending)}</span>
+          <span className="text-[10.5px] font-semibold text-amber-700 leading-snug truncate max-w-full" title={doPendingText(card.doPending)}>{doPendingText(card.doPending)}</span>
         )}
         {card.kind === 'entry' && card.position.invoiceMissing && (
           <span className="text-[10.5px] font-semibold text-[#9A0000]">Invoice no. missing</span>
         )}
       </div>
 
-      {/* 10 dots */}
-      <div className="flex items-center justify-center gap-[4px]">
+      {/* 10 dots (3px apart so the group fits its 118px column) */}
+      <div className="flex items-center justify-center gap-[3px]">
         {dots.map((d, i) => (
           <span key={i} title={`Step ${String(i + 1).padStart(2, '0')} · ${DISPATCH_STEPS[i].title} · ${DOT_WORD[d]}`}
             className={`w-[9px] h-[9px] rounded-full shrink-0 box-border ${DOT_CLS[d]}`} />
@@ -287,25 +287,35 @@ function Row({ card, now, onOpen, qty, orderInvoices }: { card: BoardCard; now: 
 }
 
 // Order column: SO number (red, bold) with the order id under it (grey).
-// List → Delivered uses it centred and, when there's no SO number, shows
-// only the order id (the other tabs show "—" for a missing SO).
-function OrderCell({ soNumber, orderId, centered = false }: { soNumber?: string; orderId?: string; centered?: boolean }) {
+// `hideMissingSo` (List → Delivered): no SO number → only the order id;
+// the other tabs show "—" for a missing SO.
+function OrderCell({ soNumber, orderId, centered = false, hideMissingSo = false }: { soNumber?: string; orderId?: string; centered?: boolean; hideMissingSo?: boolean }) {
   return (
     <div className={`flex flex-col gap-[2px] min-w-0 ${centered ? 'items-center' : ''}`}>
-      {(soNumber || !centered) && <span className="font-mono text-[12px] font-bold text-red-mrt truncate max-w-full">{soNumber || '—'}</span>}
+      {(soNumber || !hideMissingSo) && <span className="font-mono text-[12px] font-bold text-red-mrt truncate max-w-full">{soNumber || '—'}</span>}
       {orderId && <span className="font-mono text-[10.5px] text-g500 truncate max-w-full">{orderId}</span>}
     </div>
   );
 }
 
-// Ordered / Dispatched / Remaining, right-aligned; Remaining orange while
-// part of the order is still to go.
+// Customer (up to 2 lines) over the item summary, centred.
+function CustomerCell({ cust, lines }: { cust?: string; lines: { desc: string; qty: number }[] }) {
+  return (
+    <div className="flex flex-col items-center gap-[2px] min-w-0">
+      <span className="text-[13.5px] font-semibold text-blk leading-snug line-clamp-2 break-words max-w-full" title={cust}>{cust || '—'}</span>
+      <span className="text-[12px] text-g600 truncate max-w-full" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
+    </div>
+  );
+}
+
+// Ordered / Dispatched / Remaining, centred; Remaining orange while part
+// of the order is still to go.
 function QtyCells({ qty }: { qty?: OrderQty }) {
   return (
     <>
-      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
-      <div className="text-right font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
-      <div className={`text-right font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
+      <div className="font-mono text-[12px] text-g700">{qty ? qty.ordered : '—'}</div>
+      <div className="font-mono text-[12px] text-g700">{qty ? qty.dispatched : '—'}</div>
+      <div className={`font-mono text-[12px] ${qty && qty.dispatched > 0 && qty.remaining > 0 ? 'font-bold text-amber-700' : 'text-g700'}`}>
         {qty ? qty.remaining : '—'}
       </div>
     </>
@@ -324,15 +334,12 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
   const o = row.order;
   const lines = (o.items || []).filter(i => Number(i.qty) > 0).map(i => ({ desc: i.desc, qty: Number(i.qty) }));
   return (
-    <div className={`${GRID} items-center px-4 py-[10px] border-b border-g200 last:border-b-0`}>
-      <OrderCell soNumber={o.soNumber} orderId={o.id} />
-      <div className="flex flex-col gap-[2px] min-w-0">
-        <span className="text-[13.5px] font-semibold text-blk leading-snug line-clamp-2 break-words" title={o.cust}>{o.cust || '—'}</span>
-        <span className="text-[12px] text-g600 truncate" title={lines.map(l => `${l.desc} × ${l.qty}`).join(', ')}>{itemSummary(lines)}</span>
-      </div>
+    <div className={`${GRID} items-center py-[10px] border-b border-g200 last:border-b-0`}>
+      <OrderCell soNumber={o.soNumber} orderId={o.id} centered />
+      <CustomerCell cust={o.cust} lines={lines} />
       <InvoiceCell invoices={[]} />
       <QtyCells qty={qty} />
-      <div className="flex flex-col gap-[2px] min-w-0 pl-4">
+      <div className="flex flex-col items-center gap-[2px] min-w-0">
         <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(11)}</span>
         <span className="text-[13px] text-blk truncate">Marked delivered</span>
       </div>
@@ -356,7 +363,7 @@ const DELIVERED_COLS = 8;
 // their own alignment — it's a separate row).
 const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true, centered: true, mergeOrder: true } as const;
 const deliveredOrderCell = (order: Order | undefined, orderId: string | undefined) =>
-  <OrderCell soNumber={order?.soNumber} orderId={orderId || order?.id} centered />;
+  <OrderCell soNumber={order?.soNumber} orderId={orderId || order?.id} centered hideMissingSo />;
 function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
   items: ListItem[];
   entryActions: (card: BoardEntryCard) => React.ReactNode;
@@ -526,10 +533,10 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
               : <DeliveredTable items={shown.slice(0, limit)} entryActions={entryActions!} renderExpanded={renderExpanded} onOpenOrder={onOpenDeliveredOrder} />
           ) : (
             <>
-              <div className={`sticky top-0 z-[1] ${GRID} items-center px-4 py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500`}>
-                <div>Order</div><div>Customer · Product</div><div className="text-center">Invoice No</div>
-                <div className="text-right">Ordered</div><div className="text-right">Dispatched</div><div className="text-right">Remaining</div>
-                <div className="pl-4">Current step</div><div className="text-center">Progress</div><div className="text-center">Due</div>
+              <div className={`sticky top-0 z-[1] ${GRID} items-center py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500`}>
+                <div>Order</div><div>Customer · Product</div><div>Invoice No</div>
+                <div>Ordered</div><div>Dispatched</div><div>Remaining</div>
+                <div>Current step</div><div>Progress</div><div>Due</div>
               </div>
               {shown.length === 0 ? (
                 <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
