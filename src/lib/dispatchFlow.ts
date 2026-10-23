@@ -36,10 +36,12 @@ export const DISPATCH_STEPS: StepDef[] = [
   { no: 5, title: 'Material Check', subtitle: 'Material available or not', how: 'WhatsApp', tatHours: 1 },
   { no: 6, title: 'Transporter & DO', subtitle: 'Transporter confirmation & issue DO', how: 'Manual', tatHours: 12 },
   { no: 7, title: 'Pickup', subtitle: 'Check pickup of material', how: 'Phone', tatHours: 24 },
-  // 2026-10-22: 8–10 are manual (they used to move by themselves).
-  // 2026-10-23: Step 8 completes when the entry is saved with an invoice no.
-  // (NewDispatchEntry → saveEntryStepRows); "Invoice done" stays as a
-  // fallback. 9 and 10 stay manual.
+  // 2026-10-23: 8–10 complete by themselves once their proof exists —
+  // 8 when the entry is saved with an invoice no., 9 when it's saved with an
+  // LR file, 10 when Email to Client is sent (NewDispatchEntry →
+  // autoCompleteEntrySteps). The "Invoice done" / "LR received" / "Documents
+  // sent" buttons are only a fallback, blocked until that proof exists
+  // (entryStepBlock).
   { no: 8, title: 'Invoice', subtitle: 'Prepare invoice', how: 'Tally → Dispatch entry', tatHours: 1, rule: 'Needs the invoice no. on the dispatch entry' },
   { no: 9, title: 'Get LR', subtitle: 'Get LR from transporter', how: 'WhatsApp → Mail', tatHours: 24, rule: 'Delivery only — Self Pickup skips this. Needs an LR file' },
   { no: 10, title: 'Send Documents', subtitle: 'Send documents to the party', how: 'Email to Client', tatHours: 30 },
@@ -256,9 +258,9 @@ export const STEP_ACTIONS: Partial<Record<StepNo, StepAction[]>> = {
   ],
   6: [{ label: 'DO issued ✓', primary: true, writes: [{ stepNo: 6, status: 'done' }] }],
   7: [{ label: 'Picked up ✓', primary: true, writes: [{ stepNo: 7, status: 'done' }] }],
-  // 2026-10-22: Steps 8–10 — one dispatch entry each (entry cards). 8 and 9
-  // are blocked until the entry has the data (entryStepBlock; the database
-  // refuses them too).
+  // 2026-10-22: Steps 8–10 — one dispatch entry each (entry cards). Each is
+  // blocked until the entry has its proof (entryStepBlock; the database
+  // refuses 8 and 9 too).
   8: [{ label: 'Invoice done', primary: true, writes: [{ stepNo: 8, status: 'done' }] }],
   9: [{ label: 'LR received', primary: true, writes: [{ stepNo: 9, status: 'done' }] }],
   10: [{ label: 'Documents sent', primary: true, writes: [{ stepNo: 10, status: 'done' }] }],
@@ -273,6 +275,9 @@ export const entryHasInvoice = (e: Pick<DispatchEntry, 'invoiceNumber'>) => !!e.
 export function entryStepBlock(e: DispatchEntry, stepNo: number): string | undefined {
   if (stepNo === 8 && !entryHasInvoice(e)) return 'Add invoice no. first';
   if (stepNo === 9 && !entryHasLr(e)) return 'Upload LR first';
+  // 2026-10-23: Step 10 needs Email to Client actually sent (email_sent_at).
+  // Checked in the app only — the database trigger covers 8 and 9.
+  if (stepNo === 10 && !e.emailSentAt) return 'Send Email to Client first';
   return undefined;
 }
 

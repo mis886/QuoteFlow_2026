@@ -1,19 +1,43 @@
 // Saves Step 8–10 rows (dispatch_steps, entry_id = the entry) for ONE dispatch
 // entry. The one place these rows are written: the board's "Invoice done" /
 // "LR received" / "Documents sent" buttons (Dispatch.tsx runEntryStepAction),
-// and — since 2026-10-23 — saving an invoice no. on the entry page
-// (NewDispatchEntry.tsx completes Step 8 with the same row).
+// and — since 2026-10-23 — the entry page, which completes each step by
+// itself once its proof is saved (autoCompleteEntrySteps).
 import { supabase } from './supabase';
 import { logActivity } from './activityLog';
 import type { DispatchEntry } from './types';
-import { DispatchStepRecord, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, stepDef } from './dispatchFlow';
+import { DispatchStepRecord, STEP_ACTIONS, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, stepDef } from './dispatchFlow';
+
+/** The entry as saved in the database right now — the fields the Step 8–10 rules read. */
+async function freshEntry(entry: DispatchEntry): Promise<DispatchEntry> {
+  const { data: fresh, error } = await supabase.from('dispatch_entries')
+    .select('invoice_number, lr_files, lr_url, email_sent_at, fulfillment_type, created_at').eq('id', entry.id).single();
+  if (error) throw error;
+  return {
+    ...entry,
+    invoiceNumber: fresh.invoice_number || undefined,
+    lrFiles: Array.isArray(fresh.lr_files) ? fresh.lr_files : undefined,
+    lrUrl: fresh.lr_url || undefined,
+    emailSentAt: fresh.email_sent_at || undefined,
+    fulfillmentType: fresh.fulfillment_type || entry.fulfillmentType,
+    created_at: entry.created_at || fresh.created_at || undefined,
+  };
+}
+
+/** One entry's saved Step 8–10 rows. */
+export async function loadEntryStepRecords(entryId: string): Promise<DispatchStepRecord[]> {
+  const { data: rows, error } = await supabase.from('dispatch_steps').select('*').eq('entry_id', entryId);
+  if (error) throw error;
+  return (rows || []).map(mapStepFromDB);
+}
 
 /**
- * Checks Step 8 / 9 against the entry as saved in the database right now
- * (the database trigger enforce_dispatch_entry_step_prereqs checks again),
- * then inserts the action's rows and logs them. Throws with the refusal
- * ("Add invoice no. first" / "Upload LR first") or the database error.
- * Returns the inserted rows (raw, as Supabase returns them).
+ * Checks the step's proof against the entry as saved in the database right
+ * now (entryStepBlock; the database trigger enforce_dispatch_entry_step_prereqs
+ * checks 8 and 9 again), then inserts the action's rows and logs them. Throws
+ * with the refusal ("Add invoice no. first" / "Upload LR first" / "Send Email
+ * to Client first") or the database error. Returns the inserted rows (raw, as
+ * Supabase returns them).
  */
 export async function saveEntryStepRows({ entry, entries, records, action, remark, doneBy, orderLabel, logNote }: {
   entry: DispatchEntry;
@@ -25,16 +49,7 @@ export async function saveEntryStepRows({ entry, entries, records, action, remar
   orderLabel: string;                // SO no. (or order id) for the activity log
   logNote?: string;                  // "Done (…)" in the log; default the button label
 }): Promise<any[]> {
-  const { data: fresh, error: freshErr } = await supabase.from('dispatch_entries')
-    .select('invoice_number, lr_files, lr_url, created_at').eq('id', entry.id).single();
-  if (freshErr) throw freshErr;
-  const e: DispatchEntry = {
-    ...entry,
-    invoiceNumber: fresh.invoice_number || undefined,
-    lrFiles: Array.isArray(fresh.lr_files) ? fresh.lr_files : undefined,
-    lrUrl: fresh.lr_url || undefined,
-    created_at: entry.created_at || fresh.created_at || undefined,
-  };
+  const e = await freshEntry(entry);
   const blocked = action.writes.map(w => entryStepBlock(e, w.stepNo)).find(Boolean);
   if (blocked) throw new Error(blocked);
   // Which shipment of the order this entry closed (1, 2, …) — same as the
@@ -67,4 +82,52 @@ export async function saveEntryStepRows({ entry, entries, records, action, remar
     });
   }
   return inserted || [];
+}
+
+/** What each auto-completed step says in the activity log. */
+const AUTO_NOTE: Record<8 | 9 | 10, string> = { 8: 'invoice no. saved', 9: 'LR uploaded', 10: 'email sent' };
+
+/**
+ * 2026-10-23: completes an entry's Steps 8 → 9 → 10 in order, each only
+ * while the entry is AT that step and its proof is saved (invoice no. / LR
+ * file / email sent — entryStepBlock), with the same row and log as the
+ * board buttons. Never writes a second row for a step or moves an entry
+ * back. Self Pickup skips 9 as usual (entryPosition). `skipSteps` stops at
+ * a step this login may not complete. Returns the steps written; throws
+ * "Step N was not marked done (…)" if a write fails.
+ */
+export async function autoCompleteEntrySteps({ entry, entries, doneBy, orderLabel, skipSteps = [] }: {
+  entry: DispatchEntry;
+  entries: DispatchEntry[];
+  doneBy?: string | null;
+  orderLabel: string;
+  skipSteps?: number[];
+}): Promise<number[]> {
+  if (isImportedEntry(entry)) return [];
+  const written: number[] = [];
+  let step: number | undefined;
+  try {
+    const e = await freshEntry(entry);
+    let records = await loadEntryStepRecords(entry.id);
+    for (let guard = 0; guard < 3; guard++) {
+      step = entryPosition(e, records).column;
+      if (step > 10 || skipSteps.includes(step) || entryStepBlock(e, step)) break;
+      try {
+        const inserted = await saveEntryStepRows({
+          entry: e, entries, records, action: STEP_ACTIONS[step as StepNo]![0], doneBy, orderLabel, logNote: AUTO_NOTE[step as 8 | 9 | 10],
+        });
+        records = [...records, ...inserted.map(mapStepFromDB)];
+        written.push(step);
+      } catch (err: any) {
+        // Marked at the same moment by someone else (one row per entry +
+        // step) — catch up with what's saved and carry on.
+        if (err?.code !== '23505') throw err;
+        records = await loadEntryStepRecords(entry.id);
+      }
+    }
+  } catch (err: any) {
+    const label = step && step <= 10 ? STEP_ACTIONS[step as StepNo]?.[0]?.label : undefined;
+    throw new Error(`Step ${step ?? 8} was not marked done (${err?.message || 'check your connection'})${label ? `. Use “${label}” on the Dispatch board` : ''}`);
+  }
+  return written;
 }

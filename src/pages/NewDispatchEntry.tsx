@@ -12,8 +12,8 @@ import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
-import { DispatchStepRecord, STEP_ACTIONS, entryHasInvoice, entryPosition, isImportedEntry, mapStepFromDB } from '../lib/dispatchFlow';
-import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
+import { DispatchStepRecord, entryPosition, isImportedEntry } from '../lib/dispatchFlow';
+import { autoCompleteEntrySteps, loadEntryStepRecords } from '../lib/dispatchEntrySteps';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
 // entry is being saved as "Dispatch → Sent" (every save is one now — see
@@ -207,20 +207,21 @@ export function NewDispatchEntry() {
   // Invoice Number — a plain manually-typed value, shown next to Remark in
   // the Customer & Contact card (not gated behind Status, same as Remark).
   const [invoiceNumber, setInvoiceNumber] = useState('');
-  // 2026-10-23: while an existing entry sits at Dispatch Step 8 (its Step 8
-  // row not saved yet), Invoice Number is required, and saving it completes
-  // Step 8 (completeStep8 below). entrySteps = that entry's dispatch_steps
-  // rows (null until loaded / for a new entry).
+  // 2026-10-23: while an existing entry sits at Dispatch Step 8 its Invoice
+  // Number is required; at Step 9 (Delivery) its LR. Saving the proof — or
+  // sending Email to Client for Step 10 — completes that step
+  // (autoCompleteEntrySteps). entrySteps = that entry's dispatch_steps rows
+  // (null until loaded / for a new entry).
   const [entrySteps, setEntrySteps] = useState<DispatchStepRecord[] | null>(null);
   const [invoiceError, setInvoiceError] = useState('');
+  const [lrError, setLrError] = useState('');
   const [stepWarning, setStepWarning] = useState('');
   const invoiceInputRef = useRef<HTMLInputElement>(null);
+  const lrFieldRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!existingEntryId) { setEntrySteps(null); return; }
     let live = true;
-    supabase.from('dispatch_steps').select('*').eq('entry_id', existingEntryId).then(({ data: rows, error }) => {
-      if (live && !error) setEntrySteps((rows || []).map(mapStepFromDB));
-    });
+    loadEntryStepRecords(existingEntryId).then(rows => { if (live) setEntrySteps(rows); }, () => {});
     return () => { live = false; };
   }, [existingEntryId]);
 
@@ -244,6 +245,7 @@ export function NewDispatchEntry() {
   const pickAndAddMultiDocFile = (key: MultiDocKey, file: File) => {
     setMultiDocSlots(prev => ({ ...prev, [key]: [...prev[key], { id: newDocSlotId(), kind: 'new', file, localUrl: URL.createObjectURL(file) }] }));
     setMultiDocTouched(prev => new Set(prev).add(key));
+    if (key === 'lr') setLrError('');
   };
 
   const removeMultiDocSlot = (key: MultiDocKey, slotId: string) => {
@@ -565,41 +567,42 @@ export function NewDispatchEntry() {
         ? newDispatchBlockReason(data.orders.find(o => o.id === orderRef), orderRef, data.dispatchEntries)
         : null;
 
-  // The Step 8 rule applies to real entries only — not old imported ones —
-  // and not to the Bhiwandi login (isReadOnlyUser), which can't type an
-  // invoice no. here and must still be able to save its LR upload.
+  // The Step 8 / 9 rules apply to real entries only — not old imported ones —
+  // and only to a login that can fill that field in: Step 8 not for the
+  // Bhiwandi login (isReadOnlyUser, can't type an invoice no. but must still
+  // save its LR upload); Step 9 only for logins that can edit LR (canEditLr).
   const invoiceRuleApplies = (e: DispatchEntry) => !isImportedEntry(e) && !isReadOnlyUser;
+  const lrRuleApplies = (e: DispatchEntry) => !isImportedEntry(e) && canEditLr;
   const currentEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : undefined;
-  const invoiceRequired = !!currentEntry && invoiceRuleApplies(currentEntry) && entrySteps !== null
-    && entryPosition(currentEntry, entrySteps).column === 8;
+  // Position as the form stands (Delivery / Self Pickup decides Step 9).
+  const currentStep = currentEntry && entrySteps !== null
+    ? entryPosition({ ...currentEntry, fulfillmentType: type || currentEntry.fulfillmentType }, entrySteps).column
+    : undefined;
+  const invoiceRequired = !!currentEntry && invoiceRuleApplies(currentEntry) && currentStep === 8;
+  const lrRequired = !!currentEntry && lrRuleApplies(currentEntry) && currentStep === 9;
 
-  const loadEntrySteps = async (id: string) => {
-    const { data: rows, error: stepsErr } = await supabase.from('dispatch_steps').select('*').eq('entry_id', id);
-    if (stepsErr) throw stepsErr;
-    return (rows || []).map(mapStepFromDB);
-  };
-
-  // After a save with an invoice no.: completes Step 8 with the same row the
-  // board's "Invoice done" button writes (saveEntryStepRows) — only while the
-  // entry is still AT Step 8, so it never adds a second row or moves an entry
-  // back. Returns a warning if Step 8 couldn't be saved ('' = fine); the
-  // entry save itself stands either way.
-  const completeStep8 = async (saved: DispatchEntry): Promise<string> => {
+  // After a save (or Email to Client): completes Steps 8 → 9 → 10 whose
+  // proof now exists, with the same row the board buttons write. Returns a
+  // warning if a step couldn't be saved ('' = fine); the save itself stands.
+  const completeEntrySteps = async (saved: DispatchEntry, what = 'Saved'): Promise<string> => {
     try {
-      const records = await loadEntrySteps(saved.id);
-      if (entryPosition(saved, records).column !== 8) return '';
-      await saveEntryStepRows({
-        entry: saved, entries: data.dispatchEntries, records, action: STEP_ACTIONS[8]![0],
+      await autoCompleteEntrySteps({
+        entry: saved, entries: data.dispatchEntries,
         doneBy: user?.email ?? null,
         orderLabel: selectedOrder?.soNumber || saved.orderId,
-        logNote: 'invoice no. saved',
+        // The Bhiwandi login never completes Step 8 (see invoiceRuleApplies).
+        skipSteps: isReadOnlyUser ? [8] : [],
       });
       return '';
     } catch (err: any) {
-      if (err?.code === '23505') return '';   // Step 8 marked done at the same moment (one row per entry + step)
-      return `Saved — but Step 8 was not marked done (${err?.message || 'check your connection'}). Use “Invoice done” on the Dispatch board.`;
+      return `${what} — but ${err?.message || 'a Dispatch step was not marked done'}.`;
     }
   };
+
+  const scrollToField = (el: HTMLElement | null, focus?: HTMLElement | null) => requestAnimationFrame(() => {
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    focus?.focus({ preventScroll: true });
+  });
 
   const handleSubmit = async () => {
     if (!selectedOrderId || !selectedOrder || saving) return;
@@ -631,24 +634,31 @@ export function NewDispatchEntry() {
     setSaving(true);
     setError('');
     // 2026-10-23: an entry still at Step 8 can't be saved without its
-    // invoice no. — checked against its step rows in the database right now.
-    if (existingEntry && invoiceRuleApplies(existingEntry) && !invoiceNumber.trim()) {
+    // invoice no., one at Step 9 without an LR file — checked against its
+    // step rows in the database right now.
+    const noInvoice = !invoiceNumber.trim();
+    const noLr = multiDocSlots.lr.length === 0;
+    if (existingEntry && ((noInvoice && invoiceRuleApplies(existingEntry)) || (noLr && lrRuleApplies(existingEntry)))) {
       let records: DispatchStepRecord[];
       try {
-        records = await loadEntrySteps(existingEntry.id);
+        records = await loadEntryStepRecords(existingEntry.id);
       } catch (err: any) {
-        setError(`Could not check Step 8: ${err?.message || 'check your connection'}. Nothing was saved.`);
+        setError(`Could not check the Dispatch step: ${err?.message || 'check your connection'}. Nothing was saved.`);
         setSaving(false);
         return;
       }
       setEntrySteps(records);
-      if (entryPosition(existingEntry, records).column === 8) {
+      const step = entryPosition({ ...existingEntry, fulfillmentType: type as DispatchFulfillmentType }, records).column;
+      if (step === 8 && noInvoice && invoiceRuleApplies(existingEntry)) {
         setInvoiceError('Enter invoice no. to complete Step 8');
         setSaving(false);
-        requestAnimationFrame(() => {
-          invoiceInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          invoiceInputRef.current?.focus({ preventScroll: true });
-        });
+        scrollToField(invoiceInputRef.current, invoiceInputRef.current);
+        return;
+      }
+      if (step === 9 && noLr && lrRuleApplies(existingEntry)) {
+        setLrError('Attach LR to complete Step 9');
+        setSaving(false);
+        scrollToField(lrFieldRef.current);
         return;
       }
     }
@@ -781,20 +791,18 @@ export function NewDispatchEntry() {
       } else {
         saved = await addDispatchEntry(selectedOrderId, type as DispatchFulfillmentType, extra);
       }
-      // 2026-10-23: saved with an invoice no. → complete Step 8 (edit or new
-      // entry, from the Board or the Table view).
-      if (entryHasInvoice(saved) && invoiceRuleApplies(saved)) {
-        const warning = await completeStep8(saved);
-        if (warning) {
-          // Stay on the saved entry so the warning can be read; a new entry
-          // switches to edit mode so a second Save never creates another one.
-          setStepWarning(warning);
-          if (!existingEntryId) {
-            setExistingEntryId(saved.id);
-            navigate(`/dispatch/new?${new URLSearchParams({ entryId: saved.id, ...(fromBoard ? { from: 'board' } : {}), ...(boardPill ? { pill: boardPill } : {}) })}`, { replace: true });
-          }
-          return;
+      // 2026-10-23: saved with an invoice no. / LR → complete Step 8 / 9 (edit
+      // or new entry, from the Board or the Table view).
+      const warning = await completeEntrySteps(saved);
+      if (warning) {
+        // Stay on the saved entry so the warning can be read; a new entry
+        // switches to edit mode so a second Save never creates another one.
+        setStepWarning(warning);
+        if (!existingEntryId) {
+          setExistingEntryId(saved.id);
+          navigate(`/dispatch/new?${new URLSearchParams({ entryId: saved.id, ...(fromBoard ? { from: 'board' } : {}), ...(boardPill ? { pill: boardPill } : {}) })}`, { replace: true });
         }
+        return;
       }
       // Land on the tab/pill the saved entry now lives under.
       navigate(fromBoard ? dispatchHome : `/dispatch?tab=${existingEntry?.emailSentAt ? 'emailSent' : 'dispatched'}&type=${type}`);
@@ -1049,8 +1057,8 @@ export function NewDispatchEntry() {
                   const isFieldLocked = field.key === 'lr' ? !canEditLr : isReadOnlyUser;
                   const inputId = `dispatch-doc-${field.key}-picker`;
                   return (
-                    <div key={field.key}>
-                      <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}</label>
+                    <div key={field.key} ref={field.key === 'lr' ? lrFieldRef : undefined}>
+                      <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}{field.key === 'lr' && lrRequired && <> <span className="text-red-mrt">*</span></>}</label>
                       <div className="flex flex-col gap-1.5">
                         <input type="file" id={inputId} className="hidden" disabled={isFieldLocked}
                           onChange={e => { if (e.target.files?.length) { pickAndAddMultiDocFile(field.key, e.target.files[0]); e.target.value = ''; } }}
@@ -1094,6 +1102,7 @@ export function NewDispatchEntry() {
                           </>
                         )}
                       </div>
+                      {field.key === 'lr' && lrError && <div className="mt-1 text-[11px] font-semibold text-red-600">{lrError}</div>}
                     </div>
                   );
                 })}
@@ -1481,10 +1490,17 @@ export function NewDispatchEntry() {
             if (!existingEntryId) return;
             try {
               await markDispatchEmailSent(existingEntryId);
-              navigate(fromBoard ? dispatchHome : `/dispatch?tab=emailSent&type=${type || 'delivery'}`);
             } catch (err: any) {
               setError(`Email was sent, but it could not be recorded: ${err?.message || 'unknown error'}`);
+              return;
             }
+            // 2026-10-23: the email is Step 10's proof — complete it (and any
+            // earlier step whose proof is saved). A failed step write leaves
+            // the email recorded and shows the warning here.
+            const entry = data.dispatchEntries.find(e => e.id === existingEntryId);
+            const warning = entry ? await completeEntrySteps(entry, 'Email sent') : '';
+            if (warning) { setShowEmailModal(false); setStepWarning(warning); return; }
+            navigate(fromBoard ? dispatchHome : `/dispatch?tab=emailSent&type=${type || 'delivery'}`);
           }}
         />
       )}

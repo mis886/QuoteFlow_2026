@@ -128,7 +128,8 @@ export function StepActionButtons({ card, busy, canAct, onAction, onResume, omit
  * Step 8–10 button for a dispatch entry (2026-10-22: these steps are manual):
  * "Invoice done" / "LR received" / "Documents sent". Same lock as Steps 1–7
  * (canAct). Step 8 stays disabled until the entry has an invoice no., Step 9
- * until it has an LR file — with the reason in red under it. `link` is the
+ * until it has an LR file, Step 10 until Email to Client was sent — with the
+ * reason in red under it. `link` is the
  * entry-page button ("Add invoice no. →", "Upload LR →", "Email to Client →")
  * shown next to it.
  */

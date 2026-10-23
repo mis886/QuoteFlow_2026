@@ -130,8 +130,9 @@ function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
 // A dispatch entry's link names what the entry page is for at the step it
 // is waiting on (8 invoice no., 9 LR, 10 email); Done entries just open for
 // viewing. Every label goes to the same entry page (/dispatch/new?entryId=…).
-// Since 2026-10-22 these only open the page — the step itself moves with the
-// "Invoice done" / "LR received" / "Documents sent" button next to it.
+// Since 2026-10-23 the step completes on that page once its proof is saved
+// (invoice no. / LR / email sent); the "Invoice done" / "LR received" /
+// "Documents sent" button next to it is the fallback.
 const entryActionLabel = (col: 8 | 9 | 10 | 11) =>
   col === 8 ? 'Add invoice no. →' : col === 9 ? 'Upload LR →' : col === 10 ? 'Email to Client →' : 'Open →';
 
