@@ -310,10 +310,10 @@ export function StockRegister() {
                     <Th label="Lot No" />
                     <Th label="Date" />
                     <Th label="DO No" />
-                    <Th label="Party Name" align="text-left" />
-                    <Th label="Inward" align="text-right" />
-                    <Th label="Outward" align="text-right" />
-                    <Th label="Balance" align="text-right" />
+                    <Th label="Party Name" />
+                    <Th label="Inward" />
+                    <Th label="Outward" />
+                    <Th label="Balance" />
                   </tr>
                 </thead>
                 <tbody>
@@ -340,10 +340,10 @@ export function StockRegister() {
                               </button>
                             ) : <span className="text-g400 font-normal">—</span>}
                           </td>
-                          <td className="px-[13px] py-[9px] align-top text-left font-semibold text-blk truncate" title={r.party || undefined}>{r.party || '—'}</td>
-                          <td className={`px-[13px] py-[9px] align-top text-right font-mono text-[11px] whitespace-nowrap ${r.inward !== null ? 'font-bold text-[#0B5C2A]' : 'text-g400'}`}>{r.inward !== null ? `+${brl(r.inward)}` : '—'}</td>
-                          <td className={`px-[13px] py-[9px] align-top text-right font-mono text-[11px] whitespace-nowrap ${r.outward !== null ? 'text-g600' : 'text-g400'}`}>{r.outward !== null ? brl(r.outward) : '—'}</td>
-                          <td className={`px-[13px] py-[9px] align-top text-right font-mono text-[11px] font-bold whitespace-nowrap ${r.balance === null ? 'text-g400' : r.balance <= 0 ? 'text-red-mrt' : 'text-blk'}`}
+                          <td className="px-[13px] py-[9px] align-top text-center font-semibold text-blk truncate" title={r.party || undefined}>{r.party || '—'}</td>
+                          <td className={`px-[13px] py-[9px] align-top text-center font-mono text-[11px] whitespace-nowrap ${r.inward !== null ? 'font-bold text-[#0B5C2A]' : 'text-g400'}`}>{r.inward !== null ? `+${brl(r.inward)}` : '—'}</td>
+                          <td className={`px-[13px] py-[9px] align-top text-center font-mono text-[11px] whitespace-nowrap ${r.outward !== null ? 'text-g600' : 'text-g400'}`}>{r.outward !== null ? brl(r.outward) : '—'}</td>
+                          <td className={`px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold whitespace-nowrap ${r.balance === null ? 'text-g400' : r.balance <= 0 ? 'text-red-mrt' : 'text-blk'}`}
                             title={r.balance === null ? (r.lotNo ? 'No stock lot matches this Lot No' : 'This entry has no Lot No') : undefined}>
                             {r.mismatch !== null && (
                               <span title={`Doesn't match Stock Summary (${brl(r.mismatch)})`}
