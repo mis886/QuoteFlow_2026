@@ -37,6 +37,9 @@ export const DISPATCH_STEPS: StepDef[] = [
   { no: 6, title: 'Transporter & DO', subtitle: 'Transporter confirmation & issue DO', how: 'Manual', tatHours: 12 },
   { no: 7, title: 'Pickup', subtitle: 'Check pickup of material', how: 'Phone', tatHours: 24 },
   // 2026-10-22: 8–10 are manual (they used to move by themselves).
+  // 2026-10-23: Step 8 completes when the entry is saved with an invoice no.
+  // (NewDispatchEntry → saveEntryStepRows); "Invoice done" stays as a
+  // fallback. 9 and 10 stay manual.
   { no: 8, title: 'Invoice', subtitle: 'Prepare invoice', how: 'Tally → Dispatch entry', tatHours: 1, rule: 'Needs the invoice no. on the dispatch entry' },
   { no: 9, title: 'Get LR', subtitle: 'Get LR from transporter', how: 'WhatsApp → Mail', tatHours: 24, rule: 'Delivery only — Self Pickup skips this. Needs an LR file' },
   { no: 10, title: 'Send Documents', subtitle: 'Send documents to the party', how: 'Email to Client', tatHours: 30 },

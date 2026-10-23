@@ -5,7 +5,8 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, entryPosition, entryStepBlock, unionBoardRows } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, entryPosition, unionBoardRows } from '../lib/dispatchFlow';
+import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { LineItemsPanel } from '../components/LineItemsPanel';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
@@ -131,53 +132,23 @@ export function Dispatch() {
   // 2026-10-22: Steps 8–10 of ONE dispatch entry are manual — "Invoice done"
   // / "LR received" / "Documents sent" save a dispatch_steps row with
   // entry_id. Steps 8 and 9 need the entry's invoice no. / LR file: checked
-  // here against the entry as saved in the database right now, and again by
-  // the database itself (trigger enforce_dispatch_entry_step_prereqs) —
+  // (in saveEntryStepRows) against the entry as saved in the database right
+  // now, and again by the database itself (trigger
+  // enforce_dispatch_entry_step_prereqs) —
   // either refusal shows the same message and saves nothing.
   const runEntryStepAction = async (card: BoardEntryCard, action: StepAction, remark?: string) => {
     if (!canActOnBoard || busyCardKey) return;
     const e = card.entry;
     setBusyCardKey(card.key);
     try {
-      const { data: fresh, error: freshErr } = await supabase.from('dispatch_entries')
-        .select('invoice_number, lr_files, lr_url').eq('id', e.id).single();
-      if (freshErr) throw freshErr;
-      const blocked = action.writes.map(w => entryStepBlock({
-        ...e,
-        invoiceNumber: fresh.invoice_number || undefined,
-        lrFiles: Array.isArray(fresh.lr_files) ? fresh.lr_files : undefined,
-        lrUrl: fresh.lr_url || undefined,
-      }, w.stepNo)).find(Boolean);
-      if (blocked) { showToast('err', blocked); return; }
-      // Which shipment of the order this entry closed (1, 2, …) — same as
-      // the drawer's rounds.
-      const round = data.dispatchEntries
-        .filter(x => x.orderId === e.orderId && !isImportedEntry(x))
-        .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime())
-        .findIndex(x => x.id === e.id) + 1 || 1;
-      const nowIso = new Date().toISOString();
-      const rows = action.writes.map((w, i) => ({
-        order_id: e.orderId,
-        entry_id: e.id,
-        round,
-        step_no: w.stepNo,
-        status: w.status,
-        planned_at: w.stepNo === card.column ? card.position.plannedAt ?? null : null,
-        done_at: nowIso,
-        done_by: user?.email ?? null,
-        remark: i === 0 && remark?.trim() ? remark.trim() : null,
-      }));
-      const { data: inserted, error } = await supabase.from('dispatch_steps').insert(rows).select('*');
-      if (error) throw error;
-      setStepRecords(prev => [...prev, ...(inserted || []).map(mapStepFromDB)]);
-      const label = card.order ? (card.order.soNumber || card.order.id) : e.orderId;
-      for (const row of inserted || []) {
-        logActivity({
-          module: 'dispatch_steps', recordId: e.orderId,
-          recordLabel: `${label} · ${e.invoiceNumber ? `INV ${e.invoiceNumber} · ` : ''}Step ${row.step_no} ${stepDef(row.step_no as StepNo).title} · Done (${action.label})`,
-          action: 'insert', after: row,
-        });
-      }
+      // Prereq check, round, planned time, insert + activity log — shared
+      // with the entry page's Step 8 auto-complete (saveEntryStepRows).
+      const inserted = await saveEntryStepRows({
+        entry: e, entries: data.dispatchEntries, records: stepRecords, action, remark,
+        doneBy: user?.email ?? null,
+        orderLabel: card.order ? (card.order.soNumber || card.order.id) : e.orderId,
+      });
+      setStepRecords(prev => [...prev, ...inserted.map(mapStepFromDB)]);
     } catch (err: any) {
       // The database's own refusal ("Add invoice no. first" / "Upload LR
       // first") comes through here as the error message.

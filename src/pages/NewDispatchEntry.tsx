@@ -12,6 +12,8 @@ import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
+import { DispatchStepRecord, STEP_ACTIONS, entryHasInvoice, entryPosition, isImportedEntry, mapStepFromDB } from '../lib/dispatchFlow';
+import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
 // entry is being saved as "Dispatch → Sent" (every save is one now — see
@@ -205,6 +207,22 @@ export function NewDispatchEntry() {
   // Invoice Number — a plain manually-typed value, shown next to Remark in
   // the Customer & Contact card (not gated behind Status, same as Remark).
   const [invoiceNumber, setInvoiceNumber] = useState('');
+  // 2026-10-23: while an existing entry sits at Dispatch Step 8 (its Step 8
+  // row not saved yet), Invoice Number is required, and saving it completes
+  // Step 8 (completeStep8 below). entrySteps = that entry's dispatch_steps
+  // rows (null until loaded / for a new entry).
+  const [entrySteps, setEntrySteps] = useState<DispatchStepRecord[] | null>(null);
+  const [invoiceError, setInvoiceError] = useState('');
+  const [stepWarning, setStepWarning] = useState('');
+  const invoiceInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!existingEntryId) { setEntrySteps(null); return; }
+    let live = true;
+    supabase.from('dispatch_steps').select('*').eq('entry_id', existingEntryId).then(({ data: rows, error }) => {
+      if (live && !error) setEntrySteps((rows || []).map(mapStepFromDB));
+    });
+    return () => { live = false; };
+  }, [existingEntryId]);
 
   const handleDocFileChange = (key: SingleDocKey, file: File) => {
     setDocFiles(prev => ({ ...prev, [key]: file }));
@@ -547,8 +565,45 @@ export function NewDispatchEntry() {
         ? newDispatchBlockReason(data.orders.find(o => o.id === orderRef), orderRef, data.dispatchEntries)
         : null;
 
+  // The Step 8 rule applies to real entries only — not old imported ones —
+  // and not to the Bhiwandi login (isReadOnlyUser), which can't type an
+  // invoice no. here and must still be able to save its LR upload.
+  const invoiceRuleApplies = (e: DispatchEntry) => !isImportedEntry(e) && !isReadOnlyUser;
+  const currentEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : undefined;
+  const invoiceRequired = !!currentEntry && invoiceRuleApplies(currentEntry) && entrySteps !== null
+    && entryPosition(currentEntry, entrySteps).column === 8;
+
+  const loadEntrySteps = async (id: string) => {
+    const { data: rows, error: stepsErr } = await supabase.from('dispatch_steps').select('*').eq('entry_id', id);
+    if (stepsErr) throw stepsErr;
+    return (rows || []).map(mapStepFromDB);
+  };
+
+  // After a save with an invoice no.: completes Step 8 with the same row the
+  // board's "Invoice done" button writes (saveEntryStepRows) — only while the
+  // entry is still AT Step 8, so it never adds a second row or moves an entry
+  // back. Returns a warning if Step 8 couldn't be saved ('' = fine); the
+  // entry save itself stands either way.
+  const completeStep8 = async (saved: DispatchEntry): Promise<string> => {
+    try {
+      const records = await loadEntrySteps(saved.id);
+      if (entryPosition(saved, records).column !== 8) return '';
+      await saveEntryStepRows({
+        entry: saved, entries: data.dispatchEntries, records, action: STEP_ACTIONS[8]![0],
+        doneBy: user?.email ?? null,
+        orderLabel: selectedOrder?.soNumber || saved.orderId,
+        logNote: 'invoice no. saved',
+      });
+      return '';
+    } catch (err: any) {
+      if (err?.code === '23505') return '';   // Step 8 marked done at the same moment (one row per entry + step)
+      return `Saved — but Step 8 was not marked done (${err?.message || 'check your connection'}). Use “Invoice done” on the Dispatch board.`;
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selectedOrderId || !selectedOrder || saving) return;
+    setStepWarning('');
     // Re-check at Save time, in case the order's status / sent-to-Dispatch
     // flag / remaining qty changed while this page was open.
     if (!existingEntryId) {
@@ -575,6 +630,28 @@ export function NewDispatchEntry() {
     if (!items.some(i => (Number(i.qty) || 0) > 0)) { setError('Enter No of Barrels for at least one line.'); return; }
     setSaving(true);
     setError('');
+    // 2026-10-23: an entry still at Step 8 can't be saved without its
+    // invoice no. — checked against its step rows in the database right now.
+    if (existingEntry && invoiceRuleApplies(existingEntry) && !invoiceNumber.trim()) {
+      let records: DispatchStepRecord[];
+      try {
+        records = await loadEntrySteps(existingEntry.id);
+      } catch (err: any) {
+        setError(`Could not check Step 8: ${err?.message || 'check your connection'}. Nothing was saved.`);
+        setSaving(false);
+        return;
+      }
+      setEntrySteps(records);
+      if (entryPosition(existingEntry, records).column === 8) {
+        setInvoiceError('Enter invoice no. to complete Step 8');
+        setSaving(false);
+        requestAnimationFrame(() => {
+          invoiceInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          invoiceInputRef.current?.focus({ preventScroll: true });
+        });
+        return;
+      }
+    }
     // 2026-10-15: save-time re-check against the DATABASE, not this page's
     // copy — another dispatch for the same order may have been saved since
     // the page loaded. Blocks if any line no longer has enough barrels left.
@@ -697,10 +774,27 @@ export function NewDispatchEntry() {
         ...docUpdates,
       };
 
+      let saved: DispatchEntry;
       if (existingEntryId) {
         await updateDispatchEntry(existingEntryId, { fulfillmentType: type as DispatchFulfillmentType, ...extra });
+        saved = { ...(existingEntry ?? { id: existingEntryId, orderId: selectedOrderId } as DispatchEntry), fulfillmentType: type as DispatchFulfillmentType, ...extra };
       } else {
-        await addDispatchEntry(selectedOrderId, type as DispatchFulfillmentType, extra);
+        saved = await addDispatchEntry(selectedOrderId, type as DispatchFulfillmentType, extra);
+      }
+      // 2026-10-23: saved with an invoice no. → complete Step 8 (edit or new
+      // entry, from the Board or the Table view).
+      if (entryHasInvoice(saved) && invoiceRuleApplies(saved)) {
+        const warning = await completeStep8(saved);
+        if (warning) {
+          // Stay on the saved entry so the warning can be read; a new entry
+          // switches to edit mode so a second Save never creates another one.
+          setStepWarning(warning);
+          if (!existingEntryId) {
+            setExistingEntryId(saved.id);
+            navigate(`/dispatch/new?${new URLSearchParams({ entryId: saved.id, ...(fromBoard ? { from: 'board' } : {}), ...(boardPill ? { pill: boardPill } : {}) })}`, { replace: true });
+          }
+          return;
+        }
       }
       // Land on the tab/pill the saved entry now lives under.
       navigate(fromBoard ? dispatchHome : `/dispatch?tab=${existingEntry?.emailSentAt ? 'emailSent' : 'dispatched'}&type=${type}`);
@@ -882,8 +976,9 @@ export function NewDispatchEntry() {
                       <input className={inputCls} value={remark} onChange={e => setRemark(e.target.value)} placeholder="Optional remark" />
                     </div>
                     <div>
-                      <label className={labelCls}>Invoice Number</label>
-                      <input className={inputCls} value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="Enter Invoice Number" />
+                      <label className={labelCls}>Invoice Number{invoiceRequired && <> <span className="text-red-mrt">*</span></>}</label>
+                      <input ref={invoiceInputRef} className={inputCls} value={invoiceNumber} onChange={e => { setInvoiceNumber(e.target.value); if (invoiceError) setInvoiceError(''); }} placeholder="Enter Invoice Number" />
+                      {invoiceError && <div className="mt-1 text-[11px] font-semibold text-red-600">{invoiceError}</div>}
                     </div>
                   </div>
                 </div>
@@ -1343,6 +1438,9 @@ export function NewDispatchEntry() {
 
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-[3px] p-[10px_14px] text-[12.5px] text-red-600 font-medium">{error}</div>
+          )}
+          {stepWarning && (
+            <div className="bg-amber-50 border border-amber-300 rounded-[3px] p-[10px_14px] text-[12.5px] text-amber-800 font-medium">{stepWarning}</div>
           )}
 
           <div className="flex items-center justify-end gap-2 pt-1 pb-2">

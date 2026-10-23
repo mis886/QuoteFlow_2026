@@ -106,7 +106,7 @@ interface AppContextType {
   sendOrderToDispatch: (orderId: string) => Promise<string | null>;
   // Dispatch (Order → Dispatch phase) — see src/pages/Dispatch.tsx. `type`
   // picks Self Pickup or Delivery for the new entry.
-  addDispatchEntry: (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => Promise<void>;
+  addDispatchEntry: (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => Promise<DispatchEntry>;
   updateDispatchEntry: (id: string, updates: Partial<DispatchEntry>) => Promise<void>;
   deleteDispatchEntry: (id: string) => Promise<void>;
   markDispatchEmailSent: (id: string) => Promise<void>;
@@ -1151,6 +1151,7 @@ const mapEnquiryToDB = (e: any) => {
       setData(prev => ({ ...prev, dispatchEntries: [finalRecord, ...prev.dispatchEntries] }));
       const order = data.orders.find(o => o.id === orderId);
       logActivity({ module: 'dispatch_entries', recordId: finalRecord.id, recordLabel: order?.poNo || finalRecord.id, action: 'insert', after: finalRecord });
+      return finalRecord;
     } else {
       console.error('Error adding dispatch entry:', error);
       throw error;
