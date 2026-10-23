@@ -154,8 +154,8 @@ const OUTWARD_PARTY_COLUMN: Record<string, string> = {
 // scrolls past underneath — see the merged single-scroll-axis container
 // (tableScrollRef) below for why this only works reliably once the table
 // has ONE scrolling ancestor instead of two nested ones.
-const Th = ({ label, align }: { label: string; align?: 'right' }) => (
-  <th className={`sticky top-0 z-10 bg-g100 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-g500 ${align === 'right' ? 'text-right' : 'text-left'}`}>
+const Th = ({ label }: { label: string }) => (
+  <th className={`sticky top-0 z-10 bg-g100 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-g500 text-center`}>
     {label}
   </th>
 );
@@ -466,11 +466,11 @@ export function StockMovements() {
                   <Th label="Party Name" />
                   <Th label="Transporter" />
                   <Th label="Fulfilment Type" />
-                  <Th label="No of Barrels" align="right" />
-                  <Th label="Packing" align="right" />
+                  <Th label="No of Barrels" />
+                  <Th label="Packing" />
                   <Th label="MOU" />
                   <Th label="Packing Type" />
-                  <Th label="Total Qty" align="right" />
+                  <Th label="Total Qty" />
                   <Th label="Note" />
                   <Th label="Actions" />
                 </tr>
@@ -483,31 +483,31 @@ export function StockMovements() {
                 ) : (
                   filtered.map(m => (
                     <tr key={m.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{fmtDate(m.doDate)}</td>
-                      <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{m.doNumber || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{fmtDate(m.doDate)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{m.doNumber || '—'}</td>
                       {isEmailSentSub && (
-                        <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.emailSentAt ? fmtIST(new Date(m.emailSentAt), 'dd-MMM-yyyy hh:mm a') : '—'}</td>
+                        <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.emailSentAt ? fmtIST(new Date(m.emailSentAt), 'dd-MMM-yyyy hh:mm a') : '—'}</td>
                       )}
-                      <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{m.whLotNo || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top font-semibold text-blk min-w-[180px]">{m.productName}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g600 min-w-[140px]">{m.billingName || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.warehouse}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap max-w-[180px] truncate" title={m.partyName === 'Other' ? m.otherParty : m.partyName}>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600 whitespace-nowrap">{m.whLotNo || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-semibold text-blk min-w-[180px]">{m.productName}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 min-w-[140px]">{m.billingName || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.warehouse}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap max-w-[180px] truncate" title={m.partyName === 'Other' ? m.otherParty : m.partyName}>
                         {m.partyName === 'Other' ? (m.otherParty || 'Other') : (m.partyName || '—')}
                       </td>
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap max-w-[160px] truncate" title={m.transporter === 'Other' ? m.otherTransporter : m.transporter}>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap max-w-[160px] truncate" title={m.transporter === 'Other' ? m.otherTransporter : m.transporter}>
                         {m.transporter === 'Other' ? (m.otherTransporter || 'Other') : (m.transporter || '—')}
                       </td>
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.fulfilmentType || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{m.numArticles || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{num(m.packing)}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.weightType || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.packagingType || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(m.totalQty)}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.note}>{m.note || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top">
-                        <div className="flex flex-col gap-[3px]">
-                          <div className="flex items-center gap-1.5">
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.fulfilmentType || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{m.numArticles || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(m.packing)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.weightType || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.packagingType || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(m.totalQty)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g500 max-w-[220px] truncate" title={m.note}>{m.note || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center">
+                        <div className="flex flex-col items-center gap-[3px]">
+                          <div className="flex items-center justify-center gap-1.5">
                             {/* 2026-09-09: Outward's Edit now opens the full-page
                                 NewStockOutward.tsx (same ?movementId=-style
                                 full-page-edit convention Inward's own Edit button
@@ -552,11 +552,11 @@ export function StockMovements() {
                   <Th label="Factory Lot No" />
                   <Th label="Product Name" />
                   <Th label="Warehouse" />
-                  <Th label="No of Barrels" align="right" />
-                  <Th label="Packing" align="right" />
+                  <Th label="No of Barrels" />
+                  <Th label="Packing" />
                   <Th label="MOU" />
                   <Th label="Packing Type" />
-                  <Th label="Total Qty" align="right" />
+                  <Th label="Total Qty" />
                   <Th label="Make" />
                   <Th label="Remark" />
                   <Th label="Actions" />
@@ -570,25 +570,25 @@ export function StockMovements() {
                 ) : (
                   filtered.map(m => (
                     <tr key={m.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{fmtDate(m.inwardDate)}</td>
-                      <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{m.whLotNo || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top font-mono text-[10.5px] text-g600 whitespace-nowrap">{m.factLotNo || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top font-semibold text-blk min-w-[180px]">{m.productName}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.warehouse}</td>
-                      <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{m.noOfBarrels || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] text-g600">{m.packingDetail || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.mou || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-g600 whitespace-nowrap">{m.packingType || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-right font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(m.totalQty)}</td>
-                      <td className="px-[13px] py-[9px] align-top whitespace-nowrap">
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{fmtDate(m.inwardDate)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{m.whLotNo || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600 whitespace-nowrap">{m.factLotNo || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-semibold text-blk min-w-[180px]">{m.productName}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.warehouse}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{m.noOfBarrels || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{m.packingDetail || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.mou || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.packingType || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(m.totalQty)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center whitespace-nowrap">
                         {m.make
                           ? <span className="inline-flex items-center text-[10.5px] text-g600 bg-g100 px-2 py-0.5 rounded-[3px] font-medium">{m.make}</span>
                           : '—'}
                       </td>
-                      <td className="px-[13px] py-[9px] align-top text-g500 max-w-[220px] truncate" title={m.remark}>{m.remark || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top">
-                        <div className="flex flex-col gap-[3px]">
-                          <div className="flex items-center gap-1.5">
+                      <td className="px-[13px] py-[9px] align-top text-center text-g500 max-w-[220px] truncate" title={m.remark}>{m.remark || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center">
+                        <div className="flex flex-col items-center gap-[3px]">
+                          <div className="flex items-center justify-center gap-1.5">
                             {/* Inward's Edit opens the full-page NewStockInward.tsx (same
                                 ?id=-style full-page-edit convention as Orders/Quotes),
                                 not a modal — see the 2026-09-05 file-header note above.
