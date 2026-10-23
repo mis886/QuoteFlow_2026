@@ -14,6 +14,7 @@ export function PackingTypeSelect({ options, value, onChange }: Props) {
   return (
     <select
       value={value}
+      title={value || undefined}
       onChange={e => onChange(e.target.value)}
       className={`w-full bg-transparent outline-none font-sans text-[12px] cursor-pointer ${value ? 'text-blk' : 'text-g400'}`}
     >
