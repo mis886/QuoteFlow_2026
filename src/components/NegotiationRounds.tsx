@@ -110,7 +110,7 @@ export function NegotiationRoundDetail({ quote, round }: { quote: Quote; round: 
               <th className={cn(th, 'text-center w-20')}>No of Barrels</th>
               <th className={cn(th, 'text-center w-16')}>Packing</th>
               <th className={cn(th, 'text-center w-16')}>Total Qty</th>
-              <th className={cn(th, 'text-center w-24')}>Packing Type</th>
+              <th className={cn(th, 'text-center w-64 whitespace-nowrap')}>Packing Type</th>
               <th className={cn(th, 'text-center w-20')}>Price Basis</th>
               <th className={cn(th, 'text-right w-20')}>Unit Rate ({sym})</th>
               <th className={cn(th, 'text-center w-14')}>GST %</th>
@@ -369,7 +369,7 @@ export function NegotiationRoundForm({
               <th className={cn(th, 'text-center w-20')}>No of Barrels</th>
               <th className={cn(th, 'text-center w-16')}>Packing</th>
               <th className={cn(th, 'text-center w-16')}>Total Qty</th>
-              <th className={cn(th, 'text-center w-24')}>Packing Type</th>
+              <th className={cn(th, 'text-center w-64 whitespace-nowrap')}>Packing Type</th>
               <th className={cn(th, 'text-center w-20')}>Price Basis</th>
               <th className={cn(th, 'text-right w-20')}>Unit Rate ({sym})</th>
               <th className={cn(th, 'text-center w-14')}>GST %</th>
