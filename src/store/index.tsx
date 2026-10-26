@@ -108,7 +108,7 @@ interface AppContextType {
   // picks Self Pickup or Delivery for the new entry.
   addDispatchEntry: (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => Promise<DispatchEntry>;
   updateDispatchEntry: (id: string, updates: Partial<DispatchEntry>) => Promise<void>;
-  deleteDispatchEntry: (id: string) => Promise<void>;
+  deleteDispatchEntry: (id: string) => Promise<{ deletedSteps: any[]; restartStep?: number }>;
   markDispatchEmailSent: (id: string) => Promise<void>;
   addCustomer: (customer: Customer) => Promise<Customer>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
@@ -1201,20 +1201,80 @@ const mapEnquiryToDB = (e: any) => {
     }));
   };
 
-  const deleteDispatchEntry = async (id: string) => {
+  // 2026-10-26: deleting a dispatch entry also RESETS its round on the
+  // Dispatch board — every dispatch_steps row of that order + round (Steps
+  // 1–7 and the entry's 8–10) is deleted, so the order restarts at the
+  // round's first step (Step 1 for round 1, Step 5 for a later round —
+  // Steps 1–4 are once per order). A 'Delivered' order goes back to 'Order
+  // Confirmed'. SO No., order id and sent_to_dispatch_at are never touched,
+  // nor are linked DOs (stock_movements) or uploaded files.
+  // Rounds are numbered by entry order (see saveEntryStepRows), so only the
+  // order's LATEST entry can be deleted, and only while the next round has
+  // no steps recorded — otherwise other rounds' rows would no longer match.
+  // Imported entries are not rounds: deleted exactly as before.
+  const deleteDispatchEntry = async (id: string): Promise<{ deletedSteps: any[]; restartStep?: number }> => {
     // Same allow-list as the Delete buttons (mis@ / shishir@), so it can't
     // be triggered any other way by someone who isn't allowed.
     if (!canDeleteRecords(user?.email)) throw new Error('Only MIS / Shishir can delete dispatch entries');
     const before = data.dispatchEntries.find(d => d.id === id);
+    const order = data.orders.find(o => o.id === before?.orderId);
+    const isImported = before?.createdBy === 'system-import';
+
+    // Which round this entry closed — checked against the database right now.
+    let round: number | undefined;
+    if (before && !isImported) {
+      const { data: rows, error: rowsErr } = await supabase
+        .from('dispatch_entries').select('id, created_at, created_by').eq('order_id', before.orderId);
+      if (rowsErr) throw rowsErr;
+      const real = (rows || []).filter(r => r.created_by !== 'system-import')
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      const idx = real.findIndex(r => r.id === id);
+      if (idx >= 0) {
+        if (idx < real.length - 1) {
+          const newer = real.slice(idx + 1).map(r => r.id).join(', ');
+          throw new Error(`This order has a newer dispatch (${newer}). Delete that one first.`);
+        }
+        round = idx + 1;
+        const { data: nextSteps, error: nextErr } = await supabase
+          .from('dispatch_steps').select('id').eq('order_id', before.orderId).gt('round', round).limit(1);
+        if (nextErr) throw nextErr;
+        if (nextSteps && nextSteps.length) {
+          throw new Error(`The next dispatch of this order (round ${round + 1}) already has steps recorded. Undo those steps first.`);
+        }
+      }
+    }
+
     const { error } = await supabase.from('dispatch_entries').delete().eq('id', id);
-    if (!error) {
-      setData(prev => ({ ...prev, dispatchEntries: prev.dispatchEntries.filter(d => d.id !== id) }));
-      const order = data.orders.find(o => o.id === before?.orderId);
-      logActivity({ module: 'dispatch_entries', recordId: id, recordLabel: order?.poNo || id, action: 'delete', before });
-    } else {
+    if (error) {
       console.error('Error deleting dispatch entry:', error);
       throw error;
     }
+    setData(prev => ({ ...prev, dispatchEntries: prev.dispatchEntries.filter(d => d.id !== id) }));
+    logActivity({ module: 'dispatch_entries', recordId: id, recordLabel: order?.poNo || id, action: 'delete', before });
+    if (!before || round === undefined) return { deletedSteps: [] };
+
+    const orderId = before.orderId;
+    const restartStep = round === 1 ? 1 : 5;
+    const { data: deletedSteps, error: stepsErr } = await supabase
+      .from('dispatch_steps').delete().eq('order_id', orderId).eq('round', round).select('*');
+    if (stepsErr) {
+      console.error('Error resetting dispatch steps:', stepsErr);
+      throw new Error(`The dispatch entry was deleted, but its steps could not be reset: ${stepsErr.message}`);
+    }
+    const { data: freshOrder } = await supabase.from('orders').select('status').eq('id', orderId).maybeSingle();
+    const wasDelivered = freshOrder?.status === 'Delivered';
+    if (wasDelivered) {
+      const { error: statusErr } = await supabase.from('orders').update({ status: 'Order Confirmed' }).eq('id', orderId);
+      if (statusErr) throw new Error(`The dispatch was reset, but the order could not be set back to Order Confirmed: ${statusErr.message}`);
+      setData(prev => ({ ...prev, orders: prev.orders.map(o => o.id === orderId ? { ...o, status: 'Order Confirmed' } : o) }));
+    }
+    logActivity({
+      module: 'dispatch_steps', recordId: orderId,
+      recordLabel: `${order?.soNumber || '—'} · ${orderId} · Dispatch reset to Step ${restartStep}`,
+      action: 'delete',
+      before: { entry_id: id, round, steps: deletedSteps ?? [], ...(wasDelivered ? { status: 'Delivered' } : {}) },
+    });
+    return { deletedSteps: deletedSteps ?? [], restartStep };
   };
 
   // Tickets (internal issue-tracking). One row per ticket, no threaded

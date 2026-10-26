@@ -371,7 +371,27 @@ export function Dispatch() {
 
   // DELETE (admins only — same canDeleteRecords as Enquiries / Quotes /
   // Orders). Order card → taken off the board (never deleted from Orders);
-  // entry card → that one dispatch entry. Never touches orders' status.
+  // entry card → that one dispatch entry, and its round restarts from its
+  // first step (see deleteDispatchEntry in the store).
+  // Where the order restarts: Step 1 if this is its first real dispatch,
+  // else Step 5 (later rounds). Imported entries aren't rounds → undefined.
+  const restartStepOf = (entry: DispatchEntry): number | undefined => {
+    if (isImportedEntry(entry)) return undefined;
+    const earlier = data.dispatchEntries.filter(e => e.orderId === entry.orderId && e.id !== entry.id && !isImportedEntry(e)
+      && new Date(e.created_at || 0).getTime() < new Date(entry.created_at || 0).getTime());
+    return earlier.length ? 5 : 1;
+  };
+  const deleteConfirmText = (entry: DispatchEntry) => {
+    const step = restartStepOf(entry);
+    return step ? `Delete this dispatch? The order will restart from Step ${step}. SO No. and Order Ref will stay the same.`
+      : 'Delete this dispatch? This cannot be undone.';
+  };
+  // Drops the reset round's step rows from the board's local copy.
+  const afterEntryDeleted = (deletedSteps: any[], restartStep?: number) => {
+    const ids = new Set(deletedSteps.map(r => r.id));
+    if (ids.size) setStepRecords(prev => prev.filter(r => !ids.has(r.id)));
+    return restartStep ? ` The order restarts from Step ${restartStep}.` : '';
+  };
   const [deleteCard, setDeleteCard] = useState<BoardCard | null>(null);
   const [deleting, setDeleting] = useState(false);
   const requestDelete = (card: BoardCard) => {
@@ -393,8 +413,8 @@ export function Dispatch() {
         showToast('ok', `${o.soNumber || o.id} removed from the Dispatch board. It stays in Orders.`);
       } else {
         const e = deleteCard.entry;
-        await deleteDispatchEntry(e.id);
-        showToast('ok', `Dispatch entry ${e.invoiceNumber || e.id} deleted.`);
+        const { deletedSteps, restartStep } = await deleteDispatchEntry(e.id);
+        showToast('ok', `Dispatch entry ${e.invoiceNumber || e.id} deleted.${afterEntryDeleted(deletedSteps, restartStep)}`);
       }
       setDeleteCard(null);
       setDrawerCard(null);
@@ -409,9 +429,10 @@ export function Dispatch() {
   // Table → Email Sent / Dispatched Delete button — also used by List → Delivered.
   const deleteEntryWithConfirm = async (entry: DispatchEntry) => {
     if (!canDelete) return;
-    if (!confirm(`Are you sure you want to delete the dispatch entry for ${entry.orderId}? This action cannot be undone.`)) return;
+    if (!confirm(deleteConfirmText(entry))) return;
     try {
-      await deleteDispatchEntry(entry.id);
+      const { deletedSteps, restartStep } = await deleteDispatchEntry(entry.id);
+      afterEntryDeleted(deletedSteps, restartStep);
     } catch (err: any) {
       alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
     }
@@ -1061,7 +1082,7 @@ export function Dispatch() {
             onConfirm={confirmDelete}
             onCancel={() => setDeleteCard(null)}
           >
-            This cannot be undone. The quantity will go back to Order Pending for Dispatch.
+            {deleteConfirmText(deleteCard.entry)}
           </ConfirmDialog>
         )
       )}
