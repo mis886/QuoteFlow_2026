@@ -85,7 +85,7 @@ export function Dispatch() {
       if (error) { console.error('Error loading dispatch steps:', error); return; }
       setStepRecords((rows || []).map(mapStepFromDB));
     });
-    supabase.from('stock_movements').select('id, do_number, order_id, dispatch_round, email_sent_at').not('order_id', 'is', null)
+    supabase.from('stock_movements').select('id, do_number, order_id, dispatch_round, email_sent_at, num_articles').eq('type', 'outward').not('order_id', 'is', null)
       .then(({ data: rows, error }) => {
         if (error) { console.error('Error loading linked DOs:', error); return; }
         setLinkedDOs((rows || []).map(mapLinkedDOFromDB));
@@ -371,25 +371,32 @@ export function Dispatch() {
 
   // DELETE (admins only — same canDeleteRecords as Enquiries / Quotes /
   // Orders). Order card → taken off the board (never deleted from Orders);
-  // entry card → that one dispatch entry, and its round restarts from its
-  // first step (see deleteDispatchEntry in the store).
-  // Where the order restarts: Step 1 if this is its first real dispatch,
-  // else Step 5 (later rounds). Imported entries aren't rounds → undefined.
-  const restartStepOf = (entry: DispatchEntry): number | undefined => {
+  // entry card → that one dispatch entry: its round's DO(s) are deleted with
+  // their stock put back, and the round restarts from its first step (see
+  // deleteDispatchEntry in the store).
+  // The round this entry closed (1, 2, …); imported entries aren't rounds.
+  const roundOf = (entry: DispatchEntry): number | undefined => {
     if (isImportedEntry(entry)) return undefined;
     const earlier = data.dispatchEntries.filter(e => e.orderId === entry.orderId && e.id !== entry.id && !isImportedEntry(e)
       && new Date(e.created_at || 0).getTime() < new Date(entry.created_at || 0).getTime());
-    return earlier.length ? 5 : 1;
+    return earlier.length + 1;
   };
   const deleteConfirmText = (entry: DispatchEntry) => {
-    const step = restartStepOf(entry);
-    return step ? `Delete this dispatch? The order will restart from Step ${step}. SO No. and Order Ref will stay the same.`
-      : 'Delete this dispatch? This cannot be undone.';
+    const round = roundOf(entry);
+    if (round === undefined) return 'Delete this dispatch? This cannot be undone.';
+    const dos = linkedDOs.filter(d => d.orderId === entry.orderId && d.round === round);
+    const barrels = dos.reduce((s, d) => s + (d.articles || 0), 0);
+    const doPart = dos.length
+      ? ` Its DO${dos.length > 1 ? 's' : ''} (${dos.map(d => d.doNumber || '—').join(', ')}) will be deleted and ${barrels} barrel${barrels === 1 ? '' : 's'} will be added back to stock.`
+        + (dos.some(d => d.emailSentAt) ? ` ${dos.length > 1 ? 'A DO' : 'This DO'} was already emailed.` : '')
+      : '';
+    return `Delete this dispatch?${doPart} The order will restart from Step ${round === 1 ? 1 : 5}. SO No. and Order Ref stay the same.`;
   };
-  // Drops the reset round's step rows from the board's local copy.
-  const afterEntryDeleted = (deletedSteps: any[], restartStep?: number) => {
+  // Drops the reset round's step rows and deleted DOs from the board's local copy.
+  const afterEntryDeleted = (deletedSteps: any[], restartStep?: number, deletedDoIds: string[] = []) => {
     const ids = new Set(deletedSteps.map(r => r.id));
     if (ids.size) setStepRecords(prev => prev.filter(r => !ids.has(r.id)));
+    if (deletedDoIds.length) setLinkedDOs(prev => prev.filter(d => !deletedDoIds.includes(d.id)));
     return restartStep ? ` The order restarts from Step ${restartStep}.` : '';
   };
   const [deleteCard, setDeleteCard] = useState<BoardCard | null>(null);
@@ -413,8 +420,8 @@ export function Dispatch() {
         showToast('ok', `${o.soNumber || o.id} removed from the Dispatch board. It stays in Orders.`);
       } else {
         const e = deleteCard.entry;
-        const { deletedSteps, restartStep } = await deleteDispatchEntry(e.id);
-        showToast('ok', `Dispatch entry ${e.invoiceNumber || e.id} deleted.${afterEntryDeleted(deletedSteps, restartStep)}`);
+        const { deletedSteps, restartStep, deletedDoIds } = await deleteDispatchEntry(e.id);
+        showToast('ok', `Dispatch entry ${e.invoiceNumber || e.id} deleted.${afterEntryDeleted(deletedSteps, restartStep, deletedDoIds)}`);
       }
       setDeleteCard(null);
       setDrawerCard(null);
@@ -431,8 +438,8 @@ export function Dispatch() {
     if (!canDelete) return;
     if (!confirm(deleteConfirmText(entry))) return;
     try {
-      const { deletedSteps, restartStep } = await deleteDispatchEntry(entry.id);
-      afterEntryDeleted(deletedSteps, restartStep);
+      const { deletedSteps, restartStep, deletedDoIds } = await deleteDispatchEntry(entry.id);
+      afterEntryDeleted(deletedSteps, restartStep, deletedDoIds);
     } catch (err: any) {
       alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
     }

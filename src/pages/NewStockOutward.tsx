@@ -246,6 +246,17 @@ const emptyForm = {
   partyName: '', otherParty: '', transporter: '', otherTransporter: '', fulfilmentType: '', note: '',
 };
 
+// THE lot an Outward entry draws from: wh_lot_no matched case-insensitively
+// (ilike), first row in a FIXED order — stock_lots has duplicate wh_lot_no
+// rows, so without one, save and delete could pick different rows.
+// 2026-10-26: keep in sync with delete_outward_movement (supabase/migrations/
+// 20261026120000_dispatch_delete_with_dos.sql), which puts the stock back.
+const findOutwardLot = (lotNo: string) => supabase.from('stock_lots').select('*').ilike('wh_lot_no', lotNo)
+  .order('serial_no', { ascending: true, nullsFirst: false })
+  .order('created_at', { ascending: true })
+  .order('id', { ascending: true })
+  .limit(1);
+
 // Ported verbatim from src/components/OutwardEditModal.tsx (2026-09-09) —
 // applies a best-effort +/- delta to whichever stock_lots row `whLotNo`
 // matches (via the given party column). Never throws. qtyDelta (Total
@@ -257,7 +268,7 @@ const emptyForm = {
 async function adjustLot(partyCol: string | undefined, whLotNo: string, qtyDelta: number, partyDelta: number, userEmail?: string | null) {
   if (!partyCol || !whLotNo || (!qtyDelta && !partyDelta)) return;
   try {
-    const { data: lots } = await supabase.from('stock_lots').select('*').ilike('wh_lot_no', whLotNo).limit(1);
+    const { data: lots } = await findOutwardLot(whLotNo);
     const lot = lots?.[0];
     if (lot) {
       await supabase.from('stock_lots').update({
@@ -938,11 +949,7 @@ function OutwardForm() {
 
     let cancelled = false;
     const timer = setTimeout(async () => {
-      const { data } = await supabase
-        .from('stock_lots')
-        .select('*')
-        .ilike('wh_lot_no', lotNo)
-        .limit(1);
+      const { data } = await findOutwardLot(lotNo);
       if (cancelled) return;
       setLotLookedUp(key);
 
@@ -1345,11 +1352,7 @@ function OutwardForm() {
     const partyCol = PARTY_COLUMN[form.warehouse];
     if (lotNo && partyCol) {
       try {
-        const { data: existingLots } = await supabase
-          .from('stock_lots')
-          .select('*')
-          .ilike('wh_lot_no', lotNo)
-          .limit(1);
+        const { data: existingLots } = await findOutwardLot(lotNo);
         const existing = existingLots?.[0];
         if (existing) {
           await supabase.from('stock_lots')

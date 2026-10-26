@@ -240,6 +240,23 @@ export function StockMovements() {
     // The real lock — the button is hidden for everyone else, this stops any other path.
     if (!canDelete) return;
 
+    // 2026-10-26: an Outward (DO) delete puts its stock back and deletes the
+    // row in ONE database transaction — delete_outward_movement, the same
+    // function a Dispatch delete uses for its DOs (supabase/migrations/
+    // 20261026120000_dispatch_delete_with_dos.sql). If it fails, nothing is
+    // deleted. Inward deletes keep the logic below.
+    if (m.type === 'outward') {
+      const { error } = await supabase.rpc('delete_outward_movement', { p_id: m.id, p_actor: activeDoer?.email ?? user?.email ?? null });
+      if (error) { alert(`Delete failed — nothing was changed: ${error.message}`); return; }
+      setMovements(prev => prev.filter(x => x.id !== m.id));
+      logActivity({
+        module: 'stock_movements', recordId: m.id,
+        recordLabel: `DO ${m.doNumber || '—'} · ${m.productName} · Lot ${m.whLotNo || '—'}`,
+        action: 'delete', before: m,
+      });
+      return;
+    }
+
     const partyCol = m.type === 'inward' ? INWARD_PARTY_COLUMN[m.warehouse] : OUTWARD_PARTY_COLUMN[m.warehouse];
     const whLotNo = (m.whLotNo || '').trim();
     const qty = m.totalQty ?? 0;
@@ -294,9 +311,7 @@ export function StockMovements() {
       setMovements(prev => prev.filter(x => x.id !== m.id));
       logActivity({
         module: 'stock_movements', recordId: m.id,
-        recordLabel: m.type === 'outward'
-          ? `DO ${m.doNumber || '—'} · ${m.productName} · Lot ${m.whLotNo || '—'}`
-          : `Inward · Lot ${m.whLotNo || '—'} · ${m.productName}`,
+        recordLabel: `Inward · Lot ${m.whLotNo || '—'} · ${m.productName}`,
         action: 'delete', before: m,
       });
     }

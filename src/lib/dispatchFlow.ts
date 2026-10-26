@@ -139,6 +139,7 @@ export interface LinkedDO {
   orderId: string;
   round: number;
   emailSentAt?: string;
+  articles?: number;        // Number of Articles (barrels) — what deleting the DO adds back to stock
 }
 export const mapLinkedDOFromDB = (r: any): LinkedDO => ({
   id: r.id,
@@ -146,6 +147,7 @@ export const mapLinkedDOFromDB = (r: any): LinkedDO => ({
   orderId: r.order_id,
   round: r.dispatch_round ?? 1,
   emailSentAt: r.email_sent_at ?? undefined,
+  articles: Number(r.num_articles) || 0,
 });
 
 export interface DoPending {
