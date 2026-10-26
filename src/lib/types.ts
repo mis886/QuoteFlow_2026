@@ -361,6 +361,13 @@ export interface Customer {
   // Master. Both empty = not reviewed.
   reviewedAt?: string;        // reviewed_at
   reviewedBy?: string;        // reviewed_by (email)
+  // Documents this customer needs with every dispatch (MIS sheet, 2026-10-26).
+  // Enforced on Save in Dispatch → Sent (NewDispatchEntry.tsx).
+  reqDocInvoice?: boolean;          // req_doc_invoice
+  reqDocLr?: boolean;               // req_doc_lr
+  reqDocEwayBill?: boolean;         // req_doc_eway_bill
+  reqDocCoa?: boolean;              // req_doc_coa
+  reqDocSupplierPortal?: boolean;   // req_doc_supplier_portal
 }
 
 // What the merge_lead_into_customer DB function returns: documents moved to

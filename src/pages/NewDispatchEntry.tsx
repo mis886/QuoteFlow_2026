@@ -30,6 +30,11 @@ type DispatchDocKey = 'invoiceEwayBill' | 'lr' | 'supplierPortal' | 'termCardAtt
 // Portal and Term Card Attachment are unchanged, still single-file.
 type MultiDocKey = 'invoiceEwayBill' | 'lr';
 type SingleDocKey = 'supplierPortal' | 'termCardAttachment';
+// 2026-10-26: the Documents Attachment fields a customer can require with
+// every dispatch (customers.req_doc_*). Invoice and Eway Bill share the one
+// "Invoice / Eway Bill" upload; Term Card Attachment is never required.
+type RequiredDocKey = MultiDocKey | 'coa' | 'supplierPortal';
+const REQUIRED_DOC_LABELS: Record<RequiredDocKey, string> = { invoiceEwayBill: 'Invoice / Eway Bill', lr: 'LR', coa: 'COA', supplierPortal: 'Supplier Portal' };
 
 const DISPATCH_DOC_FIELDS: { key: DispatchDocKey; label: string; urlKey: keyof DispatchEntry; nameKey: keyof DispatchEntry; filesKey?: keyof DispatchEntry; slug: string; multi: boolean }[] = [
   { key: 'invoiceEwayBill', label: 'Invoice / Eway Bill', urlKey: 'invoiceEwayBillUrl', nameKey: 'invoiceEwayBillName', filesKey: 'invoiceEwayBillFiles', slug: 'invoice-eway-bill', multi: true },
@@ -218,6 +223,9 @@ export function NewDispatchEntry() {
   const [stepWarning, setStepWarning] = useState('');
   const invoiceInputRef = useRef<HTMLInputElement>(null);
   const lrFieldRef = useRef<HTMLDivElement>(null);
+  // Required-documents check (see enforcedDocs) — set once a Save was blocked.
+  const [docCheckFailed, setDocCheckFailed] = useState(false);
+  const docsCardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!existingEntryId) { setEntrySteps(null); return; }
     let live = true;
@@ -581,6 +589,29 @@ export function NewDispatchEntry() {
   const invoiceRequired = !!currentEntry && invoiceRuleApplies(currentEntry) && currentStep === 8;
   const lrRequired = !!currentEntry && lrRuleApplies(currentEntry) && currentStep === 9;
 
+  // 2026-10-26: documents this customer needs with every dispatch — Save is
+  // blocked until each has at least one file (saved or freshly picked). Only
+  // for fields this login can edit (LR → canEditLr, the rest → not
+  // isReadOnlyUser), and not for old imported entries (same as Step 8 / 9).
+  // Customer not found / no flags → nothing required, same as before.
+  const canEditDoc = (key: RequiredDocKey) => key === 'lr' ? canEditLr : !isReadOnlyUser;
+  const requiredDocs: RequiredDocKey[] = [];
+  if (selectedCustomer && !(currentEntry && isImportedEntry(currentEntry))) {
+    const c = selectedCustomer;
+    if (c.reqDocInvoice || c.reqDocEwayBill) requiredDocs.push('invoiceEwayBill');
+    if (c.reqDocLr) requiredDocs.push('lr');
+    if (c.reqDocCoa) requiredDocs.push('coa');
+    if (c.reqDocSupplierPortal) requiredDocs.push('supplierPortal');
+  }
+  const enforcedDocs = requiredDocs.filter(canEditDoc);
+  const isDocRequired = (key: RequiredDocKey) => enforcedDocs.includes(key);
+  const hasDoc = (key: RequiredDocKey) =>
+    key === 'coa' ? coaFiles.length > 0
+    : key === 'supplierPortal' ? !!docFiles.supplierPortal || !!existingDocUrls.supplierPortal
+    : multiDocSlots[key].length > 0;
+  // Red border only after a blocked Save, and only until a file is attached.
+  const isDocMissing = (key: RequiredDocKey) => docCheckFailed && isDocRequired(key) && !hasDoc(key);
+
   // After a save (or Email to Client): completes Steps 8 → 9 → 10 whose
   // proof now exists, with the same row the board buttons write. Returns a
   // warning if a step couldn't be saved ('' = fine); the save itself stands.
@@ -631,6 +662,13 @@ export function NewDispatchEntry() {
       if (qty > allowed) { setError(`${i.desc || 'Item'}: only ${allowed} left to dispatch.`); return; }
     }
     if (!items.some(i => (Number(i.qty) || 0) > 0)) { setError('Enter No of Barrels for at least one line.'); return; }
+    const missingDocs = enforcedDocs.filter(k => !hasDoc(k));
+    if (missingDocs.length) {
+      setDocCheckFailed(true);
+      setError(`Please attach: ${missingDocs.map(k => REQUIRED_DOC_LABELS[k]).join(', ')} (required for this customer)`);
+      scrollToField(docsCardRef.current);
+      return;
+    }
     setSaving(true);
     setError('');
     // 2026-10-23: an entry still at Step 8 can't be saved without its
@@ -1035,7 +1073,7 @@ export function NewDispatchEntry() {
           {/* Documents Attachment — always shown now (every save is a "Dispatch →
               Sent" save). Uploads are deferred to Save, same as PO Document. */}
           {selectedOrder && (
-            <div className="bg-white border border-g200">
+            <div ref={docsCardRef} className="bg-white border border-g200">
               <div className={sectionHeaderCls}>Documents Attachment</div>
               <div className="p-[14px_16px] grid grid-cols-2 sm:grid-cols-4 gap-[12px]">
                 {/* Invoice/Eway Bill and LR — multi-document. With no files
@@ -1058,14 +1096,14 @@ export function NewDispatchEntry() {
                   const inputId = `dispatch-doc-${field.key}-picker`;
                   return (
                     <div key={field.key} ref={field.key === 'lr' ? lrFieldRef : undefined}>
-                      <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}{field.key === 'lr' && lrRequired && <> <span className="text-red-mrt">*</span></>}</label>
+                      <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}{((field.key === 'lr' && lrRequired) || isDocRequired(field.key)) && <> <span className="text-red-mrt">*</span></>}</label>
                       <div className="flex flex-col gap-1.5">
                         <input type="file" id={inputId} className="hidden" disabled={isFieldLocked}
                           onChange={e => { if (e.target.files?.length) { pickAndAddMultiDocFile(field.key, e.target.files[0]); e.target.value = ''; } }}
                           accept=".pdf,.jpeg,.jpg,.png,.webp" />
                         {slots.length === 0 ? (
                           <label htmlFor={inputId}
-                            className={`font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border ${isFieldLocked ? 'cursor-not-allowed bg-g50 text-g500 border-g200' : 'cursor-pointer text-blk bg-white border-g300 hover:bg-g50 transition-colors'}`}>
+                            className={`font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border ${isFieldLocked ? 'cursor-not-allowed bg-g50 text-g500 border-g200' : `cursor-pointer text-blk bg-white ${isDocMissing(field.key) ? 'border-red-500' : 'border-g300'} hover:bg-g50 transition-colors`}`}>
                             <Upload size={13} className="text-g500 shrink-0" />
                             <span className="truncate">{isFieldLocked ? 'Not uploaded' : `Upload ${field.label}`}</span>
                           </label>
@@ -1114,15 +1152,16 @@ export function NewDispatchEntry() {
                   const existingName = existingDocNames[field.key];
                   const inputId = `dispatch-doc-${field.key}`;
                   const isFieldLocked = isReadOnlyUser;
+                  const docMissing = field.key === 'supplierPortal' && isDocMissing('supplierPortal');
                   return (
                     <div key={field.key}>
-                      <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}</label>
+                      <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[3px]">{field.label}{field.key === 'supplierPortal' && isDocRequired('supplierPortal') && <> <span className="text-red-mrt">*</span></>}</label>
                       <div className="flex items-center gap-1.5">
                         <input type="file" id={inputId} className="hidden" disabled={isFieldLocked}
                           onChange={e => { if (e.target.files?.length) handleDocFileChange(field.key, e.target.files[0]); }}
                           accept=".pdf,.jpeg,.jpg,.png,.webp" />
                         <label htmlFor={inputId}
-                          className={`font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border ${isFieldLocked ? 'cursor-not-allowed bg-g50 text-g500 border-g200' : 'cursor-pointer text-blk bg-white border-g300 hover:bg-g50 transition-colors'}`}>
+                          className={`font-sans text-[11px] font-medium rounded-[3px] p-[7px_10px] flex items-center gap-2 h-[36px] flex-1 min-w-0 border ${isFieldLocked ? 'cursor-not-allowed bg-g50 text-g500 border-g200' : `cursor-pointer text-blk bg-white ${docMissing ? 'border-red-500' : 'border-g300'} hover:bg-g50 transition-colors`}`}>
                           <Upload size={13} className="text-g500 shrink-0" />
                           {file
                             ? <span className="truncate">{file.name}</span>
@@ -1169,7 +1208,7 @@ export function NewDispatchEntry() {
                   lock check is needed here). */}
               <fieldset disabled={isReadOnlyUser} className="contents">
               <div className="px-[16px] pb-[14px] pt-[2px] border-t border-g200 mt-[2px]">
-                <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[6px]">COA</label>
+                <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[6px]">COA{isDocRequired('coa') && <> <span className="text-red-mrt">*</span></>}</label>
                 {coaFiles.length > 0 && (
                   <div className="flex flex-col gap-1.5 mb-2">
                     {coaFiles.map(f => {
@@ -1201,7 +1240,7 @@ export function NewDispatchEntry() {
                 )}
                 {(coaFiles.length === 0 || showCoaPicker) && (
                   <>
-                    <div className="relative mb-2">
+                    <div className={`relative mb-2 ${isDocMissing('coa') ? 'rounded-[3px] ring-1 ring-red-500' : ''}`}>
                       <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-g400 pointer-events-none" />
                       <input
                         type="text" value={coaSearch} onChange={e => setCoaSearch(e.target.value)}

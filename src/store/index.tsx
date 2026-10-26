@@ -1347,6 +1347,11 @@ const mapEnquiryToDB = (e: any) => {
       promotedBy: c.promoted_by || undefined,
       reviewedAt: c.reviewed_at || undefined,
       reviewedBy: c.reviewed_by || undefined,
+      reqDocInvoice: !!c.req_doc_invoice,
+      reqDocLr: !!c.req_doc_lr,
+      reqDocEwayBill: !!c.req_doc_eway_bill,
+      reqDocCoa: !!c.req_doc_coa,
+      reqDocSupplierPortal: !!c.req_doc_supplier_portal,
       // Main Office (S1) only — the customers row itself. Each branch / plant
       // is its own customer record.
       sites: [primarySite],
@@ -1394,6 +1399,12 @@ const mapEnquiryToDB = (e: any) => {
     // Review mode KEEP / Un-keep — only written when present.
     if ('reviewedAt' in c) obj.reviewed_at = c.reviewedAt || null;
     if ('reviewedBy' in c) obj.reviewed_by = c.reviewedBy || null;
+    // Required dispatch documents — only written when present.
+    if ('reqDocInvoice' in c)        obj.req_doc_invoice         = !!c.reqDocInvoice;
+    if ('reqDocLr' in c)             obj.req_doc_lr              = !!c.reqDocLr;
+    if ('reqDocEwayBill' in c)       obj.req_doc_eway_bill       = !!c.reqDocEwayBill;
+    if ('reqDocCoa' in c)            obj.req_doc_coa             = !!c.reqDocCoa;
+    if ('reqDocSupplierPortal' in c) obj.req_doc_supplier_portal = !!c.reqDocSupplierPortal;
 
     // Primary site → flat address columns
     if (primarySite) {
