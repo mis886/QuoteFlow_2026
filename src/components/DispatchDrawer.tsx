@@ -127,14 +127,15 @@ function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
   );
 }
 
-// A dispatch entry's link names what the entry page is for at the step it
-// is waiting on (8 invoice no., 9 LR, 10 email); Done entries just open for
-// viewing. Every label goes to the same entry page (/dispatch/new?entryId=…).
-// Since 2026-10-23 the step completes on that page once its proof is saved
-// (invoice no. / LR / email sent); the "Invoice done" / "LR received" /
-// "Documents sent" button next to it is the fallback.
+// A dispatch entry's link: one label for Steps 8, 9 and 10 (2026-10-26 — the
+// entry page is where the invoice no., LR and documents are attached and the
+// email is sent); Done entries open for viewing their documents. Every label
+// goes to the same entry page (/dispatch/new?entryId=…). Since 2026-10-23
+// the step completes on that page once its proof is saved (invoice no. / LR /
+// email sent); the "Invoice done" / "LR received" / "Documents sent" button
+// next to it is the fallback.
 const entryActionLabel = (col: 8 | 9 | 10 | 11) =>
-  col === 8 ? 'Add invoice no. →' : col === 9 ? 'Upload LR →' : col === 10 ? 'Email to Client →' : 'Open →';
+  col === 11 ? 'View Documents →' : 'Attach Documents & Send →';
 
 export function DispatchDrawer({
   order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onEntryAction, onResume,

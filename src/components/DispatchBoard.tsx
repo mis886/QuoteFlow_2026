@@ -130,7 +130,7 @@ export function StepActionButtons({ card, busy, canAct, onAction, onResume, omit
  * (canAct). Step 8 stays disabled until the entry has an invoice no., Step 9
  * until it has an LR file, Step 10 until Email to Client was sent — with the
  * reason in red under it. `link` is the
- * entry-page button ("Add invoice no. →", "Upload LR →", "Email to Client →")
+ * entry-page button ("Attach Documents & Send →")
  * shown next to it.
  */
 export function EntryStepButtons({ card, busy, canAct, onAction, link }: {
