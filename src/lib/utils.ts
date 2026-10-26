@@ -4,6 +4,12 @@ import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem,
 
 export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'];
 
+// The transporter named on an Outward (DO) entry — the typed Other
+// Transporter when "Other" is picked. '' = none. Shared by the DO form's
+// Delivery check and the DO email body (SendEmailModal), so both agree.
+export const outwardTransporterName = (m: { transporter?: string | null; otherTransporter?: string | null }): string =>
+  ((m.transporter === 'Other' ? m.otherTransporter : m.transporter) || '').trim();
+
 // ── Payment Terms — shared across Orders, Quotations, and Customers ──────────
 
 export const PAY_OPTIONS = [

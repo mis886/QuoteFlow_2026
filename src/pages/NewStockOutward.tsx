@@ -173,7 +173,7 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { Loader2 } from 'lucide-react';
 import { StockMovement, Order, DispatchEntry } from '../lib/types';
-import { fmtIST, canActOnDispatchBoard, remainingByLine } from '../lib/utils';
+import { fmtIST, canActOnDispatchBoard, remainingByLine, outwardTransporterName } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
 import { downloadOutwardDOCX } from '../lib/outwardDocx';
@@ -556,6 +556,8 @@ function OutwardForm() {
   const [emailSentAt, setEmailSentAt] = useState<string | null>(null);
   // Set when Save is clicked with no Fulfilment Type — shown under the field.
   const [fulfilmentError, setFulfilmentError] = useState(false);
+  // 2026-10-26: Transporter is required for Delivery (the DO email names it).
+  const [transporterError, setTransporterError] = useState(false);
 
   // Where to go on Back / Cancel.
   const goBack = () => navigate(boardLink ? DISPATCH_BOARD_PATH : outwardListPath(!!emailSentAt, form.fulfilmentType || 'Delivery'));
@@ -1171,9 +1173,26 @@ function OutwardForm() {
 
   // 2026-10-12: "Email to Client" only works on a saved entry — its
   // email_sent_at needs a stock_movements row to be written to.
-  const openEmailModal = () => {
+  // 2026-10-26: a Delivery DO's email names its transporter, so it must be
+  // SAVED on the entry — checked against the database, and the form must
+  // not hold unsaved Transporter / Fulfilment Type changes.
+  const openEmailModal = async () => {
     if (!movementId) { setError('Please save the outward entry first'); return; }
     setError('');
+    const { data: saved, error: loadErr } = await supabase.from('stock_movements')
+      .select('transporter, other_transporter, fulfilment_type').eq('id', movementId).maybeSingle();
+    if (loadErr || !saved) { setError(`Could not check this DO: ${loadErr?.message || 'entry not found'}`); return; }
+    const savedTransporter = outwardTransporterName({ transporter: saved.transporter, otherTransporter: saved.other_transporter });
+    const formTransporter = outwardTransporterName({ transporter: form.transporter, otherTransporter: isOtherTransporter ? form.otherTransporter : '' });
+    if ((saved.fulfilment_type || '') !== form.fulfilmentType || (form.fulfilmentType === 'Delivery' && savedTransporter !== formTransporter)) {
+      setError('Please save your changes first.');
+      return;
+    }
+    if (saved.fulfilment_type === 'Delivery' && !savedTransporter) {
+      setTransporterError(true);
+      setError('Please select a transporter and save first.');
+      return;
+    }
     setShowEmailModal(true);
   };
 
@@ -1221,6 +1240,12 @@ function OutwardForm() {
     if (!FULFILMENT_TYPES.includes(form.fulfilmentType)) {
       setFulfilmentError(true);
       setError('Please select Fulfilment Type (Delivery or Self Pickup).');
+      return;
+    }
+    if (form.fulfilmentType === 'Delivery'
+      && !outwardTransporterName({ transporter: form.transporter, otherTransporter: isOtherTransporter ? form.otherTransporter : '' })) {
+      setTransporterError(true);
+      setError('Please select a transporter for Delivery.');
       return;
     }
     // 2026-10-13 safety check (Board flow only): the field still holds the
@@ -1612,13 +1637,16 @@ function OutwardForm() {
                 </div>
               )}
               <div>
-                <label className={labelCls}>Transporter</label>
-                <SearchableCombobox className={inputCls} options={transporterOptions} value={form.transporter} onChange={v => setForm(f => ({ ...f, transporter: v }))} />
+                <label className={labelCls}>Transporter{form.fulfilmentType === 'Delivery' && <> <span className="text-red-mrt">*</span></>}</label>
+                <SearchableCombobox className={`${inputCls} ${transporterError && !isOtherTransporter ? 'border-red-mrt' : ''}`} options={transporterOptions} value={form.transporter}
+                  onChange={v => { setTransporterError(false); setForm(f => ({ ...f, transporter: v })); }} />
+                {transporterError && <p className="text-red-mrt text-[11px] mt-1">Please select a transporter for Delivery.</p>}
               </div>
               {isOtherTransporter && (
                 <div>
-                  <label className={labelCls}>Other Transporter</label>
-                  <input className={inputCls} value={form.otherTransporter} onChange={set('otherTransporter')} />
+                  <label className={labelCls}>Other Transporter{form.fulfilmentType === 'Delivery' && <> <span className="text-red-mrt">*</span></>}</label>
+                  <input className={`${inputCls} ${transporterError ? 'border-red-mrt' : ''}`} value={form.otherTransporter}
+                    onChange={e => { setTransporterError(false); set('otherTransporter')(e); }} />
                 </div>
               )}
               <div>
@@ -1629,7 +1657,7 @@ function OutwardForm() {
                 <select
                   className={`${selectCls} ${fulfilmentError ? 'border-red-mrt' : ''}`}
                   value={form.fulfilmentType}
-                  onChange={e => { setFulfilmentError(false); setError(''); set('fulfilmentType')(e); }}
+                  onChange={e => { setFulfilmentError(false); setTransporterError(false); setError(''); set('fulfilmentType')(e); }}
                 >
                   <option value="">Select...</option>
                   {FULFILMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}

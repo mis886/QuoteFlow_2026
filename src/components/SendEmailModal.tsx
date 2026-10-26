@@ -6,6 +6,7 @@ import { generateQuotePDF, generateOrderPDF, generateOutwardPDF } from '../lib/p
 import { sendViaGmailAsUser } from '../lib/gmail';
 import { resolveCoaStorageUrl } from '../lib/supabase';
 import { useAppStore } from '../store';
+import { outwardTransporterName } from '../lib/utils';
 
 const SHISHIR = 'shishir@himalayaterpene.com';
 const BHIWANDI_EMAIL = 'bhiwandi@himalayaterpene.com';
@@ -236,6 +237,11 @@ export function SendEmailModal(props: Props) {
 
   const defaultBody = isQuote
     ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
+    : isOutwardDelivery
+    // 2026-10-26: Delivery DOs go to the Bhiwandi team, naming the
+    // transporter saved on the DO (NewStockOutward.tsx won't open this
+    // modal for a Delivery DO without one).
+    ? `Dear Bhiwandi Team,\n\nPlease find the attached DO copy. Kindly arrange to dispatch the material through ${outwardTransporterName(props.doc as StockMovement)}.\n\nThank you.`
     : isOutward
     ? (outwardPickupContact
         // 2026-09-19: Self Pickup at a known warehouse — company-name
