@@ -35,6 +35,9 @@ type SingleDocKey = 'supplierPortal' | 'termCardAttachment';
 // "Invoice / Eway Bill" upload; Term Card Attachment is never required.
 type RequiredDocKey = MultiDocKey | 'coa' | 'supplierPortal';
 const REQUIRED_DOC_LABELS: Record<RequiredDocKey, string> = { invoiceEwayBill: 'Invoice / Eway Bill', lr: 'LR', coa: 'COA', supplierPortal: 'Supplier Portal' };
+// The Dispatch step from which each one blocks Save (that step or later,
+// incl. Done = 11). Before it the field only shows its red *.
+const REQUIRED_DOC_STEP: Record<RequiredDocKey, number> = { invoiceEwayBill: 8, lr: 9, coa: 10, supplierPortal: 10 };
 
 const DISPATCH_DOC_FIELDS: { key: DispatchDocKey; label: string; urlKey: keyof DispatchEntry; nameKey: keyof DispatchEntry; filesKey?: keyof DispatchEntry; slug: string; multi: boolean }[] = [
   { key: 'invoiceEwayBill', label: 'Invoice / Eway Bill', urlKey: 'invoiceEwayBillUrl', nameKey: 'invoiceEwayBillName', filesKey: 'invoiceEwayBillFiles', slug: 'invoice-eway-bill', multi: true },
@@ -223,8 +226,8 @@ export function NewDispatchEntry() {
   const [stepWarning, setStepWarning] = useState('');
   const invoiceInputRef = useRef<HTMLInputElement>(null);
   const lrFieldRef = useRef<HTMLDivElement>(null);
-  // Required-documents check (see enforcedDocs) — set once a Save was blocked.
-  const [docCheckFailed, setDocCheckFailed] = useState(false);
+  // Required-documents check (see enforcedDocs) — the fields a Save was blocked on.
+  const [blockedDocs, setBlockedDocs] = useState<Set<RequiredDocKey>>(new Set());
   const docsCardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!existingEntryId) { setEntrySteps(null); return; }
@@ -589,17 +592,19 @@ export function NewDispatchEntry() {
   const invoiceRequired = !!currentEntry && invoiceRuleApplies(currentEntry) && currentStep === 8;
   const lrRequired = !!currentEntry && lrRuleApplies(currentEntry) && currentStep === 9;
 
-  // 2026-10-26: documents this customer needs with every dispatch — Save is
-  // blocked until each has at least one file (saved or freshly picked). Only
-  // for fields this login can edit (LR → canEditLr, the rest → not
-  // isReadOnlyUser), and not for old imported entries (same as Step 8 / 9).
+  // 2026-10-26: documents this customer needs with every dispatch. Each one
+  // blocks Save only from its own step on (REQUIRED_DOC_STEP) until it has
+  // at least one file (saved or freshly picked) — so creating a new entry
+  // never blocks. Only for fields this login can edit (LR → canEditLr, the
+  // rest → not isReadOnlyUser), not for old imported entries (same as
+  // Step 8 / 9), and never LR for Self Pickup (it skips Step 9).
   // Customer not found / no flags → nothing required, same as before.
   const canEditDoc = (key: RequiredDocKey) => key === 'lr' ? canEditLr : !isReadOnlyUser;
   const requiredDocs: RequiredDocKey[] = [];
   if (selectedCustomer && !(currentEntry && isImportedEntry(currentEntry))) {
     const c = selectedCustomer;
     if (c.reqDocInvoice || c.reqDocEwayBill) requiredDocs.push('invoiceEwayBill');
-    if (c.reqDocLr) requiredDocs.push('lr');
+    if (c.reqDocLr && type !== 'self_pickup') requiredDocs.push('lr');
     if (c.reqDocCoa) requiredDocs.push('coa');
     if (c.reqDocSupplierPortal) requiredDocs.push('supplierPortal');
   }
@@ -609,8 +614,8 @@ export function NewDispatchEntry() {
     key === 'coa' ? coaFiles.length > 0
     : key === 'supplierPortal' ? !!docFiles.supplierPortal || !!existingDocUrls.supplierPortal
     : multiDocSlots[key].length > 0;
-  // Red border only after a blocked Save, and only until a file is attached.
-  const isDocMissing = (key: RequiredDocKey) => docCheckFailed && isDocRequired(key) && !hasDoc(key);
+  // Red border only on fields a Save was blocked on, until a file is attached.
+  const isDocMissing = (key: RequiredDocKey) => blockedDocs.has(key) && isDocRequired(key) && !hasDoc(key);
 
   // After a save (or Email to Client): completes Steps 8 → 9 → 10 whose
   // proof now exists, with the same row the board buttons write. Returns a
@@ -662,21 +667,17 @@ export function NewDispatchEntry() {
       if (qty > allowed) { setError(`${i.desc || 'Item'}: only ${allowed} left to dispatch.`); return; }
     }
     if (!items.some(i => (Number(i.qty) || 0) > 0)) { setError('Enter No of Barrels for at least one line.'); return; }
-    const missingDocs = enforcedDocs.filter(k => !hasDoc(k));
-    if (missingDocs.length) {
-      setDocCheckFailed(true);
-      setError(`Please attach: ${missingDocs.map(k => REQUIRED_DOC_LABELS[k]).join(', ')} (required for this customer)`);
-      scrollToField(docsCardRef.current);
-      return;
-    }
     setSaving(true);
     setError('');
+    setBlockedDocs(new Set());
     // 2026-10-23: an entry still at Step 8 can't be saved without its
     // invoice no., one at Step 9 without an LR file — checked against its
-    // step rows in the database right now.
+    // step rows in the database right now. 2026-10-26: same for the
+    // customer's required documents (REQUIRED_DOC_STEP).
     const noInvoice = !invoiceNumber.trim();
     const noLr = multiDocSlots.lr.length === 0;
-    if (existingEntry && ((noInvoice && invoiceRuleApplies(existingEntry)) || (noLr && lrRuleApplies(existingEntry)))) {
+    const docsWithoutFile = existingEntry ? enforcedDocs.filter(k => !hasDoc(k)) : [];
+    if (existingEntry && (docsWithoutFile.length || (noInvoice && invoiceRuleApplies(existingEntry)) || (noLr && lrRuleApplies(existingEntry)))) {
       let records: DispatchStepRecord[];
       try {
         records = await loadEntryStepRecords(existingEntry.id);
@@ -697,6 +698,14 @@ export function NewDispatchEntry() {
         setLrError('Attach LR to complete Step 9');
         setSaving(false);
         scrollToField(lrFieldRef.current);
+        return;
+      }
+      const missingDocs = docsWithoutFile.filter(k => step >= REQUIRED_DOC_STEP[k]);
+      if (missingDocs.length) {
+        setBlockedDocs(new Set(missingDocs));
+        setError(`Please attach: ${missingDocs.map(k => REQUIRED_DOC_LABELS[k]).join(', ')} (required for this customer)`);
+        setSaving(false);
+        scrollToField(docsCardRef.current);
         return;
       }
     }
