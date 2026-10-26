@@ -69,7 +69,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Plus, RefreshCw, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { fmtDate, fmtIST, normalizeSearchText, doerLabel, canDeleteRecords } from '../lib/utils';
+import { fmtDate, fmtIST, normalizeSearchText, doerLabel, canDeleteRecords, friendlyStockError } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { StockMovement } from '../lib/types';
 import { Button } from '../components/ui';
@@ -270,8 +270,14 @@ export function StockMovements() {
       // back off. Outward subtracted them, so deleting adds them back.
       const delta = m.type === 'inward' ? -qty : qty;
       const partyDelta = m.type === 'inward' ? -partyQty : partyQty;
+      // 2026-10-26: a stock_lots change the database refuses (e.g. the
+      // "never below 0" rule, when this inward's stock was already
+      // dispatched) now stops the delete — the entry stays — instead of
+      // deleting it anyway and leaving the stock out of step.
+      let stockErr: any = null;
       try {
-        const { data: lots } = await supabase.from('stock_lots').select('*').ilike('wh_lot_no', whLotNo).limit(1);
+        const { data: lots, error: findErr } = await supabase.from('stock_lots').select('*').ilike('wh_lot_no', whLotNo).limit(1);
+        if (findErr) stockErr = findErr;
         const lot = lots?.[0];
         if (lot) {
           const newQuantity = (lot.quantity ?? 0) + delta;
@@ -287,9 +293,9 @@ export function StockMovements() {
             // matching lot next time (same as any Stock Movements entry
             // whose lot was never created / already deleted directly from
             // Stock Summary) rather than corrupting a lot that's still in use.
-            await supabase.from('stock_lots').delete().eq('id', lot.id);
+            ({ error: stockErr } = await supabase.from('stock_lots').delete().eq('id', lot.id));
           } else {
-            await supabase.from('stock_lots').update({
+            ({ error: stockErr } = await supabase.from('stock_lots').update({
               [partyCol]: (lot[partyCol] ?? 0) + partyDelta,
               quantity: newQuantity,
               updated_at: new Date().toISOString(),
@@ -298,15 +304,20 @@ export function StockMovements() {
               // identity), falling back to the raw login email — was raw
               // user?.email only.
               updated_by: activeDoer?.email ?? user?.email ?? null,
-            }).eq('id', lot.id);
+            }).eq('id', lot.id));
           }
         }
       } catch (e) {
-        console.error('Stock Movements delete: stock_lots reversal failed (movement is still deleted):', e);
+        stockErr = e;
+      }
+      if (stockErr) {
+        alert(`Delete failed — nothing was changed. ${friendlyStockError(stockErr)}`);
+        return;
       }
     }
 
     const { error } = await supabase.from('stock_movements').delete().eq('id', m.id);
+    if (error) alert(`The stock was updated, but the entry could not be deleted: ${error.message}`);
     if (!error) {
       setMovements(prev => prev.filter(x => x.id !== m.id));
       logActivity({

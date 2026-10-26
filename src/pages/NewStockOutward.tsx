@@ -114,8 +114,9 @@
 // reconciliation logic: reverse the OLD entry's stock_lots decrement (add
 // its quantity/barrels back to whichever lot the OLD warehouse+lot no
 // matched), then re-apply the NEW (edited) decrement against whichever lot
-// the NEW warehouse+lot no matches — both steps via the same adjustLot()
-// helper (best-effort, update-only, never inserts), ported verbatim from
+// the NEW warehouse+lot no matches — both steps via adjustLotStock() (since
+// 2026-10-26 the adjust_lot_stock database function: locked, never below 0,
+// a refusal stops the save; was a best-effort adjustLot()), ported from
 // the modal rather than upgraded to Inward's lotId-pinning fix, since
 // Outward's decrement has no insert branch for that fix to matter to (a
 // lot that isn't found is just skipped, on both the reversal and re-apply
@@ -173,7 +174,7 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { Loader2 } from 'lucide-react';
 import { StockMovement, Order, DispatchEntry } from '../lib/types';
-import { fmtIST, canActOnDispatchBoard, remainingByLine, outwardTransporterName } from '../lib/utils';
+import { fmtIST, canActOnDispatchBoard, remainingByLine, outwardTransporterName, friendlyStockError } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
 import { downloadOutwardDOCX } from '../lib/outwardDocx';
@@ -257,30 +258,18 @@ const findOutwardLot = (lotNo: string) => supabase.from('stock_lots').select('*'
   .order('id', { ascending: true })
   .limit(1);
 
-// Ported verbatim from src/components/OutwardEditModal.tsx (2026-09-09) —
-// applies a best-effort +/- delta to whichever stock_lots row `whLotNo`
-// matches (via the given party column). Never throws. qtyDelta (Total
-// Quantity) and partyDelta (Number of Articles — barrel/article count) are
-// separate: the party column tracks count, not quantity, same rule as
-// Inward's no_of_barrels (see NewStockInward.tsx's 2026-09-05 comment).
-// Used only by save()'s edit-mode branch below — the plain create-mode
-// decrement further down has its own separate, unchanged inline logic.
-async function adjustLot(partyCol: string | undefined, whLotNo: string, qtyDelta: number, partyDelta: number, userEmail?: string | null) {
-  if (!partyCol || !whLotNo || (!qtyDelta && !partyDelta)) return;
-  try {
-    const { data: lots } = await findOutwardLot(whLotNo);
-    const lot = lots?.[0];
-    if (lot) {
-      await supabase.from('stock_lots').update({
-        [partyCol]: (lot[partyCol] ?? 0) + partyDelta,
-        quantity: (lot.quantity ?? 0) + qtyDelta,
-        updated_at: new Date().toISOString(),
-        updated_by: userEmail ?? null,
-      }).eq('id', lot.id);
-    }
-  } catch (e) {
-    console.error('Outward edit stock_lots adjustment failed (movement update still proceeds):', e);
-  }
+// 2026-10-26: EVERY Outward stock change (save and edit) goes through the
+// adjust_lot_stock database function (supabase/migrations/
+// 20261026150000_stock_lots_no_negative.sql) — same lot as findOutwardLot,
+// row locked, never below 0. Replaces the old browser-side best-effort
+// adjustLot(). barrelsDelta is the warehouse column (Number of Articles),
+// qtyDelta the lot's Total Quantity; negative takes stock, positive puts it
+// back. Returns the database's error (null = done) — callers must stop on it.
+async function adjustLotStock(partyCol: string, whLotNo: string, barrelsDelta: number, qtyDelta: number, userEmail?: string | null) {
+  const { error } = await supabase.rpc('adjust_lot_stock', {
+    p_lot_no: whLotNo, p_party_col: partyCol, p_barrels_delta: barrelsDelta, p_qty_delta: qtyDelta, p_user: userEmail ?? null,
+  });
+  return error;
 }
 
 // 2026-09-09: DO Number auto-generation, replacing free-hand entry.
@@ -574,7 +563,7 @@ function OutwardForm() {
   const [loadingMovement, setLoadingMovement] = useState(isEditing);
   // Captured once, when loading an existing entry for editing — the values
   // stock_lots was last decremented with, so save() can reverse that OLD
-  // effect before applying the edited one (see adjustLot() above). Raw
+  // effect before applying the edited one (see adjustLotStock() above). Raw
   // values straight off the stock_movements row, NOT routed through the
   // Warehouse dropdown's isOtherWarehouse fallback — unlike `form`, which
   // may fold a legacy warehouse value (e.g. "WADA", no longer in this
@@ -1083,12 +1072,29 @@ function OutwardForm() {
     form.numArticles.trim()
   );
 
+  // 2026-10-26: No of Barrels can never be more than the warehouse has. New
+  // DO: the lot's stock at that warehouse. Edit: that stock is already after
+  // this DO, so its own original barrels count too — but only while it is
+  // still the same warehouse + lot (a different one only has its own stock).
+  // The database (adjust_lot_stock) enforces the same rule at save time.
+  const sameLotAsOriginal = !!(isEditing && original && PARTY_COLUMN[original.warehouse]
+    && PARTY_COLUMN[original.warehouse] === PARTY_COLUMN[form.warehouse]
+    && original.lotNo.toLowerCase() === form.lotNo.trim().toLowerCase());
+  const maxBarrels = currentLotStock
+    ? currentLotStock.available + (sameLotAsOriginal ? (parseNum(original!.numArticles) ?? 0) : 0)
+    : null;
+  const overStockMsg = currentLotStock && maxBarrels !== null && enteredBarrels !== null && enteredBarrels > maxBarrels
+    ? `Only ${maxBarrels} barrels available at ${currentLotStock.warehouse} (Lot ${currentLotStock.lotNo}). You entered ${enteredBarrels}.`
+    : '';
+
   // 2026-10-16: Save needs a real lot (Packing / Total come only from it), a
-  // packing on that lot, and — for a new DO — stock at that warehouse. Edit
-  // mode skips the stock check: its "available" is already after this DO.
+  // packing on that lot, and — for a new DO — stock at that warehouse.
+  // 2026-10-26: and never more barrels than available (overStockMsg), in
+  // edit mode too.
   const saveBlock = !lockedLot ? 'Select a Warehouse and a Lot No that exists in Stock Summary.'
     : parseNum(form.packing) === null ? `Packing missing for lot ${lockedLot.lotNo} — update the lot's packing in Stock Summary first.`
     : !isEditing && lotWarning ? lotWarning
+    : overStockMsg ? overStockMsg
     : '';
   // Shown under the Quantity section only once the lot lookup has finished.
   const showSaveBlock = !!saveBlock && (!!lockedLot || (!!form.lotNo.trim() && lotLookedUp === lotKeyOf(form.warehouse, form.lotNo)) || (!!form.warehouse && !PARTY_COLUMN[form.warehouse]));
@@ -1278,15 +1284,49 @@ function OutwardForm() {
       const oldPartyCol = PARTY_COLUMN[original.warehouse];
       const newPartyCol = PARTY_COLUMN[warehouseToSave];
       const oldNumArticles = num(original.numArticles) ?? 0;
+      const newNumArticles = numArticles ?? 0;
+      const newTotalQty = totalQty ?? 0;
 
       // 2026-09-19: activeDoer (the specific person acting right now,
       // matching SendEmailModal.tsx's "who is sending this" identity),
       // falling back to the raw login email — was raw user?.email only.
       const actingEmail = activeDoer?.email ?? user?.email;
-      // 1. Reverse the OLD entry's decrement (add its quantity back).
-      await adjustLot(oldPartyCol, original.lotNo, original.totalQty, oldNumArticles, actingEmail);
-      // 2. Re-apply the NEW (edited) decrement.
-      await adjustLot(newPartyCol, lotNo, -(totalQty ?? 0), -(numArticles ?? 0), actingEmail);
+      // 2026-10-26: stock first, through adjust_lot_stock — any refusal stops
+      // the save with the movement untouched. Same warehouse + lot: ONE call
+      // with the net change (all-or-nothing). Otherwise put the old DO's
+      // stock back, then take the new — and undo the first if the second
+      // fails. A DO that never took stock (unknown warehouse / no lot) has
+      // nothing to put back; neither does one whose lot no longer exists.
+      const fail = (err: any) => { setError(friendlyStockError(err)); setSaving(false); };
+      const oldTookStock = !!(oldPartyCol && original.lotNo && (oldNumArticles || original.totalQty));
+      const sameLot = oldTookStock && oldPartyCol === newPartyCol && original.lotNo.toLowerCase() === lotNo.toLowerCase();
+      // What to run to put the stock exactly back as it was if the movement update fails.
+      let undoStock: () => Promise<any> = async () => null;
+      if (!newPartyCol || !lotNo) { setError('Select a Warehouse and a Lot No that exists in Stock Summary.'); setSaving(false); return; }
+      if (sameLot) {
+        const err = await adjustLotStock(newPartyCol, lotNo, oldNumArticles - newNumArticles, original.totalQty - newTotalQty, actingEmail);
+        if (err) { fail(err); return; }
+        undoStock = () => adjustLotStock(newPartyCol, lotNo, newNumArticles - oldNumArticles, newTotalQty - original.totalQty, actingEmail);
+      } else {
+        let restored = false;
+        if (oldTookStock) {
+          const err = await adjustLotStock(oldPartyCol!, original.lotNo, oldNumArticles, original.totalQty, actingEmail);
+          if (err && !/LOT_NOT_FOUND/.test(err.message)) { fail(err); return; }
+          restored = !err;
+        }
+        const takeErr = await adjustLotStock(newPartyCol, lotNo, -newNumArticles, -newTotalQty, actingEmail);
+        if (takeErr) {
+          const undoErr = restored ? await adjustLotStock(oldPartyCol!, original.lotNo, -oldNumArticles, -original.totalQty, actingEmail) : null;
+          setError(friendlyStockError(takeErr) + (undoErr ? ` Also, the old lot's stock could not be put back as it was (${friendlyStockError(undoErr)}) — please check Stock Summary.` : ''));
+          setSaving(false);
+          return;
+        }
+        undoStock = async () => {
+          const e1 = await adjustLotStock(newPartyCol, lotNo, newNumArticles, newTotalQty, actingEmail);
+          const e2 = restored ? await adjustLotStock(oldPartyCol!, original.lotNo, -oldNumArticles, -original.totalQty, actingEmail) : null;
+          return e1 || e2;
+        };
+      }
 
       // 3. Update the stock_movements row itself.
       const updatePayload = {
@@ -1316,7 +1356,13 @@ function OutwardForm() {
       };
       const { error: moveErr } = await supabase.from('stock_movements').update(updatePayload).eq('id', movementId);
 
-      if (moveErr) { setError(moveErr.message); setSaving(false); return; }
+      if (moveErr) {
+        // The DO wasn't changed, so the stock change above is undone.
+        const undoErr = await undoStock();
+        setError(moveErr.message + (undoErr ? ` Also, the stock could not be put back (${friendlyStockError(undoErr)}) — please check Stock Summary.` : ''));
+        setSaving(false);
+        return;
+      }
       logActivity({
         module: 'stock_movements', recordId: movementId,
         recordLabel: `DO ${updatePayload.do_number || '—'} · ${updatePayload.product_name} · Lot ${lotNo || '—'}`,
@@ -1354,6 +1400,16 @@ function OutwardForm() {
       dispatch_round: fromDispatch ? dispatchRound : null,
     };
 
+    // 2026-10-26: take the stock FIRST, through adjust_lot_stock (locked,
+    // never below 0). If it is refused — not enough stock, or anything else —
+    // the DO is not saved at all. Replaces the old best-effort decrement that
+    // ran after the insert and swallowed its errors.
+    const partyCol = PARTY_COLUMN[form.warehouse];
+    if (!partyCol || !lotNo) { setError('Select a Warehouse and a Lot No that exists in Stock Summary.'); setSaving(false); return; }
+    const actingEmail = activeDoer?.email ?? user?.email ?? null;
+    const stockErr = await adjustLotStock(partyCol, lotNo, -(numArticles ?? 0), -(totalQty ?? 0), actingEmail);
+    if (stockErr) { setError(friendlyStockError(stockErr)); setSaving(false); return; }
+
     // insertOutwardWithRetry (not a plain insert) so a DO Number collision
     // under concurrent saves for the same warehouse gets one fresh number
     // and a retry instead of a raw DB error — see that function's comment
@@ -1363,36 +1419,18 @@ function OutwardForm() {
       form.warehouse,
       doNumber => setForm(f => ({ ...f, doNumber }))
     );
-    if (moveErr) { setError(moveErr.message || 'Failed to save entry.'); setSaving(false); return; }
+    if (moveErr) {
+      // The DO wasn't saved, so the stock taken above goes back.
+      const undoErr = await adjustLotStock(partyCol, lotNo, numArticles ?? 0, totalQty ?? 0, actingEmail);
+      setError((moveErr.message || 'Failed to save entry.') + (undoErr ? ` Also, the stock could not be put back (${friendlyStockError(undoErr)}) — please check Stock Summary.` : ''));
+      setSaving(false);
+      return;
+    }
     logActivity({
       module: 'stock_movements', recordId: newId || saved?.do_number || movementPayload.do_number,
       recordLabel: `DO ${saved?.do_number || '—'} · ${movementPayload.product_name} · Lot ${lotNo || '—'}`,
       action: 'insert', after: saved,
     });
-
-    // Best-effort stock_lots decrement — only when there's a lot to match
-    // against and the warehouse is one of the known parties. Never blocks
-    // the save: a missing lot, an "Other" warehouse, or an update error
-    // here just means the movement stands without touching stock_lots.
-    const partyCol = PARTY_COLUMN[form.warehouse];
-    if (lotNo && partyCol) {
-      try {
-        const { data: existingLots } = await findOutwardLot(lotNo);
-        const existing = existingLots?.[0];
-        if (existing) {
-          await supabase.from('stock_lots')
-            .update({
-              [partyCol]: (existing[partyCol] ?? 0) - (numArticles ?? 0),
-              quantity: (existing.quantity ?? 0) - (totalQty ?? 0),
-              updated_at: new Date().toISOString(),
-              updated_by: activeDoer?.email ?? user?.email ?? null,
-            })
-            .eq('id', existing.id);
-        }
-      } catch (e) {
-        console.error('Outward stock_lots decrement failed (movement was still logged):', e);
-      }
-    }
 
     await afterSave(newId);
     setSaving(false);
@@ -1562,17 +1600,14 @@ function OutwardForm() {
                 <label className={labelCls}>No of Barrels <span className="text-red-mrt">*</span></label>
                 <input type="number" className={inputCls} value={form.numArticles} onChange={onNumArticlesChange} />
                 {/* 2026-10-13: what the lot has at this warehouse, and (from
-                    the Board) what the order asks for. Warning only — never blocks. */}
+                    the Board) what the order asks for. 2026-10-26: more than
+                    available blocks Save (overStockMsg), new and edit. */}
                 {currentLotStock && (isEditing ? (
                   <p className="text-g500 text-[11px] mt-1">Available (after this DO): {currentLotStock.available}</p>
                 ) : (
-                  <>
-                    <p className="text-g600 text-[11px] mt-1">Available at {currentLotStock.warehouse} (Lot {currentLotStock.lotNo}): <strong className="text-blk">{currentLotStock.available} barrels</strong></p>
-                    {enteredBarrels !== null && enteredBarrels > currentLotStock.available && (
-                      <p className="text-red-mrt text-[11px] font-bold mt-0.5">Only {currentLotStock.available} barrels available at {currentLotStock.warehouse} — you entered {enteredBarrels}.</p>
-                    )}
-                  </>
+                  <p className="text-g600 text-[11px] mt-1">Available at {currentLotStock.warehouse} (Lot {currentLotStock.lotNo}): <strong className="text-blk">{currentLotStock.available} barrels</strong></p>
                 ))}
+                {overStockMsg && <p className="text-red-mrt text-[11px] font-bold mt-0.5">{overStockMsg}</p>}
                 {fromDispatch && orderBarrels !== null && (
                   <p className="text-g600 text-[11px] mt-0.5">Order needs (remaining): <strong className="text-blk">{orderBarrels} barrels</strong></p>
                 )}
@@ -1613,7 +1648,7 @@ function OutwardForm() {
               </div>
             </div>
             {/* 2026-10-16: why Save is blocked (no lot / no packing / no stock). */}
-            {showSaveBlock && saveBlock !== lotWarning && (
+            {showSaveBlock && saveBlock !== lotWarning && saveBlock !== overStockMsg && (
               <p className="text-amber-700 text-[11.5px] font-semibold mt-2">{saveBlock}</p>
             )}
           </div>
@@ -1677,7 +1712,7 @@ function OutwardForm() {
       </div>
 
       <div className="flex items-center gap-2 p-[14px_20px] bg-g100 border-t border-g200 sticky bottom-0">
-        <Button variant="primary" onClick={() => save()} disabled={!isValid || saving}>
+        <Button variant="primary" onClick={() => save()} disabled={!isValid || saving || !!overStockMsg}>
           {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save Outward Entry'}
         </Button>
         <button type="button" onClick={handleGeneratePDF} disabled={saving}

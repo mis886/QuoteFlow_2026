@@ -77,6 +77,7 @@ import { StockMovementWarehouse } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { Loader2, Search, X } from 'lucide-react';
+import { friendlyStockError } from '../lib/utils';
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
@@ -369,7 +370,7 @@ export function NewStockInward() {
         if (newPartyCol && newPartyCol !== oldPartyCol) patch[newPartyCol] = (lotRow[newPartyCol] ?? 0) + (barrels ?? 0);
 
         const { error: lotErr } = await supabase.from('stock_lots').update(patch).eq('id', original.lotId);
-        if (lotErr) { setError(lotErr.message); setSaving(false); return; }
+        if (lotErr) { setError(friendlyStockError(lotErr)); setSaving(false); return; }
       } else if (newPartyCol && whLotNo) {
         const { data: newLots, error: findNewErr } = await supabase
           .from('stock_lots').select('*').ilike('wh_lot_no', whLotNo).limit(1);
@@ -405,7 +406,7 @@ export function NewStockInward() {
               created_by: activeDoer?.email ?? user?.email ?? null,
             })).error;
 
-        if (lotErr) { setError(lotErr.message); setSaving(false); return; }
+        if (lotErr) { setError(friendlyStockError(lotErr)); setSaving(false); return; }
       }
 
       const { error: moveErr } = await supabase.from('stock_movements').update({

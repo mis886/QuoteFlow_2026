@@ -7,7 +7,31 @@ export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himala
 // The transporter named on an Outward (DO) entry — the typed Other
 // Transporter when "Other" is picked. '' = none. Shared by the DO form's
 // Delivery check and the DO email body (SendEmailModal), so both agree.
-export const outwardTransporterName = (m: { transporter?: string | null; otherTransporter?: string | null }): string =>
+// 2026-10-26: a stock change refused by the database — adjust_lot_stock's
+// NOT_ENOUGH_STOCK / LOT_NOT_FOUND / UNKNOWN_WAREHOUSE, or a stock_lots
+// "never below 0" constraint (supabase/migrations/20261026150000_stock_lots_no_negative.sql)
+// — as a message for the user.
+const STOCK_COLUMN_WAREHOUSE: Record<string, string> = {
+  qty_hariom: 'Hariom', qty_reliable: 'Reliable', qty_swastik: 'Swastik', qty_balaji: 'BALAJI',
+};
+export function friendlyStockError(err: any): string {
+  const msg: string = err?.message || String(err ?? '');
+  const tagged = msg.match(/(NOT_ENOUGH_STOCK|LOT_NOT_FOUND|UNKNOWN_WAREHOUSE): (.*)$/);
+  if (tagged) {
+    const detail = tagged[2].charAt(0).toUpperCase() + tagged[2].slice(1);
+    return tagged[1] === 'NOT_ENOUGH_STOCK' ? `Not enough stock. ${detail}.` : `${detail}.`;
+  }
+  const col = msg.match(/stock_lots_(qty_\w+|quantity)_nonneg/);
+  if (col) {
+    const wh = STOCK_COLUMN_WAREHOUSE[col[1]];
+    return wh
+      ? `Can't save: this would make the ${wh} stock of this lot go below 0 (that stock has probably already been dispatched).`
+      : `Can't save: this would make the lot's Total Quantity go below 0 (that stock has probably already been dispatched).`;
+  }
+  return msg || 'Stock could not be updated.';
+}
+
+export const outwardTransporterName =(m: { transporter?: string | null; otherTransporter?: string | null }): string =>
   ((m.transporter === 'Other' ? m.otherTransporter : m.transporter) || '').trim();
 
 // ── Payment Terms — shared across Orders, Quotations, and Customers ──────────
