@@ -854,7 +854,7 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard cards={boardVisible} qty={boardQty} invoices={boardInvoices} deliveredOrders={boardVisibleDeliveredOrders} deliveredEntryIds={deliveredEntryIds} now={now}
+        <DispatchBoard key={boardFilter} cards={boardVisible} qty={boardQty} invoices={boardInvoices} deliveredOrders={boardVisibleDeliveredOrders} deliveredEntryIds={deliveredEntryIds} now={now}
           onOpen={boardFilter === 'delivered' ? openDeliveredCard : openDrawer}
           entryActions={boardFilter === 'delivered' ? deliveredEntryActions : undefined}
           renderExpanded={boardFilter === 'delivered' ? (c => <DispatchLineItemsPanel entry={c.entry} order={c.order} />) : undefined}

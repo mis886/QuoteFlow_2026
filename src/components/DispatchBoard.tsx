@@ -539,16 +539,15 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
     const pb = b.kind === 'card' ? b.card.position.plannedAt || '' : '';
     return pa.localeCompare(pb);
   });
-  const totalDelayed = cards.filter(c => c.state === 'late').length;
-
-  const tiles: { key: ColumnNo | 'all'; top: string; title: string; count: number; delayed: number }[] = [
-    { key: 'all', top: 'ALL', title: 'All orders', count: cards.length + deliveredOrders.length, delayed: totalDelayed },
-    ...DISPATCH_STEPS.map(s => {
+  // 2026-10-30: no "All orders" tile — the All pill above (All | On hold |
+  // Partially Dispatched | Delivered) already shows everything. With no tile
+  // picked the list shows all rows; clicking the picked tile again clears it.
+  const tiles: { key: ColumnNo; top: string; title: string; count: number; delayed: number }[] =
+    DISPATCH_STEPS.map(s => {
       const list = byColumn.get(s.no) || [];
       const extra = s.no === DONE_COLUMN ? deliveredOrders.length : 0;
       return { key: s.no, top: stepLabel(s.no), title: s.title, count: list.length + extra, delayed: list.filter(c => c.state === 'late').length };
-    }),
-  ];
+    });
 
   return (
     <div className="flex-1 min-h-0 flex flex-col px-6 pb-5 pt-[14px] gap-3">
@@ -557,7 +556,8 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
         {tiles.map(t => {
           const on = stepFilter === t.key;
           return (
-            <button key={String(t.key)} type="button" onClick={() => setStepFilter(t.key)} aria-pressed={on}
+            <button key={String(t.key)} type="button" onClick={() => setStepFilter(on ? 'all' : t.key)} aria-pressed={on}
+              title={on ? 'Click again to show all steps' : undefined}
               className={`text-left rounded-[6px] p-[7px_8px] min-w-0 border transition-colors ${on ? 'border-red-mrt bg-red-lt' : 'border-g200 bg-white hover:bg-g100'}`}>
               <div className="flex items-start justify-between gap-1">
                 <span className="font-mono text-[8.5px] font-bold tracking-[1px] text-red-mrt">{t.top}</span>
