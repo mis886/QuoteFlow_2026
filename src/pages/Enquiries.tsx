@@ -261,7 +261,8 @@ export function Enquiries() {
                   <SortTh col="status" label="Status" />
                   <SortTh col="age"    label="Age" />
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
-                  <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
+                  {/* w-[40%]: the table's spare width goes here, after the buttons. */}
+                  <th className="w-[40%] font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -284,9 +285,12 @@ export function Enquiries() {
                             {e.created_at ? fmtIST(new Date(e.created_at), 'dd MMM HH:mm') : '--'}
                           </td>
                           <td className="px-[13px] py-[10px] align-top">
-                            <div className="font-semibold">{e.cust}{(() => { const sl = siteLabel(customerOfDoc(e, data.customers), e.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
-                            {(() => { const saved = (e as any).customerTier as string; const t = saved || (() => { const ct = customerOfDoc(e, data.customers)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
-                            <div className="text-[11px] text-g500">{e.contact}</div>
+                            {/* Capped so a very long name wraps instead of widening the column. */}
+                            <div className="max-w-[340px]">
+                              <div className="font-semibold">{e.cust}{(() => { const sl = siteLabel(customerOfDoc(e, data.customers), e.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
+                              {(() => { const saved = (e as any).customerTier as string; const t = saved || (() => { const ct = customerOfDoc(e, data.customers)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
+                              <div className="text-[11px] text-g500">{e.contact}</div>
+                            </div>
                           </td>
                           <td className="px-[13px] py-[10px] align-top">
                             {(() => {
@@ -309,7 +313,7 @@ export function Enquiries() {
                              <span className="text-red-mrt"><span className="inline-block w-[7px] h-[7px] rounded-full bg-red-mrt mr-1 animate-pulse"></span>{Math.floor(e.ageH/24)}d {Math.round(e.ageH%24)}h</span>
                             }
                           </td>
-                          <td className="px-[13px] py-[10px] align-top">
+                          <td className="px-[13px] py-[10px] align-top whitespace-nowrap">
                             {e.qRef ? <span className="font-mono text-[10.5px] font-bold text-sQ">{e.qRef}</span> : <span className="text-g400 text-[11px]">--</span>}
                           </td>
                           <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
