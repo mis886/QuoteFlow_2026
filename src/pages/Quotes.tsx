@@ -81,7 +81,6 @@ export function Quotes() {
       else if (sortCol === 'status') { av = a.status; bv = b.status; }
       // "value" = Grand Total (the Value excl. GST column was removed from the list).
       else if (sortCol === 'value') { av = getEffectiveTotals(a).grandTotal; bv = getEffectiveTotals(b).grandTotal; }
-      else if (sortCol === 'items') { av = a.items.length; bv = b.items.length; }
       else if (sortCol === 'sent_at') { av = a.sent_at || ''; bv = b.sent_at || ''; }
       else { av = a.date; bv = b.date; }
       if (av < bv) return sortDir === 'asc' ? -1 : 1;
@@ -222,7 +221,6 @@ export function Quotes() {
                   <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">ENQ Ref</th>
                   <SortTh col="cust">Customer - Unit</SortTh>
                   <SortTh col="date">Date</SortTh>
-                  <SortTh col="items">Items</SortTh>
                   <SortTh col="value" right>Grand Total</SortTh>
                   <SortTh col="status">Status</SortTh>
                   <SortTh col="sent_at">Punched At</SortTh>
@@ -231,7 +229,7 @@ export function Quotes() {
               </thead>
               <tbody>
                 {filteredQuotes.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center p-8 text-g400 text-[13px]">No quotations match</td></tr>
+                  <tr><td colSpan={8} className="text-center p-8 text-g400 text-[13px]">No quotations match</td></tr>
                 ) : (
                   filteredQuotes.map(q => {
                     // Every negotiation round's revised prices, folded in round order
@@ -256,11 +254,6 @@ export function Quotes() {
                           </td>
                           <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
                             {q.date ? fmtIST(new Date(q.date), 'dd-MMM-yyyy') : '--'}
-                          </td>
-                          <td className="px-[13px] py-[10px] align-middle">
-                            <span className="font-mono text-[10px] font-bold bg-g100 text-g600 px-[7px] py-[2px] rounded-full inline-flex items-center">
-                              {q.items.length} item(s)
-                            </span>
                           </td>
                           <td className="px-[13px] py-[10px] align-middle text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
                           <td className="px-[13px] py-[10px] align-middle">
@@ -329,7 +322,7 @@ export function Quotes() {
 
                         {isExpanded && (
                           <tr className="bg-sQ/[0.02] border-b-2 border-sQ">
-                            <td colSpan={9} className="p-0">
+                            <td colSpan={8} className="p-0">
                               <div className="p-[10px_16px]">
                                 <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sQ mb-[7px]">Line Items -- {q.id}</div>
                                 <table className="w-full border-collapse text-[11.5px] m-0 mb-2">
