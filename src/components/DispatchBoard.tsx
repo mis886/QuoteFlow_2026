@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pause, Play, Undo2 } from 'lucide-react';
+import { Pause, Play, Undo2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { fmtIST } from '../lib/utils';
 import type { Order } from '../lib/types';
 import { DispatchEntryCells, DispatchEntryHeadCells, thCenterClsCompact } from './DispatchEntryCells';
@@ -256,12 +256,23 @@ function InvoiceCell({ invoices }: { invoices: string[] }) {
 // column is minmax(Npx, Nfr): at its minimum the row is 1074px (fits 1366px
 // with the sidebar open); on wider screens the extra width is shared out in
 // proportion across all columns instead of piling up after Customer.
-// Order 100 · Customer 250 · Invoice 76 · Ordered/Dispatched/Remaining 80 ·
-// Current step 120 · Progress 120 (11 dots) · Due 112, 4px gaps, 12px side padding.
-const GRID = 'grid grid-cols-[minmax(100px,100fr)_minmax(250px,250fr)_minmax(76px,76fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(120px,120fr)_minmax(120px,120fr)_minmax(112px,112fr)] gap-x-1 px-3 text-center';
-const GRID_MIN_W = 'min-w-[1074px]';
+// Order 100 · Punched At 100 · Customer 250 · Invoice 76 · Ordered/Dispatched/
+// Remaining 80 · Current step 120 · Progress 120 (11 dots) · Due 112, 4px gaps,
+// 12px side padding.
+const GRID = 'grid grid-cols-[minmax(100px,100fr)_minmax(100px,100fr)_minmax(250px,250fr)_minmax(76px,76fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(120px,120fr)_minmax(120px,120fr)_minmax(112px,112fr)] gap-x-1 px-3 text-center';
+const GRID_MIN_W = 'min-w-[1178px]';
 
-function Row({ card, now, onOpen, qty, orderInvoices, deliveredEntryIds }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[]; deliveredEntryIds?: Set<string> }) {
+// 2026-10-30: "Punched At" = when the order came into Dispatch ("Order
+// Pending for Dispatch" clicked — orders.sent_to_dispatch_at), never the
+// order's created_at. Every row of one order shows the same time. Old
+// orders imported before the Dispatch module have none: an entry row falls
+// back to the entry's created_at, anything else shows "--".
+const fmtPunched = (iso?: string) => iso ? fmtIST(new Date(iso), 'dd MMM HH:mm') : '--';
+function PunchedCell({ at }: { at?: string }) {
+  return <div className="font-mono text-[11.5px] text-g700 whitespace-nowrap">{fmtPunched(at)}</div>;
+}
+
+function Row({ card, now, onOpen, qty, orderInvoices, deliveredEntryIds, punchedAt }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[]; deliveredEntryIds?: Set<string>; punchedAt?: string }) {
   const order = card.order;
   const orderId = card.kind === 'order' ? card.order.id : card.entry.orderId;
   // An entry row is one dispatch → its own invoice. An order row (what is
@@ -291,6 +302,9 @@ function Row({ card, now, onOpen, qty, orderInvoices, deliveredEntryIds }: { car
     >
       {/* Order */}
       <OrderCell soNumber={order?.soNumber} orderId={orderId} centered />
+
+      {/* Punched At — sent to Dispatch */}
+      <PunchedCell at={punchedAt} />
 
       {/* Customer · product */}
       <CustomerCell cust={order?.cust} lines={lines} />
@@ -379,6 +393,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
   return (
     <div className={`${GRID} items-center py-[10px] border-b border-g200 last:border-b-0`}>
       <OrderCell soNumber={o.soNumber} orderId={o.id} centered />
+      <PunchedCell at={o.sentToDispatchAt} />
       <CustomerCell cust={o.cust} lines={lines} />
       <InvoiceCell invoices={[]} />
       <QtyCells qty={qty} />
@@ -477,6 +492,11 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
 
 type ListItem = { kind: 'card'; card: BoardCard } | { kind: 'deliveredOrder'; row: DeliveredOrderRow };
 
+// A row's Punched At (see PunchedCell).
+const punchedAtOf = (it: ListItem): string | undefined => it.kind === 'deliveredOrder'
+  ? it.row.order.sentToDispatchAt
+  : it.card.order?.sentToDispatchAt || (it.card.kind === 'entry' ? it.card.entry.created_at : undefined);
+
 // Newest-first key for Done rows: email sent, else entry created, else order date.
 const doneKey = (it: ListItem) => it.kind === 'deliveredOrder'
   ? (it.row.order.created_at || it.row.order.poDate || '')
@@ -527,7 +547,20 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
     ...(stepFilter === 'all' ? cards : (byColumn.get(stepFilter) || [])).map(card => ({ kind: 'card' as const, card })),
     ...(stepFilter === 'all' || stepFilter === DONE_COLUMN ? deliveredOrders.map(row => ({ kind: 'deliveredOrder' as const, row })) : []),
   ];
+  // Punched At header: newest first → oldest first → back to the normal sort.
+  const [punchSort, setPunchSort] = React.useState<'none' | 'desc' | 'asc'>('none');
+  const cyclePunchSort = () => setPunchSort(s => s === 'none' ? 'desc' : s === 'desc' ? 'asc' : 'none');
+  const punchMs = (it: ListItem) => { const v = punchedAtOf(it); const t = v ? new Date(v).getTime() : NaN; return Number.isNaN(t) ? null : t; };
   const shown = items.sort((a, b) => {
+    if (punchSort !== 'none') {
+      const ta = punchMs(a), tb = punchMs(b);
+      // Rows without a time stay at the bottom either way.
+      if (ta !== tb) {
+        if (ta === null) return 1;
+        if (tb === null) return -1;
+        return punchSort === 'desc' ? tb - ta : ta - tb;
+      }
+    }
     const sa: TimeState = a.kind === 'card' ? a.card.state : 'done';
     const sb: TimeState = b.kind === 'card' ? b.card.state : 'done';
     const r = STATE_RANK[sa] - STATE_RANK[sb];
@@ -580,14 +613,24 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
           ) : (
             <>
               <div className={`sticky top-0 z-[1] ${GRID} items-center py-[9px] bg-g100 border-b border-g200 font-mono text-[9.5px] font-bold tracking-[1.5px] uppercase text-g500`}>
-                <div>Order</div><div>Customer · Product</div><div>Invoice No</div>
+                <div>Order</div>
+                <div role="button" tabIndex={0} onClick={cyclePunchSort}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cyclePunchSort(); } }}
+                  title={punchSort === 'none' ? 'Sort newest first' : punchSort === 'desc' ? 'Sort oldest first' : 'Back to the normal order'}
+                  className="inline-flex items-center justify-center gap-1 cursor-pointer select-none hover:text-blk group">
+                  Punched At
+                  {punchSort === 'asc' ? <ChevronUp size={10} className="text-red-mrt" />
+                    : punchSort === 'desc' ? <ChevronDown size={10} className="text-red-mrt" />
+                    : <ChevronsUpDown size={10} className="text-g300 group-hover:text-g400" />}
+                </div>
+                <div>Customer · Product</div><div>Invoice No</div>
                 <div>Ordered</div><div>Dispatched</div><div>Remaining</div>
                 <div>Current step</div><div>Progress</div><div>Due</div>
               </div>
               {shown.length === 0 ? (
                 <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
               ) : shown.slice(0, limit).map(it => it.kind === 'card' ? (
-                <Row key={it.card.key} card={it.card} now={now} onOpen={onOpen} deliveredEntryIds={deliveredEntryIds}
+                <Row key={it.card.key} card={it.card} now={now} onOpen={onOpen} deliveredEntryIds={deliveredEntryIds} punchedAt={punchedAtOf(it)}
                   qty={qty?.get(it.card.kind === 'order' ? it.card.order.id : it.card.entry.orderId)}
                   orderInvoices={it.card.kind === 'order' ? invoices?.get(it.card.order.id) : undefined} />
               ) : (
