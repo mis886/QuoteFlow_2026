@@ -1,21 +1,25 @@
-// Saves Step 8–10 rows (dispatch_steps, entry_id = the entry) for ONE dispatch
+// Saves Step 8–11 rows (dispatch_steps, entry_id = the entry) for ONE dispatch
 // entry. The one place these rows are written: the board's "Invoice done" /
-// "LR received" / "Documents sent" buttons (Dispatch.tsx runEntryStepAction),
-// and — since 2026-10-23 — the entry page, which completes each step by
-// itself once its proof is saved (autoCompleteEntrySteps).
+// "Bhiwandi informed" / "LR received" / "Documents sent" buttons
+// (Dispatch.tsx runEntryStepAction), and — since 2026-10-23 — the entry
+// page, which completes each step by itself once its proof is saved
+// (autoCompleteEntrySteps).
 import { supabase } from './supabase';
 import { logActivity } from './activityLog';
 import type { DispatchEntry } from './types';
-import { DispatchStepRecord, STEP_ACTIONS, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, stepDef } from './dispatchFlow';
+import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, stepDef } from './dispatchFlow';
 
-/** The entry as saved in the database right now — the fields the Step 8–10 rules read. */
+/** The entry as saved in the database right now — the fields the Step 8–11 rules read. */
 async function freshEntry(entry: DispatchEntry): Promise<DispatchEntry> {
   const { data: fresh, error } = await supabase.from('dispatch_entries')
-    .select('invoice_number, lr_files, lr_url, email_sent_at, fulfillment_type, created_at').eq('id', entry.id).single();
+    .select('invoice_number, invoice_eway_bill_files, invoice_eway_bill_url, bhiwandi_email_sent_at, lr_files, lr_url, email_sent_at, fulfillment_type, created_at').eq('id', entry.id).single();
   if (error) throw error;
   return {
     ...entry,
     invoiceNumber: fresh.invoice_number || undefined,
+    invoiceEwayBillFiles: Array.isArray(fresh.invoice_eway_bill_files) ? fresh.invoice_eway_bill_files : undefined,
+    invoiceEwayBillUrl: fresh.invoice_eway_bill_url || undefined,
+    bhiwandiEmailSentAt: fresh.bhiwandi_email_sent_at || undefined,
     lrFiles: Array.isArray(fresh.lr_files) ? fresh.lr_files : undefined,
     lrUrl: fresh.lr_url || undefined,
     emailSentAt: fresh.email_sent_at || undefined,
@@ -24,7 +28,7 @@ async function freshEntry(entry: DispatchEntry): Promise<DispatchEntry> {
   };
 }
 
-/** One entry's saved Step 8–10 rows. */
+/** One entry's saved Step 8–11 rows. */
 export async function loadEntryStepRecords(entryId: string): Promise<DispatchStepRecord[]> {
   const { data: rows, error } = await supabase.from('dispatch_steps').select('*').eq('entry_id', entryId);
   if (error) throw error;
@@ -34,12 +38,15 @@ export async function loadEntryStepRecords(entryId: string): Promise<DispatchSte
 /**
  * Checks the step's proof against the entry as saved in the database right
  * now (entryStepBlock; the database trigger enforce_dispatch_entry_step_prereqs
- * checks 8 and 9 again), then inserts the action's rows and logs them. Throws
- * with the refusal ("Add invoice no. first" / "Upload LR first" / "Send Email
+ * checks 8, 9 and 10 again), then inserts the action's rows and logs them.
+ * Throws with the refusal ("Add invoice no. and attach Invoice / Eway Bill
+ * first" / "Send email to Bhiwandi first" / "Upload LR first" / "Send Email
  * to Client first") or the database error. Returns the inserted rows (raw, as
  * Supabase returns them).
+ * `manualStep9`: "Mark Step 9 done (Bhiwandi already informed)" — Step 9 is
+ * saved without a Bhiwandi email, with the remark the database accepts for it.
  */
-export async function saveEntryStepRows({ entry, entries, records, action, remark, doneBy, orderLabel, logNote }: {
+export async function saveEntryStepRows({ entry, entries, records, action, remark, doneBy, orderLabel, logNote, manualStep9 = false }: {
   entry: DispatchEntry;
   entries: DispatchEntry[];          // every dispatch entry (for the round), may include `entry`
   records: DispatchStepRecord[];     // step records — only this entry's are used
@@ -48,10 +55,12 @@ export async function saveEntryStepRows({ entry, entries, records, action, remar
   doneBy?: string | null;
   orderLabel: string;                // SO no. (or order id) for the activity log
   logNote?: string;                  // "Done (…)" in the log; default the button label
+  manualStep9?: boolean;
 }): Promise<any[]> {
   const e = await freshEntry(entry);
-  const blocked = action.writes.map(w => entryStepBlock(e, w.stepNo)).find(Boolean);
+  const blocked = action.writes.map(w => manualStep9 && w.stepNo === 9 ? undefined : entryStepBlock(e, w.stepNo)).find(Boolean);
   if (blocked) throw new Error(blocked);
+  if (manualStep9) remark = STEP9_MANUAL_REMARK;
   // Which shipment of the order this entry closed (1, 2, …) — same as the
   // drawer's rounds. An entry with no created_at yet counts as the newest.
   const created = (x: DispatchEntry) => (x.created_at ? new Date(x.created_at).getTime() : Infinity);
@@ -85,16 +94,17 @@ export async function saveEntryStepRows({ entry, entries, records, action, remar
 }
 
 /** What each auto-completed step says in the activity log. */
-const AUTO_NOTE: Record<8 | 9 | 10, string> = { 8: 'invoice no. saved', 9: 'LR uploaded', 10: 'email sent' };
+const AUTO_NOTE: Record<8 | 9 | 10 | 11, string> = { 8: 'invoice no. saved', 9: 'email sent to Bhiwandi', 10: 'LR uploaded', 11: 'email sent' };
 
 /**
- * 2026-10-23: completes an entry's Steps 8 → 9 → 10 in order, each only
- * while the entry is AT that step and its proof is saved (invoice no. / LR
- * file / email sent — entryStepBlock), with the same row and log as the
- * board buttons. Never writes a second row for a step or moves an entry
- * back. Self Pickup skips 9 as usual (entryPosition). `skipSteps` stops at
- * a step this login may not complete. Returns the steps written; throws
- * "Step N was not marked done (…)" if a write fails.
+ * 2026-10-23: completes an entry's Steps 8 → 9 → 10 → 11 in order, each only
+ * while the entry is AT that step and its proof is saved (invoice no. +
+ * invoice file / Bhiwandi email / LR file / email sent — entryStepBlock),
+ * with the same row and log as the board buttons. Never writes a second row
+ * for a step or moves an entry back. Self Pickup skips 10 as usual
+ * (entryPosition). `skipSteps` stops at a step this login may not complete.
+ * Returns the steps written; throws "Step N was not marked done (…)" if a
+ * write fails.
  */
 export async function autoCompleteEntrySteps({ entry, entries, doneBy, orderLabel, skipSteps = [] }: {
   entry: DispatchEntry;
@@ -109,12 +119,12 @@ export async function autoCompleteEntrySteps({ entry, entries, doneBy, orderLabe
   try {
     const e = await freshEntry(entry);
     let records = await loadEntryStepRecords(entry.id);
-    for (let guard = 0; guard < 3; guard++) {
+    for (let guard = 0; guard < 4; guard++) {
       step = entryPosition(e, records).column;
-      if (step > 10 || skipSteps.includes(step) || entryStepBlock(e, step)) break;
+      if (step > 11 || skipSteps.includes(step) || entryStepBlock(e, step)) break;
       try {
         const inserted = await saveEntryStepRows({
-          entry: e, entries, records, action: STEP_ACTIONS[step as StepNo]![0], doneBy, orderLabel, logNote: AUTO_NOTE[step as 8 | 9 | 10],
+          entry: e, entries, records, action: STEP_ACTIONS[step as StepNo]![0], doneBy, orderLabel, logNote: AUTO_NOTE[step as 8 | 9 | 10 | 11],
         });
         records = [...records, ...inserted.map(mapStepFromDB)];
         written.push(step);
@@ -126,7 +136,7 @@ export async function autoCompleteEntrySteps({ entry, entries, doneBy, orderLabe
       }
     }
   } catch (err: any) {
-    const label = step && step <= 10 ? STEP_ACTIONS[step as StepNo]?.[0]?.label : undefined;
+    const label = step && step <= 11 ? STEP_ACTIONS[step as StepNo]?.[0]?.label : undefined;
     throw new Error(`Step ${step ?? 8} was not marked done (${err?.message || 'check your connection'})${label ? `. Use “${label}” on the Dispatch board` : ''}`);
   }
   return written;

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { customerOfDoc, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, remainingByLine, totalRemaining } from '../lib/utils';
+import { customerOfDoc, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
@@ -10,9 +10,9 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
-import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
+import { SendEmailModal, DispatchEmailAttachment, BhiwandiEmailDetails } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
-import { DispatchStepRecord, entryPosition, isImportedEntry } from '../lib/dispatchFlow';
+import { DispatchStepRecord, entryPosition, isImportedEntry, entryHasInvoice, entryHasInvoiceFile } from '../lib/dispatchFlow';
 import { autoCompleteEntrySteps, loadEntryStepRecords } from '../lib/dispatchEntrySteps';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
@@ -36,8 +36,9 @@ type SingleDocKey = 'supplierPortal' | 'termCardAttachment';
 type RequiredDocKey = MultiDocKey | 'coa' | 'supplierPortal';
 const REQUIRED_DOC_LABELS: Record<RequiredDocKey, string> = { invoiceEwayBill: 'Invoice / Eway Bill', lr: 'LR', coa: 'COA', supplierPortal: 'Supplier Portal' };
 // The Dispatch step from which each one blocks Save (that step or later,
-// incl. Done = 11). Before it the field only shows its red *.
-const REQUIRED_DOC_STEP: Record<RequiredDocKey, number> = { invoiceEwayBill: 8, lr: 9, coa: 10, supplierPortal: 10 };
+// incl. Done = 12). Before it the field only shows its red *. 2026-10-30:
+// LR / COA / Supplier Portal moved one step on with the new Step 9 (Bhiwandi).
+const REQUIRED_DOC_STEP: Record<RequiredDocKey, number> = { invoiceEwayBill: 8, lr: 10, coa: 11, supplierPortal: 11 };
 
 const DISPATCH_DOC_FIELDS: { key: DispatchDocKey; label: string; urlKey: keyof DispatchEntry; nameKey: keyof DispatchEntry; filesKey?: keyof DispatchEntry; slug: string; multi: boolean }[] = [
   { key: 'invoiceEwayBill', label: 'Invoice / Eway Bill', urlKey: 'invoiceEwayBillUrl', nameKey: 'invoiceEwayBillName', filesKey: 'invoiceEwayBillFiles', slug: 'invoice-eway-bill', multi: true },
@@ -143,7 +144,7 @@ export function NewDispatchEntry() {
   const dispatchHome = fromBoard
     ? `/dispatch?view=board${boardPill && /^[a-z]+$/.test(boardPill) ? `&pill=${boardPill}` : ''}`
     : '/dispatch';
-  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent } = useAppStore();
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent } = useAppStore();
   const canEditTier = canDeleteRecords(user?.email);
   // This whole page is locked to view-only for isReadOnlyUser (the Bhiwandi
   // warehouse login) — see the <fieldset> wraps below — with one deliberate
@@ -216,8 +217,8 @@ export function NewDispatchEntry() {
   // the Customer & Contact card (not gated behind Status, same as Remark).
   const [invoiceNumber, setInvoiceNumber] = useState('');
   // 2026-10-23: while an existing entry sits at Dispatch Step 8 its Invoice
-  // Number is required; at Step 9 (Delivery) its LR. Saving the proof — or
-  // sending Email to Client for Step 10 — completes that step
+  // Number is required; at Step 10 (Delivery) its LR. Saving the proof — or
+  // sending to Bhiwandi for Step 9 / Email to Client for Step 11 — completes that step
   // (autoCompleteEntrySteps). entrySteps = that entry's dispatch_steps rows
   // (null until loaded / for a new entry).
   const [entrySteps, setEntrySteps] = useState<DispatchStepRecord[] | null>(null);
@@ -578,26 +579,66 @@ export function NewDispatchEntry() {
         ? newDispatchBlockReason(data.orders.find(o => o.id === orderRef), orderRef, data.dispatchEntries)
         : null;
 
-  // The Step 8 / 9 rules apply to real entries only — not old imported ones —
+  // The Step 8 / 10 rules apply to real entries only — not old imported ones —
   // and only to a login that can fill that field in: Step 8 not for the
   // Bhiwandi login (isReadOnlyUser, can't type an invoice no. but must still
-  // save its LR upload); Step 9 only for logins that can edit LR (canEditLr).
+  // save its LR upload); Step 10 (LR) only for logins that can edit LR (canEditLr).
   const invoiceRuleApplies = (e: DispatchEntry) => !isImportedEntry(e) && !isReadOnlyUser;
   const lrRuleApplies = (e: DispatchEntry) => !isImportedEntry(e) && canEditLr;
   const currentEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : undefined;
-  // Position as the form stands (Delivery / Self Pickup decides Step 9).
+  // Position as the form stands (Delivery / Self Pickup decides Step 10).
   const currentStep = currentEntry && entrySteps !== null
     ? entryPosition({ ...currentEntry, fulfillmentType: type || currentEntry.fulfillmentType }, entrySteps).column
     : undefined;
   const invoiceRequired = !!currentEntry && invoiceRuleApplies(currentEntry) && currentStep === 8;
-  const lrRequired = !!currentEntry && lrRuleApplies(currentEntry) && currentStep === 9;
+  const lrRequired = !!currentEntry && lrRuleApplies(currentEntry) && currentStep === 10;
+
+  // 2026-10-30: "Send to Bhiwandi" (Dispatch Step 9) — the same logins as
+  // Email to Client (not the read-only Bhiwandi login), once the entry is
+  // SAVED with an invoice no. and an Invoice / Eway Bill file. Can be resent.
+  const canSendBhiwandi = !!currentEntry && !isReadOnlyUser && entryHasInvoice(currentEntry) && entryHasInvoiceFile(currentEntry);
+  const bhiwandiAttachments = dispatchEmailAttachments.filter(a => a.label === 'Invoice / Eway Bill');
+  const bhiwandiDetails: BhiwandiEmailDetails | undefined = currentEntry && selectedOrder ? {
+    orderId: selectedOrder.id,
+    soNumber: selectedOrder.soNumber,
+    customer: selectedOrder.cust,
+    invoiceNumber: currentEntry.invoiceNumber,
+    fulfillment: currentEntry.fulfillmentType === 'self_pickup' ? 'Self Pickup' : 'Delivery',
+    transporter: currentEntry.transporter,
+    vehicleNumber: currentEntry.vehicleNumber,
+    // The saved dispatch's own lines: barrels = No of Barrels, qty = barrels × packing.
+    items: (currentEntry.items || []).filter(i => (Number(i.qty) || 0) > 0).map(i => {
+      const barrels = Number(i.qty) || 0;
+      const packing = parseFloat(i.packing || '') || 0;
+      return {
+        product: ((i as any).billingName || i.desc || 'Item').trim(),
+        qty: packing ? `${barrels * packing} ${i.uom || ''}`.trim() : `${barrels} ${i.uom || ''}`.trim(),
+        barrels,
+      };
+    }),
+  } : undefined;
+  const [showBhiwandiModal, setShowBhiwandiModal] = useState(false);
+  const openBhiwandiModal = () => {
+    if (!existingEntryId) { setError('Please save the dispatch entry first'); return; }
+    if (!canSendBhiwandi) { setError('Save the invoice no. and an Invoice / Eway Bill file first'); return; }
+    setError('');
+    setShowBhiwandiModal(true);
+  };
+  // Opened from the Board drawer's "Send to Bhiwandi →" (&bhiwandi=1): open
+  // the email once the saved entry has loaded — once only.
+  const bhiwandiAutoOpened = useRef(false);
+  useEffect(() => {
+    if (bhiwandiAutoOpened.current || searchParams.get('bhiwandi') !== '1' || !currentEntry || !bhiwandiDetails) return;
+    bhiwandiAutoOpened.current = true;
+    openBhiwandiModal();
+  }, [currentEntry, !!bhiwandiDetails]);
 
   // 2026-10-26: documents this customer needs with every dispatch. Each one
   // blocks Save only from its own step on (REQUIRED_DOC_STEP) until it has
   // at least one file (saved or freshly picked) — so creating a new entry
   // never blocks. Only for fields this login can edit (LR → canEditLr, the
   // rest → not isReadOnlyUser), not for old imported entries (same as
-  // Step 8 / 9), and never LR for Self Pickup (it skips Step 9).
+  // Step 8 / 10), and never LR for Self Pickup (it skips Step 10).
   // Customer not found / no flags → nothing required, same as before.
   const canEditDoc = (key: RequiredDocKey) => key === 'lr' ? canEditLr : !isReadOnlyUser;
   const requiredDocs: RequiredDocKey[] = [];
@@ -617,7 +658,7 @@ export function NewDispatchEntry() {
   // Red border only on fields a Save was blocked on, until a file is attached.
   const isDocMissing = (key: RequiredDocKey) => blockedDocs.has(key) && isDocRequired(key) && !hasDoc(key);
 
-  // After a save (or Email to Client): completes Steps 8 → 9 → 10 whose
+  // After a save (or an email): completes Steps 8 → 9 → 10 → 11 whose
   // proof now exists, with the same row the board buttons write. Returns a
   // warning if a step couldn't be saved ('' = fine); the save itself stands.
   const completeEntrySteps = async (saved: DispatchEntry, what = 'Saved'): Promise<string> => {
@@ -671,7 +712,7 @@ export function NewDispatchEntry() {
     setError('');
     setBlockedDocs(new Set());
     // 2026-10-23: an entry still at Step 8 can't be saved without its
-    // invoice no., one at Step 9 without an LR file — checked against its
+    // invoice no., one at Step 10 without an LR file — checked against its
     // step rows in the database right now. 2026-10-26: same for the
     // customer's required documents (REQUIRED_DOC_STEP).
     const noInvoice = !invoiceNumber.trim();
@@ -694,8 +735,8 @@ export function NewDispatchEntry() {
         scrollToField(invoiceInputRef.current, invoiceInputRef.current);
         return;
       }
-      if (step === 9 && noLr && lrRuleApplies(existingEntry)) {
-        setLrError('Attach LR to complete Step 9');
+      if (step === 10 && noLr && lrRuleApplies(existingEntry)) {
+        setLrError('Attach LR to complete Step 10');
         setSaving(false);
         scrollToField(lrFieldRef.current);
         return;
@@ -838,7 +879,7 @@ export function NewDispatchEntry() {
       } else {
         saved = await addDispatchEntry(selectedOrderId, type as DispatchFulfillmentType, extra);
       }
-      // 2026-10-23: saved with an invoice no. / LR → complete Step 8 / 9 (edit
+      // 2026-10-23: saved with an invoice no. + file / LR → complete Step 8 / 10 (edit
       // or new entry, from the Board or the Table view).
       const warning = await completeEntrySteps(saved);
       if (warning) {
@@ -1508,6 +1549,21 @@ export function NewDispatchEntry() {
                 other field on this page is locked, so Save can only ever persist
                 an LR change for this user — nothing else can have changed. */}
             <Button variant="dark" disabled={!selectedOrderId || saving} onClick={handleSubmit}>{saving ? 'Saving…' : 'Save'}</Button>
+            {/* 2026-10-30: Dispatch Step 9 — invoice + dispatch details to Bhiwandi. */}
+            {currentEntry?.bhiwandiEmailSentAt && (
+              <span className="text-[11px] text-g500 whitespace-nowrap">
+                Sent to Bhiwandi on {fmtIST(new Date(currentEntry.bhiwandiEmailSentAt), 'dd MMM yyyy, hh:mm a')}
+              </span>
+            )}
+            <Button
+              variant="dark"
+              disabled={!canSendBhiwandi || saving}
+              title={!existingEntryId ? 'Please save the dispatch entry first' : !canSendBhiwandi && !isReadOnlyUser ? 'Save the invoice no. and an Invoice / Eway Bill file first' : undefined}
+              onClick={openBhiwandiModal}
+            >
+              <Mail size={12} />
+              Send to Bhiwandi
+            </Button>
             <Button
               variant="dark"
               disabled={!selectedOrderId || isReadOnlyUser}
@@ -1542,13 +1598,42 @@ export function NewDispatchEntry() {
               setError(`Email was sent, but it could not be recorded: ${err?.message || 'unknown error'}`);
               return;
             }
-            // 2026-10-23: the email is Step 10's proof — complete it (and any
+            // 2026-10-23: the email is Step 11's proof — complete it (and any
             // earlier step whose proof is saved). A failed step write leaves
             // the email recorded and shows the warning here.
             const entry = data.dispatchEntries.find(e => e.id === existingEntryId);
             const warning = entry ? await completeEntrySteps(entry, 'Email sent') : '';
             if (warning) { setShowEmailModal(false); setStepWarning(warning); return; }
             navigate(fromBoard ? dispatchHome : `/dispatch?tab=emailSent&type=${type || 'delivery'}`);
+          }}
+        />
+      )}
+
+      {showBhiwandiModal && selectedOrder && bhiwandiDetails && (
+        <SendEmailModal
+          mode="dispatch"
+          doc={{ id: existingEntryId || '', invoiceNumber } as any}
+          attachments={bhiwandiAttachments}
+          bhiwandi={bhiwandiDetails}
+          settings={data.settings}
+          defaultSignatory={data.signatories.find((s: any) => s.is_default)}
+          onClose={() => setShowBhiwandiModal(false)}
+          onSent={async () => {
+            // Fires only after the email actually went out — stamps
+            // bhiwandi_email_sent_at (Step 9's proof), then completes Step 9
+            // (and any later step whose proof is already saved). Stays on
+            // this page so Email to Client can follow.
+            if (!existingEntryId) return;
+            try {
+              await markDispatchBhiwandiEmailSent(existingEntryId);
+            } catch (err: any) {
+              setError(`Email was sent to Bhiwandi, but it could not be recorded: ${err?.message || 'unknown error'}`);
+              return;
+            }
+            const entry = data.dispatchEntries.find(e => e.id === existingEntryId);
+            const warning = entry ? await completeEntrySteps(entry, 'Sent to Bhiwandi') : '';
+            if (warning) setStepWarning(warning);
+            loadEntryStepRecords(existingEntryId).then(setEntrySteps, () => {});
           }}
         />
       )}

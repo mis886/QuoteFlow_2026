@@ -40,7 +40,7 @@ export function TimeBar({ card, now, wrap = false }: { card: BoardCard; now: num
   const plannedAt = card.position.plannedAt;
   let text: string;
   if (state === 'hold' && card.kind === 'order') text = `On hold · ${card.position.hold?.reason || ''}`;
-  // A done entry: email time if emailed, else when Step 10 was clicked; with
+  // A done entry: email time if emailed, else when Step 11 was clicked; with
   // neither, its order was marked Delivered (List → Delivered).
   else if (state === 'done' && card.kind === 'entry') {
     text = card.entry.emailSentAt ? `Email sent ${fmtClock(card.entry.emailSentAt, now)}`
@@ -125,12 +125,13 @@ export function StepActionButtons({ card, busy, canAct, onAction, onResume, omit
 }
 
 /**
- * Step 8–10 button for a dispatch entry (2026-10-22: these steps are manual):
- * "Invoice done" / "LR received" / "Documents sent". Same lock as Steps 1–7
- * (canAct). Step 8 stays disabled until the entry has an invoice no., Step 9
- * until it has an LR file, Step 10 until Email to Client was sent — with the
- * reason in red under it. `link` is the
- * entry-page button ("Attach Documents & Send →")
+ * Step 8–11 button for a dispatch entry (2026-10-22: these steps are manual):
+ * "Invoice done" / "Bhiwandi informed" / "LR received" / "Documents sent".
+ * Same lock as Steps 1–7 (canAct). Step 8 stays disabled until the entry has
+ * an invoice no. and an Invoice / Eway Bill file, Step 9 until the Bhiwandi
+ * email was sent, Step 10 until it has an LR file, Step 11 until Email to
+ * Client was sent — with the reason in red under it. `link` is the
+ * entry-page button ("Attach Documents & Send →" / "Send to Bhiwandi →")
  * shown next to it.
  */
 export function EntryStepButtons({ card, busy, canAct, onAction, link }: {
@@ -140,7 +141,7 @@ export function EntryStepButtons({ card, busy, canAct, onAction, link }: {
   onAction: (card: BoardEntryCard, action: StepAction) => void;
   link?: React.ReactNode;
 }) {
-  if (card.column > 10) return null;
+  if (card.column === DONE_COLUMN) return null;
   const action = (STEP_ACTIONS[card.column] || [])[0];
   if (!action) return null;
   const blocked = entryStepBlock(card.entry, card.column);
@@ -184,34 +185,35 @@ const itemSummary =(lines: { desc: string; qty: number }[]) => {
   return lines.length > 1 ? `${first} +${lines.length - 1} more` : first;
 };
 
-const stepLabel = (no: ColumnNo) => no === 11 ? 'DONE' : `STEP ${String(no).padStart(2, '0')}`;
+const stepLabel = (no: ColumnNo) => no === DONE_COLUMN ? 'DONE' : `STEP ${String(no).padStart(2, '0')}`;
 
 // ── List view (2026-10-19) ────────────────────────────────────────────────
-// Replaced the 11 kanban columns with: clickable step tiles (filter) + one
-// compact row per card + 10 progress dots. Clicking a row opens the same
+// Replaced the kanban columns with: clickable step tiles (filter) + one
+// compact row per card + 11 progress dots. Clicking a row opens the same
 // DispatchDrawer as before, where every step button / Undo / Edit / Delete
 // lives — so the workflow rules are unchanged, only the layout is new.
 
 type DotState = 'done' | 'current' | 'hold' | 'skipped' | 'upcoming';
 
-/** One dot per step 1–10, worked out from the card's position. */
+/** One dot per step 1–11, worked out from the card's position. Step 9
+ * (Bhiwandi) is a normal dot for every entry; LR (10) is dashed for Self Pickup. */
 function progressDots(card: BoardCard): DotState[] {
   const out: DotState[] = [];
   const selfPickup = card.fulfillment === 'self_pickup';
-  for (let n = 1; n <= 10; n++) {
+  for (let n = 1; n < DONE_COLUMN; n++) {
     if (card.kind === 'order') {
       const cur = card.position.step;
       if (card.position.skipped.includes(n as StepNo)) out.push('skipped');
       else if (n < cur) out.push('done');
       else if (n === cur) out.push(card.position.hold ? 'hold' : 'current');
-      else if (n === 9 && selfPickup) out.push('skipped');
+      else if (n === 10 && selfPickup) out.push('skipped');
       else out.push('upcoming');
     } else {
       // Entry cards: steps 1–7 are already behind them.
       const col = card.column;
       if (n <= 7) out.push(n === 1 && card.order && !needsPaymentCheck(card.order.pay) ? 'skipped' : 'done');
-      else if (n === 9 && selfPickup) out.push('skipped');
-      else if (col === 11 || n < col) out.push('done');
+      else if (n === 10 && selfPickup) out.push('skipped');
+      else if (col === DONE_COLUMN || n < col) out.push('done');
       else if (n === col) out.push('current');
       else out.push('upcoming');
     }
@@ -251,13 +253,13 @@ function InvoiceCell({ invoices }: { invoices: string[] }) {
 
 // Column template for every tab except Delivered (which uses the Table's
 // Email Sent columns — DeliveredTable below). Everything is centred. Each
-// column is minmax(Npx, Nfr): at its minimum the row is 1072px (fits 1366px
+// column is minmax(Npx, Nfr): at its minimum the row is 1074px (fits 1366px
 // with the sidebar open); on wider screens the extra width is shared out in
 // proportion across all columns instead of piling up after Customer.
 // Order 100 · Customer 250 · Invoice 76 · Ordered/Dispatched/Remaining 80 ·
-// Current step 120 · Progress 118 · Due 112, 4px gaps, 12px side padding.
-const GRID = 'grid grid-cols-[minmax(100px,100fr)_minmax(250px,250fr)_minmax(76px,76fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(120px,120fr)_minmax(118px,118fr)_minmax(112px,112fr)] gap-x-1 px-3 text-center';
-const GRID_MIN_W = 'min-w-[1072px]';
+// Current step 120 · Progress 120 (11 dots) · Due 112, 4px gaps, 12px side padding.
+const GRID = 'grid grid-cols-[minmax(100px,100fr)_minmax(250px,250fr)_minmax(76px,76fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(120px,120fr)_minmax(120px,120fr)_minmax(112px,112fr)] gap-x-1 px-3 text-center';
+const GRID_MIN_W = 'min-w-[1074px]';
 
 function Row({ card, now, onOpen, qty, orderInvoices, deliveredEntryIds }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[]; deliveredEntryIds?: Set<string> }) {
   const order = card.order;
@@ -311,8 +313,8 @@ function Row({ card, now, onOpen, qty, orderInvoices, deliveredEntryIds }: { car
         )}
       </div>
 
-      {/* 10 dots (3px apart so the group fits its 118px column) */}
-      <div className="flex items-center justify-center gap-[3px]">
+      {/* 11 dots (2px apart so the group fits its 120px column) */}
+      <div className="flex items-center justify-center gap-[2px]">
         {dots.map((d, i) => (
           <span key={i} title={`Step ${String(i + 1).padStart(2, '0')} · ${DISPATCH_STEPS[i].title} · ${DOT_WORD[d]}`}
             className={`w-[9px] h-[9px] rounded-full shrink-0 box-border ${DOT_CLS[d]}`} />
@@ -381,7 +383,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
       <InvoiceCell invoices={[]} />
       <QtyCells qty={qty} />
       <div className="flex flex-col items-center gap-[2px] min-w-0">
-        <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(11)}</span>
+        <span className="font-mono text-[9.5px] font-bold tracking-[1px] text-g500">{stepLabel(DONE_COLUMN)}</span>
         <span className="text-[13px] text-blk truncate">Marked delivered</span>
       </div>
       <div />
@@ -523,16 +525,16 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
   // Delivered orders without an entry sit under Done.
   const items: ListItem[] = [
     ...(stepFilter === 'all' ? cards : (byColumn.get(stepFilter) || [])).map(card => ({ kind: 'card' as const, card })),
-    ...(stepFilter === 'all' || stepFilter === 11 ? deliveredOrders.map(row => ({ kind: 'deliveredOrder' as const, row })) : []),
+    ...(stepFilter === 'all' || stepFilter === DONE_COLUMN ? deliveredOrders.map(row => ({ kind: 'deliveredOrder' as const, row })) : []),
   ];
   const shown = items.sort((a, b) => {
     const sa: TimeState = a.kind === 'card' ? a.card.state : 'done';
     const sb: TimeState = b.kind === 'card' ? b.card.state : 'done';
     const r = STATE_RANK[sa] - STATE_RANK[sb];
     if (r) return r;
-    const colA = a.kind === 'card' ? a.card.column : 11;
-    const colB = b.kind === 'card' ? b.card.column : 11;
-    if (colA === 11 && colB === 11) return doneKey(b).localeCompare(doneKey(a));
+    const colA = a.kind === 'card' ? a.card.column : DONE_COLUMN;
+    const colB = b.kind === 'card' ? b.card.column : DONE_COLUMN;
+    if (colA === DONE_COLUMN && colB === DONE_COLUMN) return doneKey(b).localeCompare(doneKey(a));
     const pa = a.kind === 'card' ? a.card.position.plannedAt || '' : '';
     const pb = b.kind === 'card' ? b.card.position.plannedAt || '' : '';
     return pa.localeCompare(pb);
@@ -543,7 +545,7 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
     { key: 'all', top: 'ALL', title: 'All orders', count: cards.length + deliveredOrders.length, delayed: totalDelayed },
     ...DISPATCH_STEPS.map(s => {
       const list = byColumn.get(s.no) || [];
-      const extra = s.no === 11 ? deliveredOrders.length : 0;
+      const extra = s.no === DONE_COLUMN ? deliveredOrders.length : 0;
       return { key: s.no, top: stepLabel(s.no), title: s.title, count: list.length + extra, delayed: list.filter(c => c.state === 'late').length };
     }),
   ];

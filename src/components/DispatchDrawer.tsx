@@ -4,9 +4,9 @@ import { Check, CircleDashed, Pencil, Undo2, X } from 'lucide-react';
 import { fmtIST, doerLabel, formatINR, resolveAdjustments, maxItemGstRate, remainingByLine, punchedAtClass } from '../lib/utils';
 import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
-  BoardCard, BoardEntryCard, BoardOrderCard, DispatchStepRecord, LastStepClick, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
+  BoardCard, BoardEntryCard, BoardOrderCard, DispatchStepRecord, EntryColumn, LastStepClick, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
   drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastStepClick, lastEntryStepClick, describeStepClick, allowedStepStatuses,
-  step6AlreadyEmailed, STEP_ACTIONS,
+  step6AlreadyEmailed, STEP_ACTIONS, STEP9_MANUAL_ACTION, DONE_COLUMN,
 } from '../lib/dispatchFlow';
 import { EntryStepButtons, StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot, step6Label } from './DispatchBoard';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -26,7 +26,7 @@ const STATUS_LABEL: Record<StepRecordStatus, string> = { done: 'Done', skipped: 
 export interface StepEditPatch { status: StepRecordStatus; doneAt: string | null; remark: string | null; }
 
 // Right-side drawer opened by clicking an SO No. on the Dispatch Board:
-// order info, steps 1–10 with Planned / Actual / Delay, every dispatch entry
+// order info, steps 1–11 with Planned / Actual / Delay, every dispatch entry
 // of the order, a remark box and the current step's buttons. Nothing here
 // changes an order's status.
 // 2026-10-13: the order info block now shows the same details as the
@@ -127,18 +127,21 @@ function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
   );
 }
 
-// A dispatch entry's link: one label for Steps 8, 9 and 10 (2026-10-26 — the
+// A dispatch entry's link: one label for Steps 8, 10 and 11 (2026-10-26 — the
 // entry page is where the invoice no., LR and documents are attached and the
-// email is sent); Done entries open for viewing their documents. Every label
-// goes to the same entry page (/dispatch/new?entryId=…). Since 2026-10-23
-// the step completes on that page once its proof is saved (invoice no. / LR /
-// email sent); the "Invoice done" / "LR received" / "Documents sent" button
-// next to it is the fallback.
-const entryActionLabel = (col: 8 | 9 | 10 | 11) =>
-  col === 11 ? 'View Documents →' : 'Attach Documents & Send →';
+// email is sent); Step 9 (2026-10-30) opens that page with the Bhiwandi email
+// already open (&bhiwandi=1); Done entries open for viewing their documents.
+// Since 2026-10-23 the step completes on that page once its proof is saved
+// (invoice no. + file / Bhiwandi email / LR / email sent); the "Invoice done"
+// / "Bhiwandi informed" / "LR received" / "Documents sent" button next to it
+// is the fallback.
+const entryActionLabel = (col: EntryColumn) =>
+  col === DONE_COLUMN ? 'View Documents →' : col === 9 ? 'Send to Bhiwandi →' : 'Attach Documents & Send →';
+const entryPagePath = (entryId: string, col: EntryColumn) =>
+  `/dispatch/new?entryId=${entryId}&from=board${col === 9 ? '&bhiwandi=1' : ''}`;
 
 export function DispatchDrawer({
-  order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onEntryAction, onResume,
+  order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onEntryAction, onEntryManualStep9, onResume,
   canUndo, undoBusy, onUndo, openedFrom, canDelete, onSaveStep, onDelete, onClose,
 }: {
   order: Order;
@@ -153,13 +156,15 @@ export function DispatchDrawer({
   canAct: boolean;
   busy: boolean;
   onAction: (card: BoardOrderCard, action: StepAction, remark?: string) => Promise<void> | void;
-  // Steps 8–10 of the entry the drawer was opened from.
+  // Steps 8–11 of the entry the drawer was opened from.
   onEntryAction: (card: BoardEntryCard, action: StepAction, remark?: string) => Promise<void> | void;
+  // "Mark Step 9 done (Bhiwandi already informed)" — Step 9 without the email.
+  onEntryManualStep9: (card: BoardEntryCard) => Promise<void> | void;
   onResume: (card: BoardOrderCard, remark?: string) => Promise<void> | void;
   canUndo: boolean;                    // same logins as the step buttons
   undoBusy: boolean;
   // The click to take back: the order's last Step 1–7 click, or — opened
-  // from an entry row — that entry's last Step 8–10 click.
+  // from an entry row — that entry's last Step 8–11 click.
   onUndo: (click: LastStepClick) => void;
   // The card that was clicked — Edit / Delete act on it (the order for an
   // order card, that one dispatch entry for an entry card).
@@ -234,8 +239,8 @@ export function DispatchDrawer({
   // 2026-10-06: the remark box + step buttons show for every login while the
   // order is on steps 1–7; canAct only decides whether they are enabled.
   const hasStepActions = !!orderCard && orderCard.column <= 7;
-  // Opened from an entry row that is still waiting on step 8, 9 or 10 (not Done).
-  const entryWaiting = openedFrom.kind === 'entry' && openedFrom.column !== 11;
+  // Opened from an entry row that is still waiting on step 8–11 (not Done).
+  const entryWaiting = openedFrom.kind === 'entry' && openedFrom.column !== DONE_COLUMN;
   // 2026-10-16: Step 6 row — the DOs of the round the drawer's steps 5–7
   // come from (the open round, else the last closed one): saved / emailed.
   const focusRound = orderCard ? orderCard.position.round : realEntries.length;
@@ -302,7 +307,7 @@ export function DispatchDrawer({
             />
           </div>
 
-          {/* Steps 1–10 */}
+          {/* Steps 1–11 */}
           <div className="px-4 py-3 border-b border-g200">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt">Steps</div>
@@ -342,7 +347,7 @@ export function DispatchDrawer({
               <div className="flex flex-col gap-1.5">
                 {realEntries.map(e => {
                   const pos = entryPosition(e, records);
-                  const where = pos.column === 11 ? 'Done' : `Step ${pos.column} · ${stepDef(pos.column).title}`;
+                  const where = pos.column === DONE_COLUMN ? 'Done' : `Step ${pos.column} · ${stepDef(pos.column).title}`;
                   return (
                     <div key={e.id} className="flex items-center gap-2 border border-g200 rounded-[4px] px-2.5 py-2">
                       <span className="font-mono text-[10px] font-bold bg-[#F3EEFF] text-[#5B21B6] rounded-[3px] px-1.5 py-[1px] shrink-0">INV {e.invoiceNumber || '—'}</span>
@@ -353,7 +358,7 @@ export function DispatchDrawer({
                           {pos.invoiceMissing && <span className="text-[#9A0000] font-semibold"> · Invoice no. missing</span>}
                         </div>
                       </div>
-                      <button type="button" onClick={() => navigate(`/dispatch/new?entryId=${e.id}&from=board`)}
+                      <button type="button" onClick={() => navigate(entryPagePath(e.id, pos.column))}
                         className="text-[11px] font-semibold text-red-mrt hover:underline shrink-0">{entryActionLabel(pos.column)}</button>
                     </div>
                   );
@@ -366,7 +371,7 @@ export function DispatchDrawer({
         {/* Remark + current step's buttons */}
         {((orderCard && (hasStepActions || orderCard.column === 8)) || entryWaiting) && (
           <div className="border-t border-g200 px-4 py-3 flex flex-col gap-2 bg-cream">
-            {/* Entry waiting on Step 8 / 9 / 10: remark + the step's button,
+            {/* Entry waiting on Step 8–11: remark + the step's button,
                 with the entry-page link next to it. */}
             {entryWaiting && openedFrom.kind === 'entry' && (
               <>
@@ -376,11 +381,20 @@ export function DispatchDrawer({
                   className="w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[4px] p-[7px_9px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
                 <EntryStepButtons card={openedFrom} busy={busy} canAct={canAct} onAction={actEntry}
                   link={
-                    <button type="button" onClick={() => navigate(`/dispatch/new?entryId=${openedFrom.entry.id}&from=board`)}
+                    <button type="button" onClick={() => navigate(entryPagePath(openedFrom.entry.id, openedFrom.column))}
                       className="shrink-0 bg-red-mrt hover:bg-red-h text-white text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[7px] transition-colors whitespace-nowrap">
                       {entryActionLabel(openedFrom.column)}
                     </button>
                   } />
+                {/* 2026-10-30: Bhiwandi was told some other way — Step 9 without
+                    the email (board logins only, same as Undo). Saved with the
+                    remark "marked manually"; the typed remark is not used. */}
+                {openedFrom.column === 9 && canAct && !openedFrom.entry.bhiwandiEmailSentAt && (
+                  <button type="button" disabled={busy} onClick={() => onEntryManualStep9(openedFrom)}
+                    className="w-full text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[6px] bg-white text-blk border border-g300 hover:bg-g100 transition-colors disabled:opacity-50 disabled:cursor-wait">
+                    {STEP9_MANUAL_ACTION.label}
+                  </button>
+                )}
               </>
             )}
             {orderCard && hasStepActions && (

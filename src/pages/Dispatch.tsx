@@ -5,7 +5,7 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, entryPosition, unionBoardRows } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, unionBoardRows } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { LineItemsPanel } from '../components/LineItemsPanel';
@@ -71,8 +71,8 @@ export function Dispatch() {
     return () => clearInterval(t);
   }, [view]);
 
-  // Board step history (dispatch_steps — steps 1–7 only; 8–10 come from the
-  // dispatch entries themselves). Loaded when the board opens and refreshed
+  // Board step history (dispatch_steps — steps 1–7 per order, 8–11 per
+  // dispatch entry). Loaded when the board opens and refreshed
   // on the same 1-minute tick, so clicks made by someone else show up
   // without a page reload.
   const [stepRecords, setStepRecords] = useState<DispatchStepRecord[]>([]);
@@ -129,14 +129,16 @@ export function Dispatch() {
     }
   };
 
-  // 2026-10-22: Steps 8–10 of ONE dispatch entry are manual — "Invoice done"
-  // / "LR received" / "Documents sent" save a dispatch_steps row with
-  // entry_id. Steps 8 and 9 need the entry's invoice no. / LR file: checked
-  // (in saveEntryStepRows) against the entry as saved in the database right
-  // now, and again by the database itself (trigger
+  // 2026-10-22: Steps 8–11 of ONE dispatch entry are manual — "Invoice done"
+  // / "Bhiwandi informed" / "LR received" / "Documents sent" save a
+  // dispatch_steps row with entry_id. Steps 8, 9 and 10 need the entry's
+  // invoice no. + file / Bhiwandi email / LR file: checked (in
+  // saveEntryStepRows) against the entry as saved in the database right now,
+  // and again by the database itself (trigger
   // enforce_dispatch_entry_step_prereqs) —
   // either refusal shows the same message and saves nothing.
-  const runEntryStepAction = async (card: BoardEntryCard, action: StepAction, remark?: string) => {
+  // `manualStep9`: "Mark Step 9 done (Bhiwandi already informed)".
+  const runEntryStepAction = async (card: BoardEntryCard, action: StepAction, remark?: string, manualStep9 = false) => {
     if (!canActOnBoard || busyCardKey) return;
     const e = card.entry;
     setBusyCardKey(card.key);
@@ -147,16 +149,19 @@ export function Dispatch() {
         entry: e, entries: data.dispatchEntries, records: stepRecords, action, remark,
         doneBy: user?.email ?? null,
         orderLabel: card.order ? (card.order.soNumber || card.order.id) : e.orderId,
+        ...(manualStep9 ? { manualStep9: true, logNote: 'Bhiwandi already informed — marked manually' } : {}),
       });
       setStepRecords(prev => [...prev, ...inserted.map(mapStepFromDB)]);
     } catch (err: any) {
-      // The database's own refusal ("Add invoice no. first" / "Upload LR
+      // The database's own refusal ("Add invoice no. and attach Invoice /
+      // Eway Bill first" / "Send email to Bhiwandi first" / "Upload LR
       // first") comes through here as the error message.
       showToast('err', err?.message || `Could not save: ${JSON.stringify(err)}`);
     } finally {
       setBusyCardKey(null);
     }
   };
+  const markEntryStep9Manually = (card: BoardEntryCard) => runEntryStepAction(card, STEP9_MANUAL_ACTION, undefined, true);
 
   const resumeHold = async (card: BoardOrderCard, remark?: string) => {
     const hold = card.position.hold?.record;
@@ -296,7 +301,7 @@ export function Dispatch() {
   // The click waiting in the in-app confirm box (Cancel = nothing changes).
   const [undoTarget, setUndoTarget] = useState<{ order: Order; click: LastStepClick } | null>(null);
   // `click` given (drawer) = exactly that click — for an entry row, its last
-  // Step 8–10 click; otherwise the order's last Step 1–7 click.
+  // Step 8–11 click; otherwise the order's last Step 1–7 click.
   const requestUndo = (order: Order, click?: LastStepClick) => {
     if (!canUndoOnBoard || undoBusy) return;
     const target = click ?? lastStepClick(stepRecords.filter(r => r.orderId === order.id));
@@ -1030,6 +1035,7 @@ export function Dispatch() {
             busy={!!busyCardKey && (busyCardKey === orderCard?.key || busyCardKey === drawerCard?.key)}
             onAction={handleStepAction}
             onEntryAction={runEntryStepAction}
+            onEntryManualStep9={markEntryStep9Manually}
             onResume={resumeHold}
             canUndo={canUndoOnBoard}
             undoBusy={undoBusy}

@@ -1,4 +1,4 @@
-// Dispatch Board (Kanban) workflow — the 10 dispatch steps + Done, and the
+// Dispatch Board (Kanban) workflow — the 11 dispatch steps + Done, and the
 // rules that place every order / dispatch entry on the board. Pure functions
 // only (no store, no Supabase), so Dispatch.tsx and the board components
 // share one source of truth.
@@ -6,7 +6,7 @@
 // Two kinds of cards:
 //   ORDER card — one per order that was sent to Dispatch and still has
 //     barrels left (totalRemaining > 0). Lives in steps 1–8.
-//   ENTRY card — one per dispatch entry, in steps 8–10 / Done. Since
+//   ENTRY card — one per dispatch entry, in steps 8–11 / Done. Since
 //     2026-10-22 these move only by button clicks saved in dispatch_steps
 //     (entry_id = the entry) — see entryPosition. Until then they moved by
 //     themselves from the entry's invoice no. / LR files / email.
@@ -14,10 +14,12 @@
 import type { DispatchEntry, DispatchFulfillmentType, Order } from './types';
 import { remainingByLine, totalRemaining, BOARD_GO_LIVE_AT } from './utils';
 
-export type StepNo = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
-/** Board column: steps 1–10, or 11 = Done. */
-export type ColumnNo = StepNo | 11;
-export const DONE_COLUMN = 11 as const;
+export type StepNo = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
+/** Board column: steps 1–11, or 12 = Done. */
+export type ColumnNo = StepNo | 12;
+export const DONE_COLUMN = 12 as const;
+/** An entry card's column: its Step 8–11, or Done. */
+export type EntryColumn = 8 | 9 | 10 | 11 | 12;
 
 export interface StepDef {
   no: ColumnNo;
@@ -36,16 +38,18 @@ export const DISPATCH_STEPS: StepDef[] = [
   { no: 5, title: 'Material Check', subtitle: 'Material available or not', how: 'WhatsApp', tatHours: 1 },
   { no: 6, title: 'Transporter & DO', subtitle: 'Transporter confirmation & issue DO', how: 'Manual', tatHours: 12 },
   { no: 7, title: 'Pickup', subtitle: 'Check pickup of material', how: 'Phone', tatHours: 24 },
-  // 2026-10-23: 8–10 complete by themselves once their proof exists —
-  // 8 when the entry is saved with an invoice no., 9 when it's saved with an
-  // LR file, 10 when Email to Client is sent (NewDispatchEntry →
-  // autoCompleteEntrySteps). The "Invoice done" / "LR received" / "Documents
-  // sent" buttons are only a fallback, blocked until that proof exists
-  // (entryStepBlock).
-  { no: 8, title: 'Invoice', subtitle: 'Prepare invoice', how: 'Tally → Dispatch entry', tatHours: 1, rule: 'Needs the invoice no. on the dispatch entry' },
-  { no: 9, title: 'Get LR', subtitle: 'Get LR from transporter', how: 'WhatsApp → Mail', tatHours: 24, rule: 'Delivery only — Self Pickup skips this. Needs an LR file' },
-  { no: 10, title: 'Send Documents', subtitle: 'Send documents to the party', how: 'Email to Client', tatHours: 30 },
-  { no: 11, title: 'Email Sent', subtitle: 'Completed', how: '', tatHours: 0, rule: 'Step 10 done in the last 7 days' },
+  // 2026-10-23: 8–11 complete by themselves once their proof exists —
+  // 8 when the entry is saved with an invoice no. and an Invoice / Eway Bill
+  // file, 9 when the Bhiwandi email is sent (2026-10-30), 10 when it's saved
+  // with an LR file, 11 when Email to Client is sent (NewDispatchEntry →
+  // autoCompleteEntrySteps). The "Invoice done" / "Bhiwandi informed" / "LR
+  // received" / "Documents sent" buttons are only a fallback, blocked until
+  // that proof exists (entryStepBlock).
+  { no: 8, title: 'Invoice', subtitle: 'Prepare invoice', how: 'Tally → Dispatch entry', tatHours: 1, rule: 'Needs the invoice no. and an Invoice / Eway Bill file on the dispatch entry' },
+  { no: 9, title: 'Send Invoice to Bhiwandi', subtitle: 'Email invoice and dispatch details to Bhiwandi', how: 'Email', tatHours: 1 },
+  { no: 10, title: 'Get LR', subtitle: 'Get LR from transporter', how: 'WhatsApp → Mail', tatHours: 24, rule: 'Delivery only — Self Pickup skips this. Needs an LR file' },
+  { no: 11, title: 'Send Documents', subtitle: 'Send documents to the party', how: 'Email to Client', tatHours: 30 },
+  { no: 12, title: 'Email Sent', subtitle: 'Completed', how: '', tatHours: 0, rule: 'Step 11 done in the last 7 days' },
 ];
 
 export const stepDef = (no: ColumnNo): StepDef => DISPATCH_STEPS[no - 1];
@@ -78,7 +82,7 @@ export type StepRecordStatus = 'done' | 'skipped' | 'hold';
 export interface DispatchStepRecord {
   id: string;
   orderId: string;
-  // Steps 8–10: the dispatch entry this row belongs to (steps 1–7: none).
+  // Steps 8–11: the dispatch entry this row belongs to (steps 1–7: none).
   entryId?: string;
   round: number;
   stepNo: number;
@@ -101,6 +105,8 @@ export const isImportedEntry = (e: DispatchEntry) => e.createdBy === 'system-imp
 export const needsPaymentCheck = (pay: string | undefined) => /advance/i.test(pay || '');
 
 export const entryHasLr = (e: DispatchEntry) => (e.lrFiles?.length ?? 0) > 0 || !!e.lrUrl;
+/** At least one Invoice / Eway Bill file (or the legacy single-file column). */
+export const entryHasInvoiceFile = (e: DispatchEntry) => (e.invoiceEwayBillFiles?.length ?? 0) > 0 || !!e.invoiceEwayBillUrl;
 
 // Timestamps arrive in more than one format (Supabase's "2026-09-26
 // 05:27:07+00" vs JS's "…Z"), so always compare them as real times.
@@ -209,13 +215,13 @@ export function lastStepClick(orderRecords: DispatchStepRecord[]): LastStepClick
 }
 
 /**
- * The most recent Step 8–10 click on ONE dispatch entry (rows with that
+ * The most recent Step 8–11 click on ONE dispatch entry (rows with that
  * entry_id) — what "Undo last step" takes back when the drawer was opened
  * from an entry row. Backfilled rows count too, so admins can step back
  * an entry that moved under the old automatic rule.
  */
 export function lastEntryStepClick(records: DispatchStepRecord[], entryId: string): LastStepClick | null {
-  const rows = records.filter(r => r.entryId === entryId && r.stepNo >= 8 && r.stepNo <= 10 && r.createdAt);
+  const rows = records.filter(r => r.entryId === entryId && r.stepNo >= 8 && r.stepNo <= 11 && r.createdAt);
   if (!rows.length) return null;
   // Latest click; rows saved by one click share created_at. A backfill
   // wrote all of an entry's rows at once, so step back the highest step.
@@ -260,26 +266,39 @@ export const STEP_ACTIONS: Partial<Record<StepNo, StepAction[]>> = {
   ],
   6: [{ label: 'DO issued ✓', primary: true, writes: [{ stepNo: 6, status: 'done' }] }],
   7: [{ label: 'Picked up ✓', primary: true, writes: [{ stepNo: 7, status: 'done' }] }],
-  // 2026-10-22: Steps 8–10 — one dispatch entry each (entry cards). Each is
+  // 2026-10-22: Steps 8–11 — one dispatch entry each (entry cards). Each is
   // blocked until the entry has its proof (entryStepBlock; the database
-  // refuses 8 and 9 too).
+  // refuses 8, 9 and 10 too).
   8: [{ label: 'Invoice done', primary: true, writes: [{ stepNo: 8, status: 'done' }] }],
-  9: [{ label: 'LR received', primary: true, writes: [{ stepNo: 9, status: 'done' }] }],
-  10: [{ label: 'Documents sent', primary: true, writes: [{ stepNo: 10, status: 'done' }] }],
+  9: [{ label: 'Bhiwandi informed', primary: true, writes: [{ stepNo: 9, status: 'done' }] }],
+  10: [{ label: 'LR received', primary: true, writes: [{ stepNo: 10, status: 'done' }] }],
+  11: [{ label: 'Documents sent', primary: true, writes: [{ stepNo: 11, status: 'done' }] }],
 };
 
 /**
- * Why an entry's Step 8 / 9 button can't be pressed yet, or undefined if it
- * can. The same rule the database trigger enforces
+ * 2026-10-30: Step 9's fallback for when Bhiwandi was told some other way —
+ * "Mark Step 9 done (Bhiwandi already informed)" (board logins). Saved with
+ * this exact remark, which is what lets the database accept Step 9 without
+ * a Bhiwandi email (enforce_dispatch_entry_step_prereqs).
+ */
+export const STEP9_MANUAL_REMARK = 'marked manually';
+export const STEP9_MANUAL_ACTION: StepAction = {
+  label: 'Mark Step 9 done (Bhiwandi already informed)', primary: false, writes: [{ stepNo: 9, status: 'done' }],
+};
+
+/**
+ * Why an entry's Step 8–11 button can't be pressed yet, or undefined if it
+ * can. The same rule the database trigger enforces for 8, 9 and 10
  * (enforce_dispatch_entry_step_prereqs).
  */
 export const entryHasInvoice = (e: Pick<DispatchEntry, 'invoiceNumber'>) => !!e.invoiceNumber?.trim();
 export function entryStepBlock(e: DispatchEntry, stepNo: number): string | undefined {
-  if (stepNo === 8 && !entryHasInvoice(e)) return 'Add invoice no. first';
-  if (stepNo === 9 && !entryHasLr(e)) return 'Upload LR first';
-  // 2026-10-23: Step 10 needs Email to Client actually sent (email_sent_at).
-  // Checked in the app only — the database trigger covers 8 and 9.
-  if (stepNo === 10 && !e.emailSentAt) return 'Send Email to Client first';
+  if (stepNo === 8 && (!entryHasInvoice(e) || !entryHasInvoiceFile(e))) return 'Add invoice no. and attach Invoice / Eway Bill first';
+  if (stepNo === 9 && !e.bhiwandiEmailSentAt) return 'Send email to Bhiwandi first';
+  if (stepNo === 10 && !entryHasLr(e)) return 'Upload LR first';
+  // 2026-10-23: Step 11 needs Email to Client actually sent (email_sent_at).
+  // Checked in the app only — the database trigger covers 8, 9 and 10.
+  if (stepNo === 11 && !e.emailSentAt) return 'Send Email to Client first';
   return undefined;
 }
 
@@ -307,8 +326,8 @@ export interface OrderStepHistory {
   remark?: string;
   onHold?: boolean;
   // The dispatch_steps row behind this step (done / skipped, or the open
-  // hold) — what the drawer's ✎ edits. Undefined for auto-skips, steps
-  // 8–10 and anything not recorded.
+  // hold) — what the drawer's ✎ edits. Undefined for auto-skips and
+  // anything not recorded.
   record?: DispatchStepRecord;
 }
 
@@ -455,57 +474,62 @@ export function orderRounds(
 
 // ── Entry cards ───────────────────────────────────────────────────────────
 export interface EntryPosition {
-  column: 8 | 9 | 10 | 11;
+  column: EntryColumn;
   plannedAt?: string;
   invoiceMissing: boolean;
-  // Done: when Step 10 was clicked.
+  // Done: when Step 11 was clicked.
   doneAt?: string;
 }
 
-/** An entry's saved Step 8–10 rows, by step (the finished row, if any). */
+/** An entry's saved Step 8–11 rows, by step (the finished row, if any). */
 function entryStepRows(e: DispatchEntry, records: DispatchStepRecord[]) {
   const finished = (stepNo: number) => records
     .filter(r => r.entryId === e.id && r.stepNo === stepNo && (r.status === 'done' || r.status === 'skipped'))
     .sort((a, b) => byTime(a.doneAt, b.doneAt)).pop();
-  return { s8: finished(8), s9: finished(9), s10: finished(10) };
+  return { s8: finished(8), s9: finished(9), s10: finished(10), s11: finished(11) };
 }
 
 /**
  * Where an ENTRY card sits — since 2026-10-22 from its saved button clicks
  * (dispatch_steps rows with entry_id = this entry), not its data:
- *   Step 10 done                           → Done (still flagged if the invoice no. is missing)
+ *   Step 11 done                           → Done (still flagged if the invoice no. is missing)
  *   Step 8 not done                        → step 8
- *   Delivery, Step 9 not done              → step 9 (Self Pickup skips it)
- *   else                                   → step 10
+ *   Step 9 not done / skipped              → step 9 (every entry — 2026-10-30;
+ *                                            entries from before it got 'skipped')
+ *   Delivery, Step 10 not done             → step 10 (Self Pickup skips it)
+ *   else                                   → step 11
  * Removing the invoice no. / LR after a click never moves the entry back.
  * `records` may hold other rows too; only this entry's are used.
  * Entries saved before the board went live start their timer at go-live.
  */
 export function entryPosition(e: DispatchEntry, records: DispatchStepRecord[]): EntryPosition {
   const invoiceMissing = !entryHasInvoice(e);
-  const { s8, s9, s10 } = entryStepRows(e, records);
-  if (s10) return { column: 11, invoiceMissing, doneAt: s10.doneAt };
+  const { s8, s9, s10, s11 } = entryStepRows(e, records);
+  if (s11) return { column: 12, invoiceMissing, doneAt: s11.doneAt };
   if (!s8) return { column: 8, plannedAt: entryStepPlanned(e, 8, records), invoiceMissing };
-  if (e.fulfillmentType !== 'self_pickup' && s9?.status !== 'done') return { column: 9, plannedAt: entryStepPlanned(e, 9, records), invoiceMissing };
-  return { column: 10, plannedAt: entryStepPlanned(e, 10, records), invoiceMissing };
+  if (!s9) return { column: 9, plannedAt: entryStepPlanned(e, 9, records), invoiceMissing };
+  if (e.fulfillmentType !== 'self_pickup' && s10?.status !== 'done') return { column: 10, plannedAt: entryStepPlanned(e, 10, records), invoiceMissing };
+  return { column: 11, plannedAt: entryStepPlanned(e, 11, records), invoiceMissing };
 }
 
 /**
- * Planned time of an entry's step 8, 9 or 10: step 8 from when the entry was
- * saved, 9 from Step 8's click, 10 from Step 9's click (Self Pickup: Step 8's).
+ * Planned time of an entry's step 8–11: step 8 from when the entry was saved,
+ * 9 from Step 8's click, 10 from Step 9's, 11 from Step 10's (Self Pickup:
+ * Step 9's — it skips 10).
  */
-export function entryStepPlanned(e: DispatchEntry, stepNo: 8 | 9 | 10, records: DispatchStepRecord[]): string | undefined {
+export function entryStepPlanned(e: DispatchEntry, stepNo: 8 | 9 | 10 | 11, records: DispatchStepRecord[]): string | undefined {
   const legacy = isBeforeGoLive(e.created_at);
-  const { s8, s9 } = entryStepRows(e, records);
+  const { s8, s9, s10 } = entryStepRows(e, records);
   const start = stepNo === 8 ? e.created_at
     : stepNo === 9 ? (s8?.doneAt || e.created_at)
-    : ((e.fulfillmentType !== 'self_pickup' ? s9?.doneAt : undefined) || s8?.doneAt || e.created_at);
+    : stepNo === 10 ? (s9?.doneAt || s8?.doneAt || e.created_at)
+    : ((e.fulfillmentType !== 'self_pickup' ? s10?.doneAt : undefined) || s9?.doneAt || s8?.doneAt || e.created_at);
   return plannedAtFor(goLiveFloor(start, legacy), stepNo);
 }
 
 /**
- * The drawer's 10-row step list for one order: steps 1–4 from round 1
- * (once per order), steps 5–7 from the latest round, and steps 8–10 from
+ * The drawer's 11-row step list for one order: steps 1–4 from round 1
+ * (once per order), steps 5–7 from the latest round, and steps 8–11 from
  * the dispatch entry that closed that round (or still to come if the
  * order card is open).
  */
@@ -531,32 +555,39 @@ export function drawerSteps(
     steps.push(openPosition?.step === 8
       ? { stepNo: 8, state: 'current', plannedAt: openPosition.plannedAt }
       : { stepNo: 8, state: 'upcoming' });
-    steps.push({ stepNo: 9, state: selfPickup ? 'skipped' : 'upcoming' });
-    steps.push({ stepNo: 10, state: 'upcoming' });
+    steps.push({ stepNo: 9, state: 'upcoming' });
+    steps.push({ stepNo: 10, state: selfPickup ? 'skipped' : 'upcoming' });
+    steps.push({ stepNo: 11, state: 'upcoming' });
     return steps;
   }
-  // Steps 8–10 — the entry's own saved clicks (2026-10-22: manual steps).
+  // Steps 8–11 — the entry's own saved clicks (2026-10-22: manual steps).
   const legacy = isBeforeGoLive(order.sentToDispatchAt);
   const pos = entryPosition(e, records);
-  const { s8, s9, s10 } = entryStepRows(e, records);
+  const { s8, s9, s10, s11 } = entryStepRows(e, records);
   const selfPickup = e.fulfillmentType === 'self_pickup';
   const invoiceNote = pos.invoiceMissing ? 'Invoice no. missing' : undefined;
-  const doneRow = (stepNo: 8 | 9 | 10, rec: DispatchStepRecord, planned: string | undefined, remark?: string): OrderStepHistory =>
+  const doneRow = (stepNo: 8 | 9 | 10 | 11, rec: DispatchStepRecord, planned: string | undefined, remark?: string): OrderStepHistory =>
     ({ stepNo, state: 'done', plannedAt: rec.plannedAt || planned, doneAt: rec.doneAt, doneBy: rec.doneBy, remark: remark ?? rec.remark, record: rec });
   steps.push(s8
     ? doneRow(8, s8, plannedAtFor(goLiveFloor(lastDone, legacy), 8), invoiceNote)
     : pos.column === 8 ? { stepNo: 8, state: 'current', plannedAt: pos.plannedAt, remark: invoiceNote }
     : { stepNo: 8, state: 'not_recorded', remark: invoiceNote });
-  steps.push(selfPickup
-    ? { stepNo: 9, state: 'skipped', record: s9 }
-    : s9?.status === 'done' ? doneRow(9, s9, entryStepPlanned(e, 9, records))
+  // Step 9 — every entry; 'skipped' only on entries from before it existed.
+  steps.push(s9?.status === 'done' ? doneRow(9, s9, entryStepPlanned(e, 9, records))
+    : s9 ? { stepNo: 9, state: 'skipped', remark: s9.remark, record: s9 }
     : pos.column === 9 ? { stepNo: 9, state: 'current', plannedAt: pos.plannedAt }
-    : pos.column === 11 ? { stepNo: 9, state: 'not_recorded' }
+    : pos.column === DONE_COLUMN ? { stepNo: 9, state: 'not_recorded' }
     : { stepNo: 9, state: 'upcoming' });
-  steps.push(s10
-    ? doneRow(10, s10, entryStepPlanned(e, 10, records))
+  steps.push(selfPickup
+    ? { stepNo: 10, state: 'skipped', record: s10 }
+    : s10?.status === 'done' ? doneRow(10, s10, entryStepPlanned(e, 10, records))
     : pos.column === 10 ? { stepNo: 10, state: 'current', plannedAt: pos.plannedAt }
+    : pos.column === DONE_COLUMN ? { stepNo: 10, state: 'not_recorded' }
     : { stepNo: 10, state: 'upcoming' });
+  steps.push(s11
+    ? doneRow(11, s11, entryStepPlanned(e, 11, records))
+    : pos.column === 11 ? { stepNo: 11, state: 'current', plannedAt: pos.plannedAt }
+    : { stepNo: 11, state: 'upcoming' });
   return steps;
 }
 
@@ -602,7 +633,7 @@ export interface BoardEntryCard {
   entry: DispatchEntry;
   order?: Order;
   position: EntryPosition;
-  column: 8 | 9 | 10 | 11;
+  column: EntryColumn;
   fulfillment: DispatchFulfillmentType;
   state: TimeState;
 }
@@ -684,14 +715,14 @@ export function buildBoard(
   for (const e of entries) {
     if (isImportedEntry(e)) continue;
     const position = entryPosition(e, recordsByOrder.get(e.orderId) || []);
-    // Done shows for DONE_WINDOW_DAYS after Step 10 was clicked.
-    if (position.column === 11) {
+    // Done shows for DONE_WINDOW_DAYS after Step 11 was clicked.
+    if (position.column === DONE_COLUMN) {
       if (!position.doneAt || new Date(position.doneAt).getTime() < doneCutoff) continue;
     }
     cards.push({
       kind: 'entry', key: `e:${e.id}`, entry: e, order: ordersById.get(e.orderId), position,
       column: position.column, fulfillment: e.fulfillmentType,
-      state: position.column === 11 ? 'done' : timeState(position.plannedAt, now, false),
+      state: position.column === DONE_COLUMN ? 'done' : timeState(position.plannedAt, now, false),
     });
   }
   return cards;

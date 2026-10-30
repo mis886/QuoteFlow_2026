@@ -107,7 +107,39 @@ interface OutwardProps extends BaseProps { mode: 'outward'; doc: StockMovement; 
 // — this modal fetches and attaches each one as-is, rather than generating a
 // PDF the way Quote/Order/Outward do.
 export interface DispatchEmailAttachment { label: string; url: string; fileName: string; }
-interface DispatchProps extends BaseProps { mode: 'dispatch'; doc: DispatchEntry; attachments: DispatchEmailAttachment[]; }
+// 2026-10-30: "Send to Bhiwandi" (Dispatch Step 9) — the dispatch email's
+// Bhiwandi variant: To = bhiwandi@ only, no default CC, subject/body built
+// from these details, and the caller attaches ONLY the Invoice / Eway Bill files.
+export interface BhiwandiEmailDetails {
+  orderId: string;
+  soNumber?: string;
+  customer: string;
+  invoiceNumber?: string;
+  fulfillment: string;          // 'Delivery' / 'Self Pickup'
+  transporter?: string;
+  vehicleNumber?: string;
+  items: { product: string; qty: string; barrels: number }[];
+}
+interface DispatchProps extends BaseProps { mode: 'dispatch'; doc: DispatchEntry; attachments: DispatchEmailAttachment[]; bhiwandi?: BhiwandiEmailDetails; }
+
+/** Subject + body of the Bhiwandi email (still editable in the modal). */
+function bhiwandiDraft(d: BhiwandiEmailDetails): { subject: string; body: string } {
+  const subject = `Dispatch details – ${d.soNumber || d.orderId} – ${d.customer}${d.invoiceNumber ? ` – ${d.invoiceNumber}` : ''}`;
+  const lines = [
+    `Order No: ${d.orderId}`,
+    `SO No: ${d.soNumber || '—'}`,
+    `Customer: ${d.customer}`,
+    `Invoice No: ${d.invoiceNumber || '—'}`,
+    `Delivery / Self Pickup: ${d.fulfillment}`,
+    `Transporter: ${d.transporter || '—'}`,
+    ...(d.vehicleNumber ? [`Vehicle No: ${d.vehicleNumber}`] : []),
+  ];
+  const items = d.items.length
+    ? d.items.map((i, n) => `${n + 1}. ${i.product} — Qty: ${i.qty} — Barrels: ${i.barrels}`).join('\n')
+    : '—';
+  const body = `Dear Bhiwandi Team,\n\nPlease find the attached invoice. Dispatch details:\n\n${lines.join('\n')}\n\nItems:\n${items}\n\nThank you.`;
+  return { subject, body };
+}
 type Props = QuoteProps | OrderProps | OutwardProps | DispatchProps;
 
 const OAUTH_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -124,6 +156,8 @@ export function SendEmailModal(props: Props) {
   const isQuote    = props.mode === 'quote';
   const isOutward  = props.mode === 'outward';
   const isDispatch = props.mode === 'dispatch';
+  const bhiwandi = isDispatch ? (props as DispatchProps).bhiwandi : undefined;
+  const bhiwandiText = bhiwandi ? bhiwandiDraft(bhiwandi) : undefined;
 
   // Outward's default To/CC depends on Fulfilment Type — see the block below.
   // 'Both' or an unset Fulfilment Type falls through to no forced defaults
@@ -144,7 +178,8 @@ export function SendEmailModal(props: Props) {
   // Dispatch's CC and Outward's CC (both Delivery and Self Pickup).
   // Accounts@ stays everywhere it already was. Order's CC is untouched
   // (still gets both accounts@ and mum@).
-  const defaultCCs = isOutward
+  const defaultCCs = bhiwandi ? []   // 2026-10-30: no default CC (still addable below)
+    : isOutward
     ? (isOutwardDelivery
         ? ['accounts@himalayaterpene.com']
         : isOutwardSelfPickup
@@ -254,8 +289,8 @@ export function SendEmailModal(props: Props) {
     : `${greeting}\n\nPlease find attached our Proforma Invoice ${docId} for the requirements discussed.\n\nKindly arrange for the Purchase Order at your earliest convenience.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`;
 
   const [to, setTo]           = useState(isOutwardDelivery ? BHIWANDI_EMAIL : primaryEmail);
-  const [subject, setSubject] = useState(defaultSubject);
-  const [body, setBody]       = useState(defaultBody);
+  const [subject, setSubject] = useState(bhiwandiText?.subject ?? defaultSubject);
+  const [body, setBody]       = useState(bhiwandiText?.body ?? defaultBody);
   const [toError, setToError] = useState('');
 
   // COA docs already on this quote — pre-checked by default (opt-out),
@@ -299,7 +334,7 @@ export function SendEmailModal(props: Props) {
   // Dispatch mode only: multiple To recipients as removable chips + an
   // "Add another To email…" input, mirroring the CC section. Quote / Order /
   // Outward keep the single `to` field above, unchanged.
-  const [toList, setToList] = useState<string[]>(() => (isDispatch && primaryEmail ? [primaryEmail] : []));
+  const [toList, setToList] = useState<string[]>(() => (bhiwandi ? [BHIWANDI_EMAIL] : isDispatch && primaryEmail ? [primaryEmail] : []));
   const [customTo, setCustomTo] = useState('');
   const toListLower = new Set(toList.map(e => e.toLowerCase()));
   // An email in To is never also offered/sent as CC.
@@ -428,7 +463,7 @@ export function SendEmailModal(props: Props) {
             <Mail size={15} className="text-red-mrt" />
             <div>
               <h2 className="font-serif text-[16px] text-blk tracking-tight leading-tight">
-                Email <em className="italic text-red-mrt">{isQuote ? 'Quotation' : isOutward ? 'Delivery Order' : isDispatch ? 'Dispatch Documents' : 'Proforma Invoice'}</em>
+                Email <em className="italic text-red-mrt">{isQuote ? 'Quotation' : isOutward ? 'Delivery Order' : bhiwandi ? 'Invoice to Bhiwandi' : isDispatch ? 'Dispatch Documents' : 'Proforma Invoice'}</em>
               </h2>
               <p className="text-[10.5px] text-g400 mt-[1px]">
                 {isDispatch ? 'Attaches uploaded documents · Sends via Gmail' : `Generates PDF · Sends via Gmail · ${isQuote ? 'Marks quote Sent' : isOutward ? 'Confirms dispatch' : 'Confirms delivery'}`}
@@ -583,7 +618,7 @@ export function SendEmailModal(props: Props) {
                 {dispatchAttachments.length > 0 ? (
                   <div className="flex flex-col gap-1.5">
                     {dispatchAttachments.map(a => (
-                      <div key={a.label} className="flex items-center gap-2.5 bg-blue-50 border border-blue-100 rounded-[3px] p-[8px_12px]">
+                      <div key={`${a.label}|${a.url}`} className="flex items-center gap-2.5 bg-blue-50 border border-blue-100 rounded-[3px] p-[8px_12px]">
                         <Paperclip size={13} className="text-blue-500 shrink-0" />
                         <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded shrink-0 bg-blue-100 text-blue-700">{a.label}</span>
                         <span className="text-[11.5px] font-medium text-blk truncate">{a.fileName}</span>
@@ -592,7 +627,9 @@ export function SendEmailModal(props: Props) {
                   </div>
                 ) : (
                   <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_13px] text-[11.5px] text-amber-800 font-medium">
-                    No documents are attached to this entry yet. Upload and Save the Documents Attachment fields above, then reopen Email to Client.
+                    {bhiwandi
+                      ? 'No Invoice / Eway Bill file is saved on this entry yet. Upload and Save it above, then reopen Send to Bhiwandi.'
+                      : 'No documents are attached to this entry yet. Upload and Save the Documents Attachment fields above, then reopen Email to Client.'}
                   </div>
                 )}
               </div>

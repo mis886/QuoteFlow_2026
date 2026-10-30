@@ -110,6 +110,7 @@ interface AppContextType {
   updateDispatchEntry: (id: string, updates: Partial<DispatchEntry>) => Promise<void>;
   deleteDispatchEntry: (id: string) => Promise<{ deletedSteps: any[]; restartStep?: number; deletedDoIds: string[] }>;
   markDispatchEmailSent: (id: string) => Promise<void>;
+  markDispatchBhiwandiEmailSent: (id: string) => Promise<void>;
   addCustomer: (customer: Customer) => Promise<Customer>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
@@ -696,6 +697,7 @@ const mapEnquiryToDB = (e: any) => {
     estimatedDeliveryDate: d.estimated_delivery_date || undefined,
     sentAt: d.sent_at || undefined,
     emailSentAt: d.email_sent_at || undefined,
+    bhiwandiEmailSentAt: d.bhiwandi_email_sent_at || undefined,
     formFilledBy: d.form_filled_by || undefined,
     createdBy: d.created_by || undefined,
     updatedBy: d.updated_by || undefined,
@@ -735,6 +737,8 @@ const mapEnquiryToDB = (e: any) => {
     if ('promisedDeliveryDate' in d) obj.promised_delivery_date = d.promisedDeliveryDate || null;
     if ('estimatedDeliveryDate' in d) obj.estimated_delivery_date = d.estimatedDeliveryDate || null;
     if ('sentAt' in d) obj.sent_at = d.sentAt || null;
+    // Only written when present — a form Save never sends it (see markDispatchBhiwandiEmailSent).
+    if ('bhiwandiEmailSentAt' in d) obj.bhiwandi_email_sent_at = d.bhiwandiEmailSentAt || null;
     if ('formFilledBy' in d) obj.form_filled_by = d.formFilledBy || null;
     if ('createdBy' in d) obj.created_by = d.createdBy || null;
     if ('updatedBy' in d) obj.updated_by = d.updatedBy || null;
@@ -1201,6 +1205,29 @@ const mapEnquiryToDB = (e: any) => {
     }));
   };
 
+  // 2026-10-30: stamps bhiwandi_email_sent_at on ONE dispatch entry after
+  // "Send to Bhiwandi" succeeds — Dispatch Step 9's proof. Same pattern as
+  // markDispatchEmailSent: writes only that column; a resend refreshes it.
+  const markDispatchBhiwandiEmailSent = async (id: string) => {
+    const bhiwandiEmailSentAt = new Date().toISOString();
+    const { error } = await supabase.from('dispatch_entries').update({ bhiwandi_email_sent_at: bhiwandiEmailSentAt }).eq('id', id);
+    if (error) {
+      console.error('Error marking Bhiwandi email sent:', error);
+      throw error;
+    }
+    setData(prev => ({
+      ...prev,
+      dispatchEntries: prev.dispatchEntries.map(d => d.id === id ? { ...d, bhiwandiEmailSentAt } : d)
+    }));
+    const before = data.dispatchEntries.find(d => d.id === id);
+    const order = data.orders.find(o => o.id === before?.orderId);
+    logActivity({
+      module: 'dispatch_entries', recordId: id,
+      recordLabel: `${order?.soNumber || before?.orderId || id} · ${before?.invoiceNumber ? `INV ${before.invoiceNumber} · ` : ''}Email sent to Bhiwandi`,
+      action: 'update', before: { bhiwandi_email_sent_at: before?.bhiwandiEmailSentAt ?? null }, after: { bhiwandi_email_sent_at: bhiwandiEmailSentAt },
+    });
+  };
+
   // 2026-10-26: deleting a dispatch entry RESETS its round on the Dispatch
   // board and deletes that round's DO(s), putting their stock back — all in
   // ONE database transaction, delete_dispatch_entry_reset (supabase/
@@ -1208,7 +1235,7 @@ const mapEnquiryToDB = (e: any) => {
   // anywhere deletes nothing. For the entry's order + round it deletes the
   // linked Outward DOs (stock added back by delete_outward_movement, the same
   // function Stock Movements → Outward → Delete uses), every dispatch_steps
-  // row (Steps 1–7 and the entry's 8–10) and the entry, so the order restarts
+  // row (Steps 1–7 and the entry's 8–11) and the entry, so the order restarts
   // at the round's first step (Step 1 for round 1, Step 5 for a later round —
   // Steps 1–4 are once per order). A 'Delivered' order goes back to 'Order
   // Confirmed'. SO No., order id, sent_to_dispatch_at and uploaded files are
@@ -2251,6 +2278,7 @@ const mapEnquiryToDB = (e: any) => {
         updateDispatchEntry,
         deleteDispatchEntry,
         markDispatchEmailSent,
+        markDispatchBhiwandiEmailSent,
         addCustomer,
         updateCustomer,
         deleteCustomer,
