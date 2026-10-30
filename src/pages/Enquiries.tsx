@@ -279,7 +279,7 @@ export function Enquiries() {
                           className={`group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-red-mrt/5 ${isExpanded ? 'bg-red-mrt/5' : ''}`}
                           onClick={() => setExpandedRow(isExpanded ? null : e.id)}
                         >
-                          <td className="px-[13px] py-[10px] align-top"><span className="font-mono text-[10.5px] font-bold text-red-mrt">{e.id}</span></td>
+                          <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10.5px] font-bold text-red-mrt">{e.id}</span></td>
                           <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">{fmtIST(d, 'dd MMM HH:mm')}</td>
                           <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
                             {e.created_at ? fmtIST(new Date(e.created_at), 'dd MMM HH:mm') : '--'}
@@ -306,7 +306,7 @@ export function Enquiries() {
                             })()}
                           </td>
                           <td className="px-[13px] py-[10px] align-top"><Badge status={e.status} /></td>
-                          <td className="px-[13px] py-[10px] align-top font-mono text-[10.5px] font-bold">
+                          <td className="px-[13px] py-[10px] align-top font-mono text-[10.5px] font-bold whitespace-nowrap">
                             {e.ageH < 1 ? <span className="text-sW"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sW mr-1"></span>Now</span> :
                              e.ageH < 4 ? <span className="text-sW"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sW mr-1"></span>{e.ageH.toFixed(1)}h</span> :
                              e.ageH < 24 ? <span className="text-sR"><span className="inline-block w-[7px] h-[7px] rounded-full bg-sR mr-1"></span>{Math.round(e.ageH)}h</span> :
