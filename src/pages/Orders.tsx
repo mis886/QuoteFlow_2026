@@ -168,7 +168,6 @@ export function Orders() {
       if (sortCol === 'cust') { av = a.cust.toLowerCase(); bv = b.cust.toLowerCase(); }
       else if (sortCol === 'status') { av = a.status; bv = b.status; }
       else if (sortCol === 'value') { av = a.items.reduce((s, i) => s + i.total, 0); bv = b.items.reduce((s, i) => s + i.total, 0); }
-      else if (sortCol === 'items') { av = a.items.length; bv = b.items.length; }
       else if (sortCol === 'dlvDate') { av = a.dlvDate || ''; bv = b.dlvDate || ''; }
       else if (sortCol === 'created_at') { av = a.created_at || ''; bv = b.created_at || ''; }
       // Fallback = Punched At (the PO Date column/sort was removed from the list).
@@ -300,7 +299,6 @@ export function Orders() {
               <col style={{ width: 105 }} />{/* Quote Ref */}
               <col style={{ width: 210 }} />{/* Customer - Unit */}
               <col style={{ width: 130 }} />{/* PO Number */}
-              <col style={{ width: 95 }} />{/* Items */}
               <col style={{ width: 120 }} />{/* Order Value */}
               <col style={{ width: 110 }} />{/* Punched At */}
               <col style={{ width: 170 }} />{/* Status */}
@@ -312,7 +310,6 @@ export function Orders() {
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
                 <SortTh col="cust">Customer - Unit</SortTh>
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">PO Number</th>
-                <SortTh col="items">Items</SortTh>
                 <SortTh col="value" right>Order Value</SortTh>
                 <SortTh col="created_at">Punched At</SortTh>
                 <SortTh col="status">Status</SortTh>
@@ -321,7 +318,7 @@ export function Orders() {
             </thead>
             <tbody>
               {filteredOrders.length === 0 ? (
-                <tr><td colSpan={9} className="text-center p-8 text-g400 text-[13px]">No orders yet</td></tr>
+                <tr><td colSpan={8} className="text-center p-8 text-g400 text-[13px]">No orders yet</td></tr>
               ) : (
                 filteredOrders.map(o => {
                   const subTotal = o.items.reduce((s, i) => s + i.total, 0);
@@ -369,11 +366,6 @@ export function Orders() {
                               </button>
                             )}
                           </div>
-                        </td>
-                        <td className="px-[13px] py-[10px] align-top whitespace-nowrap">
-                          <span className="font-mono text-[10px] font-bold bg-g100 text-g600 px-[7px] py-[2px] rounded-full inline-flex items-center">
-                            {o.items.length} item(s)
-                          </span>
                         </td>
                         <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold whitespace-nowrap">{formatINR(Math.round(grandTotal))}</td>
                         {/* <td className="px-[13px] py-[10px] align-top text-[11.5px] whitespace-nowrap">
@@ -543,7 +535,7 @@ export function Orders() {
 
                       {isExpanded && (
                         <tr className="bg-sW/[0.02] border-b-2 border-sW">
-                          <td colSpan={9} className="p-0">
+                          <td colSpan={8} className="p-0">
                             <div className="p-[10px_16px]">
                               <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sW mb-[7px]">Order Line Items -- {o.id}</div>
                               <table className="w-full border-collapse text-[11.5px] m-0 mb-2">
