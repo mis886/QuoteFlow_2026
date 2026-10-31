@@ -227,6 +227,9 @@ export function DispatchDrawer({
   const lastClick = openedFrom.kind === 'entry' ? lastEntryStepClick(records, openedFrom.entry.id) : lastStepClick(records);
   const realEntries = entries.filter(e => !isImportedEntry(e))
     .sort((a, b) => (ms(a.created_at) || 0) - (ms(b.created_at) || 0));
+  // Dispatch entries section: only the entry row the drawer was opened from.
+  const openedEntryId = openedFrom.kind === 'entry' ? openedFrom.entry.id : undefined;
+  const shownEntries = realEntries.filter(e => e.id === openedEntryId);
   // Order value + line items, calculated the same way as the Pending table.
   const subTotal = order.items.reduce((s, i) => s + i.total, 0);
   const itemGst = order.items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
@@ -342,11 +345,11 @@ export function DispatchDrawer({
           {openedFrom.kind === 'entry' && (
             <div className="px-4 py-3">
               <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt mb-2">Dispatch entries</div>
-              {realEntries.length === 0 ? (
+              {shownEntries.length === 0 ? (
                 <div className="text-[12px] text-g400">No dispatch entry yet.</div>
               ) : (
                 <div className="flex flex-col gap-1.5">
-                  {realEntries.map(e => {
+                  {shownEntries.map(e => {
                     const pos = entryPosition(e, records);
                     const where = pos.column === DONE_COLUMN ? 'Done' : `Step ${pos.column} · ${stepDef(pos.column).title}`;
                     return (
