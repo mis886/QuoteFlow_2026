@@ -196,7 +196,9 @@ function buildHtmlBody(plainBody: string, poLink?: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>');
+    .replace(/\n/g, '<br>')
+    // Dispatch email signature (lowercase "web:" — DISPATCH_EMAIL_SIGNATURE).
+    .replace('web: www.himalayaterpene.com', 'web: <a href="https://www.himalayaterpene.com">www.himalayaterpene.com</a>');
 
   const poBox = poLink ? `
     <div style="margin:24px 0;">
