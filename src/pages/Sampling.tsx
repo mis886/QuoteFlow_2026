@@ -6,7 +6,6 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
-import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { localDateStr, canDeleteRecords, nameTier, normalizeSearchText, isInDateRange } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 
@@ -285,7 +284,6 @@ export function Sampling() {
   const [feedbackTarget, setFeedbackTarget] = useState<Sample | null>(null);
   const [tabFilter, setTabFilter] = useState<'all' | SampleStatus>('all');
   const tableScrollRef = useRef<HTMLDivElement>(null);
-  const verticalScrollRef = useRef<HTMLDivElement>(null);
 
   const handleDelete = async (id: string) => {
     if (!confirm(`Delete sample ${id}? This cannot be undone.`)) return;
@@ -428,7 +426,7 @@ export function Sampling() {
       </div>
 
       {/* Sample register table */}
-      <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
+      <div className="thick-scroll px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto">
           <table className="w-full border-collapse text-[12.5px]">
             <thead className="bg-g100">
@@ -564,7 +562,6 @@ export function Sampling() {
         </div>
       </div>
       <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
-      <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
 
       {/* Modals */}
       {feedbackTarget && (
