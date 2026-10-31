@@ -260,7 +260,7 @@ export function SendEmailModal(props: Props) {
     // 2026-10-26: Delivery DOs go to the Bhiwandi team, naming the
     // transporter saved on the DO (NewStockOutward.tsx won't open this
     // modal for a Delivery DO without one).
-    ? `Dear Bhiwandi Team,\n\nPlease find the attached DO copy. Kindly arrange to dispatch the material through ${outwardTransporterName(props.doc as StockMovement)}.\n\nThank you.`
+    ? `Dear Bhiwandi Team,\n\nPlease find the attached DO copy. Kindly arrange the material to dispatch through ${outwardTransporterName(props.doc as StockMovement)}.\n\nThank you.`
     : isOutward
     ? (outwardPickupContact
         // 2026-09-19: Self Pickup at a known warehouse — company-name
