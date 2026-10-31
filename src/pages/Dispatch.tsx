@@ -5,7 +5,7 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { customerOfDoc, dispatchOrderView, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, unionBoardRows } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, unionBoardRows } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { LineItemsPanel } from '../components/LineItemsPanel';
@@ -278,8 +278,8 @@ export function Dispatch() {
     </>
   ) : null;
 
-  // "Undo last step" (card link + drawer button): takes back the order's most
-  // recent step 1–7 click — deletes that click's dispatch_steps rows, or
+  // "Undo last step" (card link + drawer button): takes back the most recent
+  // click of the order's open round — deletes that click's dispatch_steps rows, or
   // un-resumes a resumed hold. Only dispatch_steps is touched; never dispatch
   // entries, the order, its status, or a Step 6 Outward entry (DO).
   // 2026-10-13: was ADMIN_EMAILS only — now everyone who can click the step
@@ -292,8 +292,10 @@ export function Dispatch() {
       list.push(r);
       byOrder.set(r.orderId, list);
     }
-    return new Set([...byOrder].filter(([, recs]) => lastStepClick(recs)).map(([id]) => id));
-  }, [stepRecords]);
+    return new Set([...byOrder]
+      .filter(([id, recs]) => lastOpenRoundClick(recs, data.dispatchEntries.filter(e => e.orderId === id)))
+      .map(([id]) => id));
+  }, [stepRecords, data.dispatchEntries]);
   // Step 6 "DO issued ✓" also saved an Outward entry (the DO), which reduced
   // stock. Undo removes ONLY the Step 6 dispatch_steps row — never the
   // stock_movements row, stock_lots or the DO number.
@@ -303,10 +305,10 @@ export function Dispatch() {
   // The click waiting in the in-app confirm box (Cancel = nothing changes).
   const [undoTarget, setUndoTarget] = useState<{ order: Order; click: LastStepClick } | null>(null);
   // `click` given (drawer) = exactly that click — for an entry row, its last
-  // Step 8–11 click; otherwise the order's last Step 1–7 click.
+  // Step 8–11 click; otherwise the last click of the order's open round.
   const requestUndo = (order: Order, click?: LastStepClick) => {
     if (!canUndoOnBoard || undoBusy) return;
-    const target = click ?? lastStepClick(stepRecords.filter(r => r.orderId === order.id));
+    const target = click ?? lastOpenRoundClick(stepRecords.filter(r => r.orderId === order.id), data.dispatchEntries.filter(e => e.orderId === order.id));
     if (target) setUndoTarget({ order, click: target });
   };
   const confirmUndo = async () => {

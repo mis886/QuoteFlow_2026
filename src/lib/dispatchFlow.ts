@@ -190,7 +190,7 @@ export function doPendingText(p: DoPending): string {
 }
 
 // ── Undo last step (admins) ───────────────────────────────────────────────
-// The most recent click on an order's steps 1–7. One click can write several
+// The most recent click on the given steps 1–7 rows. One click can write several
 // rows in one insert (e.g. "No overdue ✓" = step 2 done + 3, 4 skipped) —
 // they share one created_at, so they're undone together. A Resume is an
 // update (a hold row's done_at), timed by that done_at; undoing it just
@@ -199,7 +199,7 @@ export type LastStepClick =
   | { kind: 'delete'; rows: DispatchStepRecord[]; at: string }
   | { kind: 'unresume'; row: DispatchStepRecord; at: string };
 
-export function lastStepClick(orderRecords: DispatchStepRecord[]): LastStepClick | null {
+function lastStepClick(orderRecords: DispatchStepRecord[]): LastStepClick | null {
   const rows = orderRecords.filter(r => r.stepNo >= 1 && r.stepNo <= 7);
   let best: LastStepClick | null = null;
   const later = (at: string | undefined) => !!at && (!best || ms(at) > ms(best.at));
@@ -212,6 +212,16 @@ export function lastStepClick(orderRecords: DispatchStepRecord[]): LastStepClick
     best = { kind: 'delete', at, rows: rows.filter(r => r.createdAt && ms(r.createdAt) === ms(at)).sort((a, b) => a.stepNo - b.stepNo) };
   }
   return best;
+}
+
+/**
+ * What an ORDER row's Undo takes back: the last click of the order's open
+ * round only, so a finished entry never loses a step. Steps 1–4 are once per
+ * order, so they can be undone only until the order has its first entry.
+ */
+export function lastOpenRoundClick(orderRecords: DispatchStepRecord[], orderEntries: DispatchEntry[]): LastStepClick | null {
+  const round = realEntriesOf(orderEntries).length + 1;
+  return lastStepClick(orderRecords.filter(r => r.round === round && (r.stepNo >= 5 || orderEntries.length === 0)));
 }
 
 /**

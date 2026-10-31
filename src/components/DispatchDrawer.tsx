@@ -5,7 +5,7 @@ import { fmtIST, doerLabel, formatINR, resolveAdjustments, maxItemGstRate, remai
 import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
   BoardCard, BoardEntryCard, BoardOrderCard, DispatchStepRecord, EntryColumn, LastStepClick, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
-  drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastStepClick, lastEntryStepClick, describeStepClick, allowedStepStatuses,
+  drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastOpenRoundClick, lastEntryStepClick, describeStepClick, allowedStepStatuses,
   step6AlreadyEmailed, STEP_ACTIONS, STEP9_MANUAL_ACTION, DONE_COLUMN,
 } from '../lib/dispatchFlow';
 import { EntryStepButtons, StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot, step6Label } from './DispatchBoard';
@@ -164,8 +164,8 @@ export function DispatchDrawer({
   onResume: (card: BoardOrderCard, remark?: string) => Promise<void> | void;
   canUndo: boolean;                    // same logins as the step buttons
   undoBusy: boolean;
-  // The click to take back: the order's last Step 1–7 click, or — opened
-  // from an entry row — that entry's last Step 8–11 click.
+  // The click to take back: the last click of the order's open round, or —
+  // opened from an entry row — that entry's last Step 8–11 click.
   onUndo: (click: LastStepClick) => void;
   // The card that was clicked — Edit / Delete act on it (the order for an
   // order card, that one dispatch entry for an entry card).
@@ -227,7 +227,7 @@ export function DispatchDrawer({
 
   const openedEntryId = openedFrom.kind === 'entry' ? openedFrom.entry.id : undefined;
   const steps = drawerSteps(order, entries, records, fulfillment, orderCard?.position, openedEntryId);
-  const lastClick = openedFrom.kind === 'entry' ? lastEntryStepClick(records, openedFrom.entry.id) : lastStepClick(records);
+  const lastClick = openedFrom.kind === 'entry' ? lastEntryStepClick(records, openedFrom.entry.id) : lastOpenRoundClick(records, entries);
   const realEntries = entries.filter(e => !isImportedEntry(e))
     .sort((a, b) => (ms(a.created_at) || 0) - (ms(b.created_at) || 0));
   // Dispatch entries section: only the entry row the drawer was opened from.
@@ -318,10 +318,10 @@ export function DispatchDrawer({
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt">Steps</div>
               <div className="flex items-center gap-1.5 flex-nowrap">
-                {canUndo && lastClick && (
-                  <button type="button" onClick={() => onUndo(lastClick)} disabled={undoBusy}
-                    title={`Takes back: ${describeStepClick(lastClick)}`}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-mrt border border-red-mrt/40 rounded-[4px] px-2 py-[3px] hover:bg-red-lt transition-colors disabled:opacity-50 disabled:cursor-wait">
+                {canUndo && (lastClick || openedFrom.kind === 'order') && (
+                  <button type="button" onClick={() => lastClick && onUndo(lastClick)} disabled={undoBusy || !lastClick}
+                    title={lastClick ? `Takes back: ${describeStepClick(lastClick)}` : 'Nothing to undo in this dispatch'}
+                    className={`inline-flex items-center gap-1 text-[11px] font-semibold text-red-mrt border border-red-mrt/40 rounded-[4px] px-2 py-[3px] hover:bg-red-lt transition-colors disabled:opacity-50 ${lastClick ? 'disabled:cursor-wait' : 'disabled:cursor-not-allowed'}`}>
                     <Undo2 size={11} /> Undo last step
                   </button>
                 )}
