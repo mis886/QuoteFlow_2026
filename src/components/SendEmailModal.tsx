@@ -120,7 +120,7 @@ interface DispatchProps extends BaseProps { mode: 'dispatch'; doc: DispatchEntry
 function bhiwandiDraft(d: BhiwandiEmailDetails): { subject: string; body: string } {
   return {
     subject: `INV NO: ${d.invoiceNumber} ${d.customer}`,
-    body: 'Dear Bhiwandi Team,\n\nPlease find the attached invoice and eway bill.\n\nThank you',
+    body: 'Dear Bhiwandi Team,\nPlease find attached the invoice and E-Way Bill for your reference.\nKindly arrange to dispatch the material accordingly.',
   };
 }
 type Props = QuoteProps | OrderProps | OutwardProps | DispatchProps;
