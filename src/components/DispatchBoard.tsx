@@ -607,7 +607,7 @@ export function DispatchBoard({ cards, now, onOpen, qty, deliveredOrders = [], d
       </div>
 
       {/* List */}
-      <div className="flex-1 min-h-0 bg-white border border-g200 rounded-[6px] overflow-auto">
+      <div className="dispatch-scroll flex-1 min-h-0 bg-white border border-g200 rounded-[6px] overflow-auto">
         <div className={deliveredLayout ? '' : GRID_MIN_W}>
           {deliveredLayout ? (
             shown.length === 0

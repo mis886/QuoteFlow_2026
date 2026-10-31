@@ -279,7 +279,7 @@ export function DispatchDrawer({
           {orderCard && <div className="mt-2.5"><TimeBar card={orderCard} now={now} /></div>}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="dispatch-scroll flex-1 overflow-y-auto">
           {/* Order info */}
           <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5 text-[12px]">
             <Field label="SO No."><span className="font-mono text-[11px] font-bold text-sW">{order.soNumber || '—'}</span></Field>
