@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../store';
-import { customerOfDoc, mainOffice, fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
+import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -580,7 +580,9 @@ export function DetailPanel() {
   };
 
   const renderOrder = () => {
-    const o = data.orders.find(x => x.id === detailPanel.id);
+    const liveOrder = data.orders.find(x => x.id === detailPanel.id);
+    // Opened from Dispatch: show the copy Dispatch works from.
+    const o = liveOrder && detailPanel.dispatchView ? dispatchOrderView(liveOrder) : liveOrder;
     if (!o) return null;
 
     const parentEnq = data.enquiries.find(e => e.id === o.enqRef);

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, List, Rows3, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
-import { customerOfDoc, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
+import { customerOfDoc, dispatchOrderView, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
 import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastStepClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, unionBoardRows } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
@@ -32,6 +32,8 @@ type BoardPill = typeof BOARD_PILLS[number];
 export function Dispatch() {
   const navigate = useNavigate();
   const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel } = useAppStore();
+  // Dispatch never reads the live order: see dispatchOrderView.
+  const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canDelete = canDeleteRecords(user?.email);
 
   // Initial tab/pill come from the URL (?tab=pending|dispatched|emailSent
@@ -468,7 +470,7 @@ export function Dispatch() {
     );
   };
 
-  const orderFor = (entry: DispatchEntry): Order | undefined => data.orders.find(o => o.id === entry.orderId);
+  const orderFor = (entry: DispatchEntry): Order | undefined => dispatchOrders.find(o => o.id === entry.orderId);
 
   // Order Pending for Dispatch — read-only view of every order that was
   // sent here (sentToDispatchAt — the "Order Pending for Dispatch" button
@@ -478,8 +480,8 @@ export function Dispatch() {
   // out; each dispatch shows under "Dispatched" as its own entry. Nothing
   // here changes an order's status.
   const pendingOrders = useMemo(
-    () => data.orders.filter(o => !!o.sentToDispatchAt && (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && totalRemaining(o, data.dispatchEntries) > 0),
-    [data.orders, data.dispatchEntries],
+    () => dispatchOrders.filter(o => !!o.sentToDispatchAt && (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && totalRemaining(o, data.dispatchEntries) > 0),
+    [dispatchOrders, data.dispatchEntries],
   );
   // Shown in the Fulfillment column only (this tab has no Delivery/Self
   // Pickup split) — order's own type first, then the customer's typical
@@ -504,11 +506,11 @@ export function Dispatch() {
     for (const e of data.dispatchEntries) {
       // Entries imported from old "Delivered" orders never get an SO number.
       if (isImportedEntry(e)) continue;
-      const o = data.orders.find(x => x.id === e.orderId);
+      const o = dispatchOrders.find(x => x.id === e.orderId);
       if (o && !o.soNumber) ids.add(o.id);
     }
     return [...ids].sort().join(',');
-  }, [pendingOrders, data.dispatchEntries, data.orders]);
+  }, [pendingOrders, data.dispatchEntries, dispatchOrders]);
   useEffect(() => {
     if (!missingSoKey || soRunning.current) return;
     soRunning.current = true;
@@ -605,7 +607,7 @@ export function Dispatch() {
       .sort((a, b) => tab === 'emailSent'
         ? (b.emailSentAt || '').localeCompare(a.emailSentAt || '')
         : (b.created_at || '').localeCompare(a.created_at || '')),
-    [activeEntries, subType, qs, data.orders, tab],
+    [activeEntries, subType, qs, dispatchOrders, tab],
   );
 
   const rowCount = tab === 'pending' ? visiblePending.length : visibleEntries.length;
@@ -615,8 +617,8 @@ export function Dispatch() {
 
   // ── Board view ──────────────────────────────────────────────────────────
   const boardCards = useMemo(
-    () => view === 'board' ? buildBoard(data.orders, data.dispatchEntries, stepRecords, orderFulfillment, now, linkedDOs) : [],
-    [view, data.orders, data.dispatchEntries, data.customers, stepRecords, now, linkedDOs],
+    () => view === 'board' ? buildBoard(dispatchOrders, data.dispatchEntries, stepRecords, orderFulfillment, now, linkedDOs) : [],
+    [view, dispatchOrders, data.dispatchEntries, data.customers, stepRecords, now, linkedDOs],
   );
   // List's Invoice No column: every invoice number (dispatch_entries.invoice_number,
   // filled at Step 08) per order id, oldest dispatch first.
@@ -647,7 +649,7 @@ export function Dispatch() {
   // included), plus one row per Delivered order that has no entry at all.
   const deliveredCards = useMemo<BoardEntryCard[]>(() => {
     if (view !== 'board') return [];
-    const ordersById = new Map(data.orders.map(o => [o.id, o]));
+    const ordersById = new Map(dispatchOrders.map(o => [o.id, o]));
     const out: BoardEntryCard[] = [];
     for (const e of data.dispatchEntries) {
       const order = ordersById.get(e.orderId);
@@ -658,17 +660,17 @@ export function Dispatch() {
       });
     }
     return out;
-  }, [view, data.orders, data.dispatchEntries, stepRecords]);
+  }, [view, dispatchOrders, data.dispatchEntries, stepRecords]);
   // Entry ids in the Delivered list (all of it, before type/search) — a Done
   // row in any other List tab whose entry is here reads "Delivered".
   const deliveredEntryIds = useMemo(() => new Set(deliveredCards.map(c => c.entry.id)), [deliveredCards]);
   const deliveredOrderRows = useMemo<DeliveredOrderRow[]>(() => {
     if (view !== 'board') return [];
     const withEntry = new Set(data.dispatchEntries.map(e => e.orderId));
-    return data.orders
+    return dispatchOrders
       .filter(o => o.status === 'Delivered' && !withEntry.has(o.id))
       .map(o => ({ order: o, fulfillment: orderFulfillment(o) }));
-  }, [view, data.orders, data.dispatchEntries, data.customers]);
+  }, [view, dispatchOrders, data.dispatchEntries, data.customers]);
 
   // Barrels per order shown on the List — same numbers as pendingQty above
   // (Order Pending for Dispatch). Entry rows show their order's numbers.
@@ -681,7 +683,7 @@ export function Dispatch() {
       m.set(o.id, { ordered, remaining, dispatched: Math.max(0, ordered - remaining) });
     };
     for (const c of [...boardCards, ...deliveredCards]) {
-      add(c.kind === 'order' ? c.order : c.order ?? data.orders.find(x => x.id === c.entry.orderId));
+      add(c.kind === 'order' ? c.order : c.order ?? dispatchOrders.find(x => x.id === c.entry.orderId));
     }
     for (const r of deliveredOrderRows) add(r.order);
     return m;
@@ -858,7 +860,7 @@ export function Dispatch() {
           onOpen={boardFilter === 'delivered' ? openDeliveredCard : openDrawer}
           entryActions={boardFilter === 'delivered' ? deliveredEntryActions : undefined}
           renderExpanded={boardFilter === 'delivered' ? (c => <DispatchLineItemsPanel entry={c.entry} order={c.order} />) : undefined}
-          onOpenDeliveredOrder={boardFilter === 'delivered' ? (o => openDetailPanel('order', o.id)) : undefined}
+          onOpenDeliveredOrder={boardFilter === 'delivered' ? (o => openDetailPanel('order', o.id, { dispatchView: true })) : undefined}
           renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
       ) : (
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
@@ -1016,7 +1018,7 @@ export function Dispatch() {
       )}
 
       {view === 'board' && drawerOrderId && (() => {
-        const o = data.orders.find(x => x.id === drawerOrderId);
+        const o = dispatchOrders.find(x => x.id === drawerOrderId);
         if (!o) return null;
         // Unfiltered board, so the drawer still finds the order card when
         // the current filter/search hides it.

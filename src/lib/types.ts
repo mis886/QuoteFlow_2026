@@ -273,6 +273,11 @@ export interface Order {
   // by updateOrder if the order's status leaves Order Confirmed / Order
   // Pending for Dispatch before it has a dispatch entry.
   sentToDispatchAt?: string;
+  // Full copy of this order saved when it was sent to Dispatch. Dispatch reads
+  // it through dispatchOrderView (utils.ts), so edits in the Orders module
+  // don't change Dispatch. Written once by sendOrderToDispatch, cleared only
+  // when the order leaves Dispatch with no dispatch entries.
+  dispatchSnapshot?: Partial<Order> | null;
   // Set on the leftover order automatically created by a partial dispatch —
   // points back to the order it was split off from, for traceability.
   splitFromOrderId?: string;

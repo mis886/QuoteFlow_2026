@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { customerOfDoc, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining } from '../lib/utils';
+import { customerOfDoc, dispatchOrderView, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
@@ -145,6 +145,8 @@ export function NewDispatchEntry() {
     ? `/dispatch?view=board${boardPill && /^[a-z]+$/.test(boardPill) ? `&pill=${boardPill}` : ''}`
     : '/dispatch';
   const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent } = useAppStore();
+  // Dispatch never reads the live order: see dispatchOrderView.
+  const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canEditTier = canDeleteRecords(user?.email);
   // This whole page is locked to view-only for isReadOnlyUser (the Bhiwandi
   // warehouse login) — see the <fieldset> wraps below — with one deliberate
@@ -440,7 +442,7 @@ export function NewDispatchEntry() {
     if (hydratedRef.current || loading) return;
     const existing = entryIdParam ? data.dispatchEntries.find(e => e.id === entryIdParam) : undefined;
     if (entryIdParam && !existing) return;
-    const order = data.orders.find(o => o.id === (existing ? existing.orderId : orderRef));
+    const order = dispatchOrders.find(o => o.id === (existing ? existing.orderId : orderRef));
     if (!order) return;
     hydratedRef.current = true;
     setSelectedOrderId(order.id);
@@ -502,7 +504,7 @@ export function NewDispatchEntry() {
         if (fallbackDate) setPromisedDeliveryDate(fallbackDate.slice(0, 10));
       }
     }
-  }, [loading, orderRef, entryIdParam, data.orders, data.dispatchEntries]);
+  }, [loading, orderRef, entryIdParam, dispatchOrders, data.dispatchEntries]);
 
   // This page only supports the ?orderRef= / ?entryId= entry points (the
   // standalone "search any order" mode has been removed) — once the store
@@ -515,9 +517,9 @@ export function NewDispatchEntry() {
     if (hydratedRef.current) return;
     if (orderRef || entryIdParam) return;
     navigate('/dispatch', { replace: true });
-  }, [loading, orderRef, entryIdParam, data.orders]);
+  }, [loading, orderRef, entryIdParam, dispatchOrders]);
 
-  const selectedOrder = selectedOrderId ? data.orders.find(o => o.id === selectedOrderId) : null;
+  const selectedOrder = selectedOrderId ? dispatchOrders.find(o => o.id === selectedOrderId) : null;
   const isEditMode = !!existingEntryId;
   const selectedCustomer = selectedOrder ? customerOfDoc(selectedOrder, data.customers) : undefined;
 
@@ -570,13 +572,13 @@ export function NewDispatchEntry() {
   // new entry landing in the store (which can bring remaining to 0) and the
   // navigate away.
   const entryParamOrder = entryIdParam
-    ? data.orders.find(o => o.id === data.dispatchEntries.find(e => e.id === entryIdParam)?.orderId)
+    ? dispatchOrders.find(o => o.id === data.dispatchEntries.find(e => e.id === entryIdParam)?.orderId)
     : undefined;
   const blockReason = loading || saving ? null
     : entryIdParam
       ? (!data.dispatchEntries.some(e => e.id === entryIdParam) ? 'Dispatch entry not found.' : !entryParamOrder ? 'Order not found.' : null)
       : orderRef
-        ? newDispatchBlockReason(data.orders.find(o => o.id === orderRef), orderRef, data.dispatchEntries)
+        ? newDispatchBlockReason(dispatchOrders.find(o => o.id === orderRef), orderRef, data.dispatchEntries)
         : null;
 
   // The Step 8 / 10 rules apply to real entries only — not old imported ones —
@@ -687,7 +689,7 @@ export function NewDispatchEntry() {
     // Re-check at Save time, in case the order's status / sent-to-Dispatch
     // flag / remaining qty changed while this page was open.
     if (!existingEntryId) {
-      const reason = newDispatchBlockReason(data.orders.find(o => o.id === selectedOrderId), selectedOrderId, data.dispatchEntries);
+      const reason = newDispatchBlockReason(dispatchOrders.find(o => o.id === selectedOrderId), selectedOrderId, data.dispatchEntries);
       if (reason) { setError(reason); return; }
     }
     if (!type) { setError('Please select Delivery or Self Pickup'); return; }
@@ -782,7 +784,10 @@ export function NewDispatchEntry() {
       // (see totalRemaining). Only corrections made to the order's own
       // trading/contact details are persisted — what's actually being
       // dispatched now lives on the dispatch entry itself (below).
-      const orderUpdates: Partial<Order> = {
+      // 2026-10-31: only fields actually changed on this form. This form
+      // shows the frozen Dispatch copy, so writing every field back would
+      // undo edits made in the Orders module.
+      const formDetails: Partial<Order> = {
         contact: contact || undefined,
         phone: phone || undefined,
         email: email || undefined,
@@ -793,7 +798,10 @@ export function NewDispatchEntry() {
         shipToAddress: shipAddr || undefined,
         custEnquiryDocNo: custEnquiryDocNo || undefined,
       };
-      await updateOrder(selectedOrderId, orderUpdates);
+      const orderUpdates = Object.fromEntries(
+        Object.entries(formDetails).filter(([k, v]) => v !== (selectedOrder[k as keyof Order] || undefined)),
+      ) as Partial<Order>;
+      if (Object.keys(orderUpdates).length) await updateOrder(selectedOrderId, orderUpdates);
 
       // Every save is a "Dispatch → Sent" save: keep the original sentAt
       // if this entry already has one, else stamp it now.

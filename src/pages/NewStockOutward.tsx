@@ -159,7 +159,7 @@
 // matching Party Name against data.customers — a non-match (e.g. "Other")
 // just leaves the To field blank, an expected fallback.
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -174,7 +174,7 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { Loader2 } from 'lucide-react';
 import { StockMovement, Order, DispatchEntry } from '../lib/types';
-import { fmtIST, canActOnDispatchBoard, remainingByLine, outwardTransporterName, friendlyStockError } from '../lib/utils';
+import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
 import { downloadOutwardDOCX } from '../lib/outwardDocx';
@@ -491,7 +491,11 @@ function OutwardForm() {
   // 2026-10-12: a Self Pickup card's Step 6 opens this form with Fulfilment
   // Type prefilled as Self Pickup (still editable).
   const dispatchFulfilment = fromDispatch && searchParams.get('fulfilment') === 'self_pickup' ? 'Self Pickup' : '';
-  const dispatchOrder = fromDispatch ? data.orders.find(o => o.id === orderRef) : undefined;
+  // The copy saved when the order was sent to Dispatch: see dispatchOrderView.
+  const dispatchOrder = useMemo(() => {
+    const order = fromDispatch ? data.orders.find(o => o.id === orderRef) : undefined;
+    return order && dispatchOrderView(order);
+  }, [fromDispatch, data.orders, orderRef]);
 
   // The order line picked in "Product (from order)" (null = the default line,
   // see orderLineFor).
@@ -1459,7 +1463,8 @@ function OutwardForm() {
 
   // 2026-10-16: the order this DO belongs to (header line) — new DO from the
   // Board, or a saved DO linked to an order.
-  const headerOrder = dispatchOrder || data.orders.find(o => o.id === (linkedOrder?.orderId || (boardLink ? orderRef : '')));
+  const linkedHeaderOrder = data.orders.find(o => o.id === (linkedOrder?.orderId || (boardLink ? orderRef : '')));
+  const headerOrder = dispatchOrder || (linkedHeaderOrder && dispatchOrderView(linkedHeaderOrder));
   // A saved DO linked to a Board order that isn't emailed yet.
   const awaitingEmail = isEditing && !!linkedOrder && !emailSentAt && !emailResult;
 

@@ -161,8 +161,8 @@ interface AppContextType {
   setSalesIdentity: (name: SalesSignatoryName | null) => void;
   globalSearchQuery: string;
   setGlobalSearchQuery: (query: string) => void;
-  detailPanel: { type: 'enquiry' | 'quote' | 'order' | 'ticket' | null, id: string | null };
-  openDetailPanel: (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string) => void;
+  detailPanel: { type: 'enquiry' | 'quote' | 'order' | 'ticket' | null, id: string | null, dispatchView?: boolean };
+  openDetailPanel: (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string, opts?: { dispatchView?: boolean }) => void;
   closeDetailPanel: () => void;
   attachmentModal: { type: 'enquiry' | 'quote' | 'order' | null, id: string | null };
   openAttachmentModal: (type: 'enquiry' | 'quote' | 'order', id: string) => void;
@@ -253,11 +253,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try { return (localStorage.getItem('sales_signatory_identity') as SalesSignatoryName | null) ?? null; } catch { return null; }
   });
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
-  const [detailPanel, setDetailPanel] = useState<{ type: 'enquiry' | 'quote' | 'order' | 'ticket' | null, id: string | null }>({ type: null, id: null });
+  const [detailPanel, setDetailPanel] = useState<{ type: 'enquiry' | 'quote' | 'order' | 'ticket' | null, id: string | null, dispatchView?: boolean }>({ type: null, id: null });
   const [attachmentModal, setAttachmentModal] = useState<{ type: 'enquiry' | 'quote' | 'order' | null, id: string | null }>({ type: null, id: null });
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const openDetailPanel = (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string) => setDetailPanel({ type, id });
+  const openDetailPanel = (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string, opts?: { dispatchView?: boolean }) => setDetailPanel({ type, id, ...opts });
   const closeDetailPanel = () => setDetailPanel({ type: null, id: null });
 
   const openAttachmentModal = (type: 'enquiry' | 'quote' | 'order', id: string) => setAttachmentModal({ type, id });
@@ -559,6 +559,8 @@ const mapEnquiryToDB = (e: any) => {
     if (o.dispatch_finalized) obj.dispatchFinalized = o.dispatch_finalized;
     if (o.so_number) obj.soNumber = o.so_number;
     if (o.sent_to_dispatch_at) obj.sentToDispatchAt = o.sent_to_dispatch_at;
+    if (o.dispatch_snapshot) obj.dispatchSnapshot = o.dispatch_snapshot;
+    delete obj.dispatch_snapshot;
     if ('authorized_person' in o) {
       obj.authorizedPerson = o.authorized_person;
       delete obj.authorized_person;
@@ -678,6 +680,9 @@ const mapEnquiryToDB = (e: any) => {
     // Same rule: only written when set, so a normal order save never clears
     // it (the one deliberate clear lives in updateOrder below).
     if (o.sentToDispatchAt) obj.sent_to_dispatch_at = o.sentToDispatchAt;
+    // dispatchSnapshot is deliberately NOT mapped here: every order save goes
+    // through this function and an order edit must never touch the snapshot.
+    // Only sendOrderToDispatch / the two "leaves Dispatch" paths write it.
 
     return obj;
   };
@@ -1022,13 +1027,17 @@ const mapEnquiryToDB = (e: any) => {
     // An order that was sent to Dispatch but not yet dispatched, whose status
     // then moves off Order Confirmed / Order Pending for Dispatch (e.g. back
     // to Pending for Payment), leaves Dispatch — clear sent_to_dispatch_at so
-    // it has to be sent again once re-confirmed. Its SO number is kept.
+    // it has to be sent again once re-confirmed. Its SO number is kept. The
+    // Dispatch snapshot goes too, so the next send freezes the order as it is then.
     const leavesDispatch = !!updates.status
       && updates.status !== 'Order Confirmed' && updates.status !== 'Order Pending for Dispatch'
       && !!before?.sentToDispatchAt
       && !data.dispatchEntries.some(e => e.orderId === id);
-    if (leavesDispatch) dbUpdates.sent_to_dispatch_at = null;
-    const localUpdates: Partial<Order> = leavesDispatch ? { ...updates, sentToDispatchAt: undefined } : updates;
+    if (leavesDispatch) {
+      dbUpdates.sent_to_dispatch_at = null;
+      dbUpdates.dispatch_snapshot = null;
+    }
+    const localUpdates: Partial<Order> = leavesDispatch ? { ...updates, sentToDispatchAt: undefined, dispatchSnapshot: undefined } : updates;
     const { error } = await supabase.from('orders').update(dbUpdates).eq('id', id);
     if (!error) {
       setData(prev => ({
@@ -1045,8 +1054,10 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   // "Order Pending for Dispatch" button in the Orders module: stamps
-  // sent_to_dispatch_at on this ONE order (only that column), then assigns
-  // its SO number via ensureSoNumbers (no-op if it already has one).
+  // sent_to_dispatch_at on this ONE order, then assigns its SO number via
+  // ensureSoNumbers (no-op if it already has one). The same update saves
+  // dispatch_snapshot, a copy of the order read fresh from the DB, unless the
+  // order already has one (it's never overwritten).
   // Returns the order's SO number, read fresh from the DB, for the toast.
   const sendOrderToDispatch = async (orderId: string): Promise<string | null> => {
     // Same allow-list as the button in Orders.tsx, so it can't be
@@ -1054,15 +1065,24 @@ const mapEnquiryToDB = (e: any) => {
     if (!canSendToDispatch(user?.email)) {
       throw new Error("You don't have permission to send orders to Dispatch.");
     }
+    const { data: current, error: readError } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+    if (readError) throw readError;
+    if (!current) throw new Error('Order not found.');
     const sentToDispatchAt = new Date().toISOString();
-    const { error } = await supabase.from('orders').update({ sent_to_dispatch_at: sentToDispatchAt }).eq('id', orderId);
+    const dbUpdates: Record<string, unknown> = { sent_to_dispatch_at: sentToDispatchAt };
+    let dispatchSnapshot: Order['dispatchSnapshot'] = current.dispatch_snapshot;
+    if (!dispatchSnapshot) {
+      dispatchSnapshot = mapOrderFromDB(current);
+      dbUpdates.dispatch_snapshot = dispatchSnapshot;
+    }
+    const { error } = await supabase.from('orders').update(dbUpdates).eq('id', orderId);
     if (error) {
       console.error('Error sending order to dispatch:', error);
       throw error;
     }
     setData(prev => ({
       ...prev,
-      orders: prev.orders.map(o => o.id === orderId ? { ...o, sentToDispatchAt } : o)
+      orders: prev.orders.map(o => o.id === orderId ? { ...o, sentToDispatchAt, dispatchSnapshot } : o)
     }));
     await ensureSoNumbers([orderId]);
     const { data: row } = await supabase.from('orders').select('so_number').eq('id', orderId).maybeSingle();
@@ -1648,9 +1668,10 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   // Dispatch Board "Delete" on an ORDER card (admins): takes the order OFF
-  // the board — never deletes it. Clears sent_to_dispatch_at (so the Orders
-  // "Order Pending for Dispatch" button is clickable again; status untouched)
-  // and deletes its dispatch_steps rows. Refused if the order has any
+  // the board — never deletes it. Clears sent_to_dispatch_at and
+  // dispatch_snapshot (so the Orders "Order Pending for Dispatch" button is
+  // clickable again and freezes the order afresh; status untouched) and
+  // deletes its dispatch_steps rows. Refused if the order has any
   // dispatch entries. If the steps delete fails, sent_to_dispatch_at is put
   // back so nothing is left half-changed. Returns the deleted step rows.
   const removeOrderFromDispatch = async (orderId: string): Promise<any[]> => {
@@ -1658,15 +1679,15 @@ const mapEnquiryToDB = (e: any) => {
     const before = data.orders.find(o => o.id === orderId);
     const entryCount = data.dispatchEntries.filter(e => e.orderId === orderId).length;
     if (entryCount > 0) throw new Error(`This order has ${entryCount} dispatch entr${entryCount === 1 ? 'y' : 'ies'}. Delete those entries first.`);
-    const { data: updated, error } = await supabase.from('orders').update({ sent_to_dispatch_at: null }).eq('id', orderId).select('id');
+    const { data: updated, error } = await supabase.from('orders').update({ sent_to_dispatch_at: null, dispatch_snapshot: null }).eq('id', orderId).select('id');
     if (error) throw error;
     if (!updated || updated.length === 0) throw new Error("Nothing was changed — the order wasn't found or you don't have permission.");
     const { data: deletedSteps, error: stepsError } = await supabase.from('dispatch_steps').delete().eq('order_id', orderId).select('*');
     if (stepsError) {
-      await supabase.from('orders').update({ sent_to_dispatch_at: before?.sentToDispatchAt ?? null }).eq('id', orderId);
+      await supabase.from('orders').update({ sent_to_dispatch_at: before?.sentToDispatchAt ?? null, dispatch_snapshot: before?.dispatchSnapshot ?? null }).eq('id', orderId);
       throw stepsError;
     }
-    setData(prev => ({ ...prev, orders: prev.orders.map(o => o.id === orderId ? { ...o, sentToDispatchAt: undefined } : o) }));
+    setData(prev => ({ ...prev, orders: prev.orders.map(o => o.id === orderId ? { ...o, sentToDispatchAt: undefined, dispatchSnapshot: undefined } : o) }));
     logActivity({
       module: 'dispatch_steps', recordId: orderId,
       recordLabel: `${before?.soNumber || orderId} · Removed from Dispatch board`,

@@ -760,6 +760,12 @@ export function NewOrder() {
         {step === 1 && (
           <div className="flex flex-col gap-[12px]">
 
+            {(!!editingOrder?.sentToDispatchAt || orderHasDispatch) && (
+              <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_14px] text-[12px] font-semibold text-amber-700">
+                This order is already in Dispatch. Changes here will NOT update Dispatch.
+              </div>
+            )}
+
             {quoteRef && !editOrderId && (
               <div className="bg-sW/5 border border-sW/20 rounded-[3px] p-[9px_14px] flex items-center gap-[10px] text-[12px]">
                 <span className="text-sW text-[14px]">✓</span>

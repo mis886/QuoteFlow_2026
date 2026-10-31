@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, QuoteItem, Quote, TeamMember } from './types';
+import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, Order, QuoteItem, Quote, TeamMember } from './types';
 
 export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'];
 
@@ -496,12 +496,37 @@ export const isLockedStatusChangeAllowed = (
   (to === 'Delivered' && fullyDispatched) ||
   (from === 'Order Pending for Dispatch' && to === 'Order Confirmed');
 
+// 2026-10-31: fields that keep moving after an order is sent to Dispatch, so
+// they always come from the live order: the rest of the view is frozen.
+const DISPATCH_LIVE_FIELDS = [
+  'id', 'status', 'soNumber', 'sentToDispatchAt', 'splitFromOrderId', 'dispatchFinalized',
+  'receivedAmount', 'managementNotes', 'sheetsExportedAt', 'created_at', 'updated_at', 'dispatchSnapshot',
+] as const;
+
+// The order as Dispatch must see it: the copy saved when it was sent to
+// Dispatch, or the live order if it has none (old / imported orders). Built
+// from the snapshot alone, not merged over the live order, so a field that was
+// empty at send time stays empty after an edit fills it in. Safe to call twice.
+export function dispatchOrderView<T extends { dispatchSnapshot?: Partial<Order> | null }>(order: T): T {
+  const snapshot = order.dispatchSnapshot;
+  if (!snapshot || !Array.isArray(snapshot.items)) return order;
+  const view: Record<string, unknown> = { ...snapshot };
+  const live = order as Record<string, unknown>;
+  for (const field of DISPATCH_LIVE_FIELDS) {
+    if (field in live) view[field] = live[field];
+    else delete view[field];
+  }
+  return view as T;
+}
+
 // Partial dispatch: one order (one Order No. + SO No.) can have many dispatch
 // entries. Per order line (matched by seq): order qty (No of Barrels) minus
 // that line's qty summed across ALL of the order's entries, floored at 0.
 // 2026-10-15: an entry saved without its own items counts as 0 (it used to
 // count as the WHOLE order dispatched) and is reported with console.warn.
+// 2026-10-31: order qty comes from the Dispatch snapshot when there is one.
 type QtyLine = { seq: number; qty: number };
+type QtyOrder = { id: string; items: QtyLine[]; dispatchSnapshot?: Partial<Order> | null };
 // Each empty entry is warned about once per page load — this runs for every
 // order on every render.
 const warnedEmptyEntries = new Set<string>();
@@ -525,23 +550,23 @@ export function dispatchedByLine(
 }
 
 export function remainingByLine(
-  order: { id: string; items: QtyLine[] },
+  order: QtyOrder,
   entries: { id?: string; orderId: string; items?: QtyLine[] }[],
 ): Map<number, number> {
   const dispatched = dispatchedByLine(order.id, entries);
   const remaining = new Map<number, number>();
-  for (const l of order.items) remaining.set(l.seq, Math.max(0, (Number(l.qty) || 0) - (dispatched.get(l.seq) || 0)));
+  for (const l of dispatchOrderView(order).items) remaining.set(l.seq, Math.max(0, (Number(l.qty) || 0) - (dispatched.get(l.seq) || 0)));
   return remaining;
 }
 
 export const totalRemaining = (
-  order: { id: string; items: QtyLine[] },
+  order: QtyOrder,
   entries: { orderId: string; items?: QtyLine[] }[],
 ): number => [...remainingByLine(order, entries).values()].reduce((s, q) => s + q, 0);
 
 // Has at least one dispatch entry and nothing left to dispatch.
 export const isFullyDispatched = (
-  order: { id: string; items: QtyLine[] },
+  order: QtyOrder,
   entries: { orderId: string; items?: QtyLine[] }[],
 ): boolean => entries.some(e => e.orderId === order.id) && totalRemaining(order, entries) === 0;
 
