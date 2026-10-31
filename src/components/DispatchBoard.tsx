@@ -419,7 +419,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
 const DELIVERED_COLS = 8;
 // Everything centred, across and up/down (the expanded line items keep
 // their own alignment — it's a separate row).
-const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true, centered: true, mergeOrder: true } as const;
+const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true, centered: true, mergeOrder: true, dispatchedOnFormat: 'dd MMM HH:mm' } as const;
 const deliveredOrderCell = (order: Order | undefined, orderId: string | undefined) =>
   <OrderCell soNumber={order?.soNumber} orderId={orderId || order?.id} centered hideMissingSo />;
 function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {

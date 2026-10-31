@@ -69,8 +69,10 @@ export function DispatchEntryHeadCells({ showEmailSent, compact = false, hideIte
  * SO No. … Dispatched On (+ Email Sent On) cells for one entry. With no
  * entry (List → Delivered "Marked delivered" order) only the order's own
  * fields show; the rest are "—".
+ * `dispatchedOnFormat`: List → Delivered shows Dispatched On with a time
+ * (empty = "--", like Punched At); the Table keeps its date-only default.
  */
-export function DispatchEntryCells({ entry, order, showEmailSent, compact = false, hideItemsAndTransporter = false, centered = false, mergeOrder = false, orderCell }: { entry?: DispatchEntry; order?: Order; showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean; centered?: boolean; mergeOrder?: boolean; orderCell?: React.ReactNode }) {
+export function DispatchEntryCells({ entry, order, showEmailSent, compact = false, hideItemsAndTransporter = false, centered = false, mergeOrder = false, orderCell, dispatchedOnFormat }: { entry?: DispatchEntry; order?: Order; showEmailSent: boolean; compact?: boolean; hideItemsAndTransporter?: boolean; centered?: boolean; mergeOrder?: boolean; orderCell?: React.ReactNode; dispatchedOnFormat?: string }) {
   const td = centered ? 'px-[9px] py-[10px] align-middle text-center'
     : compact ? 'px-[9px] py-[10px] align-top' : 'px-[13px] py-[10px] align-top';
   return (
@@ -93,7 +95,7 @@ export function DispatchEntryCells({ entry, order, showEmailSent, compact = fals
           ? <span className="block truncate font-mono text-[10.5px] font-semibold" title={entry.invoiceNumber}>{entry.invoiceNumber}</span>
           : dash}
       </td>
-      <td className={`${td} whitespace-nowrap`}>{entry?.created_at ? fmtIST(new Date(entry.created_at), 'dd-MMM-yyyy') : '—'}</td>
+      <td className={`${td} whitespace-nowrap`}>{entry?.created_at ? fmtIST(new Date(entry.created_at), dispatchedOnFormat || 'dd-MMM-yyyy') : dispatchedOnFormat ? '--' : '—'}</td>
       {showEmailSent && (
         <td className={`${td} whitespace-nowrap`}>{entry?.emailSentAt ? fmtIST(new Date(entry.emailSentAt), 'dd-MMM-yyyy hh:mm a') : '—'}</td>
       )}
