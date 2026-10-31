@@ -339,7 +339,7 @@ export function DispatchDrawer({
 
           {/* Dispatch entries */}
           <div className="px-4 py-3">
-            <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt mb-2">Dispatch entries</div>
+            <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt mb-2">{openedFrom.kind === 'order' ? 'Earlier dispatches' : 'Dispatch entries'}</div>
             {realEntries.length === 0 ? (
               <div className="text-[12px] text-g400">No dispatch entry yet.</div>
             ) : (

@@ -620,8 +620,8 @@ export function Dispatch() {
     () => view === 'board' ? buildBoard(dispatchOrders, data.dispatchEntries, stepRecords, orderFulfillment, now, linkedDOs) : [],
     [view, dispatchOrders, data.dispatchEntries, data.customers, stepRecords, now, linkedDOs],
   );
-  // List's Invoice No column: every invoice number (dispatch_entries.invoice_number,
-  // filled at Step 08) per order id, oldest dispatch first.
+  // List search: every invoice number (dispatch_entries.invoice_number, filled
+  // at Step 08) per order id, so an order row is found by an earlier invoice.
   const boardInvoices = useMemo(() => {
     const m = new Map<string, string[]>();
     if (view !== 'board') return m;
@@ -856,7 +856,7 @@ export function Dispatch() {
       </div>
 
       {view === 'board' ? (
-        <DispatchBoard key={boardFilter} cards={boardVisible} qty={boardQty} invoices={boardInvoices} deliveredOrders={boardVisibleDeliveredOrders} deliveredEntryIds={deliveredEntryIds} now={now}
+        <DispatchBoard key={boardFilter} cards={boardVisible} qty={boardQty} deliveredOrders={boardVisibleDeliveredOrders} deliveredEntryIds={deliveredEntryIds} now={now}
           onOpen={boardFilter === 'delivered' ? openDeliveredCard : openDrawer}
           entryActions={boardFilter === 'delivered' ? deliveredEntryActions : undefined}
           renderExpanded={boardFilter === 'delivered' ? (c => <DispatchLineItemsPanel entry={c.entry} order={c.order} />) : undefined}

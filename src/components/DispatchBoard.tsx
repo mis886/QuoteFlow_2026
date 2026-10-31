@@ -272,14 +272,12 @@ function PunchedCell({ at }: { at?: string }) {
   return <div className="font-mono text-[11.5px] text-g700 whitespace-nowrap">{fmtPunched(at)}</div>;
 }
 
-function Row({ card, now, onOpen, qty, orderInvoices, deliveredEntryIds, punchedAt }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; orderInvoices?: string[]; deliveredEntryIds?: Set<string>; punchedAt?: string }) {
+function Row({ card, now, onOpen, qty, deliveredEntryIds, punchedAt }: { card: BoardCard; now: number; onOpen?: (card: BoardCard) => void; qty?: OrderQty; deliveredEntryIds?: Set<string>; punchedAt?: string }) {
   const order = card.order;
   const orderId = card.kind === 'order' ? card.order.id : card.entry.orderId;
-  // An entry row is one dispatch → its own invoice. An order row (what is
-  // still left to dispatch) → the invoices of the order's earlier dispatches.
-  const invoices = card.kind === 'entry'
-    ? (card.entry.invoiceNumber ? [card.entry.invoiceNumber] : [])
-    : orderInvoices || [];
+  // An entry row is one dispatch → its own invoice. An order row is what is
+  // still left to dispatch → no invoice yet, even if earlier dispatches have one.
+  const invoices = card.kind === 'entry' && card.entry.invoiceNumber ? [card.entry.invoiceNumber] : [];
   const lines = card.kind === 'order'
     ? card.remaining
     : (card.entry.items || []).filter(i => Number(i.qty) > 0).map(i => ({ desc: i.desc, qty: Number(i.qty) }));
@@ -309,7 +307,7 @@ function Row({ card, now, onOpen, qty, orderInvoices, deliveredEntryIds, punched
       {/* Customer · product */}
       <CustomerCell cust={order?.cust} lines={lines} />
 
-      {/* Invoice no(s) — dispatch_entries.invoice_number (Step 08) */}
+      {/* Invoice no — dispatch_entries.invoice_number (Step 08), entry rows only */}
       <InvoiceCell invoices={invoices} />
 
       {/* Barrels — the ORDER's ordered / dispatched / remaining, every row */}
@@ -502,7 +500,7 @@ const doneKey = (it: ListItem) => it.kind === 'deliveredOrder'
   ? (it.row.order.created_at || it.row.order.poDate || '')
   : it.card.kind === 'entry' ? (it.card.entry.emailSentAt || it.card.entry.created_at || '') : '';
 
-export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrders = [], deliveredEntryIds, entryActions, onOpenDeliveredOrder, renderExpanded }: {
+export function DispatchBoard({ cards, now, onOpen, qty, deliveredOrders = [], deliveredEntryIds, entryActions, onOpenDeliveredOrder, renderExpanded }: {
   cards: BoardCard[];
   now: number;
   // Entry ids in the List → Delivered list (Dispatch.tsx deliveredCards).
@@ -516,8 +514,6 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
   entryActions?: (card: BoardEntryCard) => React.ReactNode;
   // List → Delivered: click on a "Marked delivered" row (order, no entry).
   onOpenDeliveredOrder?: (order: Order) => void;
-  // Invoice numbers per order id, from its dispatch entries (Dispatch.tsx).
-  invoices?: Map<string, string[]>;
   // Barrels per order id (Dispatch.tsx's boardQty) — same numbers as the
   // Table's Order Pending for Dispatch.
   qty?: Map<string, OrderQty>;
@@ -631,8 +627,7 @@ export function DispatchBoard({ cards, now, onOpen, qty, invoices, deliveredOrde
                 <div className="text-center text-[12px] text-g400 py-12">No orders here. Try another step or clear the search.</div>
               ) : shown.slice(0, limit).map(it => it.kind === 'card' ? (
                 <Row key={it.card.key} card={it.card} now={now} onOpen={onOpen} deliveredEntryIds={deliveredEntryIds} punchedAt={punchedAtOf(it)}
-                  qty={qty?.get(it.card.kind === 'order' ? it.card.order.id : it.card.entry.orderId)}
-                  orderInvoices={it.card.kind === 'order' ? invoices?.get(it.card.order.id) : undefined} />
+                  qty={qty?.get(it.card.kind === 'order' ? it.card.order.id : it.card.entry.orderId)} />
               ) : (
                 <DeliveredOrderRowView key={`do:${it.row.order.id}`} row={it.row} qty={qty?.get(it.row.order.id)} />
               ))}
