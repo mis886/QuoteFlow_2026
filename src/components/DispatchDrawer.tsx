@@ -337,34 +337,37 @@ export function DispatchDrawer({
             ))}
           </div>
 
-          {/* Dispatch entries */}
-          <div className="px-4 py-3">
-            <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt mb-2">{openedFrom.kind === 'order' ? 'Earlier dispatches' : 'Dispatch entries'}</div>
-            {realEntries.length === 0 ? (
-              <div className="text-[12px] text-g400">No dispatch entry yet.</div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {realEntries.map(e => {
-                  const pos = entryPosition(e, records);
-                  const where = pos.column === DONE_COLUMN ? 'Done' : `Step ${pos.column} · ${stepDef(pos.column).title}`;
-                  return (
-                    <div key={e.id} className="flex items-center gap-2 border border-g200 rounded-[4px] px-2.5 py-2">
-                      <span className="font-mono text-[10px] font-bold bg-[#F3EEFF] text-[#5B21B6] rounded-[3px] px-1.5 py-[1px] shrink-0">INV {e.invoiceNumber || '—'}</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11.5px] text-blk truncate">{where}</div>
-                        <div className="text-[10.5px] text-g500">
-                          {e.emailSentAt ? `Email sent ${fmtWhen(e.emailSentAt)}` : `Dispatched ${fmtWhen(e.created_at)}`}
-                          {pos.invoiceMissing && <span className="text-[#9A0000] font-semibold"> · Invoice no. missing</span>}
+          {/* Dispatch entries — entry rows only. An order row is what is left to
+              dispatch: it gets its own entry at Step 8, nothing from earlier ones. */}
+          {openedFrom.kind === 'entry' && (
+            <div className="px-4 py-3">
+              <div className="font-mono text-[8.5px] font-bold uppercase tracking-[2px] text-red-mrt mb-2">Dispatch entries</div>
+              {realEntries.length === 0 ? (
+                <div className="text-[12px] text-g400">No dispatch entry yet.</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {realEntries.map(e => {
+                    const pos = entryPosition(e, records);
+                    const where = pos.column === DONE_COLUMN ? 'Done' : `Step ${pos.column} · ${stepDef(pos.column).title}`;
+                    return (
+                      <div key={e.id} className="flex items-center gap-2 border border-g200 rounded-[4px] px-2.5 py-2">
+                        <span className="font-mono text-[10px] font-bold bg-[#F3EEFF] text-[#5B21B6] rounded-[3px] px-1.5 py-[1px] shrink-0">INV {e.invoiceNumber || '—'}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[11.5px] text-blk truncate">{where}</div>
+                          <div className="text-[10.5px] text-g500">
+                            {e.emailSentAt ? `Email sent ${fmtWhen(e.emailSentAt)}` : `Dispatched ${fmtWhen(e.created_at)}`}
+                            {pos.invoiceMissing && <span className="text-[#9A0000] font-semibold"> · Invoice no. missing</span>}
+                          </div>
                         </div>
+                        <button type="button" onClick={() => navigate(entryPagePath(e.id))}
+                          className="text-[11px] font-semibold text-red-mrt hover:underline shrink-0">{entryActionLabel(pos.column)}</button>
                       </div>
-                      <button type="button" onClick={() => navigate(entryPagePath(e.id))}
-                        className="text-[11px] font-semibold text-red-mrt hover:underline shrink-0">{entryActionLabel(pos.column)}</button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Remark + current step's buttons */}
