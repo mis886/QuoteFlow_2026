@@ -266,7 +266,7 @@ export function SendEmailModal(props: Props) {
         // 2026-09-19: Self Pickup at a known warehouse — company-name
         // greeting (matching how Dispatch greets) + the warehouse's own
         // contact block, at the user's request.
-        ? `Dear ${customer?.name || 'Sir/Madam'},\n\nPlease find attached the DO copy for lifting the material.\n\nKindly share the vehicle number before lifting the material.\n\nContact Persons:\n${outwardPickupContact}\n\nGodown Timings: 9:30 AM to 5:30 PM\n\nThank you for your cooperation.`
+        ? `Dear ${customer?.name || 'Sir/Madam'},\n\nPlease find the attached DO copy for lifting the material.\n\nKindly share the vehicle number before lifting the material.\n\nContact Persons:\n${outwardPickupContact}\n\nGodown Timings: 9:30 AM to 5:30 PM\n\nThank you for your cooperation.`
         : `${greeting}\n\nPlease find attached the Delivery Order ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${OUTWARD_SIGNATURE}`)
     : isDispatch
     ? `${greeting}\n\nWe have dispatched your goods. We have attached the following \ndocuments for your reference:\n${dispatchDocLines}\n\nWe request you to kindly get in touch with us for any clarifications.\n\nPS: The Tax Invoice is Digitally Signed. Kindly take a printout for your \nrecords. No hard copy will be couriered to you.\n\nImp: Please update any changes to your email ID, Address (Bill To & Ship \nTo), Telephone no., GST No. etc., for updating our records.\n\nWe request you to please fill out this Customer feedback form:\n${DISPATCH_FEEDBACK_FORM_URL}\n\n${DISPATCH_EMAIL_SIGNATURE}`
