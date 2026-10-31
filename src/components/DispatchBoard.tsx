@@ -251,16 +251,22 @@ function InvoiceCell({ invoices }: { invoices: string[] }) {
   );
 }
 
+// PO number, same look as Delivered's PO No.: up to 2 lines, full number on hover.
+function PoCell({ poNo }: { poNo?: string }) {
+  if (!poNo) return <div className="font-mono text-[10.5px] text-g400 text-center">—</div>;
+  return <div className="font-mono text-[10.5px] line-clamp-2 break-words min-w-0" title={poNo}>{poNo}</div>;
+}
+
 // Column template for every tab except Delivered (which uses its own
 // Email Sent columns — DeliveredTable below). Everything is centred. Each
-// column is minmax(Npx, Nfr): at its minimum the row is 1074px (fits 1366px
-// with the sidebar open); on wider screens the extra width is shared out in
-// proportion across all columns instead of piling up after Customer.
-// Order 100 · Punched At 100 · Customer 250 · Invoice 76 · Ordered/Dispatched/
-// Remaining 80 · Current step 120 · Progress 120 (11 dots) · Due 112, 4px gaps,
-// 12px side padding.
-const GRID = 'grid grid-cols-[minmax(100px,100fr)_minmax(110px,110fr)_minmax(240px,240fr)_minmax(76px,76fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(120px,120fr)_minmax(120px,120fr)_minmax(112px,112fr)] gap-x-1 px-3 text-center';
-const GRID_MIN_W = 'min-w-[1178px]';
+// column is minmax(Npx, Nfr): at its minimum the row is 1288px; on wider
+// screens the extra width is shared out in proportion across all columns
+// instead of piling up after Customer.
+// Order 100 · Punched At 110 · Customer 240 · PO No 106 · Invoice 76 · Ordered/
+// Dispatched/Remaining 80 · Current step 120 · Progress 120 (11 dots) · Due 112,
+// 4px gaps, 12px side padding.
+const GRID = 'grid grid-cols-[minmax(100px,100fr)_minmax(110px,110fr)_minmax(240px,240fr)_minmax(106px,106fr)_minmax(76px,76fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(120px,120fr)_minmax(120px,120fr)_minmax(112px,112fr)] gap-x-1 px-3 text-center';
+const GRID_MIN_W = 'min-w-[1288px]';
 
 // 2026-10-30: "Punched At" = when the order came into Dispatch ("Order
 // Pending for Dispatch" clicked — orders.sent_to_dispatch_at), never the
@@ -306,6 +312,8 @@ function Row({ card, now, onOpen, qty, deliveredEntryIds, punchedAt }: { card: B
 
       {/* Customer · product */}
       <CustomerCell cust={order?.cust} lines={lines} />
+
+      <PoCell poNo={order?.poNo} />
 
       {/* Invoice no — dispatch_entries.invoice_number (Step 08), entry rows only */}
       <InvoiceCell invoices={invoices} />
@@ -393,6 +401,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
       <OrderCell soNumber={o.soNumber} orderId={o.id} centered />
       <PunchedCell at={o.sentToDispatchAt} />
       <CustomerCell cust={o.cust} lines={lines} />
+      <PoCell poNo={o.poNo} />
       <InvoiceCell invoices={[]} />
       <QtyCells qty={qty} />
       <div className="flex flex-col items-center gap-[2px] min-w-0">
@@ -617,7 +626,7 @@ export function DispatchBoard({ cards, now, onOpen, qty, deliveredOrders = [], d
                     : punchSort === 'desc' ? <ChevronDown size={10} className="text-red-mrt" />
                     : <ChevronsUpDown size={10} className="text-g300 group-hover:text-g400" />}
                 </div>
-                <div>Customer · Product</div><div>Invoice No</div>
+                <div>Customer · Product</div><div>PO No.</div><div>Invoice No</div>
                 <div>Ordered</div><div>Dispatched</div><div>Remaining</div>
                 <div>Current step</div><div>Progress</div><div>Due</div>
               </div>
