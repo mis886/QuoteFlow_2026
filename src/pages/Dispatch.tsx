@@ -26,7 +26,7 @@ const fulfillmentLabel = (t: SubType) => t === 'self_pickup' ? 'Self Pickup' : t
 
 
 // 'active' / 'delayed' pills were removed — an old ?pill= value falls back to All.
-const BOARD_PILLS = ['all', 'hold', 'partial', 'delivered'] as const;
+const BOARD_PILLS = ['all', 'pending', 'hold', 'partial', 'delivered'] as const;
 type BoardPill = typeof BOARD_PILLS[number];
 
 export function Dispatch() {
@@ -641,6 +641,18 @@ export function Dispatch() {
     }
     return m;
   }, [view, data.dispatchEntries]);
+  // List → Pending for Dispatch: pendingOrders (the Table tab's own list) must
+  // match the board's order rows; a difference means the two have drifted.
+  const pendingIds = useMemo(() => new Set(pendingOrders.map(o => o.id)), [pendingOrders]);
+  useEffect(() => {
+    if (view !== 'board') return;
+    const onBoard = new Map(boardCards.flatMap(c => c.kind === 'order' ? [[c.order.id, c.order] as const] : []));
+    const differ = [
+      ...pendingOrders.filter(o => !onBoard.has(o.id)),
+      ...[...onBoard.values()].filter(o => !pendingIds.has(o.id)),
+    ];
+    if (differ.length) console.warn(`Dispatch: Pending for Dispatch pill and Table tab differ: ${differ.map(o => o.soNumber || o.id).join(', ')}`);
+  }, [view, boardCards, pendingOrders, pendingIds]);
   const boardSearchMatch = (c: BoardCard) => {
     if (!qs) return true;
     const o = c.order;
@@ -706,6 +718,7 @@ export function Dispatch() {
   const boardBase = boardCards.filter(c => (boardType === 'both' || c.fulfillment === boardType) && boardSearchMatch(c));
   const boardHoldCount = boardBase.filter(c => c.state === 'hold').length;
   const boardPartialCount = boardBase.filter(isBoardPartial).length;
+  const pendingRows = boardBase.filter(c => c.kind === 'order' && pendingIds.has(c.order.id));
   const deliveredBase = deliveredCards.filter(c => (boardType === 'both' || c.fulfillment === boardType) && boardSearchMatch(c));
   const deliveredOrdersBase = deliveredOrderRows.filter(r => (boardType === 'both' || r.fulfillment === boardType) && (!qs
     || (r.order.soNumber || '').toLowerCase().includes(qs)
@@ -720,7 +733,8 @@ export function Dispatch() {
   // (boardBase) and Delayed no longer have pills but still feed All.
   const allRows = unionBoardRows([boardBase, delayedRows, holdRows, partialRows, deliveredBase], deliveredOrdersBase);
   const boardAllCount = allRows.cards.length + allRows.deliveredOrders.length;
-  const boardVisible = boardFilter === 'hold' ? holdRows
+  const boardVisible = boardFilter === 'pending' ? pendingRows
+    : boardFilter === 'hold' ? holdRows
     : boardFilter === 'partial' ? partialRows
     : boardFilter === 'delivered' ? deliveredBase
     : allRows.cards;
@@ -779,6 +793,7 @@ export function Dispatch() {
           <>
             <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
               <div onClick={() => switchBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardAllCount})</div>
+              <div onClick={() => switchBoardFilter('pending')} className={pillCls(boardFilter === 'pending')}>Pending for Dispatch ({pendingRows.length})</div>
               <div onClick={() => switchBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
               <div onClick={() => switchBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partially Dispatched ({boardPartialCount})</div>
               <div onClick={() => switchBoardFilter('delivered')} className={pillCls(boardFilter === 'delivered')}>Delivered ({boardDeliveredCount})</div>
