@@ -596,7 +596,7 @@ export function DispatchBoard({ cards, now, onOpen, qty, deliveredOrders = [], d
               title={on ? 'Click again to show all steps' : undefined}
               className={`text-left rounded-[6px] p-[7px_8px] min-w-0 border transition-colors ${on ? 'border-red-mrt bg-red-lt' : 'border-g200 bg-white hover:bg-g100'}`}>
               <div className="flex items-start justify-between gap-1">
-                <span className="font-mono text-[8.5px] font-bold tracking-[1px] text-red-mrt">{t.top}</span>
+                <span className="font-mono text-[12px] leading-none font-bold tracking-[0.3px] text-red-mrt">{t.top}</span>
                 <span className={`text-[15px] font-bold leading-none ${t.count ? 'text-blk' : 'text-g400'}`}>{t.count}</span>
               </div>
               <div className="text-[11px] text-g700 truncate mt-[3px]" title={t.title}>{t.title}</div>
