@@ -129,7 +129,7 @@ export function DetailPanel() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="thick-scroll flex-1 overflow-y-auto p-6 space-y-6">
           <section>
             <div className="font-mono text-[9px] font-bold tracking-[2.5px] uppercase text-red-mrt mb-3 border-b border-red-lt pb-1">Enquiry Details</div>
             <div className="grid grid-cols-[100px_1fr] gap-y-2 text-[13px]">
@@ -374,7 +374,7 @@ export function DetailPanel() {
             <X size={16} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="thick-scroll flex-1 overflow-y-auto p-6 space-y-6">
           <Section title="Quote Meta">
             <Grid>
               <InfoItem label="Date" value={q.date} />
@@ -601,7 +601,7 @@ export function DetailPanel() {
             <X size={16} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="thick-scroll flex-1 overflow-y-auto p-6 space-y-6">
           <Section title="Order Meta">
             <Grid>
               <InfoItem label="PO No." value={o.poNo} />

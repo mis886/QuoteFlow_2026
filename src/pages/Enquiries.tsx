@@ -11,7 +11,6 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
-import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { customerOfDoc, calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
@@ -37,7 +36,6 @@ export function Enquiries() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [enqSamples, setEnqSamples] = useState<any[]>([]);
   const tableScrollRef = useRef<HTMLDivElement>(null);
-  const verticalScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSiteDebounced(siteQuery), 250);
@@ -245,7 +243,7 @@ export function Enquiries() {
         </div>
       </div>
 
-      <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
+      <div className="thick-scroll px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         {tab !== 'Sample' ? (
           <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto m-0">
             <table className="w-full border-collapse text-[12.5px]">
@@ -436,7 +434,6 @@ export function Enquiries() {
         )}
       </div>
       <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
-      <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
     </div>
   );
 }

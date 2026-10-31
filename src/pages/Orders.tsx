@@ -3,7 +3,6 @@ import { useAppStore } from '../store';
 import { Badge, Button } from '../components/ui';
 import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
-import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { customerOfDoc, formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
@@ -44,7 +43,6 @@ export function Orders() {
   const [sortCol, setSortCol] = useState('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const tableScrollRef = useRef<HTMLDivElement>(null);
-  const verticalScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSiteDebounced(siteQuery), 250);
@@ -289,7 +287,7 @@ export function Orders() {
         </div>
       </div>
 
-      <div ref={verticalScrollRef} className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
+      <div className="thick-scroll px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div ref={tableScrollRef} className="bg-white border border-g200 overflow-x-auto m-0">
           {/* Fixed layout + fixed column widths: no big gaps between the
               narrow columns, and Actions always gets enough room. */}
@@ -592,7 +590,6 @@ export function Orders() {
         </div>
       </div>
       <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
-      <FloatingVerticalScrollbar containerRef={verticalScrollRef} horizontalContainerRef={tableScrollRef} />
       {sendModalOrder && (
         <SendEmailModal
           mode="order"

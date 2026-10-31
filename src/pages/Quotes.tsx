@@ -211,7 +211,7 @@ export function Quotes() {
         </div>
       </div>
 
-      <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
+      <div className="thick-scroll px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         {tab !== 'Sample' ? (
           <div className="bg-white border border-g200 overflow-x-auto m-0">
             <table className="w-full border-collapse text-[12.5px]">
