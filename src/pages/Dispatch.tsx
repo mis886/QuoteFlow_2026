@@ -25,8 +25,8 @@ const pillCls = (active: boolean) => `px-[11px] py-1 rounded-[3px] text-[11.5px]
 const fulfillmentLabel = (t: SubType) => t === 'self_pickup' ? 'Self Pickup' : t === 'delivery' ? 'Delivery' : 'Not Set';
 
 
-// 'active' / 'delayed' pills were removed — an old ?pill= value falls back to All.
-const BOARD_PILLS = ['all', 'pending', 'hold', 'partial', 'delivered'] as const;
+// 'active' / 'delayed' / 'pending' pills were removed — an old ?pill= value falls back to All.
+const BOARD_PILLS = ['all', 'hold', 'partial', 'delivered'] as const;
 type BoardPill = typeof BOARD_PILLS[number];
 
 export function Dispatch() {
@@ -641,18 +641,6 @@ export function Dispatch() {
     }
     return m;
   }, [view, data.dispatchEntries]);
-  // List → Pending for Dispatch: pendingOrders (the Table tab's own list) must
-  // match the board's order rows; a difference means the two have drifted.
-  const pendingIds = useMemo(() => new Set(pendingOrders.map(o => o.id)), [pendingOrders]);
-  useEffect(() => {
-    if (view !== 'board') return;
-    const onBoard = new Map(boardCards.flatMap(c => c.kind === 'order' ? [[c.order.id, c.order] as const] : []));
-    const differ = [
-      ...pendingOrders.filter(o => !onBoard.has(o.id)),
-      ...[...onBoard.values()].filter(o => !pendingIds.has(o.id)),
-    ];
-    if (differ.length) console.warn(`Dispatch: Pending for Dispatch pill and Table tab differ: ${differ.map(o => o.soNumber || o.id).join(', ')}`);
-  }, [view, boardCards, pendingOrders, pendingIds]);
   const boardSearchMatch = (c: BoardCard) => {
     if (!qs) return true;
     const o = c.order;
@@ -718,7 +706,6 @@ export function Dispatch() {
   const boardBase = boardCards.filter(c => (boardType === 'both' || c.fulfillment === boardType) && boardSearchMatch(c));
   const boardHoldCount = boardBase.filter(c => c.state === 'hold').length;
   const boardPartialCount = boardBase.filter(isBoardPartial).length;
-  const pendingRows = boardBase.filter(c => c.kind === 'order' && pendingIds.has(c.order.id));
   const deliveredBase = deliveredCards.filter(c => (boardType === 'both' || c.fulfillment === boardType) && boardSearchMatch(c));
   const deliveredOrdersBase = deliveredOrderRows.filter(r => (boardType === 'both' || r.fulfillment === boardType) && (!qs
     || (r.order.soNumber || '').toLowerCase().includes(qs)
@@ -728,25 +715,26 @@ export function Dispatch() {
   const delayedRows = boardBase.filter(c => c.state === 'late');
   const holdRows = boardBase.filter(c => c.state === 'hold');
   const partialRows = boardBase.filter(isBoardPartial);
-  // All = union of every row list, each order/entry once; a row that is in
-  // an active list and in Delivered keeps its active version. Active
-  // (boardBase) and Delayed no longer have pills but still feed All.
+  // Union of every row list, each order/entry once; a row that is in an active
+  // list and in Delivered keeps its active version. Active (boardBase) and
+  // Delayed no longer have pills but still feed it.
   const allRows = unionBoardRows([boardBase, delayedRows, holdRows, partialRows, deliveredBase], deliveredOrdersBase);
-  const boardAllCount = allRows.cards.length + allRows.deliveredOrders.length;
-  const boardVisible = boardFilter === 'pending' ? pendingRows
-    : boardFilter === 'hold' ? holdRows
+  // All = what is still in process (Steps 01–11). Done rows are under Delivered.
+  const inProcessRows = allRows.cards.filter(c => c.column !== DONE_COLUMN);
+  const boardAllCount = inProcessRows.length;
+  const boardVisible = boardFilter === 'hold' ? holdRows
     : boardFilter === 'partial' ? partialRows
     : boardFilter === 'delivered' ? deliveredBase
-    : allRows.cards;
-  const boardVisibleDeliveredOrders = boardFilter === 'delivered' ? deliveredOrdersBase
-    : boardFilter === 'all' ? allRows.deliveredOrders
-    : undefined;
-  // Header count boxes — follow the selected pill (and type/search).
+    : inProcessRows;
+  const boardVisibleDeliveredOrders = boardFilter === 'delivered' ? deliveredOrdersBase : undefined;
+  // Header count boxes — follow the selected pill (and type/search). On All
+  // they still count the Done rows, so Email Sent keeps its number.
+  const headerRows = boardFilter === 'all' ? allRows.cards : boardVisible;
   const headerCounts = {
-    inProgress: boardVisible.filter(c => c.column !== DONE_COLUMN).length,
-    delayed: boardVisible.filter(c => c.state === 'late').length,
-    onHold: boardVisible.filter(c => c.state === 'hold').length,
-    emailSent: boardVisible.filter(c => c.column === DONE_COLUMN && c.kind === 'entry' && !!c.entry.emailSentAt).length,
+    inProgress: headerRows.filter(c => c.column !== DONE_COLUMN).length,
+    delayed: headerRows.filter(c => c.state === 'late').length,
+    onHold: headerRows.filter(c => c.state === 'hold').length,
+    emailSent: headerRows.filter(c => c.column === DONE_COLUMN && c.kind === 'entry' && !!c.entry.emailSentAt).length,
   };
 
   return (
@@ -793,7 +781,6 @@ export function Dispatch() {
           <>
             <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
               <div onClick={() => switchBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardAllCount})</div>
-              <div onClick={() => switchBoardFilter('pending')} className={pillCls(boardFilter === 'pending')}>Pending for Dispatch ({pendingRows.length})</div>
               <div onClick={() => switchBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
               <div onClick={() => switchBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partially Dispatched ({boardPartialCount})</div>
               <div onClick={() => switchBoardFilter('delivered')} className={pillCls(boardFilter === 'delivered')}>Delivered ({boardDeliveredCount})</div>

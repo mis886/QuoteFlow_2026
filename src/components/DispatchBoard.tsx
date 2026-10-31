@@ -571,8 +571,9 @@ export function DispatchBoard({ cards, now, onOpen, qty, deliveredOrders = [], d
   // 2026-10-30: no "All orders" tile — the All pill above (All | On hold |
   // Partially Dispatched | Delivered) already shows everything. With no tile
   // picked the list shows all rows; clicking the picked tile again clears it.
+  // The Done tile shows on the Delivered pill only — the others have no Done rows.
   const tiles: { key: ColumnNo; top: string; title: string; count: number; delayed: number }[] =
-    DISPATCH_STEPS.map(s => {
+    DISPATCH_STEPS.filter(s => deliveredLayout || s.no !== DONE_COLUMN).map(s => {
       const list = byColumn.get(s.no) || [];
       const extra = s.no === DONE_COLUMN ? deliveredOrders.length : 0;
       return { key: s.no, top: stepLabel(s.no), title: s.title, count: list.length + extra, delayed: list.filter(c => c.state === 'late').length };
