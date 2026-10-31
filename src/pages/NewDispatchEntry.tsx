@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { customerOfDoc, dispatchOrderView, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining } from '../lib/utils';
+import { customerOfDoc, dispatchOrderView, DispatchFormDetails, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
@@ -144,7 +144,7 @@ export function NewDispatchEntry() {
   const dispatchHome = fromBoard
     ? `/dispatch?view=board${boardPill && /^[a-z]+$/.test(boardPill) ? `&pill=${boardPill}` : ''}`
     : '/dispatch';
-  const { data, user, loading, addDispatchEntry, updateDispatchEntry, updateOrder, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent } = useAppStore();
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, saveDispatchFormDetails, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canEditTier = canDeleteRecords(user?.email);
@@ -170,8 +170,9 @@ export function NewDispatchEntry() {
 
   // Order-derived fields — auto-fetched from the order, but editable here so
   // a typo or trading-term change can be corrected without leaving this page.
-  // Saved back onto the order itself (Customer + Unit stay read-only since
-  // changing them has knock-on effects on site/contact/GST elsewhere).
+  // Saved into the Dispatch snapshot, never the live order (Customer + Unit
+  // stay read-only since changing them has knock-on effects on
+  // site/contact/GST elsewhere).
   const [contact, setContact] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -181,9 +182,9 @@ export function NewDispatchEntry() {
   const [pay, setPay] = useState('');
   const [shipAddr, setShipAddr] = useState('');
   const [custEnquiryDocNo, setCustEnquiryDocNo] = useState('');
-  // Order Line Items — editable copy of the order's saved items, same as
-  // Customer & Contact / Trading Terms above: corrections here are saved
-  // back onto the order itself via updateOrder on Save.
+  // Order Line Items — editable copy of the order's saved items: corrections
+  // here are saved on the dispatch entry only (its own items), never on the
+  // order or the Dispatch snapshot.
   const [items, setItems] = useState<OrderItem[]>([]);
   const [insurance, setInsurance] = useState(0);
 
@@ -781,13 +782,12 @@ export function NewDispatchEntry() {
       // A dispatch never creates an order or changes an order's items or
       // status — a partial dispatch keeps the same order (Order No. + SO No.)
       // and whatever's left stays in Dispatch → Order Pending for Dispatch
-      // (see totalRemaining). Only corrections made to the order's own
-      // trading/contact details are persisted — what's actually being
-      // dispatched now lives on the dispatch entry itself (below).
-      // 2026-10-31: only fields actually changed on this form. This form
-      // shows the frozen Dispatch copy, so writing every field back would
-      // undo edits made in the Orders module.
-      const formDetails: Partial<Order> = {
+      // (see totalRemaining). What's actually being dispatched now lives on
+      // the dispatch entry itself (below).
+      // 2026-10-31: Dispatch never writes order details to the live order.
+      // Corrections to the trading/contact details made on this form go into
+      // the Dispatch snapshot, only the fields actually changed.
+      const formDetails: DispatchFormDetails = {
         contact: contact || undefined,
         phone: phone || undefined,
         email: email || undefined,
@@ -798,10 +798,10 @@ export function NewDispatchEntry() {
         shipToAddress: shipAddr || undefined,
         custEnquiryDocNo: custEnquiryDocNo || undefined,
       };
-      const orderUpdates = Object.fromEntries(
+      const changedDetails: DispatchFormDetails = Object.fromEntries(
         Object.entries(formDetails).filter(([k, v]) => v !== (selectedOrder[k as keyof Order] || undefined)),
-      ) as Partial<Order>;
-      if (Object.keys(orderUpdates).length) await updateOrder(selectedOrderId, orderUpdates);
+      );
+      if (Object.keys(changedDetails).length) await saveDispatchFormDetails(selectedOrderId, changedDetails);
 
       // Every save is a "Dispatch → Sent" save: keep the original sentAt
       // if this entry already has one, else stamp it now.

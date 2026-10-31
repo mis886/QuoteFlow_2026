@@ -519,6 +519,27 @@ export function dispatchOrderView<T extends { dispatchSnapshot?: Partial<Order> 
   return view as T;
 }
 
+// 2026-10-31: the order details the dispatch form can correct. dispatch_entries
+// has no column for these, so they're saved into the Dispatch snapshot: never
+// onto the live order, which belongs to the Orders module.
+export const DISPATCH_FORM_FIELDS = [
+  'contact', 'phone', 'email', 'customerTier', 'inco', 'curr', 'pay', 'shipToAddress', 'custEnquiryDocNo',
+] as const;
+export type DispatchFormDetails = Partial<Pick<Order, (typeof DISPATCH_FORM_FIELDS)[number]>>;
+
+// The snapshot with only DISPATCH_FORM_FIELDS replaced: line items, qty and
+// everything else stay as frozen, whatever `changes` carries. A cleared field
+// is removed, so it can't fall back to anything else.
+export function withDispatchFormDetails(snapshot: Partial<Order>, changes: DispatchFormDetails): Partial<Order> {
+  const next: Record<string, unknown> = { ...snapshot };
+  for (const field of DISPATCH_FORM_FIELDS) {
+    if (!(field in changes)) continue;
+    if (changes[field]) next[field] = changes[field];
+    else delete next[field];
+  }
+  return next as Partial<Order>;
+}
+
 // Partial dispatch: one order (one Order No. + SO No.) can have many dispatch
 // entries. Per order line (matched by seq): order qty (No of Barrels) minus
 // that line's qty summed across ALL of the order's entries, floored at 0.

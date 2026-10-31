@@ -3,7 +3,7 @@ import type { MergeResult, Customer, Site, Contact, DataStore, Enquiry, Order, O
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS } from '../lib/utils';
+import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { User } from '@supabase/supabase-js';
 
@@ -104,6 +104,7 @@ interface AppContextType {
   deleteOrder: (id: string) => Promise<void>;
   ensureSoNumbers: (orderIds: string[]) => Promise<void>;
   sendOrderToDispatch: (orderId: string) => Promise<string | null>;
+  saveDispatchFormDetails: (orderId: string, changes: DispatchFormDetails) => Promise<void>;
   // Dispatch (Order → Dispatch phase) — see src/pages/Dispatch.tsx. `type`
   // picks Self Pickup or Delivery for the new entry.
   addDispatchEntry: (orderId: string, type: DispatchFulfillmentType, extra?: Partial<DispatchEntry>) => Promise<DispatchEntry>;
@@ -1087,6 +1088,31 @@ const mapEnquiryToDB = (e: any) => {
     await ensureSoNumbers([orderId]);
     const { data: row } = await supabase.from('orders').select('so_number').eq('id', orderId).maybeSingle();
     return row?.so_number || null;
+  };
+
+  // Corrections from the dispatch form. Dispatch never writes order details to
+  // the live order: only dispatch_snapshot changes, re-read fresh and with just
+  // the corrected keys replaced (withDispatchFormDetails), so line items and
+  // every other orders column stay as they are.
+  const saveDispatchFormDetails = async (orderId: string, changes: DispatchFormDetails) => {
+    const { data: current, error: readError } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
+    if (readError) throw readError;
+    if (!current) throw new Error('Order not found.');
+    const base: Partial<Order> = current.dispatch_snapshot ?? mapOrderFromDB(current);
+    const dispatchSnapshot = withDispatchFormDetails(base, changes);
+    const { data: updated, error } = await supabase.from('orders').update({ dispatch_snapshot: dispatchSnapshot }).eq('id', orderId).select('id');
+    if (error) {
+      console.error('Error saving dispatch details:', error);
+      throw error;
+    }
+    if (!updated || updated.length === 0) throw new Error("Nothing was changed — the order wasn't found or you don't have permission.");
+    setData(prev => ({ ...prev, orders: prev.orders.map(o => o.id === orderId ? { ...o, dispatchSnapshot } : o) }));
+    const fieldsBefore = Object.fromEntries(Object.keys(changes).map(k => [k, base[k as keyof Order] ?? null]));
+    logActivity({
+      module: 'dispatch_entries', recordId: orderId,
+      recordLabel: `${current.so_number || orderId} · Dispatch details corrected`,
+      action: 'update', before: fieldsBefore, after: changes,
+    });
   };
 
   // Assigns a Sales Order number (SO-YYYY-NNN) to each given order that
@@ -2295,6 +2321,7 @@ const mapEnquiryToDB = (e: any) => {
         deleteOrder,
         ensureSoNumbers,
         sendOrderToDispatch,
+        saveDispatchFormDetails,
         addDispatchEntry,
         updateDispatchEntry,
         deleteDispatchEntry,
