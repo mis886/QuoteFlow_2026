@@ -566,9 +566,9 @@ export interface DispatchEntry {
   // Set by markDispatchEmailSent() when "Email to Client" succeeds — moves
   // the entry from Dispatched to Email Sent. Never cleared by a form Save.
   emailSentAt?: string;
-  // 2026-10-30: set by markDispatchBhiwandiEmailSent() when "Send to
-  // Bhiwandi" succeeds — the proof for Dispatch Step 9. Never cleared by a
-  // form Save; a resend refreshes it.
+  // 2026-10-30: set by markDispatchBhiwandiEmailSent() when the Bhiwandi
+  // email (Step 9 mode of Email to Client) succeeds — the proof for Dispatch
+  // Step 9. Never cleared by a form Save.
   bhiwandiEmailSentAt?: string;
   formFilledBy?: string;
   createdBy?: string;

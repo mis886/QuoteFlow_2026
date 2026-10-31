@@ -131,7 +131,7 @@ export function StepActionButtons({ card, busy, canAct, onAction, onResume, omit
  * an invoice no. and an Invoice / Eway Bill file, Step 9 until the Bhiwandi
  * email was sent, Step 10 until it has an LR file, Step 11 until Email to
  * Client was sent — with the reason in red under it. `link` is the
- * entry-page button ("Attach Documents & Send →" / "Send to Bhiwandi →")
+ * entry-page button ("Attach Documents & Send →" / "Email to Bhiwandi →")
  * shown next to it.
  */
 export function EntryStepButtons({ card, busy, canAct, onAction, link }: {

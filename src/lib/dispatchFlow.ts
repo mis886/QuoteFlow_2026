@@ -46,7 +46,7 @@ export const DISPATCH_STEPS: StepDef[] = [
   // received" / "Documents sent" buttons are only a fallback, blocked until
   // that proof exists (entryStepBlock).
   { no: 8, title: 'Invoice', subtitle: 'Prepare invoice', how: 'Tally → Dispatch entry', tatHours: 1, rule: 'Needs the invoice no. and an Invoice / Eway Bill file on the dispatch entry' },
-  { no: 9, title: 'Send Invoice to Bhiwandi', subtitle: 'Email invoice and dispatch details to Bhiwandi', how: 'Email', tatHours: 1 },
+  { no: 9, title: 'Send Invoice to Bhiwandi', subtitle: 'Email invoice and eway bill to Bhiwandi', how: 'Email', tatHours: 1 },
   { no: 10, title: 'Get LR', subtitle: 'Get LR from transporter', how: 'WhatsApp → Mail', tatHours: 24, rule: 'Delivery only — Self Pickup skips this. Needs an LR file' },
   { no: 11, title: 'Send Documents', subtitle: 'Send documents to the party', how: 'Email to Client', tatHours: 30 },
   { no: 12, title: 'Email Sent', subtitle: 'Completed', how: '', tatHours: 0, rule: 'Step 11 done in the last 7 days' },
@@ -511,6 +511,16 @@ export function entryPosition(e: DispatchEntry, records: DispatchStepRecord[]): 
   if (e.fulfillmentType !== 'self_pickup' && s10?.status !== 'done') return { column: 10, plannedAt: entryStepPlanned(e, 10, records), invoiceMissing };
   return { column: 11, plannedAt: entryStepPlanned(e, 11, records), invoiceMissing };
 }
+
+/**
+ * 2026-10-31: Email to Client sends the Bhiwandi email (Step 9) instead while
+ * this is true: invoice no. and Invoice / Eway Bill file saved, no Bhiwandi
+ * email yet, and Step 9 not finished (done, 'marked manually', or 'skipped' on
+ * entries from before Step 9). Never for imported entries.
+ */
+export const needsBhiwandiEmail = (e: DispatchEntry, records: DispatchStepRecord[]): boolean =>
+  !isImportedEntry(e) && entryHasInvoice(e) && entryHasInvoiceFile(e)
+  && !e.bhiwandiEmailSentAt && !entryStepRows(e, records).s9;
 
 /**
  * Planned time of an entry's step 8–11: step 8 from when the entry was saved,

@@ -1252,8 +1252,8 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   // 2026-10-30: stamps bhiwandi_email_sent_at on ONE dispatch entry after
-  // "Send to Bhiwandi" succeeds — Dispatch Step 9's proof. Same pattern as
-  // markDispatchEmailSent: writes only that column; a resend refreshes it.
+  // the Bhiwandi email succeeds — Dispatch Step 9's proof. Same pattern as
+  // markDispatchEmailSent: writes only that column.
   const markDispatchBhiwandiEmailSent = async (id: string) => {
     const bhiwandiEmailSentAt = new Date().toISOString();
     const { error } = await supabase.from('dispatch_entries').update({ bhiwandi_email_sent_at: bhiwandiEmailSentAt }).eq('id', id);

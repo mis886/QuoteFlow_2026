@@ -136,7 +136,7 @@ function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
 // / "Bhiwandi informed" / "LR received" / "Documents sent" button next to it
 // is the fallback.
 const entryActionLabel = (col: EntryColumn) =>
-  col === DONE_COLUMN ? 'View Documents →' : col === 9 ? 'Send to Bhiwandi →' : 'Attach Documents & Send →';
+  col === DONE_COLUMN ? 'View Documents →' : col === 9 ? 'Email to Bhiwandi →' : 'Attach Documents & Send →';
 const entryPagePath = (entryId: string, col: EntryColumn) =>
   `/dispatch/new?entryId=${entryId}&from=board${col === 9 ? '&bhiwandi=1' : ''}`;
 

@@ -107,38 +107,21 @@ interface OutwardProps extends BaseProps { mode: 'outward'; doc: StockMovement; 
 // — this modal fetches and attaches each one as-is, rather than generating a
 // PDF the way Quote/Order/Outward do.
 export interface DispatchEmailAttachment { label: string; url: string; fileName: string; }
-// 2026-10-30: "Send to Bhiwandi" (Dispatch Step 9) — the dispatch email's
-// Bhiwandi variant: To = bhiwandi@ only, no default CC, subject/body built
-// from these details, and the caller attaches ONLY the Invoice / Eway Bill files.
+// 2026-10-30: Dispatch Step 9 — the dispatch email's Bhiwandi variant, sent
+// from Email to Client while the entry needs it: To = bhiwandi@ only, no
+// default CC, and the caller attaches ONLY the Invoice / Eway Bill files.
 export interface BhiwandiEmailDetails {
-  orderId: string;
-  soNumber?: string;
-  customer: string;
-  invoiceNumber?: string;
-  fulfillment: string;          // 'Delivery' / 'Self Pickup'
-  transporter?: string;
-  vehicleNumber?: string;
-  items: { product: string; qty: string; barrels: number }[];
+  invoiceNumber: string;
+  customer: string;             // from the frozen order, as printed
 }
 interface DispatchProps extends BaseProps { mode: 'dispatch'; doc: DispatchEntry; attachments: DispatchEmailAttachment[]; bhiwandi?: BhiwandiEmailDetails; }
 
 /** Subject + body of the Bhiwandi email (still editable in the modal). */
 function bhiwandiDraft(d: BhiwandiEmailDetails): { subject: string; body: string } {
-  const subject = `Dispatch details – ${d.soNumber || d.orderId} – ${d.customer}${d.invoiceNumber ? ` – ${d.invoiceNumber}` : ''}`;
-  const lines = [
-    `Order No: ${d.orderId}`,
-    `SO No: ${d.soNumber || '—'}`,
-    `Customer: ${d.customer}`,
-    `Invoice No: ${d.invoiceNumber || '—'}`,
-    `Delivery / Self Pickup: ${d.fulfillment}`,
-    `Transporter: ${d.transporter || '—'}`,
-    ...(d.vehicleNumber ? [`Vehicle No: ${d.vehicleNumber}`] : []),
-  ];
-  const items = d.items.length
-    ? d.items.map((i, n) => `${n + 1}. ${i.product} — Qty: ${i.qty} — Barrels: ${i.barrels}`).join('\n')
-    : '—';
-  const body = `Dear Bhiwandi Team,\n\nPlease find the attached invoice. Dispatch details:\n\n${lines.join('\n')}\n\nItems:\n${items}\n\nThank you.`;
-  return { subject, body };
+  return {
+    subject: `INV NO: ${d.invoiceNumber} ${d.customer}`,
+    body: 'Dear Bhiwandi Team,\n\nPlease find the attached invoice and eway bill.\n\nThank you',
+  };
 }
 type Props = QuoteProps | OrderProps | OutwardProps | DispatchProps;
 
@@ -628,7 +611,7 @@ export function SendEmailModal(props: Props) {
                 ) : (
                   <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_13px] text-[11.5px] text-amber-800 font-medium">
                     {bhiwandi
-                      ? 'No Invoice / Eway Bill file is saved on this entry yet. Upload and Save it above, then reopen Send to Bhiwandi.'
+                      ? 'No Invoice / Eway Bill file is saved on this entry yet. Upload and Save it above, then reopen Email to Client.'
                       : 'No documents are attached to this entry yet. Upload and Save the Documents Attachment fields above, then reopen Email to Client.'}
                   </div>
                 )}
