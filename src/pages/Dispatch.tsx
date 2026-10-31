@@ -413,6 +413,11 @@ export function Dispatch() {
     if (card.kind === 'order') {
       const n = data.dispatchEntries.filter(e => e.orderId === card.order.id).length;
       if (n > 0) { showToast('err', `This order has ${n} dispatch entr${n === 1 ? 'y' : 'ies'}. Delete those entries first.`); return; }
+    } else {
+      // Same rule as delete_dispatch_entry_reset, before the confirm box promises a restart.
+      const round = roundOf(card.entry);
+      const total = data.dispatchEntries.filter(e => e.orderId === card.entry.orderId && !isImportedEntry(e)).length;
+      if (round !== undefined && round < total) { showToast('err', 'This order has a newer dispatch. Delete that one first.'); return; }
     }
     setDeleteCard(card);
   };
@@ -1030,7 +1035,7 @@ export function Dispatch() {
             records={stepRecords.filter(r => r.orderId === o.id)}
             linkedDOs={linkedDOs.filter(d => d.orderId === o.id)}
             fulfillment={orderCard?.fulfillment ?? orderFulfillment(o)}
-            orderCard={orderCard}
+            orderCard={drawerCard?.kind === 'order' ? orderCard : undefined}
             now={now}
             roster={data.roster}
             canAct={canActOnBoard}

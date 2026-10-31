@@ -541,7 +541,8 @@ export function entryStepPlanned(e: DispatchEntry, stepNo: 8 | 9 | 10 | 11, reco
  * The drawer's 11-row step list for one order: steps 1–4 from round 1
  * (once per order), steps 5–7 from the latest round, and steps 8–11 from
  * the dispatch entry that closed that round (or still to come if the
- * order card is open).
+ * order card is open). `entryId` given (drawer opened from an entry row):
+ * steps 5–7 from that entry's round and 8–11 from that entry.
  */
 export function drawerSteps(
   order: Order,
@@ -549,11 +550,12 @@ export function drawerSteps(
   records: DispatchStepRecord[],
   fulfillment: DispatchFulfillmentType | 'not_set',
   openPosition: OrderPosition | undefined,
+  entryId?: string,
 ): OrderStepHistory[] {
   const rounds = orderRounds(order, orderEntries, records, fulfillment, !!openPosition);
   if (!rounds.length) return [];
   const first = rounds[0];
-  const focus = rounds[rounds.length - 1];
+  const focus = rounds.find(r => entryId && r.entry?.id === entryId) || rounds[rounds.length - 1];
   const steps: OrderStepHistory[] = [
     ...first.history.filter(h => h.stepNo <= 4),
     ...focus.history.filter(h => h.stepNo >= 5),

@@ -149,7 +149,9 @@ export function DispatchDrawer({
   records: DispatchStepRecord[];       // this order's step records
   linkedDOs?: LinkedDO[];              // this order's DOs (stock_movements.order_id)
   fulfillment: BoardOrderCard['fulfillment'];
-  orderCard?: BoardOrderCard;          // present while the order is still on the board
+  // Opened from an order row, while the order is still on the board. Never
+  // given for an entry row, so nothing here can act on the order's open round.
+  orderCard?: BoardOrderCard;
   now: number;
   roster: TeamMember[];
   canAct: boolean;
@@ -223,12 +225,12 @@ export function DispatchDrawer({
   }, [onClose, editing]);
   useEffect(() => { setRemark(''); }, [order.id]);
 
-  const steps = drawerSteps(order, entries, records, fulfillment, orderCard?.position);
+  const openedEntryId = openedFrom.kind === 'entry' ? openedFrom.entry.id : undefined;
+  const steps = drawerSteps(order, entries, records, fulfillment, orderCard?.position, openedEntryId);
   const lastClick = openedFrom.kind === 'entry' ? lastEntryStepClick(records, openedFrom.entry.id) : lastStepClick(records);
   const realEntries = entries.filter(e => !isImportedEntry(e))
     .sort((a, b) => (ms(a.created_at) || 0) - (ms(b.created_at) || 0));
   // Dispatch entries section: only the entry row the drawer was opened from.
-  const openedEntryId = openedFrom.kind === 'entry' ? openedFrom.entry.id : undefined;
   const shownEntries = realEntries.filter(e => e.id === openedEntryId);
   // Order value + line items, calculated the same way as the Pending table.
   const subTotal = order.items.reduce((s, i) => s + i.total, 0);
@@ -244,8 +246,10 @@ export function DispatchDrawer({
   // Opened from an entry row that is still waiting on step 8–11 (not Done).
   const entryWaiting = openedFrom.kind === 'entry' && openedFrom.column !== DONE_COLUMN;
   // 2026-10-16: Step 6 row — the DOs of the round the drawer's steps 5–7
-  // come from (the open round, else the last closed one): saved / emailed.
-  const focusRound = orderCard ? orderCard.position.round : realEntries.length;
+  // come from (the opened entry's round, else the open round, else the last
+  // closed one): saved / emailed.
+  const focusRound = openedEntryId ? realEntries.findIndex(e => e.id === openedEntryId) + 1
+    : orderCard ? orderCard.position.round : realEntries.length;
   const step6DoLines = linkedDOs.filter(d => d.round === focusRound).map(d => d.emailSentAt
     ? { text: `DO ${d.doNumber || '—'} emailed ${fmtWhen(d.emailSentAt)}`, pending: false }
     : { text: `DO ${d.doNumber || '—'} saved, email pending`, pending: true });
