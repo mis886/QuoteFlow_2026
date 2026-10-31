@@ -192,7 +192,7 @@ export function NegotiationRoundDetail({ quote, round }: { quote: Quote; round: 
       <div className="p-3 bg-white text-[10px] text-g400">
         <span className="font-semibold text-g500">{round.doer}</span>
         {' · '}
-        {fmtIST(parseISO(round.created_at), 'dd MMM, HH:mm')}
+        {fmtIST(parseISO(round.created_at), 'dd MMM, hh:mm a')}
       </div>
     </div>
   );

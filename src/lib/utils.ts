@@ -891,6 +891,17 @@ export function fmtIST(d: Date, pattern: string): string {
   return pattern.replace(/yyyy|yy|MMM|MM|dd|EEE|HH|hh|mm|aa|a|d/g, (m) => (t as any)[m] ?? m);
 }
 
+// A stored 24-hour time ("14:30", follow-ups' next_time) for display: "02:30 PM".
+export function fmtTime12(time?: string | null): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(time || '');
+  if (!m) return time || '';
+  const hour = Number(m[1]);
+  return `${String(hour % 12 || 12).padStart(2, '0')}:${m[2]} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
+// date + time in the browser's own format, always 12-hour with capital AM/PM.
+export const fmtLocal12 = (d: Date): string => d.toLocaleString(undefined, { hour12: true }).toUpperCase();
+
 // Convert ISO date string (YYYY-MM-DD) to display format (dd-MMM-yyyy)
 // e.g. '2026-05-13' → '13-May-2026'
 export function fmtDate(iso: string | null | undefined): string {

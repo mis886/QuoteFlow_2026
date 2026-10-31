@@ -9,7 +9,7 @@ import type {
   AppSettings, DataStore, FollowUp, FollowUpLog, Quote, DoerRole, BoardLane, GlobalDateRangeLike,
 } from './types';
 import { DEFAULT_STAGE_TAT_H, DEFAULT_STAGE_ROLE } from './types';
-import { siteLabel, customerOfDoc } from './utils';
+import { siteLabel, customerOfDoc, fmtTime12 } from './utils';
 
 // Shared/admin logins that keep a team_roster row (for the sales@ PIN gate,
 // signatory resolution, etc.) but are deliberately excluded from Doer KPI
@@ -535,7 +535,7 @@ function nextSummaryOf(parts: { date?: string | null; time?: string | null; chan
   const datePart = date
     ? (() => { try { return new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }); } catch { return date; } })()
     : '';
-  const head = [datePart, time].filter(Boolean).join(' ');
+  const head = [datePart, fmtTime12(time)].filter(Boolean).join(' ');
   const lead = [head, channel].filter(Boolean).join(' · ');
   return note ? (lead ? `${lead} — ${note}` : note) : (lead || undefined);
 }

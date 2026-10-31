@@ -3,7 +3,7 @@ import { Bell, AlertTriangle, Clock, ChevronRight, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { isBefore, isToday, parseISO } from 'date-fns';
 import { useAppStore } from '../store';
-import { customerOfDoc, cn, fmtIST, siteLabel } from '../lib/utils';
+import { customerOfDoc, cn, fmtIST, fmtTime12, siteLabel } from '../lib/utils';
 import { Highlighter } from './ui/highlighter';
 
 type AlertItem = {
@@ -199,7 +199,7 @@ export function SlaNotificationBell() {
                         {a.priority === 'overdue' ? (
                           <>Was due <Highlighter action="highlight" color="#ef4444" className="text-[10px] font-bold text-red-mrt">{fmtIST(parseISO(a.nextDate), 'dd MMM')}</Highlighter></>
                         ) : (
-                          <>Due <Highlighter action="highlight" color="#f59e0b" className="text-[10px] font-bold text-amber-700">today{a.nextTime ? ` at ${a.nextTime}` : ''}</Highlighter></>
+                          <>Due <Highlighter action="highlight" color="#f59e0b" className="text-[10px] font-bold text-amber-700">today{a.nextTime ? ` at ${fmtTime12(a.nextTime)}` : ''}</Highlighter></>
                         )}
                       </span>
                       <span className="text-g300">·</span>

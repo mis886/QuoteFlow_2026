@@ -259,7 +259,7 @@ function InvoiceCell({ invoices }: { invoices: string[] }) {
 // Order 100 · Punched At 100 · Customer 250 · Invoice 76 · Ordered/Dispatched/
 // Remaining 80 · Current step 120 · Progress 120 (11 dots) · Due 112, 4px gaps,
 // 12px side padding.
-const GRID = 'grid grid-cols-[minmax(100px,100fr)_minmax(100px,100fr)_minmax(250px,250fr)_minmax(76px,76fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(120px,120fr)_minmax(120px,120fr)_minmax(112px,112fr)] gap-x-1 px-3 text-center';
+const GRID = 'grid grid-cols-[minmax(100px,100fr)_minmax(110px,110fr)_minmax(240px,240fr)_minmax(76px,76fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(80px,80fr)_minmax(120px,120fr)_minmax(120px,120fr)_minmax(112px,112fr)] gap-x-1 px-3 text-center';
 const GRID_MIN_W = 'min-w-[1178px]';
 
 // 2026-10-30: "Punched At" = when the order came into Dispatch ("Order
@@ -267,7 +267,7 @@ const GRID_MIN_W = 'min-w-[1178px]';
 // order's created_at. Every row of one order shows the same time. Old
 // orders imported before the Dispatch module have none: an entry row falls
 // back to the entry's created_at, anything else shows "--".
-const fmtPunched = (iso?: string) => iso ? fmtIST(new Date(iso), 'dd MMM HH:mm') : '--';
+const fmtPunched = (iso?: string) => iso ? fmtIST(new Date(iso), 'dd MMM hh:mm a') : '--';
 function PunchedCell({ at }: { at?: string }) {
   return <div className="font-mono text-[11.5px] text-g700 whitespace-nowrap">{fmtPunched(at)}</div>;
 }
@@ -413,13 +413,13 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
 // click expands that entry's Dispatch Line Items under it. "Marked
 // delivered" orders (no entry) show "—" for the entry fields and open the
 // order. SO No. and Order Ref share one Order column (OrderCell, as in the
-// All tab). Every column has a fixed width (Customer ~260px, long names
+// All tab). Every column has a fixed width (Customer ~250px, long names
 // wrap); they add up to 1074px so it fits 1366px with the sidebar open, and
 // any extra width is shared out across all columns.
 const DELIVERED_COLS = 8;
 // Everything centred, across and up/down (the expanded line items keep
 // their own alignment — it's a separate row).
-const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true, centered: true, mergeOrder: true, dispatchedOnFormat: 'dd MMM HH:mm' } as const;
+const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true, centered: true, mergeOrder: true, dispatchedOnFormat: 'dd MMM hh:mm a' } as const;
 const deliveredOrderCell = (order: Order | undefined, orderId: string | undefined) =>
   <OrderCell soNumber={order?.soNumber} orderId={orderId || order?.id} centered hideMissingSo />;
 function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
@@ -435,12 +435,12 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
     <table className="w-full min-w-[1074px] table-fixed border-collapse text-[12.5px]">
       <colgroup>
         <col style={{ width: 112 }} />{/* Order — SO No. over Order Ref */}
-        <col style={{ width: 258 }} />{/* Customer — wraps */}
+        <col style={{ width: 250 }} />{/* Customer — wraps */}
         <col style={{ width: 106 }} />{/* PO No. */}
         <col style={{ width: 102 }} />{/* Value */}
         <col style={{ width: 88 }} />{/* Invoice No. */}
-        <col style={{ width: 104 }} />{/* Dispatched On */}
-        <col style={{ width: 156 }} />{/* Email Sent On */}
+        <col style={{ width: 116 }} />{/* Dispatched On */}
+        <col style={{ width: 152 }} />{/* Email Sent On */}
         <col style={{ width: 148 }} />{/* Actions — Edit + Delete side by side */}
       </colgroup>
       <thead className="bg-g100 sticky top-0 z-[1]">

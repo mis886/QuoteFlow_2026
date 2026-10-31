@@ -280,9 +280,9 @@ export function Enquiries() {
                           onClick={() => setExpandedRow(isExpanded ? null : e.id)}
                         >
                           <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10.5px] font-bold text-red-mrt">{e.id}</span></td>
-                          <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">{fmtIST(d, 'dd MMM HH:mm')}</td>
+                          <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">{fmtIST(d, 'dd MMM hh:mm a')}</td>
                           <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
-                            {e.created_at ? fmtIST(new Date(e.created_at), 'dd MMM HH:mm') : '--'}
+                            {e.created_at ? fmtIST(new Date(e.created_at), 'dd MMM hh:mm a') : '--'}
                           </td>
                           <td className="px-[13px] py-[10px] align-top">
                             {/* Capped so a very long name wraps instead of widening the column. */}
@@ -418,7 +418,7 @@ export function Enquiries() {
                         {s.quantity != null ? `${s.quantity} ${s.unit || ''}`.trim() : '—'}
                       </td>
                       <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
-                        {s.email_sent_at ? fmtIST(new Date(s.email_sent_at), 'dd MMM HH:mm') : '—'}
+                        {s.email_sent_at ? fmtIST(new Date(s.email_sent_at), 'dd MMM hh:mm a') : '—'}
                       </td>
                       <td className="px-[13px] py-[10px] align-top"><Badge status={s.status} /></td>
                       <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600">

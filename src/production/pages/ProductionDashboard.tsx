@@ -349,7 +349,7 @@ function OperationTimeline({ events, recentEventsByJob, jobs, actuals, loading }
                   </div>
                   {latestEv && (
                     <div className="text-[9.5px] text-[#888] whitespace-nowrap flex-shrink-0">
-                      {fmtIST(new Date(latestEv.ts), 'dd MMM HH:mm')}
+                      {fmtIST(new Date(latestEv.ts), 'dd MMM hh:mm a')}
                     </div>
                   )}
                 </div>
@@ -363,7 +363,7 @@ function OperationTimeline({ events, recentEventsByJob, jobs, actuals, loading }
                       )}
                       <div className="flex-shrink-0 group relative">
                         <div className={`w-[22px] h-[22px] rounded-full flex items-center justify-center text-[8px] font-bold border-2 ${stageNodeStyle(ev.to_stage)}`}
-                          title={`${STAGE_LABEL[ev.to_stage] || ev.to_stage} — ${fmtIST(new Date(ev.ts), 'dd MMM HH:mm')}${ev.actor ? ` by ${ev.actor}` : ''}`}>
+                          title={`${STAGE_LABEL[ev.to_stage] || ev.to_stage} — ${fmtIST(new Date(ev.ts), 'dd MMM hh:mm a')}${ev.actor ? ` by ${ev.actor}` : ''}`}>
                           {stageInitial(ev.to_stage)}
                         </div>
                       </div>

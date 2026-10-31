@@ -27,7 +27,7 @@ import {
   Timer,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { customerOfDoc, cn, fmtIST, isInDateRange, getThisWeekRange } from '../lib/utils';
+import { customerOfDoc, cn, fmtIST, fmtTime12, isInDateRange, getThisWeekRange } from '../lib/utils';
 import { EntryDateFilter } from '../components/EntryDateFilter';
 import type { Quote, FollowUp, FollowUpLog } from '../lib/types';
 import { DEFAULT_STAGE_TAT_H } from '../lib/types';
@@ -77,7 +77,7 @@ const CHANNEL_CONFIG: Record<string, { icon: string; color: string; bg: string; 
 function formatDue(date: string | null | undefined, time?: string | null) {
   if (!date) return null;
   const label = isToday(parseISO(date)) ? 'Today' : fmtIST(parseISO(date), 'dd MMM');
-  return time ? `${label} at ${time}` : label;
+  return time ? `${label} at ${fmtTime12(time)}` : label;
 }
 
 function groupLogsByDay(logs: FollowUpLog[]) {
@@ -1180,7 +1180,7 @@ export default function FollowUps() {
                                       {log.nextDate && (
                                         <div className="inline-flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-[4px] bg-amber-50 border border-amber-200">
                                           <Calendar size={10} className="text-amber-600 shrink-0" />
-                                          <span className="text-[11px] font-bold text-amber-800">Next: {fmtIST(parseISO(log.nextDate), 'dd-MMM-yyyy')}{log.nextTime ? ` at ${log.nextTime}` : ''}{log.nextChannel ? ` · ${log.nextChannel}` : ''}</span>
+                                          <span className="text-[11px] font-bold text-amber-800">Next: {fmtIST(parseISO(log.nextDate), 'dd-MMM-yyyy')}{log.nextTime ? ` at ${fmtTime12(log.nextTime)}` : ''}{log.nextChannel ? ` · ${log.nextChannel}` : ''}</span>
                                         </div>
                                       )}
                                       <div className="text-[10px] text-g400 mt-0.5">{log.who}</div>
@@ -1215,7 +1215,7 @@ export default function FollowUps() {
                                       <div className="mb-1.5">
                                         <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-[4px] bg-amber-50 border border-amber-200">
                                           <Calendar size={10} className="text-amber-600 shrink-0" />
-                                          <span className="text-[11px] font-bold text-amber-800">Next: {fmtIST(parseISO(log.nextDate), 'dd-MMM-yyyy')}{log.nextTime ? ` at ${log.nextTime}` : ''}{log.nextChannel ? ` · ${log.nextChannel}` : ''}</span>
+                                          <span className="text-[11px] font-bold text-amber-800">Next: {fmtIST(parseISO(log.nextDate), 'dd-MMM-yyyy')}{log.nextTime ? ` at ${fmtTime12(log.nextTime)}` : ''}{log.nextChannel ? ` · ${log.nextChannel}` : ''}</span>
                                         </div>
                                         {log.nextNote && (
                                           <div className="text-[10.5px] italic text-slate-500 pl-2 border-l-2 border-amber-200 mt-1">
@@ -1747,7 +1747,7 @@ function FUCalWeekGrid({ days, eventMap, selectedQuoteId, onSelect, todayKey, we
                     <div className="font-mono opacity-60 truncate text-[9px]">{quote.id}</div>
                     {followUp?.next_time && (
                       <div className="opacity-60 text-[9px] flex items-center gap-0.5 mt-0.5">
-                        <Clock size={8} />{followUp.next_time}
+                        <Clock size={8} />{fmtTime12(followUp.next_time)}
                       </div>
                     )}
                   </button>

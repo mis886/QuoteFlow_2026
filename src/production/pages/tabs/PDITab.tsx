@@ -51,7 +51,7 @@ export function PDITab({ jobs, onApprove }: Props) {
               <TD className="font-mono text-[11px]">{j.qty.toLocaleString()}</TD>
               <TD className="font-mono text-[11px] text-[#333]">{fmtDate(j.promised_date)}</TD>
               <TD className="font-mono text-[11px] text-[#333]">
-                {j.inspection_passed_at ? fmtIST(new Date(j.inspection_passed_at), 'dd MMM HH:mm') : '—'}
+                {j.inspection_passed_at ? fmtIST(new Date(j.inspection_passed_at), 'dd MMM hh:mm a') : '—'}
               </TD>
               <TD className="text-[12px] text-[#111]">{j.pdi_officer || <span className="text-[#555]">—</span>}</TD>
               <TD>

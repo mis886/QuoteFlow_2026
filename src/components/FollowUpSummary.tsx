@@ -4,7 +4,7 @@ import { Quote, FollowUpLog } from '../lib/types';
 import { parseISO, isBefore, isToday, startOfDay } from 'date-fns';
 import { Phone, ChevronRight, CheckCircle2, Plus, X, ChevronDown, MessageCircle, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { customerOfDoc, cn, fmtIST } from '../lib/utils';
+import { customerOfDoc, cn, fmtIST, fmtTime12 } from '../lib/utils';
 
 export function FollowUpSummary({ quote }: { quote: Quote }) {
   const { data, addFollowUpLog, stampName } = useAppStore();
@@ -35,7 +35,7 @@ export function FollowUpSummary({ quote }: { quote: Quote }) {
   } else if (followUp?.next_date) {
     const d = parseISO(followUp.next_date);
     const datePart = isToday(d) ? 'Today' : fmtIST(d, 'dd MMM');
-    const timePart = followUp.next_time ? ` at ${followUp.next_time}` : '';
+    const timePart = followUp.next_time ? ` at ${fmtTime12(followUp.next_time)}` : '';
     dueLabel = `${datePart}${timePart}`;
     if (isBefore(d, today)) dueColor = 'text-red-mrt';
     else if (isToday(d)) dueColor = 'text-sR';
@@ -262,7 +262,7 @@ export function FollowUpSummary({ quote }: { quote: Quote }) {
           <div className="text-[10px] text-g400 mb-1">
             <span className="font-semibold text-g500">{lastLog.who}</span>
             {' · '}
-            {fmtIST(parseISO(lastLog.ts), 'dd MMM, HH:mm')}
+            {fmtIST(parseISO(lastLog.ts), 'dd MMM, hh:mm a')}
           </div>
           <div className="text-[12px] text-g600 leading-relaxed whitespace-pre-wrap line-clamp-3">{lastLog.note}</div>
         </div>

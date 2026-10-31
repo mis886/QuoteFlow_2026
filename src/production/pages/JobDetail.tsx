@@ -13,7 +13,7 @@ import {
 } from '../components/table';
 import type { ProductionJob, JobStageEvent, Product } from '../lib/types';
 import { productIdentity } from '../lib/productLabel';
-import { fmtDate } from '../../lib/utils';
+import { fmtDate, fmtLocal12 } from '../../lib/utils';
 
 const STAGE_SEQ = ['moulding', 'finishing', 'inspection', 'pdi', 'dispatch'] as const;
 const STAGE_LABEL: Record<string, string> = {
@@ -213,9 +213,9 @@ export function JobDetail() {
                     <TD className="font-semibold">{STAGE_LABEL[s]}</TD>
                     <TD className="font-mono text-[11.5px]">{job.qty.toLocaleString()}</TD>
                     <TD className="text-[#333]">—</TD>
-                    <TD className="text-[11px] text-[#666]">{enter ? new Date(enter.ts).toLocaleString() : '—'}</TD>
+                    <TD className="text-[11px] text-[#666]">{enter ? fmtLocal12(new Date(enter.ts)) : '—'}</TD>
                     <TD className="text-[#333]">—</TD>
-                    <TD className="text-[11px] text-[#666]">{exit ? new Date(exit.ts).toLocaleString() : '—'}</TD>
+                    <TD className="text-[11px] text-[#666]">{exit ? fmtLocal12(new Date(exit.ts)) : '—'}</TD>
                     <TD className="font-mono text-[11px]">{dur}</TD>
                     <TD>
                       {done    && <StatusPill status="Done"    tone="good" />}
@@ -243,7 +243,7 @@ export function JobDetail() {
             <Field label="Inspector"             value={job.inspector || '—'} />
             <Field label="Inspection Result"    value={job.inspection_result || '—'} />
             <Field label="PDI Officer"           value={job.pdi_officer || '—'} />
-            <Field label="PDI Timestamp"         value={job.inspection_passed_at ? new Date(job.inspection_passed_at).toLocaleString() : '—'} />
+            <Field label="PDI Timestamp"         value={job.inspection_passed_at ? fmtLocal12(new Date(job.inspection_passed_at)) : '—'} />
           </Grid4>
         </Section>
 
@@ -253,7 +253,7 @@ export function JobDetail() {
             <Grid4>
               <Field label="Courier"         value={job.courier || '—'} />
               <Field label="Consignment No."  value={job.consignment_no || '—'} />
-              <Field label="Dispatched At"    value={job.dispatched_at ? new Date(job.dispatched_at).toLocaleString() : '—'} />
+              <Field label="Dispatched At"    value={job.dispatched_at ? fmtLocal12(new Date(job.dispatched_at)) : '—'} />
               <Field label="OTD Result"       value={job.otd_result || '—'}
                 accent={job.otd_result === 'late'} />
             </Grid4>

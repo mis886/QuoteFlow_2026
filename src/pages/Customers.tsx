@@ -627,7 +627,7 @@ export function CustomerPanel({ customer, onClose }: { customer: Customer; onClo
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-blk">{log.channel}</span>
-                        <span className="text-g400 text-[10px]">{fmtIST(parseISO(log.ts), 'dd-MMM-yy, HH:mm')}</span>
+                        <span className="text-g400 text-[10px]">{fmtIST(parseISO(log.ts), 'dd-MMM-yy, hh:mm a')}</span>
                         {log.who && <span className="text-g400 text-[10px]">by {log.who}</span>}
                         <span className="font-mono text-[9px] text-g300 bg-g100 px-1.5 rounded">{log.quoteId}</span>
                       </div>

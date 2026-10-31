@@ -1,5 +1,6 @@
 // PDI approval modal — capture officer name, confirm move to Dispatch.
 
+import { fmtLocal12 } from '../../lib/utils';
 import { useEffect, useState } from 'react';
 import { X, CheckCircle2 } from 'lucide-react';
 import type { ProductionJob } from '../lib/types';
@@ -27,7 +28,7 @@ export function PDIApprovalModal({ open, job, onClose, onConfirm }: Props) {
     finally { setBusy(false); }
   };
 
-  const ts = new Date().toLocaleString();
+  const ts = fmtLocal12(new Date());
 
   return (
     <div className="fixed inset-0 bg-black/40 z-[300] flex items-center justify-center p-4" onClick={onClose}>

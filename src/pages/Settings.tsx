@@ -1,3 +1,4 @@
+import { fmtLocal12 } from '../lib/utils';
 import React, { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../lib/supabase';
 import { useAppStore } from '../store';
@@ -503,7 +504,7 @@ export function Settings() {
               {data.settings?.gmail_last_sync && (
                 <div className="text-right shrink-0">
                   <div className="text-[9px] text-g400 uppercase tracking-wide">Last sync</div>
-                  <div className="text-[11px] font-mono text-g600">{new Date(data.settings.gmail_last_sync).toLocaleString()}</div>
+                  <div className="text-[11px] font-mono text-g600">{fmtLocal12(new Date(data.settings.gmail_last_sync))}</div>
                 </div>
               )}
             </div>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../store';
-import { customerOfDoc, formatINR, cn, getThisWeekRange, localDateStr, siteLabel, fmtIST } from '../lib/utils';
+import { customerOfDoc, formatINR, cn, getThisWeekRange, localDateStr, siteLabel, fmtIST, fmtTime12 } from '../lib/utils';
 import { Badge, Button } from '../components/ui';
 import { DailySnapshot } from '../components/DailySnapshot';
 import { useNavigate } from 'react-router-dom';
@@ -776,7 +776,7 @@ export function Dashboard() {
                       order: 'bg-emerald-500',
                       followup: 'bg-purple-500',
                     }[item.type];
-                    const timeStr = new Date(item.ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                    const timeStr = fmtIST(new Date(item.ts), 'hh:mm a');
                     const dateStr = new Date(item.ts).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
                     return (
                       <button
@@ -839,7 +839,7 @@ export function Dashboard() {
                   <button type="button" key={fu.id} onClick={() => openDetailPanel('quote' as any, fu.id)} className="w-full text-left px-3 py-2 hover:bg-g50 border-b border-g100 last:border-0 focus:outline-none">
                     <div className="font-mono text-[10px] font-bold text-purple-600">{fu.id}</div>
                     <div className="text-[11.5px] text-blk font-medium">{fu.owner}</div>
-                    <div className="text-[11px] text-g400">{fu.next_date} {fu.next_time}</div>
+                    <div className="text-[11px] text-g400">{fu.next_date} {fmtTime12(fu.next_time)}</div>
                   </button>
                 ))}
               </MdoSection>

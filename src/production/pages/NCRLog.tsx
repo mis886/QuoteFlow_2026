@@ -108,7 +108,7 @@ export function NCRLog() {
                   </span>
                 </TD>
                 <TD className="font-mono text-[11px] text-[#666]">
-                  {n.raised_at ? fmtIST(new Date(n.raised_at), 'dd MMM HH:mm') : '—'}
+                  {n.raised_at ? fmtIST(new Date(n.raised_at), 'dd MMM hh:mm a') : '—'}
                 </TD>
                 <TD className="font-mono text-[10.5px] font-bold text-[#0A6ED1]">{n.job_id}</TD>
                 <TD className="text-[12.5px]">{productIdentity(n.job)}</TD>

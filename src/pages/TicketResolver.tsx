@@ -138,7 +138,7 @@ export function TicketResolver() {
                     <td className="px-[13px] py-[10px] align-top font-mono text-[10.5px] font-bold text-g600">{t.priority}</td>
                     <td className="px-[13px] py-[10px] align-top"><Badge status={t.status} /></td>
                     <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
-                      {t.created_at ? fmtIST(new Date(t.created_at), 'dd MMM HH:mm') : '—'}
+                      {t.created_at ? fmtIST(new Date(t.created_at), 'dd MMM hh:mm a') : '—'}
                     </td>
                   </tr>
                 ))

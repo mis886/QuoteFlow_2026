@@ -1,3 +1,4 @@
+import { fmtIST } from '../lib/utils';
 import React, { useState } from 'react';
 import { Search, RefreshCw, UserCircle2, X, LogOut } from 'lucide-react';
 import { SlaNotificationBell } from './SlaNotificationBell';
@@ -37,7 +38,7 @@ export function Topbar() {
   };
 
   const lastSync = data.settings?.gmail_last_sync
-    ? new Date(data.settings.gmail_last_sync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ? fmtIST(new Date(data.settings.gmail_last_sync), 'hh:mm a')
     : null;
 
   return (

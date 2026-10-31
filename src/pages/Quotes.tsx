@@ -269,7 +269,7 @@ export function Quotes() {
                           </td>
                           <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
                             {q.sent_at
-                              ? fmtIST(new Date(q.sent_at), 'dd MMM HH:mm')
+                              ? fmtIST(new Date(q.sent_at), 'dd MMM hh:mm a')
                               : q.status === 'Draft'
                                 ? <span className="text-g400 italic">not sent</span>
                                 : '--'}
@@ -413,7 +413,7 @@ export function Quotes() {
                         {s.quantity != null ? `${s.quantity} ${s.unit || ''}`.trim() : '—'}
                       </td>
                       <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600 whitespace-nowrap">
-                        {s.email_sent_at ? fmtIST(new Date(s.email_sent_at), 'dd MMM HH:mm') : '—'}
+                        {s.email_sent_at ? fmtIST(new Date(s.email_sent_at), 'dd MMM hh:mm a') : '—'}
                       </td>
                       <td className="px-[13px] py-[10px] align-middle"><Badge status={s.status} /></td>
                       <td className="px-[13px] py-[10px] align-middle text-[11.5px] text-g600">

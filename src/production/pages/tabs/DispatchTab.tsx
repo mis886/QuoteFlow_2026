@@ -99,7 +99,7 @@ export function DispatchTab({ jobs, onConfirmDispatch, onChanged }: Props) {
                   ) : (
                     <div className="flex items-center gap-2">
                       <span className="text-[10.5px] font-mono text-[#333]">
-                        {j.dispatched_at ? fmtIST(new Date(j.dispatched_at), 'dd MMM HH:mm') : '✓'}
+                        {j.dispatched_at ? fmtIST(new Date(j.dispatched_at), 'dd MMM hh:mm a') : '✓'}
                       </span>
                       {undoable && (
                         <button

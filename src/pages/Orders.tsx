@@ -297,10 +297,10 @@ export function Orders() {
             <colgroup>
               <col style={{ width: 110 }} />{/* Order No. */}
               <col style={{ width: 105 }} />{/* Quote Ref */}
-              <col style={{ width: 210 }} />{/* Customer - Unit */}
+              <col style={{ width: 202 }} />{/* Customer - Unit */}
               <col style={{ width: 130 }} />{/* PO Number */}
               <col style={{ width: 120 }} />{/* Order Value */}
-              <col style={{ width: 110 }} />{/* Punched At */}
+              <col style={{ width: 118 }} />{/* Punched At */}
               <col style={{ width: 170 }} />{/* Status */}
               <col style={{ width: 290 }} />{/* Actions */}
             </colgroup>
@@ -378,7 +378,7 @@ export function Orders() {
                         </td> */}
                         {/* Punched At — date + time, plain, same as Enquiries. */}
                         <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
-                          {(o as any).created_at ? fmtIST(new Date((o as any).created_at), 'dd MMM HH:mm') : '--'}
+                          {(o as any).created_at ? fmtIST(new Date((o as any).created_at), 'dd MMM hh:mm a') : '--'}
                         </td>
                         <td className="px-[13px] py-[10px] align-top"><Badge status={o.status} /></td>
                         <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
