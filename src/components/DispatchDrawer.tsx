@@ -29,8 +29,6 @@ export interface StepEditPatch { status: StepRecordStatus; doneAt: string | null
 // order info, steps 1–11 with Planned / Actual / Delay, every dispatch entry
 // of the order, a remark box and the current step's buttons. Nothing here
 // changes an order's status.
-// 2026-10-13: the order info block now shows the same details as the
-// Dispatch → Order Pending for Dispatch table, incl. its line-items table.
 
 const fmtDate = (d?: string) => d ? fmtIST(new Date(d), 'dd-MMM-yyyy') : '--';
 const Field = ({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) => (
@@ -137,7 +135,7 @@ function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
 // is the fallback.
 const entryActionLabel = (col: EntryColumn) =>
   col === DONE_COLUMN ? 'View Documents →' : col === 9 ? 'Open Entry →' : 'Attach Documents & Send →';
-const entryPagePath = (entryId: string) => `/dispatch/new?entryId=${entryId}&from=board`;
+const entryPagePath = (entryId: string) => `/dispatch/new?entryId=${entryId}`;
 
 export function DispatchDrawer({
   order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onEntryAction, onEntryManualStep9, onResume,
@@ -213,7 +211,7 @@ export function DispatchDrawer({
   // EDIT (all users): the order card opens Edit Order, an entry card opens
   // that dispatch entry — both come back to the board afterwards.
   const openEdit = () => {
-    if (openedFrom.kind === 'entry') navigate(`/dispatch/new?entryId=${encodeURIComponent(openedFrom.entry.id)}&from=board`);
+    if (openedFrom.kind === 'entry') navigate(`/dispatch/new?entryId=${encodeURIComponent(openedFrom.entry.id)}`);
     else navigate(`/orders/new?orderId=${encodeURIComponent(order.id)}&from=board`);
   };
 
@@ -414,7 +412,7 @@ export function DispatchDrawer({
             )}
             {orderCard && hasStepActions && <StepActionButtons card={orderCard} busy={busy} canAct={canAct} onAction={act} onResume={resume} omitStep6MarkDone />}
             {orderCard?.column === 8 && (
-              <button type="button" onClick={() => navigate(`/dispatch/new?orderRef=${order.id}&toSent=1&from=board`)}
+              <button type="button" onClick={() => navigate(`/dispatch/new?orderRef=${order.id}&toSent=1`)}
                 className="w-full bg-red-mrt hover:bg-red-h text-white text-[12px] font-semibold rounded-[4px] px-2.5 py-[7px] transition-colors">
                 Create Dispatch Entry →
               </button>

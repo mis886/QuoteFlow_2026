@@ -12,8 +12,8 @@ import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
-import { DispatchStepRecord, entryPosition, isImportedEntry, needsBhiwandiEmail } from '../lib/dispatchFlow';
-import { autoCompleteEntrySteps, loadEntryStepRecords } from '../lib/dispatchEntrySteps';
+import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry, needsBhiwandiEmail, orderFulfillmentFor, readyForNewEntry } from '../lib/dispatchFlow';
+import { autoCompleteEntrySteps, loadEntryStepRecords, loadOrderStepRecords } from '../lib/dispatchEntrySteps';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
 // entry is being saved as "Dispatch → Sent" (every save is one now — see
@@ -130,20 +130,17 @@ const INCO_OPTIONS = [
 //   /dispatch/new?orderRef=<ORD>&toSent=1 — ALWAYS a new dispatch entry for
 //     that order (an order can have many; a partial dispatch keeps the same
 //     Order No. + SO No.), lines pre-filled with what's still left to dispatch.
+//     Only once the order's open dispatch has finished Step 7 (readyForNewEntry).
 //   /dispatch/new?entryId=<DSP> — edits exactly that entry (updateDispatchEntry).
 export function NewDispatchEntry() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const orderRef = searchParams.get('orderRef');
   const entryIdParam = searchParams.get('entryId');
-  // Opened from a Dispatch Board button (&from=board) → Save / Email /
-  // Back return to the Board view instead of the Table.
-  const fromBoard = searchParams.get('from') === 'board';
-  // &pill=delivered (opened from List → Delivered) → back to that pill.
+  // &pill=delivered (opened from List → Delivered) → Save / Email / Back
+  // return to that pill.
   const boardPill = searchParams.get('pill');
-  const dispatchHome = fromBoard
-    ? `/dispatch?view=board${boardPill && /^[a-z]+$/.test(boardPill) ? `&pill=${boardPill}` : ''}`
-    : '/dispatch';
+  const dispatchHome = `/dispatch${boardPill && /^[a-z]+$/.test(boardPill) ? `?pill=${boardPill}` : ''}`;
   const { data, user, loading, addDispatchEntry, updateDispatchEntry, saveDispatchFormDetails, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
@@ -239,6 +236,21 @@ export function NewDispatchEntry() {
     loadEntryStepRecords(existingEntryId).then(rows => { if (live) setEntrySteps(rows); }, () => {});
     return () => { live = false; };
   }, [existingEntryId]);
+
+  // New entry: the order's step rows, to check Step 7 is done (null until loaded).
+  const [orderSteps, setOrderSteps] = useState<DispatchStepRecord[] | null>(null);
+  const [orderStepsError, setOrderStepsError] = useState('');
+  useEffect(() => {
+    if (entryIdParam || !orderRef) return;
+    let live = true;
+    setOrderSteps(null);
+    setOrderStepsError('');
+    loadOrderStepRecords(orderRef).then(
+      rows => { if (live) setOrderSteps(rows); },
+      err => { if (live) setOrderStepsError(err?.message || 'check your connection'); },
+    );
+    return () => { live = false; };
+  }, [orderRef, entryIdParam]);
 
   const handleDocFileChange = (key: SingleDocKey, file: File) => {
     setDocFiles(prev => ({ ...prev, [key]: file }));
@@ -492,8 +504,7 @@ export function NewDispatchEntry() {
       if (existing.items && existing.items.length) setItems(existing.items.map(i => ({ ...i })));
       if (typeof existing.insurance === 'number') setInsurance(existing.insurance);
     } else {
-      // Brand-new entry (e.g. "Create Dispatch" off the Order Pending for
-      // Dispatch tab): each line's No of Barrels starts at what's still left
+      // Brand-new entry ("Create Dispatch Entry" on the drawer's Step 8): each line's No of Barrels starts at what's still left
       // to dispatch across all of this order's entries; fully dispatched
       // lines are hidden. Then fill any blanks hydrateFromOrder left from the
       // customer/site defaults.
@@ -585,6 +596,15 @@ export function NewDispatchEntry() {
   // Skipped while saving so the card never flashes in the moment between a
   // new entry landing in the store (which can bring remaining to 0) and the
   // navigate away.
+  const fulfillmentOf = (order: Order) => orderFulfillmentFor(order, customerOfDoc(order, data.customers)?.fulfilmentType);
+  // Fails closed: no answer from the database = no new entry.
+  const newEntryStepBlock = () => {
+    if (existingEntryId) return null;
+    if (orderStepsError) return `Could not check the Dispatch steps: ${orderStepsError}. Nothing was saved.`;
+    const order = dispatchOrders.find(o => o.id === orderRef);
+    if (!order || orderSteps === null) return null;
+    return readyForNewEntry(order, data.dispatchEntries.filter(e => e.orderId === order.id), orderSteps, fulfillmentOf(order)) ? null : FINISH_STEPS_FIRST;
+  };
   const entryParamOrder = entryIdParam
     ? dispatchOrders.find(o => o.id === data.dispatchEntries.find(e => e.id === entryIdParam)?.orderId)
     : undefined;
@@ -592,8 +612,10 @@ export function NewDispatchEntry() {
     : entryIdParam
       ? (!data.dispatchEntries.some(e => e.id === entryIdParam) ? 'Dispatch entry not found.' : !entryParamOrder ? 'Order not found.' : null)
       : orderRef
-        ? newDispatchBlockReason(dispatchOrders.find(o => o.id === orderRef), orderRef, data.dispatchEntries)
+        ? newDispatchBlockReason(dispatchOrders.find(o => o.id === orderRef), orderRef, data.dispatchEntries) || newEntryStepBlock()
         : null;
+  // True while a new entry's Step 7 check hasn't answered yet: no form until it has.
+  const checkingSteps = !entryIdParam && !!orderRef && !existingEntryId && !saving && orderSteps === null && !orderStepsError;
 
   // The Step 8 / 10 rules apply to real entries only — not old imported ones —
   // and only to a login that can fill that field in: Step 8 not for the
@@ -734,8 +756,19 @@ export function NewDispatchEntry() {
     // the page loaded. Blocks if any line no longer has enough barrels left.
     try {
       const { data: freshRows, error: freshErr } = await supabase
-        .from('dispatch_entries').select('id, order_id, items').eq('order_id', selectedOrderId);
+        .from('dispatch_entries').select('id, order_id, items, created_at, created_by').eq('order_id', selectedOrderId);
       if (freshErr) throw freshErr;
+      // A new entry: Step 7 may have been undone while this page was open.
+      if (!existingEntryId) {
+        const rows = await loadOrderStepRecords(selectedOrderId);
+        setOrderSteps(rows);
+        const saved = (freshRows || []).map(r => ({ id: r.id, orderId: r.order_id, created_at: r.created_at, createdBy: r.created_by })) as DispatchEntry[];
+        if (!readyForNewEntry(selectedOrder, saved, rows, fulfillmentOf(selectedOrder))) {
+          setError(FINISH_STEPS_FIRST);
+          setSaving(false);
+          return;
+        }
+      }
       const fresh = (freshRows || [])
         .filter(r => r.id !== existingEntryId)   // this entry's own saved qty is being replaced
         .map(r => ({ id: r.id as string, orderId: r.order_id as string, items: (r.items || []) as { seq: number; qty: number }[] }));
@@ -750,7 +783,7 @@ export function NewDispatchEntry() {
         }
       }
     } catch (err: any) {
-      setError(`Could not re-check the remaining barrels: ${err?.message || 'check your connection'}. Nothing was saved.`);
+      setError(`Could not re-check the Dispatch steps and remaining barrels: ${err?.message || 'check your connection'}. Nothing was saved.`);
       setSaving(false);
       return;
     }
@@ -864,7 +897,7 @@ export function NewDispatchEntry() {
         saved = await addDispatchEntry(selectedOrderId, type as DispatchFulfillmentType, extra);
       }
       // 2026-10-23: saved with an invoice no. + file / LR → complete Step 8 / 10 (edit
-      // or new entry, from the Board or the Table view).
+      // or new entry).
       const warning = await completeEntrySteps(saved);
       if (warning) {
         // Stay on the saved entry so the warning can be read; a new entry
@@ -872,12 +905,11 @@ export function NewDispatchEntry() {
         setStepWarning(warning);
         if (!existingEntryId) {
           setExistingEntryId(saved.id);
-          navigate(`/dispatch/new?${new URLSearchParams({ entryId: saved.id, ...(fromBoard ? { from: 'board' } : {}), ...(boardPill ? { pill: boardPill } : {}) })}`, { replace: true });
+          navigate(`/dispatch/new?${new URLSearchParams({ entryId: saved.id, ...(boardPill ? { pill: boardPill } : {}) })}`, { replace: true });
         }
         return;
       }
-      // Land on the tab/pill the saved entry now lives under.
-      navigate(fromBoard ? dispatchHome : `/dispatch?tab=${existingEntry?.emailSentAt ? 'emailSent' : 'dispatched'}&type=${type}`);
+      navigate(dispatchHome);
     } catch (err: any) {
       setError(err?.message || 'Could not save — check your connection.');
     } finally {
@@ -910,6 +942,8 @@ export function NewDispatchEntry() {
       </div>
     );
   }
+
+  if (checkingSteps) return <div className="p-5 text-g400 text-[12.5px]">Loading…</div>;
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -1578,7 +1612,7 @@ export function NewDispatchEntry() {
             const entry = data.dispatchEntries.find(e => e.id === existingEntryId);
             const warning = entry ? await completeEntrySteps(entry, 'Email sent') : '';
             if (warning) { setEmailMode(null); setStepWarning(warning); return; }
-            navigate(fromBoard ? dispatchHome : `/dispatch?tab=emailSent&type=${type || 'delivery'}`);
+            navigate(dispatchHome);
           }}
         />
       )}

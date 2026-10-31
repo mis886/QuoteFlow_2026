@@ -104,6 +104,14 @@ export const isImportedEntry = (e: DispatchEntry) => e.createdBy === 'system-imp
 /** Advance payment terms need the step 1 payment-receipt check. */
 export const needsPaymentCheck = (pay: string | undefined) => /advance/i.test(pay || '');
 
+/** An order's Delivery / Self Pickup: its own type first, then the customer's usual one. */
+export function orderFulfillmentFor(o: Pick<Order, 'fulfillmentType'>, customerType?: string): DispatchFulfillmentType | 'not_set' {
+  if (o.fulfillmentType === 'delivery' || o.fulfillmentType === 'self_pickup') return o.fulfillmentType;
+  if (customerType === 'Delivery') return 'delivery';
+  if (customerType === 'Self Pickup') return 'self_pickup';
+  return 'not_set';
+}
+
 export const entryHasLr = (e: DispatchEntry) => (e.lrFiles?.length ?? 0) > 0 || !!e.lrUrl;
 /** At least one Invoice / Eway Bill file (or the legacy single-file column). */
 export const entryHasInvoiceFile = (e: DispatchEntry) => (e.invoiceEwayBillFiles?.length ?? 0) > 0 || !!e.invoiceEwayBillUrl;
@@ -451,6 +459,15 @@ export function orderPosition(
   return walkRound(order, round, start, records, fulfillment, false).position;
 }
 
+/** A new dispatch entry needs the open dispatch through Step 7 — the order card sits at Step 8. */
+export const FINISH_STEPS_FIRST = 'Finish Steps 1–7 on the Dispatch board first';
+export const readyForNewEntry = (
+  order: Order,
+  orderEntries: DispatchEntry[],
+  records: DispatchStepRecord[],
+  fulfillment: DispatchFulfillmentType | 'not_set',
+) => orderPosition(order, orderEntries, records, fulfillment).step === 8;
+
 export interface OrderRound {
   round: number;
   history: OrderStepHistory[];
@@ -461,7 +478,7 @@ export interface OrderRound {
 /**
  * Every round of an order, for the drawer: steps 1–7 with planned / actual,
  * plus the dispatch entry that closed each finished round. Steps nobody
- * pressed Done on before an entry was saved (e.g. created from Table view)
+ * pressed Done on before an entry was saved (entries from before 2026-10-31)
  * show as "not_recorded" — never as an error.
  */
 export function orderRounds(

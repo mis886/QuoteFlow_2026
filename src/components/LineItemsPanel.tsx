@@ -4,21 +4,17 @@ import type { OrderItem } from '../lib/types';
 
 const thCls = 'font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 border-b border-g200';
 
-// Expanded line-item table, shared by all three Dispatch table tabs and the
-// Dispatch Board drawer (moved here from Dispatch.tsx on 2026-10-13).
+// Expanded line-item table, shared by List → Delivered and the Dispatch drawer
+// (moved here from Dispatch.tsx on 2026-10-13).
 //   remaining — barrels still to dispatch per line (remainingByLine); adds a
-//     "Remaining" column (the Board drawer, for a partial dispatch, and the
-//     Dispatch → Order Pending for Dispatch tab).
-//   showDispatched — with `remaining`: also a "Dispatched" column (ordered −
-//     remaining) before it. Used by the Order Pending for Dispatch tab.
+//     "Remaining" column (the drawer, for a partial dispatch).
 //   scroll — the table keeps its natural width and scrolls sideways inside a
 //     narrow parent (the drawer) instead of squeezing its columns.
-export function LineItemsPanel({ title, items, grand, remaining, showDispatched = false, scroll = false }: {
+export function LineItemsPanel({ title, items, grand, remaining, scroll = false }: {
   title: string;
   items: OrderItem[];
   grand: number;
   remaining?: Map<number, number>;
-  showDispatched?: boolean;
   scroll?: boolean;
 }) {
   const subTotal = items.reduce((s, i) => s + i.total, 0);
@@ -31,7 +27,6 @@ export function LineItemsPanel({ title, items, grand, remaining, showDispatched 
           <th className={`${thCls} text-left`}>Product Name</th>
           <th className={`${thCls} text-left`}>HSN Code</th>
           <th className={`${thCls} text-right`}>No of Barrels</th>
-          {remaining && showDispatched && <th className={`${thCls} text-right`}>Dispatched</th>}
           {remaining && <th className={`${thCls} text-right`}>Remaining</th>}
           <th className={`${thCls} text-right`}>Packing</th>
           <th className={`${thCls} text-right`}>Total Qty</th>
@@ -52,9 +47,6 @@ export function LineItemsPanel({ title, items, grand, remaining, showDispatched 
               <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
               <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px]">{i.hsn || '—'}</td>
               <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
-              {remaining && showDispatched && (
-                <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] text-right">{Math.max(0, (Number(i.qty) || 0) - left)}</td>
-              )}
               {remaining && (
                 <td className={`px-2.5 py-1.5 border-b border-g100 font-mono text-[11.5px] font-bold text-right ${left > 0 ? 'text-red-mrt' : 'text-g400'}`}>{left}</td>
               )}

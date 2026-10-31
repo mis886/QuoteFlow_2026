@@ -35,6 +35,13 @@ export async function loadEntryStepRecords(entryId: string): Promise<DispatchSte
   return (rows || []).map(mapStepFromDB);
 }
 
+/** One order's saved step rows, for the new-entry check (readyForNewEntry). */
+export async function loadOrderStepRecords(orderId: string): Promise<DispatchStepRecord[]> {
+  const { data: rows, error } = await supabase.from('dispatch_steps').select('*').eq('order_id', orderId);
+  if (error) throw error;
+  return (rows || []).map(mapStepFromDB);
+}
+
 /**
  * Checks the step's proof against the entry as saved in the database right
  * now (entryStepBlock; the database trigger enforce_dispatch_entry_step_prereqs

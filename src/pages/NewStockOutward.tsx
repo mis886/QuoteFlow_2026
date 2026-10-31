@@ -419,7 +419,7 @@ export function orderBarrelsFor(o: Order, entries: DispatchEntry[], seq?: number
   return remainingByLine(o, entries).get(item.seq) ?? 0;
 }
 
-const DISPATCH_BOARD_PATH = '/dispatch?view=board';
+const DISPATCH_BOARD_PATH = '/dispatch';
 
 // Warehouse + Lot No as one comparable key (lot match is case-insensitive).
 const lotKeyOf = (warehouse: string, lotNo: string) => `${warehouse}|${lotNo.trim().toLowerCase()}`;

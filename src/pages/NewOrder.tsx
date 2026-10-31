@@ -56,7 +56,7 @@ export function NewOrder() {
   const editOrderId = searchParams.get('orderId');
   // Opened from the Dispatch Board drawer's Edit (&from=board) → Save / Back
   // return to the board instead of the Orders list.
-  const ordersHome = searchParams.get('from') === 'board' ? '/dispatch?view=board' : '/orders';
+  const ordersHome = searchParams.get('from') === 'board' ? '/dispatch' : '/orders';
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
   const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, isAdmin } = useAppStore();

@@ -251,7 +251,7 @@ function InvoiceCell({ invoices }: { invoices: string[] }) {
   );
 }
 
-// Column template for every tab except Delivered (which uses the Table's
+// Column template for every tab except Delivered (which uses its own
 // Email Sent columns — DeliveredTable below). Everything is centred. Each
 // column is minmax(Npx, Nfr): at its minimum the row is 1074px (fits 1366px
 // with the sidebar open); on wider screens the extra width is shared out in
@@ -406,8 +406,7 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
 }
 
 // ── List → Delivered (Both / Delivery / Self Pickup) ─────────────────────
-// The Table's Email Sent columns minus Items and Transporter
-// (DispatchEntryCells, shared with the Table) + its Actions cell. A row
+// The entry columns (DispatchEntryCells) + an Actions cell. A row
 // click expands that entry's Dispatch Line Items under it. "Marked
 // delivered" orders (no entry) show "—" for the entry fields and open the
 // order. SO No. and Order Ref share one Order column (OrderCell, as in the
@@ -417,7 +416,6 @@ function DeliveredOrderRowView({ row, qty }: { row: DeliveredOrderRow; qty?: Ord
 const DELIVERED_COLS = 8;
 // Everything centred, across and up/down (the expanded line items keep
 // their own alignment — it's a separate row).
-const DELIVERED_PROPS = { showEmailSent: true, compact: true, hideItemsAndTransporter: true, centered: true, mergeOrder: true, dispatchedOnFormat: 'dd MMM hh:mm a' } as const;
 const deliveredOrderCell = (order: Order | undefined, orderId: string | undefined) =>
   <OrderCell soNumber={order?.soNumber} orderId={orderId || order?.id} centered hideMissingSo />;
 function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
@@ -443,7 +441,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
       </colgroup>
       <thead className="bg-g100 sticky top-0 z-[1]">
         <tr>
-          <DispatchEntryHeadCells {...DELIVERED_PROPS} />
+          <DispatchEntryHeadCells />
           <th className={thCenterClsCompact}>Actions</th>
         </tr>
       </thead>
@@ -453,7 +451,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
             const o = it.row.order;
             return (
               <tr key={`do:${o.id}`} className={rowCls} onClick={() => onOpenOrder?.(o)}>
-                <DispatchEntryCells order={o} {...DELIVERED_PROPS} orderCell={deliveredOrderCell(o, o.id)} />
+                <DispatchEntryCells order={o} orderCell={deliveredOrderCell(o, o.id)} />
                 <td />
               </tr>
             );
@@ -462,7 +460,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
           if (card.kind !== 'entry') {
             return (
               <tr key={card.key} className="border-b border-g100">
-                <DispatchEntryCells order={card.order} {...DELIVERED_PROPS} orderCell={deliveredOrderCell(card.order, card.order.id)} />
+                <DispatchEntryCells order={card.order} orderCell={deliveredOrderCell(card.order, card.order.id)} />
                 <td />
               </tr>
             );
@@ -472,7 +470,7 @@ function DeliveredTable({ items, entryActions, renderExpanded, onOpenOrder }: {
             <React.Fragment key={card.key}>
               <tr className={`${rowCls} ${isOpen ? 'bg-sW/5' : ''}`} aria-expanded={isOpen}
                 onClick={() => renderExpanded && setExpandedKey(k => k === card.key ? null : card.key)}>
-                <DispatchEntryCells entry={card.entry} order={card.order} {...DELIVERED_PROPS} orderCell={deliveredOrderCell(card.order, card.entry.orderId)} />
+                <DispatchEntryCells entry={card.entry} order={card.order} orderCell={deliveredOrderCell(card.order, card.entry.orderId)} />
                 <td className="px-[9px] py-[10px] align-middle text-center whitespace-nowrap" onClick={stop} onKeyDown={stop}>{entryActions(card)}</td>
               </tr>
               {isOpen && (
@@ -514,8 +512,7 @@ export function DispatchBoard({ cards, now, onOpen, qty, deliveredOrders = [], d
   entryActions?: (card: BoardEntryCard) => React.ReactNode;
   // List → Delivered: click on a "Marked delivered" row (order, no entry).
   onOpenDeliveredOrder?: (order: Order) => void;
-  // Barrels per order id (Dispatch.tsx's boardQty) — same numbers as the
-  // Table's Order Pending for Dispatch.
+  // Barrels per order id (Dispatch.tsx's boardQty).
   qty?: Map<string, OrderQty>;
   // List → Delivered only: orders marked Delivered with no dispatch entry.
   deliveredOrders?: DeliveredOrderRow[];
@@ -525,7 +522,7 @@ export function DispatchBoard({ cards, now, onOpen, qty, deliveredOrders = [], d
   renderActions?: (card: BoardCard) => React.ReactNode;
   onDelete?: (card: BoardCard) => void;
 }) {
-  // entryActions given = List → Delivered → the Table's Email Sent columns.
+  // entryActions given = List → Delivered → the entry columns.
   const deliveredLayout = !!entryActions;
   const [stepFilter, setStepFilter] = React.useState<ColumnNo | 'all'>('all');
   const [limit, setLimit] = React.useState(PAGE);

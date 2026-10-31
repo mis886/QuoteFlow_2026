@@ -1,16 +1,14 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, List, Rows3, CheckCircle2 } from 'lucide-react';
+import { Search, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
-import { Badge, Button } from '../components/ui';
-import { customerOfDoc, dispatchOrderView, canDeleteRecords, formatINR, fmtIST, doerLabel, siteLabel, resolveAdjustments, maxItemGstRate, normalizeSearchText, totalRemaining, remainingByLine, canActOnDispatchBoard, punchedAtClass } from '../lib/utils';
+import { customerOfDoc, dispatchOrderView, canDeleteRecords, fmtIST, doerLabel, siteLabel, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, unionBoardRows } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
-import { LineItemsPanel } from '../components/LineItemsPanel';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
-import { thCls, thRightCls, isImportedEntry, SoCell, DispatchEntryHeadCells, DispatchEntryCells, DispatchEntryActions } from '../components/DispatchEntryCells';
+import { DispatchEntryActions } from '../components/DispatchEntryCells';
 import { DispatchDrawer, StepEditPatch } from '../components/DispatchDrawer';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
@@ -18,11 +16,8 @@ import { supabase } from '../lib/supabase';
 import { logActivity } from '../lib/activityLog';
 
 type SubType = DispatchFulfillmentType | 'not_set';
-type DispatchTab = 'pending' | 'dispatched' | 'emailSent';
 
 const pillCls = (active: boolean) => `px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${active ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`;
-
-const fulfillmentLabel = (t: SubType) => t === 'self_pickup' ? 'Self Pickup' : t === 'delivery' ? 'Delivery' : 'Not Set';
 
 
 // 'active' / 'delayed' / 'pending' pills were removed — an old ?pill= value falls back to All.
@@ -36,42 +31,29 @@ export function Dispatch() {
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canDelete = canDeleteRecords(user?.email);
 
-  // Initial tab/pill come from the URL (?tab=pending|dispatched|emailSent
-  // &type=delivery|self_pickup) — NewDispatchEntry.tsx sends the user back
-  // here that way after Save / Email to Client so they land on the entry
-  // they just made. Anything else (incl. the retired ?tab=toDispatch)
-  // falls back to Pending.
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState<DispatchTab>(() => {
-    const t = searchParams.get('tab');
-    return t === 'dispatched' || t === 'emailSent' ? t : 'pending';
-  });
-  const [subType, setSubType] = useState<DispatchFulfillmentType>(() =>
-    searchParams.get('type') === 'self_pickup' ? 'self_pickup' : 'delivery');
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  // Order Pending for Dispatch: All, or only orders already partly dispatched
-  // (?pending=partial in the URL).
-  const [pendingFilter, setPendingFilter] = useState<'all' | 'partial'>(() => searchParams.get('pending') === 'partial' ? 'partial' : 'all');
-
-  // Table (this page as it always was) vs the Kanban Board view — kept in
-  // the URL as ?view=board so a refresh stays on the board.
-  const [view, setView] = useState<'table' | 'board'>(() => searchParams.get('view') === 'board' ? 'board' : 'table');
   // Opens on All. ?pill=… (e.g. Back from an entry opened in List →
-  // Delivered) picks another; anything unknown falls back to All.
+  // Delivered) picks another; anything unknown falls back to All. Links from
+  // the removed Table still work: ?tab=emailSent → Delivered, ?pending=partial
+  // → Partially Dispatched, ?type= → that filter; ?view= and other tabs → All.
   const [boardFilter, setBoardFilter] = useState<BoardPill>(() => {
     const p = searchParams.get('pill');
-    return BOARD_PILLS.includes(p as BoardPill) ? p as BoardPill : 'all';
+    if (BOARD_PILLS.includes(p as BoardPill)) return p as BoardPill;
+    return searchParams.get('tab') === 'emailSent' ? 'delivered' : searchParams.get('pending') === 'partial' ? 'partial' : 'all';
   });
-  const [boardType, setBoardType] = useState<'both' | DispatchFulfillmentType>('both');
+  const [boardType, setBoardType] = useState<'both' | DispatchFulfillmentType>(() => {
+    const t = searchParams.get('type');
+    return t === 'delivery' || t === 'self_pickup' ? t : 'both';
+  });
+  // The URL keeps only the pill, so an old ?tab= can't come back on a refresh.
+  useEffect(() => { setSearchParams(boardFilter === 'all' ? {} : { pill: boardFilter }, { replace: true }); }, []);
   // Board timers ("Due in 12 min", "Late by 1h 20m") re-evaluate every minute.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (view !== 'board') return;
-    setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(t);
-  }, [view]);
+  }, []);
 
   // Board step history (dispatch_steps — steps 1–7 per order, 8–11 per
   // dispatch entry). Loaded when the board opens and refreshed
@@ -82,7 +64,6 @@ export function Dispatch() {
   // tick, so a Step 6 card knows its DO is saved but not emailed yet.
   const [linkedDOs, setLinkedDOs] = useState<LinkedDO[]>([]);
   useEffect(() => {
-    if (view !== 'board') return;
     supabase.from('dispatch_steps').select('*').then(({ data: rows, error }) => {
       if (error) { console.error('Error loading dispatch steps:', error); return; }
       setStepRecords((rows || []).map(mapStepFromDB));
@@ -92,7 +73,7 @@ export function Dispatch() {
         if (error) { console.error('Error loading linked DOs:', error); return; }
         setLinkedDOs((rows || []).map(mapLinkedDOFromDB));
       });
-  }, [view, now]);
+  }, [now]);
 
   // Done / Hold / Resume on steps 1–7: Samata (mum@) + ADMIN_EMAILS only;
   // everyone else sees the board read-only. Never changes an order's status.
@@ -447,7 +428,7 @@ export function Dispatch() {
     }
   };
 
-  // Table → Email Sent / Dispatched Delete button — also used by List → Delivered.
+  // List → Delivered Delete button.
   const deleteEntryWithConfirm = async (entry: DispatchEntry) => {
     if (!canDelete) return;
     if (!confirm(deleteConfirmText(entry))) return;
@@ -459,10 +440,9 @@ export function Dispatch() {
     }
   };
 
-  // List → Delivered: a row click expands its Dispatch Line Items (like
-  // Table → Email Sent); Edit opens the entry form, whose Back / Save return
-  // to List → Delivered (from=board&pill=delivered).
-  const openEntryForm = (entry: DispatchEntry) => navigate(`/dispatch/new?entryId=${entry.id}&from=board&pill=delivered`);
+  // List → Delivered: a row click expands its Dispatch Line Items; Edit opens the entry form, whose Back / Save return
+  // to List → Delivered (pill=delivered).
+  const openEntryForm = (entry: DispatchEntry) => navigate(`/dispatch/new?entryId=${entry.id}&pill=delivered`);
   const openDeliveredCard = (card: BoardCard) => card.kind === 'entry' ? openEntryForm(card.entry) : openDrawer(card);
   // The Table's Actions cell (Edit / Delete side by side + doer name).
   const deliveredEntryActions = (card: BoardEntryCard) => {
@@ -472,34 +452,19 @@ export function Dispatch() {
       <DispatchEntryActions
         onEdit={() => openEntryForm(entry)}
         onDelete={canDelete ? () => deleteEntryWithConfirm(entry) : undefined}
-        doer={by ? doerLabel(by, data.roster) : undefined}
-        centered />
+        doer={by ? doerLabel(by, data.roster) : undefined} />
     );
   };
 
-  const orderFor = (entry: DispatchEntry): Order | undefined => dispatchOrders.find(o => o.id === entry.orderId);
-
-  // Order Pending for Dispatch — read-only view of every order that was
-  // sent here (sentToDispatchAt — the "Order Pending for Dispatch" button
-  // in Orders), is still Order Confirmed (or legacy Order Pending for
-  // Dispatch), and still has barrels left to dispatch (totalRemaining > 0).
-  // A partial dispatch keeps the same order here until every line has gone
-  // out; each dispatch shows under "Dispatched" as its own entry. Nothing
-  // here changes an order's status.
+  // Orders waiting for Dispatch: sent here (sentToDispatchAt — the "Order
+  // Pending for Dispatch" button in Orders), still Order Confirmed (or legacy
+  // Order Pending for Dispatch), with barrels left to dispatch. Same rule as
+  // the List's order rows (buildBoard). Nothing here changes an order's status.
   const pendingOrders = useMemo(
     () => dispatchOrders.filter(o => !!o.sentToDispatchAt && (o.status === 'Order Confirmed' || o.status === 'Order Pending for Dispatch') && totalRemaining(o, data.dispatchEntries) > 0),
     [dispatchOrders, data.dispatchEntries],
   );
-  // Shown in the Fulfillment column only (this tab has no Delivery/Self
-  // Pickup split) — order's own type first, then the customer's typical
-  // pattern, else "Not Set".
-  const orderFulfillment = (o: Order): SubType => {
-    if (o.fulfillmentType === 'delivery' || o.fulfillmentType === 'self_pickup') return o.fulfillmentType;
-    const cf = customerOfDoc(o, data.customers)?.fulfilmentType;
-    if (cf === 'Delivery') return 'delivery';
-    if (cf === 'Self Pickup') return 'self_pickup';
-    return 'not_set';
-  };
+  const orderFulfillment = (o: Order): SubType => orderFulfillmentFor(o, customerOfDoc(o, data.customers)?.fulfilmentType);
 
   // Assign SO numbers to every order shown anywhere on this page that
   // doesn't have one yet — pending orders plus every order linked to a
@@ -526,51 +491,12 @@ export function Dispatch() {
       .finally(() => { soRunning.current = false; });
   }, [missingSoKey]);
 
-  const entries = data.dispatchEntries;
-  // Each entry lives in exactly one of the two entry tabs:
-  //   emailSentAt set (Email to Client succeeded) → Email Sent
-  //   else                                        → Dispatched
-  // (the old "Order → Dispatch" stage is retired — an entry without sentAt
-  // still lands in Dispatched, so no entry is ever hidden). Both share the
-  // same Delivery/Self Pickup sub-split.
-  const emailSentEntries = entries.filter(e => e.emailSentAt);
-  const sentEntries = entries.filter(e => !e.emailSentAt);
-  const activeEntries = tab === 'emailSent' ? emailSentEntries : sentEntries;
-  const deliveryCount = activeEntries.filter(e => e.fulfillmentType === 'delivery').length;
-  const selfPickupCount = activeEntries.filter(e => e.fulfillmentType === 'self_pickup').length;
-
-  // Keep the URL in step so a refresh stays on the same tab/pill/view.
-  const syncUrl = (t: DispatchTab, type: DispatchFulfillmentType, v: 'table' | 'board' = view, pf: 'all' | 'partial' = pendingFilter) =>
-    setSearchParams({
-      ...(t === 'pending' ? (pf === 'partial' ? { pending: 'partial' } : {}) : { tab: t, type }),
-      ...(v === 'board' ? { view: 'board', ...(boardFilter !== 'all' ? { pill: boardFilter } : {}) } : {}),
-    }, { replace: true });
   // List pills — kept in the URL (?pill=, none for All) so a refresh or
   // Back from an entry lands on the same pill.
   const switchBoardFilter = (f: BoardPill) => {
     setBoardFilter(f);
-    const p = new URLSearchParams(searchParams);
-    if (f === 'all') p.delete('pill'); else p.set('pill', f);
-    setSearchParams(p, { replace: true });
+    setSearchParams(f === 'all' ? {} : { pill: f }, { replace: true });
   };
-  const switchPendingFilter = (pf: 'all' | 'partial') => {
-    setPendingFilter(pf);
-    syncUrl(tab, subType, view, pf);
-  };
-  const switchTab = (t: DispatchTab) => {
-    setTab(t);
-    setExpandedRow(null);
-    syncUrl(t, subType);
-  };
-  const switchSubType = (type: DispatchFulfillmentType) => {
-    setSubType(type);
-    syncUrl(tab, type);
-  };
-  const switchView = (v: 'table' | 'board') => {
-    setView(v);
-    syncUrl(tab, subType, v);
-  };
-
   const qs = search.trim().toLowerCase();
   const orderMatches = (o: Order | undefined, fallbackId: string) => {
     if (!qs) return true;
@@ -582,56 +508,15 @@ export function Dispatch() {
       o.items.some(i => (i.desc || '').toLowerCase().includes(qs));
   };
 
-  // Barrels per pending order: ordered (sum of line qty), remaining
-  // (totalRemaining) and dispatched (the difference). Display only.
-  const pendingQty = useMemo(() => {
-    const m = new Map<string, { ordered: number; dispatched: number; remaining: number }>();
-    for (const o of pendingOrders) {
-      const ordered = o.items.reduce((s, i) => s + (Number(i.qty) || 0), 0);
-      const remaining = totalRemaining(o, data.dispatchEntries);
-      m.set(o.id, { ordered, remaining, dispatched: Math.max(0, ordered - remaining) });
-    }
-    return m;
-  }, [pendingOrders, data.dispatchEntries]);
-  const isPartlyDispatched = (o: Order) => (pendingQty.get(o.id)?.dispatched ?? 0) > 0;
-
-  // Search first; the All / Partly dispatched pill then narrows what's left
-  // (its counts are shown before that last step).
-  const searchedPending = useMemo(
-    () => pendingOrders
-      .filter(o => orderMatches(o, o.id))
-      .sort((a, b) => (b.created_at || b.poDate || '').localeCompare(a.created_at || a.poDate || '')),
-    [pendingOrders, qs],
-  );
-  const partlyDispatchedCount = searchedPending.filter(isPartlyDispatched).length;
-  const visiblePending = pendingFilter === 'partial' ? searchedPending.filter(isPartlyDispatched) : searchedPending;
-
-  const visibleEntries = useMemo(
-    () => activeEntries
-      .filter(e => e.fulfillmentType === subType && (orderMatches(orderFor(e), e.orderId) ||
-        (e.invoiceNumber || '').toLowerCase().includes(qs)))
-      // Email Sent: newest email first; Dispatched: newest entry first.
-      .sort((a, b) => tab === 'emailSent'
-        ? (b.emailSentAt || '').localeCompare(a.emailSentAt || '')
-        : (b.created_at || '').localeCompare(a.created_at || '')),
-    [activeEntries, subType, qs, dispatchOrders, tab],
-  );
-
-  const rowCount = tab === 'pending' ? visiblePending.length : visibleEntries.length;
-  // Email Sent adds "Email Sent On" — Dispatched: 10 columns, Email Sent: 11.
-  const isEmailSentTab = tab === 'emailSent';
-  const entryColCount = isEmailSentTab ? 11 : 10;
-
   // ── Board view ──────────────────────────────────────────────────────────
   const boardCards = useMemo(
-    () => view === 'board' ? buildBoard(dispatchOrders, data.dispatchEntries, stepRecords, orderFulfillment, now, linkedDOs) : [],
-    [view, dispatchOrders, data.dispatchEntries, data.customers, stepRecords, now, linkedDOs],
+    () => buildBoard(dispatchOrders, data.dispatchEntries, stepRecords, orderFulfillment, now, linkedDOs),
+    [dispatchOrders, data.dispatchEntries, data.customers, stepRecords, now, linkedDOs],
   );
   // List search: every invoice number (dispatch_entries.invoice_number, filled
   // at Step 08) per order id, so an order row is found by an earlier invoice.
   const boardInvoices = useMemo(() => {
     const m = new Map<string, string[]>();
-    if (view !== 'board') return m;
     const sorted = [...data.dispatchEntries].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
     for (const e of sorted) {
       if (!e.invoiceNumber) continue;
@@ -640,13 +525,10 @@ export function Dispatch() {
       m.set(e.orderId, list);
     }
     return m;
-  }, [view, data.dispatchEntries]);
+  }, [data.dispatchEntries]);
   const boardSearchMatch = (c: BoardCard) => {
-    if (!qs) return true;
     const o = c.order;
-    return (o?.soNumber || '').toLowerCase().includes(qs)
-      || (c.kind === 'order' ? c.order.id : c.entry.orderId).toLowerCase().includes(qs)
-      || (!!o && normalizeSearchText(o.cust).includes(normalizeSearchText(qs)))
+    return orderMatches(o, c.kind === 'order' ? c.order.id : c.entry.orderId)
       || (c.kind === 'entry' && (c.entry.invoiceNumber || '').toLowerCase().includes(qs))
       || (c.kind === 'order' && (boardInvoices.get(c.order.id) || []).some(inv => inv.toLowerCase().includes(qs)));
   };
@@ -655,7 +537,6 @@ export function Dispatch() {
   // whose email was sent OR whose order is marked Delivered (imported ones
   // included), plus one row per Delivered order that has no entry at all.
   const deliveredCards = useMemo<BoardEntryCard[]>(() => {
-    if (view !== 'board') return [];
     const ordersById = new Map(dispatchOrders.map(o => [o.id, o]));
     const out: BoardEntryCard[] = [];
     for (const e of data.dispatchEntries) {
@@ -667,20 +548,18 @@ export function Dispatch() {
       });
     }
     return out;
-  }, [view, dispatchOrders, data.dispatchEntries, stepRecords]);
+  }, [dispatchOrders, data.dispatchEntries, stepRecords]);
   // Entry ids in the Delivered list (all of it, before type/search) — a Done
   // row in any other List tab whose entry is here reads "Delivered".
   const deliveredEntryIds = useMemo(() => new Set(deliveredCards.map(c => c.entry.id)), [deliveredCards]);
   const deliveredOrderRows = useMemo<DeliveredOrderRow[]>(() => {
-    if (view !== 'board') return [];
     const withEntry = new Set(data.dispatchEntries.map(e => e.orderId));
     return dispatchOrders
       .filter(o => o.status === 'Delivered' && !withEntry.has(o.id))
       .map(o => ({ order: o, fulfillment: orderFulfillment(o) }));
-  }, [view, dispatchOrders, data.dispatchEntries, data.customers]);
+  }, [dispatchOrders, data.dispatchEntries, data.customers]);
 
-  // Barrels per order shown on the List — same numbers as pendingQty above
-  // (Order Pending for Dispatch). Entry rows show their order's numbers.
+  // Barrels per order shown on the List. Entry rows show their order's numbers.
   const boardQty = useMemo(() => {
     const m = new Map<string, { ordered: number; dispatched: number; remaining: number }>();
     const add = (o: Order | undefined) => {
@@ -697,7 +576,7 @@ export function Dispatch() {
   }, [boardCards, deliveredCards, deliveredOrderRows, data.dispatchEntries]);
   // Type + search narrow everything; the pills then filter what's left
   // (their counts are shown before that last step).
-  // Order rows only, already partly dispatched — the Table's "Partially Dispatched".
+  // Order rows only, already partly dispatched.
   const isBoardPartial = (c: BoardCard) => {
     if (c.kind !== 'order') return false;
     const q = boardQty.get(c.order.id);
@@ -707,10 +586,7 @@ export function Dispatch() {
   const boardHoldCount = boardBase.filter(c => c.state === 'hold').length;
   const boardPartialCount = boardBase.filter(isBoardPartial).length;
   const deliveredBase = deliveredCards.filter(c => (boardType === 'both' || c.fulfillment === boardType) && boardSearchMatch(c));
-  const deliveredOrdersBase = deliveredOrderRows.filter(r => (boardType === 'both' || r.fulfillment === boardType) && (!qs
-    || (r.order.soNumber || '').toLowerCase().includes(qs)
-    || r.order.id.toLowerCase().includes(qs)
-    || normalizeSearchText(r.order.cust).includes(normalizeSearchText(qs))));
+  const deliveredOrdersBase = deliveredOrderRows.filter(r => (boardType === 'both' || r.fulfillment === boardType) && orderMatches(r.order, r.order.id));
   const boardDeliveredCount = deliveredBase.length + deliveredOrdersBase.length;
   const delayedRows = boardBase.filter(c => c.state === 'late');
   const holdRows = boardBase.filter(c => c.state === 'hold');
@@ -748,285 +624,65 @@ export function Dispatch() {
             </h1>
             <p className="text-xs text-g500 mt-1 font-light">Every confirmed order, stage by stage — split by how it leaves the warehouse.</p>
           </div>
-          {view === 'board' && (
-            <div className="flex items-stretch gap-2 shrink-0">
-              {([
-                ['In progress', headerCounts.inProgress, 'bg-white text-blk'],
-                ['Delayed', headerCounts.delayed, 'bg-[#FFEBEE] text-[#9A0000]'],
-                ['On hold', headerCounts.onHold, 'bg-white text-blk'],
-                ['Email sent', headerCounts.emailSent, 'bg-[#E8F5E9] text-[#0B5C2A]'],
-              ] as const).map(([label, count, cls]) => (
-                <div key={label} className={`border border-g200 rounded-[6px] px-3 py-1.5 min-w-[92px] ${cls}`}>
-                  <div className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase opacity-80">{label}</div>
-                  <div className="text-[22px] font-bold leading-tight">{count}</div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="flex items-stretch gap-2 shrink-0">
+            {([
+              ['In progress', headerCounts.inProgress, 'bg-white text-blk'],
+              ['Delayed', headerCounts.delayed, 'bg-[#FFEBEE] text-[#9A0000]'],
+              ['On hold', headerCounts.onHold, 'bg-white text-blk'],
+              ['Email sent', headerCounts.emailSent, 'bg-[#E8F5E9] text-[#0B5C2A]'],
+            ] as const).map(([label, count, cls]) => (
+              <div key={label} className={`border border-g200 rounded-[6px] px-3 py-1.5 min-w-[92px] ${cls}`}>
+                <div className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase opacity-80">{label}</div>
+                <div className="text-[22px] font-bold leading-tight">{count}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="flex items-center gap-2 px-6 py-2.5 mt-4 bg-white border-b border-g200 flex-wrap">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-          <div onClick={() => switchView('table')} className={`flex items-center gap-1.5 ${pillCls(view === 'table')}`}>
-            <List size={12} /> Table
-          </div>
-          <div onClick={() => switchView('board')} className={`flex items-center gap-1.5 ${pillCls(view === 'board')}`}>
-            <Rows3 size={12} /> List
-          </div>
+          <div onClick={() => switchBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardAllCount})</div>
+          <div onClick={() => switchBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
+          <div onClick={() => switchBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partially Dispatched ({boardPartialCount})</div>
+          <div onClick={() => switchBoardFilter('delivered')} className={pillCls(boardFilter === 'delivered')}>Delivered ({boardDeliveredCount})</div>
         </div>
         <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
-
-        {view === 'board' ? (
-          <>
-            <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-              <div onClick={() => switchBoardFilter('all')} className={pillCls(boardFilter === 'all')}>All ({boardAllCount})</div>
-              <div onClick={() => switchBoardFilter('hold')} className={pillCls(boardFilter === 'hold')}>On hold ({boardHoldCount})</div>
-              <div onClick={() => switchBoardFilter('partial')} className={pillCls(boardFilter === 'partial')}>Partially Dispatched ({boardPartialCount})</div>
-              <div onClick={() => switchBoardFilter('delivered')} className={pillCls(boardFilter === 'delivered')}>Delivered ({boardDeliveredCount})</div>
-            </div>
-            <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
-            <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-              <div onClick={() => setBoardType('both')} className={pillCls(boardType === 'both')}>Both</div>
-              <div onClick={() => setBoardType('delivery')} className={`flex items-center gap-1.5 ${pillCls(boardType === 'delivery')}`}>
-                <span className="w-[7px] h-[7px] rounded-full bg-[#2563EB] shrink-0" /> Delivery
-              </div>
-              <div onClick={() => setBoardType('self_pickup')} className={`flex items-center gap-1.5 ${pillCls(boardType === 'self_pickup')}`}>
-                <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup
-              </div>
-            </div>
-            <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
-            <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[220px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
-              <Search size={11} className="text-g400 shrink-0" />
-              <input
-                type="text"
-                placeholder="SO No, Order Ref, company, invoice…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
-              />
-            </div>
-            <div className="ml-auto flex items-center gap-3 text-[11px] text-g600 whitespace-nowrap">
-              <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#107E3E]" />On time</span>
-              <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#E9730C]" />Due within 1h</span>
-              <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#BB0000]" />Delayed</span>
-            </div>
-          </>
-        ) : (<>
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-          <div onClick={() => switchTab('pending')} className={pillCls(tab === 'pending')}>
-            Order Pending for Dispatch ({pendingOrders.length})
+          <div onClick={() => setBoardType('both')} className={pillCls(boardType === 'both')}>Both</div>
+          <div onClick={() => setBoardType('delivery')} className={`flex items-center gap-1.5 ${pillCls(boardType === 'delivery')}`}>
+            <span className="w-[7px] h-[7px] rounded-full bg-[#2563EB] shrink-0" /> Delivery
           </div>
-          <div onClick={() => switchTab('dispatched')} className={pillCls(tab === 'dispatched')}>
-            Dispatched ({sentEntries.length})
-          </div>
-          <div onClick={() => switchTab('emailSent')} className={pillCls(tab === 'emailSent')}>
-            Email Sent ({emailSentEntries.length})
+          <div onClick={() => setBoardType('self_pickup')} className={`flex items-center gap-1.5 ${pillCls(boardType === 'self_pickup')}`}>
+            <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup
           </div>
         </div>
-
-        {tab !== 'pending' && (
-          <>
-            <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
-            <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-              <div onClick={() => switchSubType('delivery')} className={`flex items-center gap-1.5 ${pillCls(subType === 'delivery')}`}>
-                <span className="w-[7px] h-[7px] rounded-full bg-sN shrink-0" /> Delivery ({deliveryCount})
-              </div>
-              <div onClick={() => switchSubType('self_pickup')} className={`flex items-center gap-1.5 ${pillCls(subType === 'self_pickup')}`}>
-                <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup ({selfPickupCount})
-              </div>
-            </div>
-          </>
-        )}
-
         <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
-        <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[200px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
+        <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[280px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
           <Search size={11} className="text-g400 shrink-0" />
           <input
             type="text"
-            placeholder="SO No, Order Ref, company, PO No, item..."
+            placeholder="SO No, Order Ref, company, PO No, item, invoice…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
           />
         </div>
-
-        {tab === 'pending' && (
-          <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-            <div onClick={() => switchPendingFilter('all')} className={pillCls(pendingFilter === 'all')}>All ({searchedPending.length})</div>
-            <div onClick={() => switchPendingFilter('partial')} className={pillCls(pendingFilter === 'partial')}>Partially Dispatched ({partlyDispatchedCount})</div>
-          </div>
-        )}
-
-        <div className="ml-auto font-mono text-[10px] text-g500">
-          {tab === 'pending' ? `${rowCount} order(s)` : `${rowCount} entr${rowCount === 1 ? 'y' : 'ies'}`}
-        </div>
-        </>)}
-      </div>
-
-      {view === 'board' ? (
-        <DispatchBoard key={boardFilter} cards={boardVisible} qty={boardQty} deliveredOrders={boardVisibleDeliveredOrders} deliveredEntryIds={deliveredEntryIds} now={now}
-          onOpen={boardFilter === 'delivered' ? openDeliveredCard : openDrawer}
-          entryActions={boardFilter === 'delivered' ? deliveredEntryActions : undefined}
-          renderExpanded={boardFilter === 'delivered' ? (c => <DispatchLineItemsPanel entry={c.entry} order={c.order} />) : undefined}
-          onOpenDeliveredOrder={boardFilter === 'delivered' ? (o => openDetailPanel('order', o.id, { dispatchView: true })) : undefined}
-          renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
-      ) : (
-      <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
-        <div className="bg-white border border-g200 overflow-x-auto m-0">
-          {tab === 'pending' ? (
-            <table className="w-full border-collapse text-[12.5px]">
-              <thead className="bg-g100">
-                <tr>
-                  <th className={thCls}>SO No.</th>
-                  <th className={thCls}>Order Ref</th>
-                  <th className={thCls}>Customer - Unit</th>
-                  <th className={thCls}>PO Number</th>
-                  <th className={thCls}>PO Date</th>
-                  <th className={thCls}>Schedule Date</th>
-                  <th className={thCls}>Items</th>
-                  <th className={thRightCls}>Ordered</th>
-                  <th className={thRightCls}>Dispatched</th>
-                  <th className={thRightCls}>Remaining</th>
-                  <th className={thRightCls}>Order Value</th>
-                  <th className={thCls}>Fulfillment</th>
-                  <th className={thCls}>Punched At</th>
-                  <th className={thCls}>Status</th>
-                  <th className={thCls}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visiblePending.length === 0 ? (
-                  <tr><td colSpan={15} className="text-center p-8 text-g400 text-[13px]">
-                    {qs ? 'No matching orders' : pendingFilter === 'partial' ? 'No partially dispatched orders' : 'No confirmed orders pending for dispatch'}
-                  </td></tr>
-                ) : (
-                  visiblePending.map(o => {
-                    const subTotal = o.items.reduce((s, i) => s + i.total, 0);
-                    const itemGst = o.items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
-                    const grandTotal = resolveAdjustments(o.adjustments, subTotal, itemGst, maxItemGstRate(o.items)).grand;
-                    const isExpanded = expandedRow === o.id;
-                    const sl = siteLabel(customerOfDoc(o, data.customers), o.siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId);
-                    const qty = pendingQty.get(o.id) ?? { ordered: 0, dispatched: 0, remaining: 0 };
-                    return (
-                      <React.Fragment key={o.id}>
-                        <tr
-                          className={`group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-sW/5 ${isExpanded ? 'bg-sW/5' : ''}`}
-                          onClick={() => setExpandedRow(isExpanded ? null : o.id)}
-                        >
-                          <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><SoCell soNumber={o.soNumber} hasOrder /></td>
-                          <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10px] font-bold text-sQ">{o.id}</span></td>
-                          <td className="px-[13px] py-[10px] align-top">
-                            <div className="font-semibold">{o.cust}{sl ? <span className="font-normal text-g500"> — {sl}</span> : null}</div>
-                          </td>
-                          <td className="px-[13px] py-[10px] align-top font-mono text-[11px] font-bold text-g700">{o.poNo || '—'}</td>
-                          <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
-                            {o.poDate ? fmtIST(new Date(o.poDate), 'dd-MMM-yyyy') : '--'}
-                          </td>
-                          <td className="px-[13px] py-[10px] align-top text-[11.5px] text-g600 whitespace-nowrap">
-                            {o.scheduleDate ? fmtIST(new Date(o.scheduleDate), 'dd-MMM-yyyy') : '--'}
-                          </td>
-                          <td className="px-[13px] py-[10px] align-top">
-                            <span className="font-mono text-[10px] font-bold bg-g100 text-g600 px-[7px] py-[2px] rounded-full inline-flex items-center">
-                              {o.items.length} item(s)
-                            </span>
-                          </td>
-                          <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px]">{qty.ordered}</td>
-                          <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px]">{qty.dispatched}</td>
-                          <td className={`px-[13px] py-[10px] align-top text-right font-mono text-[12px] ${qty.dispatched > 0 ? 'font-bold text-amber-600' : ''}`}
-                            title={qty.dispatched > 0 ? 'Partially dispatched' : undefined}>{qty.remaining}</td>
-                          <td className="px-[13px] py-[10px] align-top text-right font-mono text-[12px] font-bold">{formatINR(Math.round(grandTotal))}</td>
-                          <td className="px-[13px] py-[10px] align-top">{fulfillmentLabel(orderFulfillment(o))}</td>
-                          <td className="px-[13px] py-[10px] align-top text-[11.5px] whitespace-nowrap">
-                            {o.created_at ? (() => {
-                              const cls = punchedAtClass(o.created_at);
-                              return <span className={cls.text} title={cls.title}>{fmtIST(new Date(o.created_at), 'dd-MMM-yyyy')}</span>;
-                            })() : <span className="text-g600">--</span>}
-                          </td>
-                          <td className="px-[13px] py-[10px] align-top"><Badge status={o.status} /></td>
-                          <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
-                            <Button size="sm" variant="success" className="active:scale-95 transition-transform" onClick={() => navigate(`/dispatch/new?orderRef=${o.id}&toSent=1`)}>Create Dispatch</Button>
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <tr className="bg-sW/[0.02] border-b-2 border-sW">
-                            <td colSpan={15} className="p-0">
-                              <LineItemsPanel title={`Order Line Items -- ${o.soNumber ? `${o.soNumber} / ` : ''}${o.id}`} items={o.items} grand={grandTotal}
-                                remaining={remainingByLine(o, data.dispatchEntries)} showDispatched />
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          ) : (
-            // Fixed layout + fixed column widths so the Delivery and Self
-            // Pickup pills render identically instead of auto-sizing to
-            // whatever rows happen to be showing.
-            <table className="w-full table-fixed border-collapse text-[12.5px]">
-              <colgroup>
-                <col style={{ width: 110 }} />{/* SO No. */}
-                <col style={{ width: 110 }} />{/* Order Ref */}
-                <col style={{ width: 200 }} />{/* Customer */}
-                <col style={{ width: 120 }} />{/* PO No. */}
-                <col style={{ width: 90 }} />{/* Items */}
-                <col style={{ width: 120 }} />{/* Value */}
-                <col style={{ width: 150 }} />{/* Transporter */}
-                <col style={{ width: 110 }} />{/* Invoice No. */}
-                <col style={{ width: 115 }} />{/* Dispatched On */}
-                {isEmailSentTab && <col style={{ width: 165 }} />}{/* Email Sent On */}
-                <col style={{ width: 260 }} />{/* Actions — wide enough for Edit + Delete side by side */}
-              </colgroup>
-              <thead className="bg-g100">
-                <tr>
-                  <DispatchEntryHeadCells showEmailSent={isEmailSentTab} />
-                  <th className={thCls}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleEntries.length === 0 ? (
-                  <tr><td colSpan={entryColCount} className="text-center p-8 text-g400 text-[13px]">{qs ? 'No matching entries' : `No ${subType === 'self_pickup' ? 'Self Pickup' : 'Delivery'} entries ${tab === 'emailSent' ? 'emailed yet' : 'dispatched yet'}`}</td></tr>
-                ) : (
-                  visibleEntries.map(entry => {
-                    const order = orderFor(entry);
-                    const isExpanded = expandedRow === entry.id;
-                    return (
-                      <React.Fragment key={entry.id}>
-                        <tr
-                          className={`group transition-colors cursor-pointer border-b border-g100 last:border-b-0 hover:bg-sW/5 ${isExpanded ? 'bg-sW/5' : ''}`}
-                          onClick={() => setExpandedRow(isExpanded ? null : entry.id)}
-                        >
-                          <DispatchEntryCells entry={entry} order={order} showEmailSent={isEmailSentTab} />
-                          <td className="px-[13px] py-[10px] align-top whitespace-nowrap" onClick={ev => ev.stopPropagation()}>
-                            <DispatchEntryActions
-                              onEdit={() => navigate(`/dispatch/new?entryId=${entry.id}`)}
-                              onDelete={canDelete ? () => deleteEntryWithConfirm(entry) : undefined}
-                              doer={(entry.updatedBy || entry.createdBy) ? doerLabel(entry.updatedBy || entry.createdBy, data.roster) : undefined} />
-                          </td>
-                        </tr>
-
-                        {isExpanded && (
-                          <tr className="bg-sW/[0.02] border-b-2 border-sW">
-                            <td colSpan={entryColCount} className="p-0">
-                              <DispatchLineItemsPanel entry={entry} order={order} />
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          )}
+        <div className="ml-auto flex items-center gap-3 text-[11px] text-g600 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#107E3E]" />On time</span>
+          <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#E9730C]" />Due within 1h</span>
+          <span className="inline-flex items-center gap-1"><span className="w-[7px] h-[7px] rounded-full bg-[#BB0000]" />Delayed</span>
         </div>
       </div>
-      )}
 
-      {view === 'board' && drawerOrderId && (() => {
+      <DispatchBoard key={boardFilter} cards={boardVisible} qty={boardQty} deliveredOrders={boardVisibleDeliveredOrders} deliveredEntryIds={deliveredEntryIds} now={now}
+        onOpen={boardFilter === 'delivered' ? openDeliveredCard : openDrawer}
+        entryActions={boardFilter === 'delivered' ? deliveredEntryActions : undefined}
+        renderExpanded={boardFilter === 'delivered' ? (c => <DispatchLineItemsPanel entry={c.entry} order={c.order} />) : undefined}
+        onOpenDeliveredOrder={boardFilter === 'delivered' ? (o => openDetailPanel('order', o.id, { dispatchView: true })) : undefined}
+        renderActions={renderBoardActions} onDelete={canDelete ? requestDelete : undefined} />
+
+      {drawerOrderId && (() => {
         const o = dispatchOrders.find(x => x.id === drawerOrderId);
         if (!o) return null;
         // Unfiltered board, so the drawer still finds the order card when
