@@ -12,7 +12,7 @@ import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
-import { DispatchStepRecord, entryPosition, isImportedEntry, entryHasInvoice, entryHasInvoiceFile, needsBhiwandiEmail } from '../lib/dispatchFlow';
+import { DispatchStepRecord, entryPosition, isImportedEntry, needsBhiwandiEmail } from '../lib/dispatchFlow';
 import { autoCompleteEntrySteps, loadEntryStepRecords } from '../lib/dispatchEntrySteps';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
@@ -386,8 +386,8 @@ export function NewDispatchEntry() {
   // 2026-10-31: the button also sends Step 9's Bhiwandi email — it goes out
   // first, while the entry still needs it (needsBhiwandiEmail, checked here
   // against the step rows saved right now); the next click is the client
-  // email. `fromDrawer` (&bhiwandi=1) only ever opens the Bhiwandi email.
-  const openEmailModal = async (fromDrawer = false) => {
+  // email. The modal only ever opens from this button.
+  const openEmailModal = async () => {
     if (!existingEntryId) { setError('Please save the dispatch entry first'); return; }
     setError('');
     let records: DispatchStepRecord[];
@@ -399,12 +399,7 @@ export function NewDispatchEntry() {
     }
     setEntrySteps(records);
     const entry = data.dispatchEntries.find(e => e.id === existingEntryId);
-    const bhiwandi = !!entry && needsBhiwandiEmail(entry, records);
-    if (fromDrawer && !bhiwandi) {
-      if (entry && !(entryHasInvoice(entry) && entryHasInvoiceFile(entry))) setError('Save the invoice no. and an Invoice / Eway Bill file first');
-      return;
-    }
-    setEmailMode(bhiwandi ? 'bhiwandi' : 'client');
+    setEmailMode(entry && needsBhiwandiEmail(entry, records) ? 'bhiwandi' : 'client');
   };
 
   const hydrateFromOrder = (order: Order) => {
@@ -616,14 +611,6 @@ export function NewDispatchEntry() {
 
   // 2026-10-31: Bhiwandi mode of Email to Client attaches only these.
   const bhiwandiAttachments = dispatchEmailAttachments.filter(a => a.label === 'Invoice / Eway Bill');
-  // Opened from the Board drawer's "Email to Bhiwandi →" (&bhiwandi=1): open
-  // the email once the saved entry has loaded — once only.
-  const bhiwandiAutoOpened = useRef(false);
-  useEffect(() => {
-    if (bhiwandiAutoOpened.current || searchParams.get('bhiwandi') !== '1' || !currentEntry || isReadOnlyUser) return;
-    bhiwandiAutoOpened.current = true;
-    openEmailModal(true);
-  }, [currentEntry]);
 
   // 2026-10-26: documents this customer needs with every dispatch. Each one
   // blocks Save only from its own step on (REQUIRED_DOC_STEP) until it has
@@ -1555,7 +1542,7 @@ export function NewDispatchEntry() {
               variant="dark"
               disabled={!selectedOrderId || isReadOnlyUser}
               title={!existingEntryId ? 'Please save the dispatch entry first' : undefined}
-              onClick={() => openEmailModal()}
+              onClick={openEmailModal}
             >
               <Mail size={12} />
               Email to Client

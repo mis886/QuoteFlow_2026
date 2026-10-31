@@ -129,16 +129,15 @@ function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
 
 // A dispatch entry's link: one label for Steps 8, 10 and 11 (2026-10-26 — the
 // entry page is where the invoice no., LR and documents are attached and the
-// email is sent); Step 9 (2026-10-30) opens that page with the Bhiwandi email
-// already open (&bhiwandi=1); Done entries open for viewing their documents.
+// email is sent); Step 9 opens the same page, where Email to Client sends the
+// Bhiwandi email; Done entries open for viewing their documents.
 // Since 2026-10-23 the step completes on that page once its proof is saved
 // (invoice no. + file / Bhiwandi email / LR / email sent); the "Invoice done"
 // / "Bhiwandi informed" / "LR received" / "Documents sent" button next to it
 // is the fallback.
 const entryActionLabel = (col: EntryColumn) =>
-  col === DONE_COLUMN ? 'View Documents →' : col === 9 ? 'Email to Bhiwandi →' : 'Attach Documents & Send →';
-const entryPagePath = (entryId: string, col: EntryColumn) =>
-  `/dispatch/new?entryId=${entryId}&from=board${col === 9 ? '&bhiwandi=1' : ''}`;
+  col === DONE_COLUMN ? 'View Documents →' : col === 9 ? 'Open Entry →' : 'Attach Documents & Send →';
+const entryPagePath = (entryId: string) => `/dispatch/new?entryId=${entryId}&from=board`;
 
 export function DispatchDrawer({
   order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onEntryAction, onEntryManualStep9, onResume,
@@ -358,7 +357,7 @@ export function DispatchDrawer({
                           {pos.invoiceMissing && <span className="text-[#9A0000] font-semibold"> · Invoice no. missing</span>}
                         </div>
                       </div>
-                      <button type="button" onClick={() => navigate(entryPagePath(e.id, pos.column))}
+                      <button type="button" onClick={() => navigate(entryPagePath(e.id))}
                         className="text-[11px] font-semibold text-red-mrt hover:underline shrink-0">{entryActionLabel(pos.column)}</button>
                     </div>
                   );
@@ -381,7 +380,7 @@ export function DispatchDrawer({
                   className="w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[4px] p-[7px_9px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt resize-none disabled:opacity-50 disabled:cursor-not-allowed" />
                 <EntryStepButtons card={openedFrom} busy={busy} canAct={canAct} onAction={actEntry}
                   link={
-                    <button type="button" onClick={() => navigate(entryPagePath(openedFrom.entry.id, openedFrom.column))}
+                    <button type="button" onClick={() => navigate(entryPagePath(openedFrom.entry.id))}
                       className="shrink-0 bg-red-mrt hover:bg-red-h text-white text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[7px] transition-colors whitespace-nowrap">
                       {entryActionLabel(openedFrom.column)}
                     </button>
