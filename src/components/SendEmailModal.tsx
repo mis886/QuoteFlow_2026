@@ -121,7 +121,7 @@ interface DispatchProps extends BaseProps { mode: 'dispatch'; doc: DispatchEntry
 function bhiwandiDraft(d: BhiwandiEmailDetails): { subject: string; body: string } {
   return {
     subject: `INV NO:  ${d.invoiceNumber} ${d.customer}`,   // two spaces after the colon, on purpose
-    body: `Dear Bhiwandi Team,\n\nPlease find attached the invoice and E-Way Bill for your reference.\n\nKindly arrange to dispatch the material accordingly.\n\n${DISPATCH_EMAIL_SIGNATURE}`,
+    body: `Dear Bhiwandi Team,\n\nPlease find the attached invoice and E-Way Bill for your reference.\n\nKindly arrange the material for dispatch accordingly.\n\n${DISPATCH_EMAIL_SIGNATURE}`,
   };
 }
 type Props = QuoteProps | OrderProps | OutwardProps | DispatchProps;
