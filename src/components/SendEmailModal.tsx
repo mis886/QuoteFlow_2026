@@ -13,13 +13,10 @@ const BHIWANDI_EMAIL = 'bhiwandi@himalayaterpene.com';
 // Fixed customer-feedback form link appended to every Dispatch → Sent email
 // (see DispatchProps below) — the same URL on every send, not per-entry.
 const DISPATCH_FEEDBACK_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLScBnStF2lqFUT8KXSRQjefuzEgbU5Zxxt8TtrpU_UJprs0Zbw/viewform';
-// Fixed sign-off for Email to Client, both the client and the Bhiwandi email —
-// given as exact text, not derived from app_settings/defaultSignatory like
+// Fixed sign-off for the dispatch (client + Bhiwandi) and DO emails — given as
+// exact text, not derived from app_settings/defaultSignatory like
 // Quote/Order's sigBlock. gmail.ts links the web line in the HTML version.
 const DISPATCH_EMAIL_SIGNATURE = 'Best Regards,\nSAMATA YADAV\nHimalaya Terpenes Pvt Ltd\nMobile No.: 9987682255\nweb: www.himalayaterpene.com';
-// Fixed sign-off for Outward/Stock Movement → Sent emails — given as exact
-// text, not derived from app_settings/defaultSignatory like Quote/Order's sigBlock.
-const OUTWARD_SIGNATURE = 'Samata Yadav\nDISPATCH\nTel.: +919987682255';
 // 2026-09-19: per-warehouse contact block for Outward Self Pickup's "Email
 // to Client" body, at the user's request — each Self Pickup email now tells
 // the client who to contact and when, at whichever warehouse the stock is
@@ -267,7 +264,7 @@ export function SendEmailModal(props: Props) {
         // greeting (matching how Dispatch greets) + the warehouse's own
         // contact block, at the user's request.
         ? `Dear ${customer?.name || 'Sir/Madam'},\n\nPlease find the attached DO copy for lifting the material.\nKindly share the vehicle number before lifting the material.\n\nContact Persons:\n${outwardPickupContact}\nGodown Timings: 9:30 AM to 5:30 PM\n\nThank you for your cooperation.\n\n${DISPATCH_EMAIL_SIGNATURE}`
-        : `${greeting}\n\nPlease find attached the Delivery Order ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${OUTWARD_SIGNATURE}`)
+        : `${greeting}\n\nPlease find attached the Delivery Order ${docId} for the stock dispatched to your location.\n\nKindly acknowledge receipt on arrival.\n\nFor any clarifications, please feel free to contact us.\n\nThank you.\n\n${DISPATCH_EMAIL_SIGNATURE}`)
     : isDispatch
     ? `${greeting}\n\nWe have dispatched your goods. We have attached the following \ndocuments for your reference:\n${dispatchDocLines}\n\nWe request you to kindly get in touch with us for any clarifications.\n\nPS: The Tax Invoice is Digitally Signed. Kindly take a printout for your \nrecords. No hard copy will be couriered to you.\n\nImp: Please update any changes to your email ID, Address (Bill To & Ship \nTo), Telephone no., GST No. etc., for updating our records.\n\nWe request you to please fill out this Customer feedback form:\n${DISPATCH_FEEDBACK_FORM_URL}\n\n${DISPATCH_EMAIL_SIGNATURE}`
     : `${greeting}\n\nPlease find attached our Proforma Invoice ${docId} for the requirements discussed.\n\nKindly arrange for the Purchase Order at your earliest convenience.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`;
