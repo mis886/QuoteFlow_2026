@@ -137,7 +137,7 @@ export function NewStockInward() {
   // it fall into the insert-a-new-lot branch, so editing an entry could
   // spin off a duplicate row in Stock Summary instead of updating the original
   // one. Tying the edit to the id captured here removes that ambiguity.
-  const [original, setOriginal] = useState<{ warehouse: string; whLotNo: string; totalQty: number; noOfBarrels: string; lotId: string | null } | null>(null);
+  const [original, setOriginal] = useState<{ warehouse: string; whLotNo: string; totalQty: number; noOfBarrels: string; lotId: string | null; coaFile: string; coaUrl: string } | null>(null);
 
   useEffect(() => {
     if (!movementId) return;
@@ -184,6 +184,8 @@ export function NewStockInward() {
         totalQty: data.total_qty ?? 0,
         noOfBarrels: data.no_of_barrels || '',
         lotId,
+        coaFile: (data.coa_file || '').trim(),
+        coaUrl: (data.coa_url || '').trim(),
       });
       setLoadingMovement(false);
     })();
@@ -364,11 +366,15 @@ export function NewStockInward() {
           updated_by: activeDoer?.email ?? user?.email ?? null,
           quantity: (lotRow.quantity ?? 0) - original.totalQty + (totalQty ?? 0),
         };
-        // A blank COA here must not wipe one added to the lot from Stock
-        // Summary (CoaAttachModal), which isn't on this Inward entry.
-        if (form.coaFile.trim() || form.coaUrl.trim()) {
-          patch.coa_file = form.coaFile.trim() || null;
-          patch.coa_url = form.coaUrl.trim() || null;
+        // The lot's COA is managed from Stock Summary (CoaAttachModal), so an
+        // edit reaches it only by picking a different COA here: not by leaving
+        // this entry's COA as it was, and not by clearing it.
+        const coaFile = form.coaFile.trim();
+        const coaUrl = form.coaUrl.trim();
+        const coaChanged = coaFile !== original.coaFile || coaUrl !== original.coaUrl;
+        if (coaChanged && (coaFile || coaUrl)) {
+          patch.coa_file = coaFile || null;
+          patch.coa_url = coaUrl || null;
         }
         // Same warehouse: net old-vs-new barrels on that one column. Changed
         // warehouse: subtract the old contribution from its column, add the
