@@ -24,7 +24,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputCls = 'w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] px-3 py-[7px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow';
 
 export function Settings() {
-  const { data, refreshData, syncGmailEnquiries, addSignatory, updateSignatory, deleteSignatory } = useAppStore();
+  const { data, refreshData, syncGmailEnquiries, addSignatory, updateSignatory, deleteSignatory, canSeeEnqQuote } = useAppStore();
   const [tab, setTab] = useState<Tab>('signatories');
   // Admin PIN gate for sensitive tabs (roster / pipeline / integrations).
   // Reuses intelligence_pin; one unlock covers all three for the session.
@@ -559,7 +559,7 @@ export function Settings() {
                 </Field>
 
                 {/* Sync now */}
-                <div className="pt-1 border-t border-g100">
+                <div className={canSeeEnqQuote ? 'pt-1 border-t border-g100' : 'hidden'}>
                   <button
                     type="button"
                     disabled={isSyncing}

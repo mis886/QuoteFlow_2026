@@ -182,7 +182,7 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('id');
   const navigate = useNavigate();
-  const { data, user, addCustomer, updateCustomer, promoteLead, mergeLeadIntoCustomer } = useAppStore();
+  const { data, user, addCustomer, updateCustomer, promoteLead, mergeLeadIntoCustomer, canSeeEnqQuote } = useAppStore();
 
   // Promote mode (/customers/new?id=<LEAD-id>&promote=1, from the Customer
   // Lead page): the full customer form for a record that is STILL a lead.
@@ -428,8 +428,8 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   } : { enquiries: 0, quotes: 0, orders: 0 };
   const hasLinkedToOldName = linkedToOldName.enquiries + linkedToOldName.quotes + linkedToOldName.orders > 0;
   const linkedSummary = [
-    linkedToOldName.enquiries && `${linkedToOldName.enquiries} enquir${linkedToOldName.enquiries === 1 ? 'y' : 'ies'}`,
-    linkedToOldName.quotes && `${linkedToOldName.quotes} quote${linkedToOldName.quotes === 1 ? '' : 's'}`,
+    canSeeEnqQuote && linkedToOldName.enquiries && `${linkedToOldName.enquiries} enquir${linkedToOldName.enquiries === 1 ? 'y' : 'ies'}`,
+    canSeeEnqQuote && linkedToOldName.quotes && `${linkedToOldName.quotes} quote${linkedToOldName.quotes === 1 ? '' : 's'}`,
     linkedToOldName.orders && `${linkedToOldName.orders} order${linkedToOldName.orders === 1 ? '' : 's'}`,
   ].filter(Boolean).join(', ');
 

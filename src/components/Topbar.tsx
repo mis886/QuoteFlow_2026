@@ -21,7 +21,7 @@ const PATH_TITLES: Record<string, string> = {
 
 export function Topbar() {
   const location = useLocation();
-  const { globalSearchQuery, setGlobalSearchQuery, syncGmailEnquiries, data, activeDoer, user, salesIdentity, setSalesIdentity } = useAppStore();
+  const { globalSearchQuery, setGlobalSearchQuery, syncGmailEnquiries, data, activeDoer, user, salesIdentity, setSalesIdentity, canSeeEnqQuote } = useAppStore();
   const [isSyncing, setIsSyncing] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
 
@@ -74,7 +74,7 @@ export function Topbar() {
       </div>
 
       {/* Gmail sync pill — only shown when gmail is enabled */}
-      {gmailEnabled && (
+      {gmailEnabled && canSeeEnqQuote && (
         <button
           onClick={handleSync}
           disabled={isSyncing}

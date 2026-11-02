@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronRight, ChevronDown, X, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAppStore } from '../store';
 import { fetchAllRows } from '../lib/fetchAll';
 import { fmtIST } from '../lib/utils';
 
@@ -53,6 +54,7 @@ const moduleLabel = (m: string) => MODULE_LABELS[m] ?? m;
 // logActivity() calls somewhere under src/production. Every query below is
 // scoped to this list so that guarantee holds regardless of what gets logged.
 const CRM_MODULES = Object.keys(MODULE_LABELS);
+const ENQ_QUOTE_MODULES = ['enquiries', 'quotes', 'followups'];
 
 // record_id is the module's own human-readable number only for these four
 // (see insertWithIdRetry()/generateId() in src/store/index.tsx — enquiries
@@ -176,6 +178,8 @@ export function HistoryLog() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const [moduleFilter, setModuleFilter] = useState('');
+  const { canSeeEnqQuote } = useAppStore();
+  const modules = canSeeEnqQuote ? CRM_MODULES : CRM_MODULES.filter(m => !ENQ_QUOTE_MODULES.includes(m));
   const [staffFilter, setStaffFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -200,7 +204,7 @@ export function HistoryLog() {
   // once up front from a lightweight column-only query (not the paginated
   // main query, which is filtered/limited).
   useEffect(() => {
-    fetchAllRows(() => supabase.from('activity_log').select('actor_name').not('actor_name', 'is', null).in('module', CRM_MODULES).order('id'))
+    fetchAllRows(() => supabase.from('activity_log').select('actor_name').not('actor_name', 'is', null).in('module', modules).order('id'))
       .then(({ data }) => {
         const names = Array.from(new Set((data ?? []).map((r: any) => r.actor_name).filter(Boolean))).sort();
         setStaffOptions(names as string[]);
@@ -215,7 +219,7 @@ export function HistoryLog() {
     let cancelled = false;
     setLoading(true);
     (async () => {
-      let query = supabase.from('activity_log').select('*', { count: 'exact' }).order('created_at', { ascending: false }).in('module', CRM_MODULES);
+      let query = supabase.from('activity_log').select('*', { count: 'exact' }).order('created_at', { ascending: false }).in('module', modules);
       if (moduleFilter) query = query.eq('module', moduleFilter);
       if (staffFilter) query = query.eq('actor_name', staffFilter);
       if (fromDate) query = query.gte('created_at', `${fromDate}T00:00:00`);
@@ -285,7 +289,7 @@ export function HistoryLog() {
         <select title="Filter by module" value={moduleFilter} onChange={e => setModuleFilter(e.target.value)}
           className="select-filter font-sans text-xs text-blk bg-white border border-g200 rounded py-1 pl-2 pr-6 cursor-pointer outline-none appearance-none">
           <option value="">All Modules</option>
-          {Object.keys(MODULE_LABELS).map(m => <option key={m} value={m}>{moduleLabel(m)}</option>)}
+          {modules.map(m => <option key={m} value={m}>{moduleLabel(m)}</option>)}
         </select>
 
         <select title="Filter by staff" value={staffFilter} onChange={e => setStaffFilter(e.target.value)}

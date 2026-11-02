@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { parseISO, isToday } from 'date-fns';
-import { useAppStore } from '../store';
+import { useAppStore, useVisibleData } from '../store';
 import { customerOfDoc, cn, fmtIST, tatHealth, fmtElapsed, type TatHealth, siteLabel, isInDateRange } from '../lib/utils';
 import { generateQuotePDF, generatePIPDF } from '../lib/pdfGenerator';
 import {
@@ -110,7 +110,8 @@ export default function PipelineBoard({
   dateRange = null,
 }: { ownerFilter?: string; search?: string; dateRange?: { startDate: string; endDate: string } | null }) {
   const navigate = useNavigate();
-  const { data, setFollowUpStage, closeFollowUp } = useAppStore();
+  const { setFollowUpStage, closeFollowUp } = useAppStore();
+  const data = useVisibleData();
   const [closing, setClosing] = useState<BoardCard | null>(null);
   const [viewingKey, setViewingKey] = useState<string | null>(null);
 

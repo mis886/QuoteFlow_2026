@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { useAppStore } from '../store';
+import { useAppStore, useVisibleData } from '../store';
 import { formatINR } from '../lib/utils';
 import { Button, Badge } from '../components/ui';
 import { useNavigate } from 'react-router-dom';
 import { PieChart, ArrowRight, Download, Link as LinkIcon, Clock, Map, Layers, Mail, Server, Database, Code, ShieldCheck } from 'lucide-react';
 
 export function Blueprint() {
-  const { data } = useAppStore();
+  const { canSeeEnqQuote } = useAppStore();
+  const data = useVisibleData();
   const navigate = useNavigate();
 
   const totalEnq = data.enquiries.length;
@@ -305,7 +306,9 @@ export function Blueprint() {
           <KpiCard title="Modules Live" value={<>{modules.filter(m => m.status === 'Live').length}<span className="text-[15px] text-red-mrt">/{modules.length}</span></>} delta={`${modules.filter(m => m.status !== 'Live').length} planned for future`} up={true} />
           <KpiCard title="Data Entities" value={schema.length.toString()} delta={`${totalEnq + totalQt + totalOrd + totalCust} total records`} />
           <KpiCard title="Line Items Tracked" value={totalLI + data.quotes.reduce((a,q) => a+q.items.length,0) + data.orders.reduce((a,o) => a+o.items.length,0)} delta="Across all modules" />
+          {canSeeEnqQuote && (
           <KpiCard title="SLA Compliance" value={<>{slaRate}<span className="text-[15px] text-red-mrt">%</span></>} delta={`${slaMet}/${slaTotal} within target`} up={slaRate >= 70} />
+          )}
           <KpiCard title="Build Progress" value={<>{Math.round((modules.filter(m => m.status === 'Live').length / modules.length) * 100)}<span className="text-[15px] text-red-mrt">%</span></>} delta={buildProgressDelta} up={true} />
         </div>
         
@@ -434,7 +437,7 @@ export function Blueprint() {
                     </td>
                     <td className="p-[10px_13px] font-mono text-[10px] text-sQ font-bold">{s.pk}</td>
                     <td className="p-[10px_13px] font-mono text-[10px] text-g500">{s.fk}</td>
-                    <td className="p-[10px_13px] text-right font-mono font-bold">{s.rows}</td>
+                    <td className="p-[10px_13px] text-right font-mono font-bold">{!canSeeEnqQuote && /^(ENQ|QUOTE)/.test(s.table) ? '—' : s.rows}</td>
                   </tr>
                 ))}
               </tbody>

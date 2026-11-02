@@ -31,7 +31,7 @@ interface LeadStats { enquiries: number; orders: number; countedOrders: number; 
 
 export function CustomerLeads() {
   const navigate = useNavigate();
-  const { data, user, addCustomer, deleteLead, mergeLeadIntoCustomer, globalSearchQuery } = useAppStore() as any;
+  const { data, user, addCustomer, deleteLead, mergeLeadIntoCustomer, globalSearchQuery, canSeeEnqQuote } = useAppStore() as any;
   // Same delete permission as Enquiries / Quotes / Orders.
   const canDelete = canDeleteRecords(user?.email);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
@@ -256,7 +256,7 @@ export function CustomerLeads() {
               <tr>
                 {COLUMNS.map(label => (
                   <th key={label} className={`sticky top-0 z-10 bg-g100 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left border-b border-g200 shadow-[0_1px_0_0_theme(colors.g200)] ${WRAPPABLE_HEADERS.has(label) ? '' : 'whitespace-nowrap'}`}>
-                    {label}
+                    {!canSeeEnqQuote && label === 'Enq / Orders' ? 'Orders' : label}
                   </th>
                 ))}
               </tr>
@@ -307,7 +307,7 @@ export function CustomerLeads() {
                     </td>
                     {/* Enq / Orders */}
                     <td className="px-[13px] py-[10px] align-middle font-mono text-[11px] text-g600 whitespace-nowrap">
-                      {st.enquiries} / {st.orders}
+                      {canSeeEnqQuote ? `${st.enquiries} / ${st.orders}` : st.orders}
                     </td>
                     {/* Order Value (Total) — Lost orders excluded */}
                     <td className="px-[13px] py-[10px] align-middle">

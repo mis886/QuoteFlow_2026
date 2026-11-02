@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
 export function Analytics() {
-  const { data } = useAppStore();
+  const { data, canSeeEnqQuote } = useAppStore();
   const navigate = useNavigate();
 
   const slaTargets: Record<string, number> = { Hot: 4, Urgent: 24, Normal: 48, Low: 72 };
@@ -101,6 +101,11 @@ export function Analytics() {
       </div>
     </div>
   );
+
+  // Every chart here is enquiries and quotes; there is nothing else to show.
+  if (!canSeeEnqQuote) {
+    return <div className="p-8 text-[13px] text-g500">Nothing to show here for this login.</div>;
+  }
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-y-auto bg-g50">

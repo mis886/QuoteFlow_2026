@@ -63,7 +63,7 @@ function addDaysToDate(dateStr: string, days: number): string {
 export function SamplingNew() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { data, user, addCustomer } = useAppStore();
+  const { data, user, addCustomer, canSeeEnqQuote } = useAppStore();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
   const editId = searchParams.get('id');
@@ -495,7 +495,7 @@ export function SamplingNew() {
                   />
                   {errors.cust && <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.cust}</div>}
                 </div>
-                <div>
+                <div className={canSeeEnqQuote ? undefined : 'hidden'}>
                   <label className={labelCls}>Linked Quote / Enquiry Ref</label>
                   {(() => {
                     const locked = !editId && !!(searchParams.get('enqRef') || searchParams.get('quoteRef'));

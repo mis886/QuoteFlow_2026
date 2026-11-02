@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAppStore } from '../store';
+import { useAppStore, useVisibleData } from '../store';
 import { cn } from '../lib/utils';
 import { fmtIST } from '../lib/utils';
 import { type GlobalDateRangeLike, type DoerRole } from '../lib/types';
@@ -43,7 +43,7 @@ function fmtHours(v: number | null): string {
 export function DoerDetail() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
-  const { data } = useAppStore();
+  const data = useVisibleData();
   const decodedKey = decodeURIComponent(key);
 
   const range: GlobalDateRangeLike = defaultRange();

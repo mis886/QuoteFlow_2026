@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Phone, Mail, MessageCircle, MapPin, Star, ChevronRight, ExternalLink, FileText, Paperclip } from 'lucide-react';
-import { useAppStore } from '../store';
+import { useAppStore, useVisibleData } from '../store';
 import { Customer, Contact, CustomerTier, Quote, Order, Enquiry, FollowUpLog } from '../lib/types';
 import { customerOfDoc, groupDocsByCustomer, formatINR, fmtIST, isLead } from '../lib/utils';
 import { cn } from '../lib/utils';
@@ -165,7 +165,7 @@ function CustomerDetail({ stats, allFollowups }: {
   allFollowups: ReturnType<typeof useAppStore>['data']['followups'];
 }) {
   const navigate = useNavigate();
-  const { data, openAttachmentModal } = useAppStore();
+  const { data, openAttachmentModal, canSeeEnqQuote } = useAppStore();
   const { customer: c, enqs, quotes, orders, winRate, pipeline, wonRev, vsAvg } = stats;
   const [expandedQuote, setExpandedQuote] = useState<string | null>(null);
   const [expandedSites, setExpandedSites] = useState<Set<string>>(() => new Set());
@@ -220,6 +220,7 @@ function CustomerDetail({ stats, allFollowups }: {
               {contact?.phone && <><span className="text-g200">·</span><span className="font-mono">{contact.phone}</span></>}
             </div>
           </div>
+{canSeeEnqQuote && (<>
           <button
             type="button"
             onClick={() => navigate(`/enquiries/new`)}
@@ -227,10 +228,11 @@ function CustomerDetail({ stats, allFollowups }: {
           >
             <ChevronRight size={11} />New Enquiry
           </button>
+</>)}
         </div>
 
         {/* KPI strip */}
-        <div className="grid grid-cols-5 border-t border-g200 -mx-5">
+        <div className={`grid border-t border-g200 -mx-5 ${canSeeEnqQuote ? 'grid-cols-5' : 'grid-cols-2'}`}>
           {[
             { label: 'Enquiries',    value: enqs.length.toString(),  sub: `${quotes.length} quoted` },
             { label: 'Win Rate',     value: `${winRate}%`,
@@ -239,7 +241,7 @@ function CustomerDetail({ stats, allFollowups }: {
             { label: 'Open Pipeline',value: fVal(pipeline),          sub: `${quotes.filter(q => q.status === 'Sent').length} active` },
             { label: 'Won Revenue',  value: fVal(wonRev),            sub: 'lifetime' },
             { label: 'GSTIN',        value: c.gstin || '—',          sub: c.pay ? `Pay: ${c.pay}` : '' },
-          ].map((k, i) => (
+          ].filter(k => canSeeEnqQuote || k.label === 'Won Revenue' || k.label === 'GSTIN').map((k, i) => (
             <div key={k.label} className={`px-4 py-3 ${i < 4 ? 'border-r border-g200' : ''}`}>
               <div className="text-[9px] text-g400 tracking-wide uppercase mb-1">{k.label}</div>
               <div className="text-[15px] font-semibold text-blk leading-none truncate">{k.value}</div>
@@ -255,7 +257,8 @@ function CustomerDetail({ stats, allFollowups }: {
         {/* Funnel + Revenue trend */}
         <div className="grid grid-cols-2 gap-4">
 
-          {/* Conversion funnel */}
+          {canSeeEnqQuote && (<>
+{/* Conversion funnel */}
           <div className="bg-white border border-g200 rounded-[4px] p-4">
             <div className="text-[9px] font-bold tracking-[1.5px] uppercase text-g400 mb-4">Conversion Funnel</div>
             <div className="space-y-2.5">
@@ -284,7 +287,8 @@ function CustomerDetail({ stats, allFollowups }: {
             )}
           </div>
 
-          {/* Revenue trend */}
+          </>)}
+{/* Revenue trend */}
           <div className="bg-white border border-g200 rounded-[4px] p-4">
             <div className="text-[9px] font-bold tracking-[1.5px] uppercase text-g400 mb-4">Revenue — 6 Months</div>
             <div className="flex items-end gap-1.5 h-[72px]">
@@ -307,7 +311,8 @@ function CustomerDetail({ stats, allFollowups }: {
           </div>
         </div>
 
-        {/* Quotations — grouped by site/branch */}
+        {canSeeEnqQuote && (<>
+{/* Quotations — grouped by site/branch */}
         <div className="bg-white border border-g200 rounded-[4px] overflow-hidden">
           <div className="px-4 py-3 border-b border-g200 flex items-center justify-between">
             <span className="text-[9px] font-bold tracking-[1.5px] uppercase text-g400">All Quotations</span>
@@ -486,7 +491,9 @@ function CustomerDetail({ stats, allFollowups }: {
           )}
         </div>
 
-        {/* Activity timeline */}
+        </>)}
+{canSeeEnqQuote && (<>
+{/* Activity timeline */}
         <div className="bg-white border border-g200 rounded-[4px] overflow-hidden">
           <div className="px-4 py-3 border-b border-g200">
             <span className="text-[9px] font-bold tracking-[1.5px] uppercase text-g400">Activity Timeline</span>
@@ -517,6 +524,7 @@ function CustomerDetail({ stats, allFollowups }: {
           )}
         </div>
 
+</>)}
       </div>
     </div>
   );
@@ -528,7 +536,8 @@ type SortKey = 'pipeline' | 'winrate' | 'enqs';
 type BoardView = 'customers' | 'quotations';
 
 export function IntelligenceBoard() {
-  const { data } = useAppStore();
+  const { canSeeEnqQuote } = useAppStore();
+  const data = useVisibleData();
   const pin = data.settings?.intelligence_pin ?? '';
   const [searchParams] = useSearchParams();
   const custParam = searchParams.get('customer') ?? '';
@@ -604,6 +613,7 @@ export function IntelligenceBoard() {
             Customer <em className="italic text-red-mrt">Intel Board</em>
           </h1>
         </div>
+{canSeeEnqQuote && (<>
         {/* View toggle */}
         <div className="flex gap-0.5 bg-g100 rounded-[3px] p-0.5 mb-0.5">
           {([['customers', 'By Customer'], ['quotations', 'All Quotations']] as [BoardView, string][]).map(([v, label]) => (
@@ -620,19 +630,21 @@ export function IntelligenceBoard() {
             </button>
           ))}
         </div>
+</>)}
       </div>
 
       {/* All Quotations view */}
-      {boardView === 'quotations' && (
+      {canSeeEnqQuote && boardView === 'quotations' && (
         <AllQuotationsView quotes={data.quotes} customers={data.customers} initialSearch={quotationSearch} />
       )}
 
       {/* Two-panel board — Customer view */}
-      {boardView === 'customers' && <div className="flex flex-1 overflow-hidden">
+      {(!canSeeEnqQuote || boardView === 'customers') && <div className="flex flex-1 overflow-hidden">
 
         {/* ── Left: ranked customer list ── */}
         <div className="w-[300px] min-w-[300px] bg-white border-r border-g200 flex flex-col">
-          {/* Sort pills */}
+          {canSeeEnqQuote && (<>
+{/* Sort pills */}
           <div className="px-3 pt-3 pb-2 border-b border-g200">
             <div className="text-[8.5px] font-bold tracking-[1.5px] uppercase text-g400 mb-2">Sort by</div>
             <div className="flex gap-1.5">
@@ -653,7 +665,8 @@ export function IntelligenceBoard() {
               ))}
             </div>
           </div>
-          {/* Search */}
+          </>)}
+{/* Search */}
           <div className="px-3 py-2 border-b border-g200">
             <input
               type="text"
@@ -690,10 +703,14 @@ export function IntelligenceBoard() {
                     {s.customer.seg && (
                       <span className="text-[10px] text-g400 truncate flex-1">{s.customer.seg}</span>
                     )}
-                    <span className={cn('text-[11px] font-mono font-bold shrink-0', isSel ? 'text-blue-600' : 'text-g700')}>
-                      {fVal(s.pipeline)}
-                    </span>
-                    <WrBadge pct={s.winRate} />
+                    {canSeeEnqQuote && (
+                      <>
+                        <span className={cn('text-[11px] font-mono font-bold shrink-0', isSel ? 'text-blue-600' : 'text-g700')}>
+                          {fVal(s.pipeline)}
+                        </span>
+                        <WrBadge pct={s.winRate} />
+                      </>
+                    )}
                   </div>
                 </button>
               );

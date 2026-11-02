@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { MergeResult, Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, Ticket } from '../lib/types';
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
@@ -272,7 +272,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const openDetailPanel = (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string, opts?: { dispatchView?: boolean }) => (!canSeeEnqQuote && (type === 'enquiry' || type === 'quote')) ? undefined : setDetailPanel({ type, id, ...opts });
   const closeDetailPanel = () => setDetailPanel({ type: null, id: null });
 
-  const openAttachmentModal = (type: 'enquiry' | 'quote' | 'order', id: string) => setAttachmentModal({ type, id });
+  const openAttachmentModal = (type: 'enquiry' | 'quote' | 'order', id: string) => (!canSeeEnqQuote && type !== 'order') ? undefined : setAttachmentModal({ type, id });
   const closeAttachmentModal = () => setAttachmentModal({ type: null, id: null });
 
   const checkUserDomain = (u: User | null) => {
@@ -2374,6 +2374,14 @@ const mapEnquiryToDB = (e: any) => {
       {children}
     </AppContext.Provider>
   );
+}
+
+// `data` for screens that only DISPLAY enquiries / quotes / follow-ups: logins
+// without canSeeEnqQuote get those lists empty. Screens that act on them (PI,
+// Export to Sheets, order email, delete checks) keep using the real data.
+export function useVisibleData() {
+  const { data, canSeeEnqQuote } = useAppStore();
+  return useMemo(() => canSeeEnqQuote ? data : { ...data, enquiries: [], quotes: [], followups: [] }, [data, canSeeEnqQuote]);
 }
 
 export function useAppStore() {

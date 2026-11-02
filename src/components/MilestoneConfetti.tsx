@@ -69,7 +69,7 @@ function markShown(key: string) {
 }
 
 export function MilestoneConfetti() {
-  const { data, loading } = useAppStore();
+  const { data, loading, canSeeEnqQuote } = useAppStore();
   const [active, setActive] = useState<Milestone | null>(null);
   const [recycle, setRecycle] = useState(true);
   const [toastVisible, setToastVisible] = useState(false);
@@ -87,7 +87,7 @@ export function MilestoneConfetti() {
 
   useEffect(() => {
     // Wait until data has finished loading from Supabase
-    if (loading) return;
+    if (loading || !canSeeEnqQuote) return;
     if (evaluated.current) return;
     evaluated.current = true;
 

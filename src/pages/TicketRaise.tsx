@@ -17,7 +17,7 @@ const labelCls = "block text-[10px] font-bold text-g600 tracking-[0.5px] upperca
 // (everyone) and inside a modal from TicketResolver's "+ New Ticket" button
 // (so admins, who otherwise only see the Resolver view, can still raise one).
 export function TicketRaiseForm({ onSubmitted }: { onSubmitted?: () => void }) {
-  const { data, user, addTicket, stampName } = useAppStore();
+  const { data, user, addTicket, stampName, canSeeEnqQuote } = useAppStore();
 
   const [module, setModule] = useState<TicketModule>('Other');
   const [subject, setSubject] = useState('');
@@ -77,7 +77,7 @@ export function TicketRaiseForm({ onSubmitted }: { onSubmitted?: () => void }) {
       <div>
         <label className={labelCls}>Module</label>
         <select value={module} onChange={e => setModule(e.target.value as TicketModule)} className={selectCls}>
-          {MODULES.map(m => <option key={m} value={m}>{m}</option>)}
+          {MODULES.filter(m => canSeeEnqQuote || (m !== 'Enquiry' && m !== 'Quotation')).map(m => <option key={m} value={m}>{m}</option>)}
         </select>
       </div>
 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useAppStore } from '../store';
+import { useAppStore, useVisibleData } from '../store';
 import { format, isBefore, isToday, parseISO, startOfDay, addDays, addHours, addMinutes } from 'date-fns';
 import {
   Phone,
@@ -225,7 +225,8 @@ function useCountdown(targetIso: string | null | undefined): string | null {
 export default function FollowUps() {
   const navigate = useNavigate();
   const store = useAppStore();
-  const { data, addFollowUpLog, closeFollowUp, reopenFollowUp, openAttachmentModal, user, activeDoer } = store;
+  const { addFollowUpLog, closeFollowUp, reopenFollowUp, openAttachmentModal, user, activeDoer } = store;
+  const data = useVisibleData();
   const [entryDate, setEntryDate] = useState<string | null>(null);
   const entryDateRange = entryDate ? { startDate: entryDate, endDate: entryDate } : null;
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);

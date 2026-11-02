@@ -15,7 +15,7 @@ interface AttachmentModalProps {
 }
 
 export function AttachmentModal({ entityType, entityId, isOpen, onClose }: AttachmentModalProps) {
-  const { data, user, activeDoer, updateEnquiry, updateQuote, updateOrder } = useAppStore();
+  const { data, user, activeDoer, updateEnquiry, updateQuote, updateOrder, canSeeEnqQuote } = useAppStore();
   const [docType, setDocType] = useState('Enquiry Doc');
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -40,7 +40,9 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
 
   // Resolve the full enquiry → quote(s) → order(s) chain from any entry point
   let rootEnq: any = null;
-  if (entityType === 'enquiry') {
+  if (!canSeeEnqQuote) {
+    // Only the order's own files for these logins, none from its quote / enquiry.
+  } else if (entityType === 'enquiry') {
     rootEnq = data.enquiries.find(e => e.id === entityId);
   } else if (entityType === 'quote') {
     const q = data.quotes.find(qq => qq.id === entityId) as any;

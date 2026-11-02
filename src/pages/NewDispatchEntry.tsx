@@ -142,7 +142,7 @@ export function NewDispatchEntry() {
   // return to that pill.
   const boardPill = searchParams.get('pill');
   const dispatchHome = `/dispatch${boardPill && /^[a-z]+$/.test(boardPill) ? `?pill=${boardPill}` : ''}`;
-  const { data, user, loading, addDispatchEntry, updateDispatchEntry, saveDispatchFormDetails, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent } = useAppStore();
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, saveDispatchFormDetails, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent, canSeeEnqQuote } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canEditTier = canDeleteRecords(user?.email);
@@ -1002,13 +1002,15 @@ export function NewDispatchEntry() {
                 <ReadOnlyBox label="SO No." value={selectedOrder.soNumber} className="font-mono text-[12px] font-bold text-sW" />
                 <ReadOnlyBox
                   label="Order Ref"
-                  value={selectedOrder.quoteRef ? `${selectedOrder.id}  ${selectedOrder.quoteRef}` : selectedOrder.id}
+                  value={canSeeEnqQuote && selectedOrder.quoteRef ? `${selectedOrder.id}  ${selectedOrder.quoteRef}` : selectedOrder.id}
                   className="text-[12.5px]"
                 >
                   <span className="font-mono font-bold text-sQ">{selectedOrder.id}</span>
-                  {selectedOrder.quoteRef && <span className="font-mono text-[10px] text-g500 ml-2">{selectedOrder.quoteRef}</span>}
+                  {canSeeEnqQuote && selectedOrder.quoteRef && <span className="font-mono text-[10px] text-g500 ml-2">{selectedOrder.quoteRef}</span>}
                 </ReadOnlyBox>
+                {canSeeEnqQuote && (
                 <ReadOnlyBox label="Enq Reference" value={selectedOrder.enqRef} className="font-mono text-[12px]" />
+                )}
                 <ReadOnlyBox label="PO Number" value={selectedOrder.poNo} className="font-mono text-[12px]" />
                 <ReadOnlyBox label="PO Date" value={selectedOrder.poDate ? fmtDate(selectedOrder.poDate) : ''} />
                 <ReadOnlyBox label="Required Delivery By" value={selectedOrder.dlvDate ? fmtDate(selectedOrder.dlvDate) : ''} />

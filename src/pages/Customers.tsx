@@ -263,7 +263,7 @@ const CHANNEL_ICON: Record<string, React.ReactNode> = {
 // ── CustomerPanel ─────────────────────────────────────────────────────────────
 
 export function CustomerPanel({ customer, onClose }: { customer: Customer; onClose: () => void }) {
-  const { data, updateCustomer } = useAppStore();
+  const { data, updateCustomer, canSeeEnqQuote } = useAppStore();
   const navigate = useNavigate();
 
   // Gather all follow-up logs for quotes belonging to this customer
@@ -579,7 +579,8 @@ export function CustomerPanel({ customer, onClose }: { customer: Customer; onClo
             )}
           </div>
 
-          {/* Quote History */}
+          {canSeeEnqQuote && (<>
+{/* Quote History */}
           <div className="px-5 py-3 border-b border-g100">
             <div className="font-mono text-[8px] font-bold uppercase tracking-[1.5px] text-g400 mb-2">
               Quote History ({customerQuotes.length})
@@ -613,7 +614,9 @@ export function CustomerPanel({ customer, onClose }: { customer: Customer; onClo
             )}
           </div>
 
-          {/* Contact / Follow-up History */}
+          </>)}
+{canSeeEnqQuote && (<>
+{/* Contact / Follow-up History */}
           <div className="px-5 py-3">
             <div className="font-mono text-[8px] font-bold uppercase tracking-[1.5px] text-g400 mb-2">
               Contact History ({allLogs.length})
@@ -640,13 +643,16 @@ export function CustomerPanel({ customer, onClose }: { customer: Customer; onClo
             )}
           </div>
 
+</>)}
         </div>
 
         {/* Footer actions */}
         <div className="p-4 border-t border-g200 flex gap-2">
+{canSeeEnqQuote && (<>
           <Button variant="primary" size="sm" onClick={() => navigate(`/quotes/new?cust=${encodeURIComponent(customer.name)}`)} className="flex-1">
             New Quote
           </Button>
+</>)}
           <Button variant="secondary" size="sm" onClick={() => navigate(isLead(customer) ? `/customers/leads/new?id=${customer.id}` : `/customers/new?id=${customer.id}`)} className="flex-1">
             Edit
           </Button>
@@ -880,7 +886,7 @@ export async function importCustomerCsvRows(
 // ── Main Customers page ───────────────────────────────────────────────────────
 
 export function Customers() {
-  const { data, user, addCustomer, updateCustomer, deleteCustomer, globalSearchQuery } = useAppStore() as any;
+  const { data, user, addCustomer, updateCustomer, deleteCustomer, globalSearchQuery, canSeeEnqQuote } = useAppStore() as any;
   const canDelete = canDeleteRecords(user?.email);
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -1328,7 +1334,9 @@ export function Customers() {
                           </Button>
                         </div>
                         <div className="flex gap-1.5">
+                          {canSeeEnqQuote && (
                           <Button size="sm" variant="primary" onClick={() => navigate(`/quotes/new?cust=${encodeURIComponent(c.name)}`)}>Quote</Button>
+                          )}
                           {canDelete && (
                             <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(ev) => { ev.stopPropagation(); handleDeleteCustomer(c); }}>Delete</Button>
                           )}

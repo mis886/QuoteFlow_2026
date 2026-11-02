@@ -105,7 +105,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           <NavItem to="/stock-movements" icon={<ArrowLeftRight size={15} />} label="Stock Movements" active={isActive('/stock-movements')} collapsed={collapsed} dataTour="nav-stock-movements" />
           <NavItem to="/dispatch" icon={<Truck size={15} />} label="Dispatch" active={isActive('/dispatch')} collapsed={collapsed} dataTour="nav-dispatch" />
           <NavItem to="/followups" icon={<Phone size={15} />} label="Follow-Ups" active={isActive('/followups')} collapsed={collapsed}
-            badge={overdueFollowUpsCount > 0 ? { text: overdueFollowUpsCount.toString(), className: 'bg-red-mrt' } : undefined} dataTour="nav-followups" />
+            badge={canSeeEnqQuote && overdueFollowUpsCount > 0 ? { text: overdueFollowUpsCount.toString(), className: 'bg-red-mrt' } : undefined} dataTour="nav-followups" />
           <NavItem to="/sampling" icon={<FlaskConical size={15} />} label="Sampling" active={isActive('/sampling')} collapsed={collapsed}
             badge={overdueSamplesCount > 0 ? { text: overdueSamplesCount.toString(), className: 'bg-amber-500' } : undefined} />
           <NavItem to="/customers" icon={<Users size={15} />} label="Customers" active={isActive('/customers')} collapsed={collapsed} dataTour="nav-customers" />

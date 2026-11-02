@@ -59,7 +59,7 @@ export function NewOrder() {
   const ordersHome = searchParams.get('from') === 'board' ? '/dispatch' : '/orders';
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
-  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, isAdmin } = useAppStore();
+  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, isAdmin, canSeeEnqQuote } = useAppStore();
   // Status lock — see isOrderStatusLocked in utils.ts.
   const editingOrder = editOrderId ? data.orders.find(o => o.id === editOrderId) : undefined;
   const editingOrderFullyDispatched = !!editingOrder && isFullyDispatched(editingOrder, data.dispatchEntries);
@@ -685,7 +685,7 @@ export function NewOrder() {
             <div>
               <div className="font-bold text-[14px] text-blk mb-1">Quote Already Converted</div>
               <div className="text-[12.5px] text-g600 leading-relaxed">
-                <span className="font-mono font-bold text-sQ">{quoteRef}</span> has already been converted to order{' '}
+                <span className="font-mono font-bold text-sQ">{canSeeEnqQuote ? quoteRef : 'This order'}</span> has already been converted to order{' '}
                 <span className="font-mono font-bold text-sW">{dupOrderAlert.existingId}</span>.
               </div>
               <div className="text-[12px] text-g500 mt-2">Open the existing order to make changes. A second order can't be created for the same quote.</div>
@@ -766,7 +766,7 @@ export function NewOrder() {
               </div>
             )}
 
-            {quoteRef && !editOrderId && (
+            {canSeeEnqQuote && quoteRef && !editOrderId && (
               <div className="bg-sW/5 border border-sW/20 rounded-[3px] p-[9px_14px] flex items-center gap-[10px] text-[12px]">
                 <span className="text-sW text-[14px]">✓</span>
                 <div><strong className="text-sW">Converted from {quoteRef} ({custName})</strong> — Line items loaded.</div>
@@ -779,13 +779,13 @@ export function NewOrder() {
                 <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-white/40 mb-0.5">Order No.</div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[15px] font-bold text-white">{orderId}</span>
-                  {(linkedQuoteRef || quoteRef) && (
+                  {canSeeEnqQuote && (linkedQuoteRef || quoteRef) && (
                     <span className="font-mono text-[9px] text-white/40 border-l border-white/10 pl-2">{linkedQuoteRef || quoteRef}</span>
                   )}
                 </div>
               </div>
               {/* Quote Ref — shown as required field when converting from a quote */}
-              {quoteRef && (
+              {canSeeEnqQuote && quoteRef && (
                 <div>
                   <label className="block text-[10px] font-bold tracking-[0.5px] uppercase mb-[3px] text-g500">
                     Quote Reference <span className="text-red-mrt">*</span>
@@ -797,7 +797,7 @@ export function NewOrder() {
                 </div>
               )}
               {/* ENQ Ref — read-only, traced from the quote */}
-              {linkedEnqRef && (
+              {canSeeEnqQuote && linkedEnqRef && (
                 <div>
                   <label className="block text-[10px] font-bold tracking-[0.5px] uppercase mb-[3px] text-g500">ENQ Reference</label>
                   <div className="font-mono text-[13px] font-bold px-[10px] py-[7px] rounded-[3px] border border-g200 bg-g50 text-blk">

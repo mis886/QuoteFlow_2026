@@ -35,7 +35,7 @@ const InfoItem = ({ label, value }: { label: string, value: string }) => (
 const isImageFileName = (name?: string | null): boolean => !!name && /\.(png|jpe?g|webp|gif)$/i.test(name);
 
 export function DetailPanel() {
-  const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, deleteEnquiry, closeFollowUp, updateTicket, stampName, isAdmin } = useAppStore();
+  const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, deleteEnquiry, closeFollowUp, updateTicket, stampName, isAdmin, canSeeEnqQuote } = useAppStore();
   const navigate = useNavigate();
   const canComplete = canCompleteOrder(user?.email);
   const [downloadingItemId, setDownloadingItemId] = React.useState<string | null>(null);
@@ -93,6 +93,7 @@ export function DetailPanel() {
   }, [detailPanel.type, detailPanel.id]);
 
   if (!detailPanel.type || !detailPanel.id) return null;
+  if (!canSeeEnqQuote && (detailPanel.type === 'enquiry' || detailPanel.type === 'quote')) return null;
 
   const renderEnquiry = () => {
     const enq = data.enquiries.find(e => e.id === detailPanel.id);
@@ -585,7 +586,7 @@ export function DetailPanel() {
     const o = liveOrder && detailPanel.dispatchView ? dispatchOrderView(liveOrder) : liveOrder;
     if (!o) return null;
 
-    const parentEnq = data.enquiries.find(e => e.id === o.enqRef);
+    const parentEnq = canSeeEnqQuote ? data.enquiries.find(e => e.id === o.enqRef) : undefined;
 
     return (
        <div className="flex flex-col h-full bg-white relative animate-in slide-in-from-right duration-300 w-full sm:w-[500px]">
@@ -610,7 +611,7 @@ export function DetailPanel() {
             </Grid>
           </Section>
 
-          {o.quoteRef && (
+          {canSeeEnqQuote && o.quoteRef && (
             <Section title="Linked Quote">
               <div
                 className="group flex items-center justify-between p-3 border border-sQ/30 bg-sQ/[0.02] rounded cursor-pointer hover:bg-sQ/[0.05] transition-colors"

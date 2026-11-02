@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAppStore } from '../store';
+import { useAppStore, useVisibleData } from '../store';
 import { cn } from '../lib/utils';
 import { DOER_ROLES, type DoerRole, type GlobalDateRangeLike } from '../lib/types';
 import { computeDoerMetrics, doerRowKey, ROLE_WEIGHTS, KPI_EXCLUDED_EMAILS, type DoerMetrics, type DueItem } from '../lib/kpi';
@@ -122,7 +122,7 @@ const ROLE_CONFIG: Record<DoerRole, {
 const roleConfig = (role: DoerRole) => ROLE_CONFIG[role] ?? ROLE_CONFIG['Other'];
 
 export function DoerKPI() {
-  const { data } = useAppStore();
+  const data = useVisibleData();
   const navigate = useNavigate();
   const roster = data.roster.filter(m => m.active && !KPI_EXCLUDED_EMAILS.includes(m.email.toLowerCase()));
 

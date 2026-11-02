@@ -276,7 +276,7 @@ function getSampleProducts(s: Sample): ProductRow[] {
 
 export function Sampling() {
   const navigate = useNavigate();
-  const { user, globalSearchQuery } = useAppStore() as any;
+  const { user, globalSearchQuery, canSeeEnqQuote } = useAppStore() as any;
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
   const [entryDate, setEntryDate] = useState<string | null>(null);
   const canDelete = canDeleteRecords(user?.email);
@@ -336,8 +336,8 @@ export function Sampling() {
         s.id.toLowerCase().includes(q) ||
         normalizeSearchText(s.cust).includes(qNorm) ||
         s.product_name.toLowerCase().includes(q) ||
-        (s.quote_ref ?? '').toLowerCase().includes(q) ||
-        (s.enq_ref ?? '').toLowerCase().includes(q)
+        (canSeeEnqQuote && (s.quote_ref ?? '').toLowerCase().includes(q)) ||
+        (canSeeEnqQuote && (s.enq_ref ?? '').toLowerCase().includes(q))
       );
       list.sort((a, b) => nameTier(a.cust, q, [a.id, a.quote_ref, a.enq_ref]) - nameTier(b.cust, q, [b.id, b.quote_ref, b.enq_ref]));
     }
@@ -437,7 +437,9 @@ export function Sampling() {
                 <th className={thCls}>Customer</th>
                 <th className={thCls}>Product</th>
                 <th className={thCls}>Qty Sent</th>
+                {canSeeEnqQuote && (
                 <th className={thCls}>Linked Ref</th>
+                )}
                 <th className={thCls}>Sent Date</th>
                 <th className={thCls}>Follow-Up Due</th>
                 <th className={thCls}>Status</th>
@@ -450,7 +452,7 @@ export function Sampling() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="text-center p-10">
+                  <td colSpan={canSeeEnqQuote ? 12 : 11} className="text-center p-10">
                     <div className="flex items-center justify-center gap-2 text-g400">
                       <Loader2 size={16} className="animate-spin" />
                       <span className="text-[13px]">Loading samples...</span>
@@ -459,7 +461,7 @@ export function Sampling() {
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="text-center p-10 text-g400 text-[13px]">
+                  <td colSpan={canSeeEnqQuote ? 12 : 11} className="text-center p-10 text-g400 text-[13px]">
                     {search || tabFilter !== 'all'
                       ? 'No samples match this filter'
                       : 'No samples logged yet — click "+ Log Sample" to get started'}
@@ -489,13 +491,15 @@ export function Sampling() {
                         </div>
                       ))}
                     </td>
-                    <td className={tdCls}>
-                      {(s.quote_ref || s.enq_ref) ? (
-                        <span className="font-mono text-[10.5px] font-bold text-g600">{s.quote_ref || s.enq_ref}</span>
-                      ) : (
-                        <span className="text-g400 text-[11px]">—</span>
-                      )}
-                    </td>
+                    {canSeeEnqQuote && (
+                      <td className={tdCls}>
+                        {(s.quote_ref || s.enq_ref) ? (
+                          <span className="font-mono text-[10.5px] font-bold text-g600">{s.quote_ref || s.enq_ref}</span>
+                        ) : (
+                          <span className="text-g400 text-[11px]">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className={`${tdCls} font-mono text-[11px] text-g600 whitespace-nowrap`}>
                       {fmtDate(s.sent_date)}
                     </td>

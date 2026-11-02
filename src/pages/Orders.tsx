@@ -26,6 +26,7 @@ function dlvDateClass(dlvDate: string, status: string): { text: string; title?: 
 
 export function Orders() {
   const store = useAppStore();
+  const { canSeeEnqQuote } = store;
   const { data, user, updateOrder, deleteOrder, openAttachmentModal, sendOrderToDispatch, isAdmin, isReadOnlyUser } = store;
   const canDelete = canDeleteRecords(user?.email);
   const canConfirmPmt = canConfirmPayment(user?.email);
@@ -147,7 +148,7 @@ export function Orders() {
       if (qs) {
         const qsNorm = normalizeSearchText(qs);
         const match = normalizeSearchText(o.cust).includes(qsNorm) || o.id.toLowerCase().includes(qs) || o.poNo.toLowerCase().includes(qs) ||
-          (o.quoteRef || '').toLowerCase().includes(qs) ||
+          (canSeeEnqQuote && (o.quoteRef || '').toLowerCase().includes(qs)) ||
           o.items.some(i => i.desc.toLowerCase().includes(qs));
         if (!match) return false;
       }
@@ -233,9 +234,11 @@ export function Orders() {
             <p className="text-xs text-g500 mt-1 font-light">Orders converted from Won quotations.</p>
           </div>
           <div className="flex items-center gap-2 mt-1 shrink-0">
-            <Button onClick={() => navigate('/quotes')} variant="secondary">
-              Quotations
-            </Button>
+            {canSeeEnqQuote && (
+              <Button onClick={() => navigate('/quotes')} variant="secondary">
+                Quotations
+              </Button>
+            )}
             <Button 
               onClick={() => navigate('/orders/new')} 
               className="gap-2 bg-[#EAF8F1] border-[1.5px] border-[#A2DEBD] text-[#229A58] hover:bg-[#D5F2E1] font-bold tracking-[2.5px] px-4"
@@ -262,7 +265,7 @@ export function Orders() {
           <Search size={11} className="text-g400 shrink-0" />
           <input
             type="text"
-            placeholder="Company, item, PO No, Order No, Quote Ref..."
+            placeholder={canSeeEnqQuote ? 'Company, item, PO No, Order No, Quote Ref...' : 'Company, item, PO No, Order No...'}
             value={localSearch}
             onChange={(e) => setLocalSearch(e.target.value)}
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
@@ -294,7 +297,9 @@ export function Orders() {
           <table className="w-full table-fixed border-collapse text-[12.5px]">
             <colgroup>
               <col style={{ width: 110 }} />{/* Order No. */}
-              <col style={{ width: 105 }} />{/* Quote Ref */}
+              {canSeeEnqQuote && (
+              <col style={{ width: 105 }} />
+              )}
               <col style={{ width: 202 }} />{/* Customer - Unit */}
               <col style={{ width: 130 }} />{/* PO Number */}
               <col style={{ width: 120 }} />{/* Order Value */}
@@ -305,7 +310,9 @@ export function Orders() {
             <thead className="bg-g100">
               <tr>
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Order No.</th>
+                {canSeeEnqQuote && (
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">Quote Ref</th>
+                )}
                 <SortTh col="cust">Customer - Unit</SortTh>
                 <th className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 px-[13px] py-[9px] text-left whitespace-nowrap border-b border-g200">PO Number</th>
                 <SortTh col="value" right>Order Value</SortTh>
@@ -316,7 +323,7 @@ export function Orders() {
             </thead>
             <tbody>
               {filteredOrders.length === 0 ? (
-                <tr><td colSpan={8} className="text-center p-8 text-g400 text-[13px]">No orders yet</td></tr>
+                <tr><td colSpan={canSeeEnqQuote ? 8 : 7} className="text-center p-8 text-g400 text-[13px]">No orders yet</td></tr>
               ) : (
                 filteredOrders.map(o => {
                   const subTotal = o.items.reduce((s, i) => s + i.total, 0);
@@ -334,7 +341,9 @@ export function Orders() {
                         onClick={() => setExpandedRow(isExpanded ? null : o.id)}
                       >
                         <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10.5px] font-bold text-sW">{o.id}</span></td>
+                        {canSeeEnqQuote && (
                         <td className="px-[13px] py-[10px] align-top whitespace-nowrap"><span className="font-mono text-[10px] font-bold text-sQ">{o.quoteRef}</span></td>
+                        )}
                         <td className="px-[13px] py-[10px] align-top break-words">
                           <div className="font-semibold">{o.cust}{(() => { const sl = siteLabel(customerOfDoc(o, data.customers), (o as any).siteId || data.enquiries.find(e => e.id === o.enqRef)?.siteId); return sl ? <span className="font-normal text-g500"> — {sl}</span> : null; })()}</div>
                           {(() => { const saved = (o as any).customerTier as string; const t = saved || (() => { const ct = customerOfDoc(o, data.customers)?.tier; return ct || ''; })(); if (!t) return null; const cls = t === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-300' : t === 'Silver' ? 'bg-slate-100 text-slate-600 border-slate-300' : t === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-g100 text-g500 border-g300'; return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9.5px] font-bold uppercase tracking-wide ${cls}`}>{t === 'Gold' && <Star size={8} className="fill-amber-500 stroke-amber-500" />}{t}</span>; })()}
@@ -533,7 +542,7 @@ export function Orders() {
 
                       {isExpanded && (
                         <tr className="bg-sW/[0.02] border-b-2 border-sW">
-                          <td colSpan={8} className="p-0">
+                          <td colSpan={canSeeEnqQuote ? 8 : 7} className="p-0">
                             <div className="p-[10px_16px]">
                               <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-sW mb-[7px]">Order Line Items -- {o.id}</div>
                               <table className="w-full border-collapse text-[11.5px] m-0 mb-2">
