@@ -23,7 +23,7 @@ const MAX_PER_GROUP = 5;
 
 export function GlobalSearchResults({ query, onNavigate }: { query: string; onNavigate: () => void }) {
   const navigate = useNavigate();
-  const { data } = useAppStore();
+  const { data, canSeeEnqQuote } = useAppStore();
   const [samples, setSamples] = useState<SampleHit[]>([]);
   const trimmed = query.trim();
 
@@ -80,12 +80,11 @@ export function GlobalSearchResults({ query, onNavigate }: { query: string; onNa
 
     return [
       { label: 'Customers', rows: customerRows },
-      { label: 'Enquiries', rows: enquiryRows },
-      { label: 'Quotations', rows: quoteRows },
+      ...(canSeeEnqQuote ? [{ label: 'Enquiries', rows: enquiryRows }, { label: 'Quotations', rows: quoteRows }] : []),
       { label: 'Orders', rows: orderRows },
       { label: 'Sampling', rows: sampleRows },
     ].filter(g => g.rows.length > 0);
-  }, [trimmed, data.customers, data.enquiries, data.quotes, data.orders, samples]);
+  }, [trimmed, data.customers, data.enquiries, data.quotes, data.orders, samples, canSeeEnqQuote]);
 
   if (!trimmed) return null;
 

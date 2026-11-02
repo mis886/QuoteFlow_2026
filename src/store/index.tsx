@@ -59,6 +59,9 @@ export const BHIWANDI_EMAIL = 'bhiwandi@himalayaterpene.com';
 // Compared against the logged-in Supabase Auth email (user?.email?.toLowerCase()),
 // NOT the self-picked "doer" identity used for KPI attribution elsewhere.
 export const ADMIN_EMAILS = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com', 'anil@himalayaterpene.com'];
+// Logins that don't get the Enquiries and Quotations modules (canSeeEnqQuote).
+export const NO_ENQ_QUOTE_EMAILS = ['mum@himalayaterpene.com', 'accounts@himalayaterpene.com'];
+export const ENQ_QUOTE_PATHS = ['/enquiries', '/quotes'];
 export const SALES_SIGNATORY_NAMES = ['Nimisha Pawar', 'Ruby'] as const;
 export type SalesSignatoryName = typeof SALES_SIGNATORY_NAMES[number];
 
@@ -147,6 +150,7 @@ interface AppContextType {
   // except the LR document field in Dispatch → Sent, which handles its own
   // carve-out locally (see NewDispatchEntry.tsx).
   isReadOnlyUser: boolean;
+  canSeeEnqQuote: boolean;
   roleForDoer: (nameOrEmail?: string | null) => DoerRole[];
   // Active doer (post-login identity on a possibly-shared Google login).
   activeDoer: ActiveDoer | null;
@@ -373,6 +377,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const email = user?.email?.toLowerCase() ?? null;
   const isAdmin = !!email && ADMIN_EMAILS.includes(email);
   const isReadOnlyUser = email === BHIWANDI_EMAIL;
+  const canSeeEnqQuote = !email || !NO_ENQ_QUOTE_EMAILS.includes(email);
   const resolvedSignatory: SignatoryResolution = (() => {
     if (!email) return { status: 'unmapped' };
     if (email === SALES_EMAIL) {
@@ -2338,6 +2343,7 @@ const mapEnquiryToDB = (e: any) => {
         updateTicket,
         isAdmin,
         isReadOnlyUser,
+        canSeeEnqQuote,
         roleForDoer,
         activeDoer,
         setActiveDoer,

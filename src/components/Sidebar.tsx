@@ -16,7 +16,7 @@ export function useSidebarCollapse() {
 
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const location = useLocation();
-  const { data, user, logout, isAdmin } = useAppStore();
+  const { data, user, logout, isAdmin, canSeeEnqQuote } = useAppStore();
   const [logoError, setLogoError] = useState(false);
 
   const [overdueSamplesCount, setOverdueSamplesCount] = useState(0);
@@ -91,10 +91,14 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         )}
         <div className={cn("mb-4", collapsed && "mt-1")}>
           <NavItem to="/" icon={<LayoutDashboard size={15} />} label="Dashboard" active={isActive('/')} collapsed={collapsed} dataTour="nav-dashboard" />
-          <NavItem to="/enquiries" icon={<FileText size={15} />} label="Enquiries" active={isActive('/enquiries')} collapsed={collapsed}
-            badge={newEnqCount > 0 ? { text: newEnqCount.toString(), className: 'bg-red-mrt' } : undefined} dataTour="nav-enquiries" />
-          <NavItem to="/quotes" icon={<FileSignature size={15} />} label="Quotations" active={isActive('/quotes')} collapsed={collapsed}
-            badge={sentQuotesCount > 0 ? { text: sentQuotesCount.toString(), className: 'bg-sR' } : undefined} dataTour="nav-quotations" />
+          {canSeeEnqQuote && (
+            <>
+              <NavItem to="/enquiries" icon={<FileText size={15} />} label="Enquiries" active={isActive('/enquiries')} collapsed={collapsed}
+                badge={newEnqCount > 0 ? { text: newEnqCount.toString(), className: 'bg-red-mrt' } : undefined} dataTour="nav-enquiries" />
+              <NavItem to="/quotes" icon={<FileSignature size={15} />} label="Quotations" active={isActive('/quotes')} collapsed={collapsed}
+                badge={sentQuotesCount > 0 ? { text: sentQuotesCount.toString(), className: 'bg-sR' } : undefined} dataTour="nav-quotations" />
+            </>
+          )}
           <NavItem to="/orders" icon={<ShoppingCart size={15} />} label="Orders" active={isActive('/orders')} collapsed={collapsed}
             badge={activeOrdersCount > 0 ? { text: activeOrdersCount.toString(), className: 'bg-sW' } : undefined} dataTour="nav-orders" />
           <NavItem to="/stock-register" icon={<Warehouse size={15} />} label="Stock Register" active={isActive('/stock-register')} collapsed={collapsed} dataTour="nav-stock-register" />

@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Sidebar, useSidebarCollapse } from './Sidebar';
 import { Topbar } from './Topbar';
 import { DetailPanel } from './DetailPanel';
@@ -6,11 +6,11 @@ import { AttachmentModal } from './AttachmentModal';
 import { AppTour } from './AppTour';
 import { MilestoneConfetti } from './MilestoneConfetti';
 import { SalesIdentityGate } from './SalesIdentityGate';
-import { useAppStore } from '../store';
+import { useAppStore, ENQ_QUOTE_PATHS } from '../store';
 import { Loader2 } from 'lucide-react';
 
 export function Layout() {
-  const { loading, attachmentModal, closeAttachmentModal, isReadOnlyUser } = useAppStore();
+  const { loading, attachmentModal, closeAttachmentModal, isReadOnlyUser, canSeeEnqQuote } = useAppStore();
   const { collapsed, setCollapsed } = useSidebarCollapse();
   const location = useLocation();
   // Whole-app view-only mode is enforced here for every routed page in one
@@ -20,6 +20,10 @@ export function Layout() {
   // instead (see NewDispatchEntry.tsx), so it's excluded from this blanket
   // lock rather than being doubly-locked.
   const lockThisRoute = isReadOnlyUser && location.pathname !== '/dispatch/new';
+  const blockedEnqQuote = !canSeeEnqQuote && ENQ_QUOTE_PATHS.some(
+    p => location.pathname === p || location.pathname.startsWith(p + '/')
+  );
+  if (blockedEnqQuote) return <Navigate to="/" replace />;
 
   return (
     <div className="flex w-full h-screen overflow-hidden">
