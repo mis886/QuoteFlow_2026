@@ -71,7 +71,7 @@
 // above) or by getting corrected through Stock Movements.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, PackageCheck, X } from 'lucide-react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, PackageCheck, Pencil, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { useAppStore } from '../store';
@@ -134,7 +134,7 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
   onOpenLot?: (lotNo: string) => void;
   onLotsChanged?: () => void;
 } = {}) {
-  const { user, activeDoer, data } = useAppStore();
+  const { user, activeDoer, data, isAdmin } = useAppStore();
   const [lots, setLots] = useState<StockLot[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -394,19 +394,29 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
                             MISSING · {days === null ? 'no date' : `${days} day${days === 1 ? '' : 's'}`}
                           </button>
                         );
-                      })() : l.coaUrl ? (
-                        <a
-                          href={l.coaUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={`Open ${l.coaFile || 'COA PDF'}`}
-                          className="text-red-mrt underline decoration-dotted hover:decoration-solid"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          {l.coaFile || 'View PDF'}
-                        </a>
-                      ) : (
-                        <span className="text-g600" title="No PDF on file for this lot yet">{l.coaFile}</span>
+                      })() : (
+                        <span className="inline-flex items-center gap-1 max-w-full">
+                          {l.coaUrl?.trim() ? (
+                            <a
+                              href={l.coaUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={`Open ${l.coaFile || 'COA PDF'}`}
+                              className="text-red-mrt underline decoration-dotted hover:decoration-solid truncate"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {l.coaFile || 'View PDF'}
+                            </a>
+                          ) : (
+                            <span className="text-g600 truncate" title="No PDF on file for this lot yet">{l.coaFile}</span>
+                          )}
+                          {isAdmin && (
+                            <button type="button" title="Change COA" onClick={() => setCoaLot(l)}
+                              className="shrink-0 p-0.5 text-g400 hover:text-red-mrt transition-colors">
+                              <Pencil size={11} />
+                            </button>
+                          )}
+                        </span>
                       )}
                     </td>
                     {/* Read-only historical snapshot — stock_lots.no_of_barrels is

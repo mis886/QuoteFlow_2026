@@ -5,11 +5,14 @@ import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabas
 import { fetchAllRows } from '../lib/fetchAll';
 import { logActivity } from '../lib/activityLog';
 import { fmtDate } from '../lib/utils';
+import { isCoaMissing } from '../lib/coaAge';
 import type { StockLot } from '../lib/types';
+import { ConfirmDialog } from './ConfirmDialog';
 
-// Stock Summary: adds the missing COA to one lot. Admins pick from the shared
-// coa_document library or upload a new PDF (same picker as NewDispatchEntry.tsx);
-// everyone else sees the lot read-only.
+// Stock Summary: adds the missing COA to one lot, or (a lot that has one)
+// replaces or removes it. Admins pick from the shared coa_document library or
+// upload a new PDF (same picker as NewDispatchEntry.tsx); everyone else sees
+// the lot read-only.
 export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClose: () => void; onSaved: () => void }) {
   const { isAdmin, user, activeDoer } = useAppStore();
   const [coaSearch, setCoaSearch] = useState('');
@@ -21,6 +24,8 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
   const [coaUploading, setCoaUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const hasCoa = !isCoaMissing(lot);
 
   useEffect(() => {
     const t = setTimeout(() => setCoaSearchDebounced(coaSearch.trim()), 350);
@@ -78,11 +83,10 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
     setCoaUploading(false);
   };
 
-  const save = async () => {
-    if (!isAdmin || !picked) return;
+  const writeCoa = async (after: { coa_file: string | null; coa_url: string | null }, verb: string) => {
+    if (!isAdmin) return;
     setSaving(true);
     setError('');
-    const after = { coa_file: picked.name, coa_url: picked.url };
     const { data: saved, error: saveError } = await supabase.from('stock_lots').update({
       ...after,
       updated_at: new Date().toISOString(),
@@ -91,15 +95,17 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
     if (saveError || !saved?.length) {
       setError(saveError?.message || 'Nothing was saved. The lot may have been removed.');
       setSaving(false);
+      setConfirmRemove(false);
       return;
     }
     logActivity({
       module: 'stock_movements', recordId: lot.id,
-      recordLabel: `COA added · Lot ${lot.whLotNo || '—'} · ${lot.productName}`,
+      recordLabel: `COA ${verb} · Lot ${lot.whLotNo || '—'} · ${lot.productName}`,
       action: 'update', before: { coa_file: lot.coaFile ?? null, coa_url: lot.coaUrl ?? null }, after,
     });
     onSaved();
   };
+  const save = () => picked && writeCoa({ coa_file: picked.name, coa_url: picked.url }, hasCoa ? 'replaced' : 'added');
 
   const Detail = ({ label, value }: { label: string; value?: string }) => (
     <div className="min-w-0">
@@ -109,11 +115,12 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
   );
 
   return (
+    <>
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={e => { if (e.target === e.currentTarget && !saving) onClose(); }}>
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] border border-g300">
         <div className="p-4 border-b border-g200 flex items-center justify-between">
           <div>
-            <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-1">COA missing</div>
+            <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-1">{hasCoa ? 'Change COA' : 'COA missing'}</div>
             <div className="text-base font-semibold text-blk">Lot {lot.whLotNo || '—'}</div>
           </div>
           <button type="button" title="Close" onClick={onClose} className="p-2 text-g400 hover:text-blk bg-g100 hover:bg-g200 rounded-md transition-colors"><X size={14} strokeWidth={2.5} /></button>
@@ -127,6 +134,26 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
             <Detail label="Make" value={lot.make} />
             <Detail label="Inward Date" value={lot.inwardDate ? fmtDate(lot.inwardDate) : undefined} />
           </div>
+
+          {hasCoa && (
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g400 mb-0.5">Current COA</div>
+                {lot.coaUrl?.trim() ? (
+                  <a href={lot.coaUrl} target="_blank" rel="noopener noreferrer" title={lot.coaFile || 'View PDF'}
+                    className="block text-[12.5px] text-red-mrt underline decoration-dotted hover:decoration-solid truncate">
+                    {lot.coaFile || 'View PDF'}
+                  </a>
+                ) : <div className="text-[12.5px] text-blk truncate">{lot.coaFile}</div>}
+              </div>
+              {isAdmin && (
+                <button type="button" onClick={() => setConfirmRemove(true)} disabled={saving}
+                  className="shrink-0 text-xs font-semibold text-red-mrt border border-red-mrt/40 rounded px-3 py-1.5 hover:bg-red-lt transition-colors disabled:opacity-50">
+                  Remove
+                </button>
+              )}
+            </div>
+          )}
 
           {!isAdmin ? (
             <div className="mt-5 text-[12.5px] text-g500">Only admins can add COA.</div>
@@ -192,5 +219,17 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
         </div>
       </div>
     </div>
+    {confirmRemove && (
+      <ConfirmDialog
+        title={`Remove COA from lot ${lot.whLotNo || '—'}?`}
+        confirmLabel="Remove"
+        busy={saving}
+        onConfirm={() => writeCoa({ coa_file: null, coa_url: null }, 'removed')}
+        onCancel={() => setConfirmRemove(false)}
+      >
+        The lot will show as MISSING again.
+      </ConfirmDialog>
+    )}
+    </>
   );
 }
