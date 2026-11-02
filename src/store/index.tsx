@@ -269,7 +269,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [attachmentModal, setAttachmentModal] = useState<{ type: 'enquiry' | 'quote' | 'order' | null, id: string | null }>({ type: null, id: null });
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const openDetailPanel = (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string, opts?: { dispatchView?: boolean }) => setDetailPanel({ type, id, ...opts });
+  const openDetailPanel = (type: 'enquiry' | 'quote' | 'order' | 'ticket', id: string, opts?: { dispatchView?: boolean }) => (!canSeeEnqQuote && (type === 'enquiry' || type === 'quote')) ? undefined : setDetailPanel({ type, id, ...opts });
   const closeDetailPanel = () => setDetailPanel({ type: null, id: null });
 
   const openAttachmentModal = (type: 'enquiry' | 'quote' | 'order', id: string) => setAttachmentModal({ type, id });

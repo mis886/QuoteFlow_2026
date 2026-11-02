@@ -28,7 +28,7 @@ function last7KeysEndingAt(refKey: string): string[] {
 
 interface HistoryRow { sample_id: string; status: string; changed_at: string; }
 
-export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquiry[]; quotes: Quote[]; orders: Order[] }) {
+export function DailySnapshot({ enquiries, quotes, orders, showEnqQuote = true }: { enquiries: Enquiry[]; quotes: Quote[]; orders: Order[]; showEnqQuote?: boolean }) {
   const todayKey = dateKey(new Date());
   const [selectedDate, setSelectedDate] = useState<string>(todayKey);
   const [history, setHistory] = useState<HistoryRow[]>([]);
@@ -103,8 +103,7 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
 
   const handleCopy = async () => {
     const text = `📊 Update — ${prettyDate}\n` +
-      `Enquiries: ${enqCount}\n` +
-      `Quotations: ${quoteCount}\n` +
+      (showEnqQuote ? `Enquiries: ${enqCount}\nQuotations: ${quoteCount}\n` : '') +
       `Orders: ${orderCount}\n` +
       `Samples as of ${prettyDate}: ${dispatchedCount} dispatched, ${deliveredCount} delivered, ${pendingBacklog} pending, ${approvedCount} approved, ${rejectedCount} rejected\n` +
       `— via EnqBoss`;
@@ -187,9 +186,13 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-5">
-        <Tile label="Enquiries" value={enqCount} icon={<MessageSquare size={14} />} accent="#3B82F6" accentBg="#EFF5FF" />
-        <Tile label="Quotations" value={quoteCount} icon={<FileSignature size={14} />} accent="#F97316" accentBg="#FFF4EC" />
+      <div className={`grid grid-cols-2 gap-3 p-5 ${showEnqQuote ? 'md:grid-cols-4' : ''}`}>
+        {showEnqQuote && (
+          <>
+            <Tile label="Enquiries" value={enqCount} icon={<MessageSquare size={14} />} accent="#3B82F6" accentBg="#EFF5FF" />
+            <Tile label="Quotations" value={quoteCount} icon={<FileSignature size={14} />} accent="#F97316" accentBg="#FFF4EC" />
+          </>
+        )}
         <Tile label="Orders" value={orderCount} icon={<ShoppingBag size={14} />} accent="#10B981" accentBg="#ECFBF5" />
 
         <div className="bg-white rounded-[10px] border border-g200 p-4 flex flex-col gap-2" style={{ borderTop: '3px solid #8B5CF6' }}>
@@ -225,9 +228,13 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-5 pb-5">
-        <Trend label="Enquiries" values={enqTrend} color="#3B82F6" />
-        <Trend label="Quotations" values={quoteTrend} color="#F97316" />
+      <div className={`grid grid-cols-1 gap-4 px-5 pb-5 ${showEnqQuote ? 'md:grid-cols-3' : ''}`}>
+        {showEnqQuote && (
+          <>
+            <Trend label="Enquiries" values={enqTrend} color="#3B82F6" />
+            <Trend label="Quotations" values={quoteTrend} color="#F97316" />
+          </>
+        )}
         <Trend label="Orders" values={orderTrend} color="#10B981" />
       </div>
     </div>

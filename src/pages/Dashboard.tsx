@@ -18,7 +18,7 @@ type CalendarEvent = {
   sublabel: string;
   contact?: string;
   color: 'purple' | 'red' | 'teal' | 'orange';
-  onClick: () => void;
+  onClick?: () => void;
 };
 
 type CalendarDayMap = Record<string, CalendarEvent[]>;
@@ -58,10 +58,12 @@ function dateKey(d: Date | string): string {
 }
 
 export function Dashboard() {
-  const { data, openDetailPanel, user, activeDoer } = useAppStore();
+  const { data, openDetailPanel, user, activeDoer, canSeeEnqQuote } = useAppStore();
   const navigate = useNavigate();
   const [period, setPeriod] = useState<Period>('30d');
-  const [activeTab, setActiveTab] = useState<DashTab>('overview');
+  const [chosenTab, setActiveTab] = useState<DashTab>('overview');
+  // Overview is all enquiries and quotes, so logins without them start on This Week.
+  const activeTab: DashTab = !canSeeEnqQuote && chosenTab === 'overview' ? 'this-week' : chosenTab;
   const [expandedMdo, setExpandedMdo] = useState<Record<string, boolean>>({});
   const [calendarWeekOffset, setCalendarWeekOffset] = useState<number>(0);
   // "Show next" paging for the Needs Attention & Open Quote Value panels.
@@ -409,7 +411,7 @@ export function Dashboard() {
     const items: ActivityItem[] = [];
 
     // Enquiries received this week
-    data.enquiries.forEach(e => {
+    if (canSeeEnqQuote) data.enquiries.forEach(e => {
       if (!inThisWeek(e.recv)) return;
       items.push({
         ts: e.recv,
@@ -423,7 +425,7 @@ export function Dashboard() {
     });
 
     // Quotes issued (non-draft) this week
-    data.quotes.forEach(q => {
+    if (canSeeEnqQuote) data.quotes.forEach(q => {
       if (q.status === 'Draft') return;
       if (!inThisWeek(q.date)) return;
       const val = q.items.reduce((s, i) => s + i.total + (i.total * i.gst / 100), 0);
@@ -459,14 +461,15 @@ export function Dashboard() {
       // Skip orphaned follow-ups (quote_id nulled after its quote was
       // deleted) — nothing to open, no quote to attribute the log to.
       const quoteId = fu.quote_id;
-      if (!quoteId || !data.quotes.some(q => q.id === quoteId)) return;
+      const quote = quoteId ? data.quotes.find(q => q.id === quoteId) : undefined;
+      if (!quoteId || !quote) return;
       (fu.logs || []).forEach(log => {
         if (!inThisWeek(log.ts)) return;
         items.push({
           ts: log.ts,
           type: 'followup',
           who: log.who || fu.owner || 'Team',
-          title: `Follow-up logged on ${quoteId}`,
+          title: `Follow-up logged on ${canSeeEnqQuote ? quoteId : quote.cust}`,
           subtitle: `${log.channel} · ${log.note?.slice(0, 60) || '—'}`,
           refId: quoteId,
           refType: 'quote',
@@ -475,7 +478,7 @@ export function Dashboard() {
     });
 
     return items.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
-  }, [data, weekStart.getTime()]);
+  }, [data, weekStart.getTime(), canSeeEnqQuote]);
 
   // ── MDO Panel computations ─────────────────────────────────────────────────
   const SLA_H: Record<string, number> = { Hot: 4, Urgent: 24, Normal: 48, Low: 72 };
@@ -546,17 +549,17 @@ export function Dashboard() {
       addEvent(key, {
         id: fu.id,
         type: 'followup',
-        label: quote.id,
-        sublabel: quote.cust || fu.owner || 'Team',
+        label: canSeeEnqQuote ? quote.id : quote.cust,
+        sublabel: canSeeEnqQuote ? (quote.cust || fu.owner || 'Team') : (fu.owner || 'Team'),
         contact: contactLine,
         color: 'purple',
-        onClick: () => openDetailPanel('quote' as any, quote.id),
+        onClick: canSeeEnqQuote ? () => openDetailPanel('quote' as any, quote.id) : undefined,
       });
     });
 
     // Red — overdue enquiries
     const SLA_CAL: Record<string, number> = { Hot: 4, Urgent: 24, Normal: 48, Low: 72 };
-    data.enquiries.forEach(e => {
+    if (canSeeEnqQuote) data.enquiries.forEach(e => {
       if ((e.status !== 'New' && e.status !== 'In Review') || !e.recv) return;
       if (e.ageH < (SLA_CAL[e.urg] ?? 48)) return;
       // `recv` is TIMESTAMPTZ — bucket by LOCAL date so the pin lands in the
@@ -589,7 +592,7 @@ export function Dashboard() {
 
     // Orange — quotes awaiting decision (sent 7+ days ago)
     const sevenDaysAgo = Date.now() - 7 * 24 * 3_600_000;
-    data.quotes.forEach(q => {
+    if (canSeeEnqQuote) data.quotes.forEach(q => {
       if (q.status !== 'Sent' || !q.date) return;
       if (new Date(q.date).getTime() > sevenDaysAgo) return;
       const key = q.date.slice(0, 10);
@@ -604,7 +607,7 @@ export function Dashboard() {
     });
 
     return map;
-  }, [data.followups, data.enquiries, data.orders, data.quotes, data.customers]);
+  }, [data.followups, data.enquiries, data.orders, data.quotes, data.customers, canSeeEnqQuote]);
 
   const { start: calWeekStart, end: calWeekEnd, days: calDays } = useMemo(
     () => getOffsetWeekRange(calendarWeekOffset),
@@ -623,9 +626,12 @@ export function Dashboard() {
               Good morning, <em className="italic text-red-mrt font-serif ml-0.5">{formattedName}</em>
             </h1>
             <p className="text-[13px] text-g600 mt-1 font-medium">
-              {formattedDate} — <strong className={attnEnqs.length > 0 ? "text-red-mrt" : "text-[#059669]"}>
-                {attnEnqs.length > 0 ? `${attnEnqs.length} enquiries need response today` : 'All caught up today'}
-              </strong>
+              {formattedDate}
+              {canSeeEnqQuote && (
+                <> — <strong className={attnEnqs.length > 0 ? "text-red-mrt" : "text-[#059669]"}>
+                  {attnEnqs.length > 0 ? `${attnEnqs.length} enquiries need response today` : 'All caught up today'}
+                </strong></>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-2">
@@ -641,28 +647,34 @@ export function Dashboard() {
                 <option value="year">This year</option>
               </select>
             )} */}
-            <Button variant="secondary" onClick={() => navigate('/enquiries')}>View All</Button>
-            <Button variant="primary" onClick={() => navigate('/enquiries/new')}>
-              <Plus size={14} className="stroke-[2.5px]" /> Log Enquiry
-            </Button>
+            {canSeeEnqQuote && (
+              <>
+                <Button variant="secondary" onClick={() => navigate('/enquiries')}>View All</Button>
+                <Button variant="primary" onClick={() => navigate('/enquiries/new')}>
+                  <Plus size={14} className="stroke-[2.5px]" /> Log Enquiry
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
         {/* Tab bar */}
         <div className="flex gap-0 border-b border-g200 mb-4">
-          <button
-            type="button"
-            onClick={() => setActiveTab('overview')}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2 font-mono text-[10px] font-bold tracking-[1.5px] uppercase border-b-2 -mb-px transition-colors focus:outline-none',
-              activeTab === 'overview'
-                ? 'border-red-mrt text-red-mrt'
-                : 'border-transparent text-g400 hover:text-g600'
-            )}
-          >
-            <TrendingUp size={12} />
-            Overview
-          </button>
+          {canSeeEnqQuote && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('overview')}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-2 font-mono text-[10px] font-bold tracking-[1.5px] uppercase border-b-2 -mb-px transition-colors focus:outline-none',
+                activeTab === 'overview'
+                  ? 'border-red-mrt text-red-mrt'
+                  : 'border-transparent text-g400 hover:text-g600'
+              )}
+            >
+              <TrendingUp size={12} />
+              Overview
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setActiveTab('this-week')}
@@ -714,25 +726,29 @@ export function Dashboard() {
         <div className="px-[30px] pb-6 flex flex-col gap-4">
 
           {/* Pipeline snapshot KPIs */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-white border border-g200 rounded-[8px] p-4 flex items-center gap-3 shadow-sm">
-              <div className="w-9 h-9 rounded-[6px] bg-blue-50 flex items-center justify-center shrink-0">
-                <FileText size={16} className="text-blue-500" />
-              </div>
-              <div>
-                <div className="font-mono text-[9px] font-bold tracking-[1.5px] uppercase text-g400">Open Enquiries</div>
-                <div className="font-serif text-[26px] font-bold text-blk leading-none mt-0.5">{mdoPipelineCounts.openEnqs}</div>
-              </div>
-            </div>
-            <div className="bg-white border border-g200 rounded-[8px] p-4 flex items-center gap-3 shadow-sm">
-              <div className="w-9 h-9 rounded-[6px] bg-orange-50 flex items-center justify-center shrink-0">
-                <FileSignature size={16} className="text-orange-500" />
-              </div>
-              <div>
-                <div className="font-mono text-[9px] font-bold tracking-[1.5px] uppercase text-g400">Quotes Pending PO</div>
-                <div className="font-serif text-[26px] font-bold text-blk leading-none mt-0.5">{mdoPipelineCounts.sentQuotes}</div>
-              </div>
-            </div>
+          <div className={cn('grid gap-3', canSeeEnqQuote ? 'grid-cols-3' : 'grid-cols-1')}>
+            {canSeeEnqQuote && (
+              <>
+                <div className="bg-white border border-g200 rounded-[8px] p-4 flex items-center gap-3 shadow-sm">
+                  <div className="w-9 h-9 rounded-[6px] bg-blue-50 flex items-center justify-center shrink-0">
+                    <FileText size={16} className="text-blue-500" />
+                  </div>
+                  <div>
+                    <div className="font-mono text-[9px] font-bold tracking-[1.5px] uppercase text-g400">Open Enquiries</div>
+                    <div className="font-serif text-[26px] font-bold text-blk leading-none mt-0.5">{mdoPipelineCounts.openEnqs}</div>
+                  </div>
+                </div>
+                <div className="bg-white border border-g200 rounded-[8px] p-4 flex items-center gap-3 shadow-sm">
+                  <div className="w-9 h-9 rounded-[6px] bg-orange-50 flex items-center justify-center shrink-0">
+                    <FileSignature size={16} className="text-orange-500" />
+                  </div>
+                  <div>
+                    <div className="font-mono text-[9px] font-bold tracking-[1.5px] uppercase text-g400">Quotes Pending PO</div>
+                    <div className="font-serif text-[26px] font-bold text-blk leading-none mt-0.5">{mdoPipelineCounts.sentQuotes}</div>
+                  </div>
+                </div>
+              </>
+            )}
             <div className="bg-white border border-g200 rounded-[8px] p-4 flex items-center gap-3 shadow-sm">
               <div className="w-9 h-9 rounded-[6px] bg-teal-50 flex items-center justify-center shrink-0">
                 <ShoppingBag size={16} className="text-teal-500" />
@@ -759,7 +775,7 @@ export function Dashboard() {
                 <div className="flex flex-col items-center justify-center p-10 text-center">
                   <div className="text-[24px] mb-2 opacity-20">📋</div>
                   <div className="text-[13px] font-bold text-blk mb-1">No activity yet</div>
-                  <div className="text-[12px] text-g400">Enquiries, quotes, orders and follow-ups logged this week will appear here.</div>
+                  <div className="text-[12px] text-g400">{canSeeEnqQuote ? 'Enquiries, quotes, orders' : 'Orders'} and follow-ups logged this week will appear here.</div>
                 </div>
               ) : (
                 <div className="divide-y divide-g100">
@@ -783,6 +799,7 @@ export function Dashboard() {
                         type="button"
                         key={idx}
                         onClick={() => openDetailPanel(item.refType as any, item.refId)}
+                        disabled={!canSeeEnqQuote && item.refType === 'quote'}
                         className="w-full flex items-start gap-3 p-[10px_16px] hover:bg-g50 transition-colors text-left focus:outline-none"
                       >
                         <div className="relative flex flex-col items-center shrink-0 mt-0.5">
@@ -836,14 +853,16 @@ export function Dashboard() {
                 emptyText="No follow-ups due this week"
               >
                 {mdoPendingFollowups.map(fu => (
-                  <button type="button" key={fu.id} onClick={() => openDetailPanel('quote' as any, fu.id)} className="w-full text-left px-3 py-2 hover:bg-g50 border-b border-g100 last:border-0 focus:outline-none">
-                    <div className="font-mono text-[10px] font-bold text-purple-600">{fu.id}</div>
+                  <button type="button" key={fu.id} onClick={() => openDetailPanel('quote' as any, fu.id)} disabled={!canSeeEnqQuote} className="w-full text-left px-3 py-2 hover:bg-g50 border-b border-g100 last:border-0 focus:outline-none">
+                    {/* fu.id is the quote number */}
+                    <div className="font-mono text-[10px] font-bold text-purple-600">{canSeeEnqQuote ? fu.id : data.quotes.find(q => q.id === fu.quote_id)?.cust}</div>
                     <div className="text-[11.5px] text-blk font-medium">{fu.owner}</div>
                     <div className="text-[11px] text-g400">{fu.next_date} {fmtTime12(fu.next_time)}</div>
                   </button>
                 ))}
               </MdoSection>
 
+              {canSeeEnqQuote && (<>
               {/* Overdue enquiries */}
               <MdoSection
                 title="Overdue Enquiries"
@@ -885,6 +904,7 @@ export function Dashboard() {
                   );
                 })}
               </MdoSection>
+              </>)}
 
               {/* Open orders overdue */}
               <MdoSection
@@ -954,7 +974,7 @@ export function Dashboard() {
                 { color: 'teal',   label: 'Order delivery' },
                 { color: 'orange', label: 'Quote awaiting PO' },
               ] as { color: CalendarEvent['color']; label: string }[]
-            ).map(({ color, label }) => (
+            ).filter(l => canSeeEnqQuote || l.color === 'purple' || l.color === 'teal').map(({ color, label }) => (
               <div key={color} className="flex items-center gap-1.5">
                 <div className={cn('w-2 h-2 rounded-full', CAL_PILL_COLORS[color].dot)} />
                 <span className="font-mono text-[9px] text-g500">{label}</span>
@@ -1019,7 +1039,7 @@ export function Dashboard() {
 
       {activeTab === 'today' && (
         <div className="px-[30px] pb-6">
-          <DailySnapshot enquiries={data.enquiries} quotes={data.quotes} orders={data.orders} />
+          <DailySnapshot enquiries={data.enquiries} quotes={data.quotes} orders={data.orders} showEnqQuote={canSeeEnqQuote} />
         </div>
       )}
 
@@ -1627,6 +1647,7 @@ function CalendarDayColumn({ date, events, isToday }: {
               key={`${evt.type}-${evt.id}-${i}`}
               type="button"
               onClick={evt.onClick}
+              disabled={!evt.onClick}
               className={cn('w-full text-left px-2 py-1 rounded-[4px] flex items-start gap-1.5 transition-opacity hover:opacity-75 focus:outline-none', c.pill)}
             >
               <div className={cn('w-1.5 h-1.5 rounded-full mt-[3px] shrink-0', c.dot)} />

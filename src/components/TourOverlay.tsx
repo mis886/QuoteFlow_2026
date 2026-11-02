@@ -65,12 +65,13 @@ const TOOLTIP_H_EST = 200;
 const TOOLTIP_GAP = 20;
 
 interface Props {
+  steps: TourStep[];                 // the steps this login gets
   step: number;
   onNext: () => void;
   onSkip: () => void;
 }
 
-export function TourOverlay({ step, onNext, onSkip }: Props) {
+export function TourOverlay({ steps, step, onNext, onSkip }: Props) {
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [vpW, setVpW] = useState(window.innerWidth);
   const [vpH, setVpH] = useState(window.innerHeight);
@@ -78,7 +79,7 @@ export function TourOverlay({ step, onNext, onSkip }: Props) {
   const recalc = useCallback(() => {
     setVpW(window.innerWidth);
     setVpH(window.innerHeight);
-    const sel = TOUR_STEPS[step].targetSelector;
+    const sel = steps[step].targetSelector;
     if (sel) {
       const el = document.querySelector(sel);
       if (el) setTargetRect(el.getBoundingClientRect());
@@ -86,7 +87,7 @@ export function TourOverlay({ step, onNext, onSkip }: Props) {
     } else {
       setTargetRect(null);
     }
-  }, [step]);
+  }, [steps, step]);
 
   useEffect(() => {
     recalc();
@@ -111,8 +112,8 @@ export function TourOverlay({ step, onNext, onSkip }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onNext, onSkip]);
 
-  const isLast = step === TOUR_STEPS.length - 1;
-  const { title, description } = TOUR_STEPS[step];
+  const isLast = step === steps.length - 1;
+  const { title, description } = steps[step];
 
   // Spotlight rect with padding
   const rx = targetRect ? targetRect.x - PAD : 0;
@@ -188,12 +189,12 @@ export function TourOverlay({ step, onNext, onSkip }: Props) {
 
           {/* Step counter */}
           <div className="font-mono text-[10px] font-bold tracking-[2px] uppercase text-g400 mb-2">
-            {step + 1} / {TOUR_STEPS.length}
+            {step + 1} / {steps.length}
           </div>
 
           {/* Progress dots */}
           <div className="flex gap-1 mb-3">
-            {TOUR_STEPS.map((_, i) => (
+            {steps.map((_, i) => (
               <div
                 key={i}
                 className={`h-[3px] rounded-full transition-all duration-300 ${
