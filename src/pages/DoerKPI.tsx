@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore, useVisibleData } from '../store';
 import { cn } from '../lib/utils';
 import { DOER_ROLES, type DoerRole, type GlobalDateRangeLike } from '../lib/types';
-import { computeDoerMetrics, doerRowKey, ROLE_WEIGHTS, KPI_EXCLUDED_EMAILS, type DoerMetrics, type DueItem } from '../lib/kpi';
+import { computeDoerMetrics, doerRowKey, ORDER_ROLES, ROLE_WEIGHTS, KPI_EXCLUDED_EMAILS, type DoerMetrics, type DueItem } from '../lib/kpi';
 import {
   Clock, TrendingUp, Users, ChevronDown, ChevronRight,
   CheckCircle2, AlertTriangle, Target, Zap, Trophy,
@@ -122,6 +122,7 @@ const ROLE_CONFIG: Record<DoerRole, {
 const roleConfig = (role: DoerRole) => ROLE_CONFIG[role] ?? ROLE_CONFIG['Other'];
 
 export function DoerKPI() {
+  const { canSeeEnqQuote } = useAppStore();
   const data = useVisibleData();
   const navigate = useNavigate();
   const roster = data.roster.filter(m => m.active && !KPI_EXCLUDED_EMAILS.includes(m.email.toLowerCase()));
@@ -173,6 +174,47 @@ export function DoerKPI() {
       : null;
     return { avgOnTime, totalVolume, urgentDue, avgWin };
   }, [rows]);
+
+  // Everything else here is enquiries, quotes and follow-ups.
+  if (!canSeeEnqQuote) {
+    return (
+      <div className="p-6 lg:p-8 bg-cream min-h-full space-y-5">
+        <div>
+          <h1 className="font-serif text-[24px] font-bold text-blk">Doer KPI</h1>
+          <p className="text-[12px] text-g500 mt-0.5">Orders per person, {range.startDate} → {range.endDate}</p>
+        </div>
+        <div className="bg-white rounded-[10px] border border-g200 overflow-hidden shadow-sm">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-g500 font-mono text-[9px] tracking-[1px] uppercase border-b border-g100 bg-g50">
+                <Th>Doer</Th>
+                <Th>Role</Th>
+                <Th>Orders</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.filter(m => ORDER_ROLES.includes(m.role)).map(m => {
+                const key = doerRowKey(m.email, m.role, m.displayName);
+                const cfg = roleConfig(m.role);
+                return (
+                  <tr key={key} className="border-b border-g50 hover:bg-g50 cursor-pointer transition-colors"
+                    onClick={() => navigate(`/doer-kpi/${encodeURIComponent(key)}`)}>
+                    <td className="px-4 py-2.5 font-semibold text-blk whitespace-nowrap">{m.displayName}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={cn('text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-[3px]', cfg.accentBg, cfg.accent)}>
+                        {cfg.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums text-g700 font-semibold">{m.role === 'DEO' ? m.orderCount : m.volume}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
 
   if (roster.length === 0) {
     return (

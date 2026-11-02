@@ -61,7 +61,7 @@ export const BHIWANDI_EMAIL = 'bhiwandi@himalayaterpene.com';
 export const ADMIN_EMAILS = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com', 'anil@himalayaterpene.com'];
 // Logins that don't get the Enquiries and Quotations modules (canSeeEnqQuote).
 export const NO_ENQ_QUOTE_EMAILS = ['mum@himalayaterpene.com', 'accounts@himalayaterpene.com'];
-export const ENQ_QUOTE_PATHS = ['/enquiries', '/quotes'];
+export const ENQ_QUOTE_PATHS = ['/enquiries', '/quotes', '/followups', '/analytics'];
 export const SALES_SIGNATORY_NAMES = ['Nimisha Pawar', 'Ruby'] as const;
 export type SalesSignatoryName = typeof SALES_SIGNATORY_NAMES[number];
 

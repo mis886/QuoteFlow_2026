@@ -293,7 +293,7 @@ export function Blueprint() {
             <p className="text-xs text-g500 font-light max-w-2xl">Complete module registry, React architecture, integrations, SLA engine, and phased roadmap for the Himalaya TerpenesEQ System.</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => navigate('/analytics')}>← Analytics</Button>
+            <Button variant="secondary" className={canSeeEnqQuote ? undefined : 'hidden'} onClick={() => navigate('/analytics')}>← Analytics</Button>
             <Button variant="primary" onClick={() => window.print()}>Export Blueprint</Button>
           </div>
         </div>

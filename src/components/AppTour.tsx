@@ -11,7 +11,7 @@ export function AppTour() {
 
   if (!user || !active) return null;
 
-  const steps = TOUR_STEPS.filter(s => canSeeEnqQuote || (s.id !== 'enquiries' && s.id !== 'quotations'));
+  const steps = TOUR_STEPS.filter(s => canSeeEnqQuote || !['enquiries', 'quotations', 'followups', 'analytics'].includes(s.id));
 
   const done = () => {
     localStorage.setItem(TOUR_KEY, '1');

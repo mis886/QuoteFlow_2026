@@ -145,6 +145,10 @@ export interface DoerMetrics {
 // How each role's composite blends the metrics. Volume & speed are normalized to
 // 0–100 within the cohort before blending (see computeDoerMetrics).
 interface RoleWeight { onTime?: number; volume?: number; speed?: number; win?: number; }
+// The only roles with something besides enquiries, quotes and follow-ups: logins
+// without canSeeEnqQuote see their order counts and nothing else.
+export const ORDER_ROLES: DoerRole[] = ['DEO', 'PI Sender'];
+
 export const ROLE_WEIGHTS: Record<DoerRole, RoleWeight | null> = {
   'DEO':         { volume: 0.5, speed: 0.5 },
   'Rate Entry':  { speed: 0.5, volume: 0.5 },   // speed = E2Q
@@ -517,6 +521,8 @@ export interface TimelineRow {
   nextSummary?: string;    // planned-next: "12 Jun · Email — send revised quote"
   lapH?: number | null;    // entry/conversion lap in hours (DEO rows)
   kindLabel?: string;      // row-type label for DEO rows ("Enquiry entry" / "Order")
+  orderId?: string;        // Order rows: the order's own number
+  orderPo?: string;        // Order rows: its PO number
 }
 
 // Short human duration for a lap in hours: "3h", "1d 4h", "2d".
@@ -676,6 +682,8 @@ export function buildDoerTimeline(
         onTime: null,                                  // conversion has no SLA bar
         lapH,
         kindLabel: 'Order',
+        orderId: o.id,
+        orderPo: o.poNo,
         note: `PO ${o.poNo || ''} converted${lapH != null ? ` ${fmtLapShort(lapH)} after quote sent` : ''}`.trim(),
       });
     }
@@ -707,6 +715,8 @@ export function buildDoerTimeline(
         onTime: null,
         lapH: null,
         kindLabel: 'Order',
+        orderId: o.id,
+        orderPo: o.poNo,
         note: `PO ${o.poNo || ''} confirmed${o.value ? ` · ₹${o.value.toLocaleString('en-IN')}` : ''}`.trim(),
       });
     }

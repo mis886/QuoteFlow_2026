@@ -5,7 +5,7 @@ import { cn } from '../lib/utils';
 import { fmtIST } from '../lib/utils';
 import { type GlobalDateRangeLike, type DoerRole } from '../lib/types';
 import {
-  computeDoerMetrics, doerRowKey, buildDoerTimeline, doerStageWorkload, ROLE_WEIGHTS, KPI_EXCLUDED_EMAILS,
+  computeDoerMetrics, doerRowKey, buildDoerTimeline, doerStageWorkload, ORDER_ROLES, ROLE_WEIGHTS, KPI_EXCLUDED_EMAILS,
   type DoerMetrics, type TimelineRow, type StageWorkload, type RosterMemberLike,
 } from '../lib/kpi';
 import { ArrowLeft, Clock, Layers, CheckCircle2, XCircle, CircleDashed, AlertTriangle, CheckSquare } from 'lucide-react';
@@ -43,6 +43,7 @@ function fmtHours(v: number | null): string {
 export function DoerDetail() {
   const { key = '' } = useParams();
   const navigate = useNavigate();
+  const { canSeeEnqQuote } = useAppStore();
   const data = useVisibleData();
   const decodedKey = decodeURIComponent(key);
 
@@ -71,7 +72,7 @@ export function DoerDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, member, range.startDate, range.endDate]);
 
-  if (!member || !m) {
+  if (!member || !m || (!canSeeEnqQuote && !ORDER_ROLES.includes(m.role))) {
     return (
       <div className="p-8">
         <button onClick={() => navigate('/doer-kpi')} className="inline-flex items-center gap-1.5 text-[12px] text-g500 hover:text-blk mb-4">
@@ -80,6 +81,26 @@ export function DoerDetail() {
         <div className="bg-white rounded-[10px] border border-g200 p-8 text-center text-[13px] text-g500">
           This doer is no longer on the roster.
         </div>
+      </div>
+    );
+  }
+
+  // Orders only: an order's own number, never the quote it came from.
+  if (!canSeeEnqQuote) {
+    const orderRows = timeline.filter(r => r.kindLabel === 'Order').map(r => ({
+      ...r, refId: r.orderId ?? '', note: r.orderPo ? `PO ${r.orderPo}` : '', lapH: null,
+    }));
+    return (
+      <div className="p-6 lg:p-8 bg-cream min-h-full">
+        <button onClick={() => navigate('/doer-kpi')} className="inline-flex items-center gap-1.5 text-[12px] text-g500 hover:text-blk mb-4">
+          <ArrowLeft size={14} /> Back to Doer KPI
+        </button>
+        <h1 className="font-serif text-[24px] font-bold text-blk">{member.display_name}</h1>
+        <div className="text-[12px] text-g500 mt-0.5">{member.role} · {member.email}</div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+          <MetricCard label="Orders" value={String(orderRows.length)} hint="in period" plain />
+        </div>
+        <WorkHistoryTable timeline={orderRows} doerName={member.display_name} role={member.role} />
       </div>
     );
   }

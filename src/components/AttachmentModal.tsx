@@ -40,9 +40,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
 
   // Resolve the full enquiry → quote(s) → order(s) chain from any entry point
   let rootEnq: any = null;
-  if (!canSeeEnqQuote) {
-    // Only the order's own files for these logins, none from its quote / enquiry.
-  } else if (entityType === 'enquiry') {
+  if (entityType === 'enquiry') {
     rootEnq = data.enquiries.find(e => e.id === entityId);
   } else if (entityType === 'quote') {
     const q = data.quotes.find(qq => qq.id === entityId) as any;
@@ -170,6 +168,12 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
   }
 
   const attachments = allAttachments;
+  // Logins without enquiries / quotes get the files uploaded on them as bare
+  // "Earlier files": file name and download, no number, type or date.
+  const hideChainDetails = !canSeeEnqQuote && entityType === 'order';
+  const chainDocIds = new Set([...chainEnqs, ...chainQuotes].map(d => d.id));
+  const earlierFiles = hideChainDetails ? attachments.filter((a: any) => chainDocIds.has(a.sourceEntity)) : [];
+  const listedFiles = hideChainDetails ? attachments.filter((a: any) => !chainDocIds.has(a.sourceEntity)) : attachments;
 
   // We still need to know the *current* entity's attachments list to append new uploads to it
   let currentEntityAttachments: any[] = [];
@@ -472,12 +476,12 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
           )}
 
           <div className="mt-6 pt-5 border-t border-g200">
-            <div className="text-[11px] font-medium text-g500 mb-3 uppercase tracking-wider font-mono">Uploaded Files ({attachments.length})</div>
-            {attachments.length === 0 ? (
+            <div className="text-[11px] font-medium text-g500 mb-3 uppercase tracking-wider font-mono">Uploaded Files ({listedFiles.length})</div>
+            {listedFiles.length === 0 ? (
               <div className="text-center py-6 text-g400 text-xs italic bg-g50 rounded border border-dashed border-g200">No attachments found</div>
             ) : (
               <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-1">
-                {attachments.map((att: any) => (
+                {listedFiles.map((att: any) => (
                   <div key={att.id} className="flex items-center justify-between p-3 bg-white border border-g200 rounded-[3px] hover:border-red-mrt/50 transition-colors group">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded bg-red-lt flex flex-col items-center justify-center text-red-mrt">
@@ -508,6 +512,31 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+            {earlierFiles.length > 0 && (
+              <div className="mt-5">
+                <div className="text-[11px] font-medium text-g500 mb-3 uppercase tracking-wider font-mono">Earlier files ({earlierFiles.length})</div>
+                <div className="grid grid-cols-1 gap-2 max-h-[220px] overflow-y-auto pr-1">
+                  {earlierFiles.map((att: any) => (
+                    <div key={att.id} className="flex items-center justify-between p-3 bg-white border border-g200 rounded-[3px] hover:border-red-mrt/50 transition-colors">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded bg-red-lt flex items-center justify-center text-red-mrt shrink-0">
+                          <Paperclip size={14} />
+                        </div>
+                        <div className="text-[13px] font-bold text-blk leading-tight truncate">{att.fileName}</div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDownload(att); }}
+                        disabled={downloadingId === att.id}
+                        className="p-2 text-g400 hover:text-red-mrt transition-colors disabled:opacity-50"
+                        title="Download"
+                      >
+                        {downloadingId === att.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

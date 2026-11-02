@@ -104,8 +104,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           <NavItem to="/stock-register" icon={<Warehouse size={15} />} label="Stock Register" active={isActive('/stock-register')} collapsed={collapsed} dataTour="nav-stock-register" />
           <NavItem to="/stock-movements" icon={<ArrowLeftRight size={15} />} label="Stock Movements" active={isActive('/stock-movements')} collapsed={collapsed} dataTour="nav-stock-movements" />
           <NavItem to="/dispatch" icon={<Truck size={15} />} label="Dispatch" active={isActive('/dispatch')} collapsed={collapsed} dataTour="nav-dispatch" />
-          <NavItem to="/followups" icon={<Phone size={15} />} label="Follow-Ups" active={isActive('/followups')} collapsed={collapsed}
-            badge={canSeeEnqQuote && overdueFollowUpsCount > 0 ? { text: overdueFollowUpsCount.toString(), className: 'bg-red-mrt' } : undefined} dataTour="nav-followups" />
+          {canSeeEnqQuote && <NavItem to="/followups" icon={<Phone size={15} />} label="Follow-Ups" active={isActive('/followups')} collapsed={collapsed}
+            badge={overdueFollowUpsCount > 0 ? { text: overdueFollowUpsCount.toString(), className: 'bg-red-mrt' } : undefined} dataTour="nav-followups" />}
           <NavItem to="/sampling" icon={<FlaskConical size={15} />} label="Sampling" active={isActive('/sampling')} collapsed={collapsed}
             badge={overdueSamplesCount > 0 ? { text: overdueSamplesCount.toString(), className: 'bg-amber-500' } : undefined} />
           <NavItem to="/customers" icon={<Users size={15} />} label="Customers" active={isActive('/customers')} collapsed={collapsed} dataTour="nav-customers" />
@@ -118,7 +118,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         )}
         {collapsed && <div className="mx-2 h-px bg-white/10 mb-2" />}
         <div className="mb-4">
-          <NavItem to="/analytics" icon={<LineChart size={15} />} label="Analytics" active={isActive('/analytics')} collapsed={collapsed} dataTour="nav-analytics" />
+          {canSeeEnqQuote && <NavItem to="/analytics" icon={<LineChart size={15} />} label="Analytics" active={isActive('/analytics')} collapsed={collapsed} dataTour="nav-analytics" />}
           <NavItem to="/doer-kpi" icon={<Gauge size={15} />} label="Doer KPI" active={isActive('/doer-kpi')} collapsed={collapsed} />
           <NavItem to="/intelligence" icon={<Brain size={15} />} label="Customer Intel" active={isActive('/intelligence')} collapsed={collapsed} />
           <NavItem to="/blueprint" icon={<Boxes size={15} />} label="System Plan" active={isActive('/blueprint')} collapsed={collapsed} />
