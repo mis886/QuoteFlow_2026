@@ -357,8 +357,6 @@ export function NewStockInward() {
           make: form.make.trim() || null,
           remark: form.remark.trim() || null,
           sample_off: form.sampleOff,
-          coa_file: form.coaFile.trim() || null,
-          coa_url: form.coaUrl.trim() || null,
           updated_at: new Date().toISOString(),
           // 2026-09-19: activeDoer (the specific person acting right now,
           // matching SendEmailModal.tsx's "who is sending this" identity),
@@ -366,6 +364,12 @@ export function NewStockInward() {
           updated_by: activeDoer?.email ?? user?.email ?? null,
           quantity: (lotRow.quantity ?? 0) - original.totalQty + (totalQty ?? 0),
         };
+        // A blank COA here must not wipe one added to the lot from Stock
+        // Summary (CoaAttachModal), which isn't on this Inward entry.
+        if (form.coaFile.trim() || form.coaUrl.trim()) {
+          patch.coa_file = form.coaFile.trim() || null;
+          patch.coa_url = form.coaUrl.trim() || null;
+        }
         // Same warehouse: net old-vs-new barrels on that one column. Changed
         // warehouse: subtract the old contribution from its column, add the
         // new contribution to the (different) new column.
