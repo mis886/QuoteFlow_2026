@@ -13,6 +13,7 @@ import { DispatchDrawer, StepEditPatch } from '../components/DispatchDrawer';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { logActivity } from '../lib/activityLog';
 
 type SubType = DispatchFulfillmentType | 'not_set';
@@ -63,16 +64,16 @@ export function Dispatch() {
   // 2026-10-16: DOs (Outward entries) linked to an order — loaded on the same
   // tick, so a Step 6 card knows its DO is saved but not emailed yet.
   const [linkedDOs, setLinkedDOs] = useState<LinkedDO[]>([]);
-  const reloadSteps = () => supabase.from('dispatch_steps').select('*').then(({ data: rows, error }) => {
+  const reloadSteps = () => fetchAllRows(() => supabase.from('dispatch_steps').select('*').order('id')).then(({ data: rows, error }) => {
     if (error) { console.error('Error loading dispatch steps:', error); return; }
-    setStepRecords((rows || []).map(mapStepFromDB));
+    setStepRecords(rows.map(mapStepFromDB));
   });
   useEffect(() => {
     reloadSteps();
-    supabase.from('stock_movements').select('id, do_number, order_id, dispatch_round, email_sent_at, num_articles').eq('type', 'outward').not('order_id', 'is', null)
+    fetchAllRows(() => supabase.from('stock_movements').select('id, do_number, order_id, dispatch_round, email_sent_at, num_articles').eq('type', 'outward').not('order_id', 'is', null).order('id'))
       .then(({ data: rows, error }) => {
         if (error) { console.error('Error loading linked DOs:', error); return; }
-        setLinkedDOs((rows || []).map(mapLinkedDOFromDB));
+        setLinkedDOs(rows.map(mapLinkedDOFromDB));
       });
   }, [now]);
 

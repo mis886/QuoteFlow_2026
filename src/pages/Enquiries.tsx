@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { customerOfDoc, calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
 import { EnqStatus } from '../lib/types';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
 
 export function Enquiries() {
@@ -46,12 +47,13 @@ export function Enquiries() {
   useEffect(() => { setLocalSearch(globalSearchQuery); }, [globalSearchQuery]);
 
   useEffect(() => {
-    supabase
+    fetchAllRows(() => supabase
       .from('samples')
       .select('id, enq_ref, cust, product_name, quantity, unit, email_sent_at, status, outcome, client_email')
       .eq('source_module', 'enquiry')
       .order('created_at', { ascending: false })
-      .then(({ data: rows }) => { if (rows) setEnqSamples(rows); });
+      .order('id'))
+      .then(({ data: rows }) => setEnqSamples(rows));
   }, []);
 
   const filteredEnqs = useMemo(() => {

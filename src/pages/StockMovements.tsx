@@ -68,6 +68,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Plus, RefreshCw, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { useAppStore } from '../store';
 import { fmtDate, fmtIST, normalizeSearchText, doerLabel, canDeleteRecords, friendlyStockError } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
@@ -217,10 +218,11 @@ export function StockMovements() {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await fetchAllRows(() => supabase
       .from('stock_movements')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .order('id'));
     if (!error && data) setMovements(data.map(mapRow));
     setLoading(false);
   };

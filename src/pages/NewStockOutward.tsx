@@ -163,6 +163,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { Button } from '../components/ui';
 import { SearchableCombobox } from '../components/SearchableCombobox';
 import { usePackingTypes } from '../hooks/usePackingTypes';
@@ -307,11 +308,12 @@ const DO_NUMBER_PREFIX: Record<string, string> = {
 async function generateNextDoNumber(warehouse: string): Promise<string> {
   const prefix = DO_NUMBER_PREFIX[warehouse];
   if (!prefix) return '';
-  const { data } = await supabase
+  const { data } = await fetchAllRows(() => supabase
     .from('stock_movements')
     .select('do_number')
     .eq('type', 'outward')
-    .ilike('do_number', `${prefix}-%`);
+    .ilike('do_number', `${prefix}-%`)
+    .order('id'));
   const pattern = new RegExp(`^${prefix}-(\\d{4})$`);
   let max = 0;
   for (const row of (data ?? []) as { do_number: string | null }[]) {
@@ -645,12 +647,13 @@ function OutwardForm() {
   useEffect(() => {
     let cancelled = false;
     const loadPartyTransporters = async () => {
-      const { data, error: fetchErr } = await supabase
+      const { data, error: fetchErr } = await fetchAllRows(() => supabase
         .from('customers')
         .select('company_name, preferred_transporter, fulfilment_type')
         .not('preferred_transporter', 'is', null)
         .neq('preferred_transporter', '')
-        .order('company_name', { ascending: true });
+        .order('company_name', { ascending: true })
+        .order('customer_id'));
       if (fetchErr || !data || cancelled) return;
       const names: string[] = [];
       const map: Record<string, string> = {};

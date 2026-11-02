@@ -10,6 +10,7 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
 import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry, needsBhiwandiEmail, orderFulfillmentFor, readyForNewEntry } from '../lib/dispatchFlow';
@@ -328,9 +329,11 @@ export function NewDispatchEntry() {
   useEffect(() => {
     const controller = new AbortController();
     setCoaSearchLoading(true);
-    let query = supabase.from('coa_document').select('*').order('created_at', { ascending: false }).limit(20).abortSignal(controller.signal);
-    if (coaSearchDebounced) query = query.or(`product_name.ilike.%${coaSearchDebounced}%,lot_no.ilike.%${coaSearchDebounced}%`);
-    query.then(({ data: rows, error }) => {
+    const query = () => supabase.from('coa_document').select('*').order('created_at', { ascending: false }).order('id').abortSignal(controller.signal);
+    const load: PromiseLike<{ data: any[] | null; error: any }> = coaSearchDebounced
+      ? fetchAllRows(() => query().or(`product_name.ilike.%${coaSearchDebounced}%,lot_no.ilike.%${coaSearchDebounced}%`))
+      : query().limit(20);
+    load.then(({ data: rows, error }) => {
       if (controller.signal.aborted) return;
       if (error) { console.error(error); setCoaResults([]); setCoaSearchLoading(false); return; }
       setCoaResults(rows ?? []);

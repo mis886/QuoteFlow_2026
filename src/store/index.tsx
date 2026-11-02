@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { MergeResult, Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, Ticket } from '../lib/types';
 import { supabase, signOut, getSettings } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
 import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS } from '../lib/utils';
@@ -174,6 +175,12 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+// Every value of one column, for the id retry below and the next SO number.
+async function allColumnValues(table: string, column: string): Promise<string[]> {
+  const { data } = await fetchAllRows(() => supabase.from(table).select(column).order(column));
+  return data.map((r: any) => r[column]);
+}
 
 // generateId() computes "next" as (max existing number + 1) from whatever's
 // in local React state — if two tabs/people insert within the same window,
@@ -822,18 +829,18 @@ const mapEnquiryToDB = (e: any) => {
         { data: dispatchEntriesData },
         { data: ticketsData },
       ] = await Promise.all([
-        supabase.from('enquiries').select('*').order('recv', { ascending: false }),
-        supabase.from('quotes').select('*').order('date', { ascending: false }),
-        supabase.from('orders').select('*').order('po_date', { ascending: false }),
-        supabase.from('customers').select('*').order('company_name'),
-        supabase.from('followups').select('*'),
+        fetchAllRows(() => supabase.from('enquiries').select('*').order('recv', { ascending: false }).order('id')),
+        fetchAllRows(() => supabase.from('quotes').select('*').order('date', { ascending: false }).order('id')),
+        fetchAllRows(() => supabase.from('orders').select('*').order('po_date', { ascending: false }).order('id')),
+        fetchAllRows(() => supabase.from('customers').select('*').order('company_name').order('customer_id')),
+        fetchAllRows(() => supabase.from('followups').select('*').order('id')),
         supabase.from('app_settings').select('*').eq('id', 'config').single(),
-        supabase.from('authorized_signatories').select('*').order('name'),
-        supabase.from('company_units').select('*').order('name'),
-        supabase.from('bank_accounts').select('*'),
-        supabase.from('team_roster').select('*').order('display_name'),
-        supabase.from('dispatch_entries').select('*').order('created_at', { ascending: false }),
-        supabase.from('tickets').select('*').order('created_at', { ascending: false }),
+        fetchAllRows(() => supabase.from('authorized_signatories').select('*').order('name').order('id')),
+        fetchAllRows(() => supabase.from('company_units').select('*').order('name').order('id')),
+        fetchAllRows(() => supabase.from('bank_accounts').select('*').order('id')),
+        fetchAllRows(() => supabase.from('team_roster').select('*').order('display_name').order('email').order('role')),
+        fetchAllRows(() => supabase.from('dispatch_entries').select('*').order('created_at', { ascending: false }).order('id')),
+        fetchAllRows(() => supabase.from('tickets').select('*').order('created_at', { ascending: false }).order('id')),
       ]);
 
       setData({
@@ -885,10 +892,7 @@ const mapEnquiryToDB = (e: any) => {
       enquiry,
       mapEnquiryToDB,
       'ENQ',
-      async () => {
-        const { data: rows } = await supabase.from('enquiries').select('id');
-        return (rows ?? []).map(r => r.id);
-      },
+      () => allColumnValues('enquiries', 'id'),
     );
     if (!error) {
       setData(prev => ({ ...prev, enquiries: [finalRecord, ...prev.enquiries] }));
@@ -941,10 +945,7 @@ const mapEnquiryToDB = (e: any) => {
       quote,
       mapQuoteToDB,
       'HTP',
-      async () => {
-        const { data: rows } = await supabase.from('quotes').select('id');
-        return (rows ?? []).map(r => r.id);
-      },
+      () => allColumnValues('quotes', 'id'),
     );
     if (!error) {
       setData(prev => ({ ...prev, quotes: [finalRecord, ...prev.quotes] }));
@@ -997,10 +998,7 @@ const mapEnquiryToDB = (e: any) => {
       order,
       mapOrderToDB,
       'ORD',
-      async () => {
-        const { data: rows } = await supabase.from('orders').select('id');
-        return (rows ?? []).map(r => r.id);
-      },
+      () => allColumnValues('orders', 'id'),
     );
     if (!error) {
       setData(prev => ({ ...prev, orders: [finalRecord, ...prev.orders] }));
@@ -1128,7 +1126,7 @@ const mapEnquiryToDB = (e: any) => {
       .sort((a, b) => (a.created_at || a.poDate || '').localeCompare(b.created_at || b.poDate || ''));
     for (const order of targets) {
       for (let attempt = 0; attempt < 3; attempt++) {
-        const { data: rows, error: fetchErr } = await supabase.from('orders').select('so_number').not('so_number', 'is', null);
+        const { data: rows, error: fetchErr } = await fetchAllRows(() => supabase.from('orders').select('so_number').not('so_number', 'is', null).order('id'));
         if (fetchErr) { console.error('Error fetching SO numbers:', fetchErr); return; }
         const soNumber = generateId('SO', (rows || []).map((r: any) => r.so_number));
         const { data: updated, error } = await supabase
@@ -1192,10 +1190,7 @@ const mapEnquiryToDB = (e: any) => {
       newEntry,
       mapDispatchEntryToDB,
       'DSP',
-      async () => {
-        const { data: rows } = await supabase.from('dispatch_entries').select('id');
-        return (rows ?? []).map(r => r.id);
-      },
+      () => allColumnValues('dispatch_entries', 'id'),
     );
     if (!error) {
       setData(prev => ({ ...prev, dispatchEntries: [finalRecord, ...prev.dispatchEntries] }));
@@ -1346,10 +1341,7 @@ const mapEnquiryToDB = (e: any) => {
       t,
       mapTicketToDB,
       'TKT',
-      async () => {
-        const { data: rows } = await supabase.from('tickets').select('id');
-        return (rows ?? []).map(r => r.id);
-      },
+      () => allColumnValues('tickets', 'id'),
     );
     if (!error) {
       setData(prev => ({ ...prev, tickets: [finalRecord, ...prev.tickets] }));
@@ -1585,10 +1577,7 @@ const mapEnquiryToDB = (e: any) => {
       // Leads are numbered LEAD-YYYY-NNN, so an id collision retries with the
       // same prefix instead of turning the lead into a CUST- id.
       customer.customerStatus === 'lead' ? 'LEAD' : 'CUST',
-      async () => {
-        const { data: rows } = await supabase.from('customers').select('customer_id');
-        return (rows ?? []).map(r => r.customer_id);
-      },
+      () => allColumnValues('customers', 'customer_id'),
     );
     if (!error) {
       setData(prev => ({ ...prev, customers: [...prev.customers, finalRecord] }));

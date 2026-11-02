@@ -71,6 +71,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { Button } from '../components/ui';
 import { SearchableCombobox } from '../components/SearchableCombobox';
 import { StockMovementWarehouse } from '../lib/types';
@@ -252,9 +253,11 @@ export function NewStockInward() {
   useEffect(() => {
     const controller = new AbortController();
     setCoaSearchLoading(true);
-    let query = supabase.from('coa_document').select('*').order('created_at', { ascending: false }).limit(20).abortSignal(controller.signal);
-    if (coaSearchDebounced) query = query.or(`product_name.ilike.%${coaSearchDebounced}%,lot_no.ilike.%${coaSearchDebounced}%`);
-    query.then(({ data: rows, error }) => {
+    const query = () => supabase.from('coa_document').select('*').order('created_at', { ascending: false }).order('id').abortSignal(controller.signal);
+    const load: PromiseLike<{ data: any[] | null; error: any }> = coaSearchDebounced
+      ? fetchAllRows(() => query().or(`product_name.ilike.%${coaSearchDebounced}%,lot_no.ilike.%${coaSearchDebounced}%`))
+      : query().limit(20);
+    load.then(({ data: rows, error }) => {
       if (controller.signal.aborted) return;
       if (error) { console.error(error); setCoaResults([]); setCoaSearchLoading(false); return; }
       setCoaResults(rows ?? []);

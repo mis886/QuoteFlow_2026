@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { Button } from '../components/ui';
 import { DuplicateReviewPanel } from '../components/DuplicateReviewPanel';
 import { Search, Plus, Upload, Loader2, X, Phone, Mail, MessageCircle, Star, Package, ChevronRight, MapPin, Copy, Truck, Wand2, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
@@ -912,8 +913,8 @@ export function Customers() {
   const [reviewSamples, setReviewSamples] = useState<{ cust: string; customerId?: string }[]>([]);
   useEffect(() => {
     if (!canDelete) return;
-    supabase.from('samples').select('cust, customer_id').then(({ data: rows }) => {
-      setReviewSamples((rows ?? []).map((r: any) => ({ cust: r.cust ?? '', customerId: r.customer_id ?? undefined })));
+    fetchAllRows(() => supabase.from('samples').select('cust, customer_id').order('id')).then(({ data: rows }) => {
+      setReviewSamples(rows.map((r: any) => ({ cust: r.cust ?? '', customerId: r.customer_id ?? undefined })));
     });
   }, [canDelete]);
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);

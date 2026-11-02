@@ -73,6 +73,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, PackageCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { useAppStore } from '../store';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockLot } from '../lib/types';
@@ -149,11 +150,12 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await fetchAllRows(() => supabase
       .from('stock_lots')
       .select('*')
       .eq('is_finished', false)
-      .order('serial_no', { ascending: true, nullsFirst: false });
+      .order('serial_no', { ascending: true, nullsFirst: false })
+      .order('id'));
     if (!error && data) setLots(data.map(mapRow));
     setLoading(false);
   };

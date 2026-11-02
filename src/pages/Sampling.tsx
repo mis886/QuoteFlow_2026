@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Plus, Search, FlaskConical, Clock, CheckCircle2, XCircle, X, Loader2, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { EntryDateFilter } from '../components/EntryDateFilter';
@@ -295,10 +296,11 @@ export function Sampling() {
   };
 
   const fetchSamples = async () => {
-    const { data: rows, error } = await supabase
+    const { data: rows, error } = await fetchAllRows(() => supabase
       .from('samples')
       .select('*, sample_products(id, product_name, grade, lot_no, coa_url, quantity, unit, sort_order)')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .order('id'));
     if (!error && rows) setSamples(rows as Sample[]);
     setLoading(false);
   };

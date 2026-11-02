@@ -8,6 +8,7 @@ import { QuoteStatus } from '../lib/types';
 import { customerOfDoc, formatINR, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText, getCurrentQuoteItems, getEffectiveTotals } from '../lib/utils';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
 
 export function Quotes() {
@@ -37,18 +38,19 @@ export function Quotes() {
   useEffect(() => { setLocalSearch(globalSearchQuery); }, [globalSearchQuery]);
 
   useEffect(() => {
-    supabase.from('po_submissions').select('quote_id').then(({ data: rows }) => {
-      if (rows) setPoReceivedIds(new Set(rows.map((r: any) => r.quote_id)));
+    fetchAllRows(() => supabase.from('po_submissions').select('quote_id').order('id')).then(({ data: rows }) => {
+      setPoReceivedIds(new Set(rows.map((r: any) => r.quote_id)));
     });
   }, []);
 
   useEffect(() => {
-    supabase
+    fetchAllRows(() => supabase
       .from('samples')
       .select('id, quote_ref, cust, product_name, quantity, unit, email_sent_at, status, outcome, client_email')
       .eq('source_module', 'quotation')
       .order('created_at', { ascending: false })
-      .then(({ data: rows }) => { if (rows) setQuoteSamples(rows); });
+      .order('id'))
+      .then(({ data: rows }) => setQuoteSamples(rows));
   }, []);
 
   const filteredQuotes = useMemo(() => {

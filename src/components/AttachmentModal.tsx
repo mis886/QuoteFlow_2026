@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { uploadToS3, getS3SignedUrl } from '../lib/s3';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { fmtIST } from '../lib/utils';
 import { Paperclip, Download, X, Loader2, Search } from 'lucide-react';
@@ -96,9 +97,11 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
     if (!isOpen || entityType !== 'quote') return;
     const controller = new AbortController();
     setCoaSearchLoading(true);
-    let query = supabase.from('coa_document').select('*').order('created_at', { ascending: false }).limit(50).abortSignal(controller.signal);
-    if (coaSearchDebounced) query = query.ilike('lot_no', `%${coaSearchDebounced}%`);
-    query.then(({ data: rows, error }) => {
+    const query = () => supabase.from('coa_document').select('*').order('created_at', { ascending: false }).order('id').abortSignal(controller.signal);
+    const load: PromiseLike<{ data: any[] | null; error: any }> = coaSearchDebounced
+      ? fetchAllRows(() => query().ilike('lot_no', `%${coaSearchDebounced}%`))
+      : query().limit(50);
+    load.then(({ data: rows, error }) => {
       if (controller.signal.aborted) return;
       if (error) { console.error(error); setCoaResults([]); setCoaSearchLoading(false); return; }
       const q = data.quotes.find((qq: any) => qq.id === entityId) as any;

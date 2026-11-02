@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MessageSquare, FileSignature, ShoppingBag, FlaskConical, RefreshCw, Copy, Check, CalendarDays } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { fmtIST } from '../lib/utils';
 import { Enquiry, Quote, Order } from '../lib/types';
 
@@ -36,10 +37,11 @@ export function DailySnapshot({ enquiries, quotes, orders }: { enquiries: Enquir
 
   const loadHistory = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await fetchAllRows(() => supabase
       .from('sample_status_history')
       .select('sample_id, status, changed_at')
-      .order('changed_at', { ascending: true });
+      .order('changed_at', { ascending: true })
+      .order('id'));
     if (!error && data) setHistory(data as HistoryRow[]);
     setLoading(false);
   };

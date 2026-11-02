@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronRight, ChevronDown, X, Search } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAll';
 import { fmtIST } from '../lib/utils';
 
 const PAGE_SIZE = 50;
@@ -199,7 +200,7 @@ export function HistoryLog() {
   // once up front from a lightweight column-only query (not the paginated
   // main query, which is filtered/limited).
   useEffect(() => {
-    supabase.from('activity_log').select('actor_name').not('actor_name', 'is', null).in('module', CRM_MODULES).limit(2000)
+    fetchAllRows(() => supabase.from('activity_log').select('actor_name').not('actor_name', 'is', null).in('module', CRM_MODULES).order('id'))
       .then(({ data }) => {
         const names = Array.from(new Set((data ?? []).map((r: any) => r.actor_name).filter(Boolean))).sort();
         setStaffOptions(names as string[]);
