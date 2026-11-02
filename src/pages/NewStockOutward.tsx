@@ -295,6 +295,17 @@ const DO_NUMBER_PREFIX: Record<string, string> = {
   BALAJI: 'B',
 };
 
+// 2026-11-02 (user decision): each warehouse's sequence continues from the
+// number the team had reached when DO numbers were typed by hand. The next
+// DO is never lower than these (e.g. first auto number for BALAJI = B-0810);
+// once saved DOs go past it, the normal "highest + 1" rule takes over.
+const DO_NUMBER_START: Record<string, number> = {
+  BALAJI: 810,
+  Swastik: 12,
+  Reliable: 70,
+  Hariom: 179,
+};
+
 // Next DO Number for `warehouse`: "<PREFIX>-0001", zero-padded to 4 digits,
 // sequential per warehouse, never resets. Fetches every do_number starting
 // with "<PREFIX>-" (cheap ilike prefix filter, scoped to Outward rows —
@@ -323,7 +334,8 @@ async function generateNextDoNumber(warehouse: string): Promise<string> {
       if (n > max) max = n;
     }
   }
-  return `${prefix}-${String(max + 1).padStart(4, '0')}`;
+  const next = Math.max(max + 1, DO_NUMBER_START[warehouse] ?? 1);
+  return `${prefix}-${String(next).padStart(4, '0')}`;
 }
 
 // Guards the create-mode insert against a duplicate DO Number from two
