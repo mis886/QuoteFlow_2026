@@ -4,7 +4,7 @@ import { Search, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { customerOfDoc, dispatchOrderView, canDeleteRecords, fmtIST, doerLabel, siteLabel, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
@@ -63,11 +63,12 @@ export function Dispatch() {
   // 2026-10-16: DOs (Outward entries) linked to an order — loaded on the same
   // tick, so a Step 6 card knows its DO is saved but not emailed yet.
   const [linkedDOs, setLinkedDOs] = useState<LinkedDO[]>([]);
+  const reloadSteps = () => supabase.from('dispatch_steps').select('*').then(({ data: rows, error }) => {
+    if (error) { console.error('Error loading dispatch steps:', error); return; }
+    setStepRecords((rows || []).map(mapStepFromDB));
+  });
   useEffect(() => {
-    supabase.from('dispatch_steps').select('*').then(({ data: rows, error }) => {
-      if (error) { console.error('Error loading dispatch steps:', error); return; }
-      setStepRecords((rows || []).map(mapStepFromDB));
-    });
+    reloadSteps();
     supabase.from('stock_movements').select('id, do_number, order_id, dispatch_round, email_sent_at, num_articles').eq('type', 'outward').not('order_id', 'is', null)
       .then(({ data: rows, error }) => {
         if (error) { console.error('Error loading linked DOs:', error); return; }
@@ -82,12 +83,31 @@ export function Dispatch() {
   const stepLogLabel = (o: Order, stepNo: number, what: string) =>
     `${o.soNumber || o.id} · Step ${stepNo} ${stepDef(stepNo as StepNo).title} · ${what}`;
 
+  // The step was finished elsewhere and this screen hadn't caught up: nothing
+  // was saved, so no History Log row — refresh and say who did it.
+  const stepAlreadyDone = async (saved: DispatchStepRecord[]) => {
+    await reloadSteps();
+    const r = saved[0];
+    const by = r?.doneBy ? ` by ${doerLabel(r.doneBy, data.roster)}` : '';
+    const at = r?.doneAt ? ` at ${fmtIST(new Date(r.doneAt), 'dd MMM, hh:mm a')}` : '';
+    showToast('ok', `This step was already done${by}${at}. Screen refreshed.`);
+  };
+
   const runStepAction = async (card: BoardOrderCard, action: StepAction, remark?: string) => {
     if (!canActOnBoard || busyCardKey) return;
     setBusyCardKey(card.key);
     try {
+      // The screen can be up to a minute old: check what's saved right now.
+      const savedSteps = async () => {
+        const { data: fresh, error } = await supabase.from('dispatch_steps').select('*')
+          .eq('order_id', card.order.id).eq('round', card.position.round).in('step_no', action.writes.map(w => w.stepNo));
+        if (error) throw error;
+        return (fresh || []).map(mapStepFromDB);
+      };
+      const { open, alreadyDone } = openStepWrites(action.writes, await savedSteps());
+      if (!open.length) { await stepAlreadyDone(alreadyDone); return; }
       const nowIso = new Date().toISOString();
-      const rows = action.writes.map((w, i) => ({
+      const rows = open.map((w, i) => ({
         order_id: card.order.id,
         round: card.position.round,
         step_no: w.stepNo,
@@ -99,6 +119,7 @@ export function Dispatch() {
         remark: i === 0 && remark?.trim() ? remark.trim() : null,
       }));
       const { data: inserted, error } = await supabase.from('dispatch_steps').insert(rows).select('*');
+      if (error?.code === '23505') { await stepAlreadyDone(openStepWrites(action.writes, await savedSteps()).alreadyDone); return; }
       if (error) throw error;
       setStepRecords(prev => [...prev, ...(inserted || []).map(mapStepFromDB)]);
       for (const row of inserted || []) {
@@ -128,12 +149,13 @@ export function Dispatch() {
     try {
       // Prereq check, round, planned time, insert + activity log — shared
       // with the entry page's Step 8 auto-complete (saveEntryStepRows).
-      const inserted = await saveEntryStepRows({
-        entry: e, entries: data.dispatchEntries, records: stepRecords, action, remark,
+      const { inserted, alreadyDone } = await saveEntryStepRows({
+        entry: e, entries: data.dispatchEntries, action, remark,
         doneBy: user?.email ?? null,
         orderLabel: card.order ? (card.order.soNumber || card.order.id) : e.orderId,
         ...(manualStep9 ? { manualStep9: true, logNote: 'Bhiwandi already informed — marked manually' } : {}),
       });
+      if (!inserted.length) { await stepAlreadyDone(alreadyDone); return; }
       setStepRecords(prev => [...prev, ...inserted.map(mapStepFromDB)]);
     } catch (err: any) {
       // The database's own refusal ("Add invoice no. and attach Invoice /
@@ -332,7 +354,7 @@ export function Dispatch() {
   // because the drawer's Edit / Delete act on it (the order, or that entry).
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
   const drawerOrderId = drawerCard ? (drawerCard.kind === 'order' ? drawerCard.order.id : drawerCard.entry.orderId) : null;
-  const openDrawer = (card: BoardCard) => setDrawerCard(card);
+  const openDrawer = (card: BoardCard) => { setDrawerCard(card); reloadSteps(); };
   const closeDrawer = useCallback(() => setDrawerCard(null), []);
 
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);

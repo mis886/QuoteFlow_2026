@@ -305,6 +305,22 @@ export const STEP9_MANUAL_ACTION: StepAction = {
 };
 
 /**
+ * What a step click may still write, given the rows saved right now. The click
+ * came from an out-of-date screen if its own step (the action's first write)
+ * is already finished, so nothing is written — not even "No overdue ✓"'s
+ * Step 3/4 skips, which would jump a Mgmt approval still waiting. Otherwise
+ * only steps with no finished row are written.
+ */
+export function openStepWrites<W extends { stepNo: number }>(writes: W[], saved: DispatchStepRecord[]) {
+  const finished = saved.filter(r => r.status === 'done' || r.status === 'skipped');
+  const isFinished = (w: W) => finished.some(r => r.stepNo === w.stepNo);
+  return {
+    open: writes.length && isFinished(writes[0]) ? [] : writes.filter(w => !isFinished(w)),
+    alreadyDone: finished.filter(r => r.stepNo === writes[0]?.stepNo),
+  };
+}
+
+/**
  * Why an entry's Step 8–11 button can't be pressed yet, or undefined if it
  * can. The same rule the database trigger enforces for 8, 9 and 10
  * (enforce_dispatch_entry_step_prereqs).

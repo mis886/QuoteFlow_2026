@@ -7,7 +7,7 @@
 import { supabase } from './supabase';
 import { logActivity } from './activityLog';
 import type { DispatchEntry } from './types';
-import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, stepDef } from './dispatchFlow';
+import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, stepDef } from './dispatchFlow';
 
 /** The entry as saved in the database right now — the fields the Step 8–11 rules read. */
 async function freshEntry(entry: DispatchEntry): Promise<DispatchEntry> {
@@ -50,22 +50,29 @@ export async function loadOrderStepRecords(orderId: string): Promise<DispatchSte
  * first" / "Send email to Bhiwandi first" / "Upload LR first" / "Send Email
  * to Client first") or the database error. Returns the inserted rows (raw, as
  * Supabase returns them).
+ * A step someone already finished (the screen was out of date, or two clicks
+ * landed together) is not an error: nothing is written or logged, `inserted`
+ * is empty and `alreadyDone` holds the saved rows, for the caller to refresh.
+ * This is checked before the proof, which a finished step doesn't need: Step 9
+ * marked manually has no Bhiwandi email.
  * `manualStep9`: "Mark Step 9 done (Bhiwandi already informed)" — Step 9 is
  * saved without a Bhiwandi email, with the remark the database accepts for it.
  */
-export async function saveEntryStepRows({ entry, entries, records, action, remark, doneBy, orderLabel, logNote, manualStep9 = false }: {
+export async function saveEntryStepRows({ entry, entries, action, remark, doneBy, orderLabel, logNote, manualStep9 = false }: {
   entry: DispatchEntry;
   entries: DispatchEntry[];          // every dispatch entry (for the round), may include `entry`
-  records: DispatchStepRecord[];     // step records — only this entry's are used
   action: StepAction;
   remark?: string;
   doneBy?: string | null;
   orderLabel: string;                // SO no. (or order id) for the activity log
   logNote?: string;                  // "Done (…)" in the log; default the button label
   manualStep9?: boolean;
-}): Promise<any[]> {
+}): Promise<{ inserted: any[]; alreadyDone: DispatchStepRecord[] }> {
   const e = await freshEntry(entry);
-  const blocked = action.writes.map(w => manualStep9 && w.stepNo === 9 ? undefined : entryStepBlock(e, w.stepNo)).find(Boolean);
+  const records = await loadEntryStepRecords(e.id);
+  const { open, alreadyDone } = openStepWrites(action.writes, records);
+  if (!open.length) return { inserted: [], alreadyDone };
+  const blocked = open.map(w => manualStep9 && w.stepNo === 9 ? undefined : entryStepBlock(e, w.stepNo)).find(Boolean);
   if (blocked) throw new Error(blocked);
   if (manualStep9) remark = STEP9_MANUAL_REMARK;
   // Which shipment of the order this entry closed (1, 2, …) — same as the
@@ -77,7 +84,7 @@ export async function saveEntryStepRows({ entry, entries, records, action, remar
     .findIndex(x => x.id === e.id) + 1 || 1;
   const pos = entryPosition(e, records);
   const nowIso = new Date().toISOString();
-  const rows = action.writes.map((w, i) => ({
+  const rows = open.map((w, i) => ({
     order_id: e.orderId,
     entry_id: e.id,
     round,
@@ -89,6 +96,11 @@ export async function saveEntryStepRows({ entry, entries, records, action, remar
     remark: i === 0 && remark?.trim() ? remark.trim() : null,
   }));
   const { data: inserted, error } = await supabase.from('dispatch_steps').insert(rows).select('*');
+  if (error?.code === '23505') {
+    // Saved by someone else in the moment since the check above.
+    const saved = await loadEntryStepRecords(e.id);
+    return { inserted: [], alreadyDone: saved.filter(r => open.some(w => w.stepNo === r.stepNo)) };
+  }
   if (error) throw error;
   for (const row of inserted || []) {
     logActivity({
@@ -97,7 +109,7 @@ export async function saveEntryStepRows({ entry, entries, records, action, remar
       action: 'insert', after: row,
     });
   }
-  return inserted || [];
+  return { inserted: inserted || [], alreadyDone: [] };
 }
 
 /** What each auto-completed step says in the activity log. */
@@ -129,18 +141,12 @@ export async function autoCompleteEntrySteps({ entry, entries, doneBy, orderLabe
     for (let guard = 0; guard < 4; guard++) {
       step = entryPosition(e, records).column;
       if (step > 11 || skipSteps.includes(step) || entryStepBlock(e, step)) break;
-      try {
-        const inserted = await saveEntryStepRows({
-          entry: e, entries, records, action: STEP_ACTIONS[step as StepNo]![0], doneBy, orderLabel, logNote: AUTO_NOTE[step as 8 | 9 | 10 | 11],
-        });
-        records = [...records, ...inserted.map(mapStepFromDB)];
-        written.push(step);
-      } catch (err: any) {
-        // Marked at the same moment by someone else (one row per entry +
-        // step) — catch up with what's saved and carry on.
-        if (err?.code !== '23505') throw err;
-        records = await loadEntryStepRecords(entry.id);
-      }
+      const { inserted } = await saveEntryStepRows({
+        entry: e, entries, action: STEP_ACTIONS[step as StepNo]![0], doneBy, orderLabel, logNote: AUTO_NOTE[step as 8 | 9 | 10 | 11],
+      });
+      if (inserted.length) written.push(step);
+      // Marked at the same moment by someone else: this catches up with it too.
+      records = await loadEntryStepRecords(entry.id);
     }
   } catch (err: any) {
     const label = step && step <= 11 ? STEP_ACTIONS[step as StepNo]?.[0]?.label : undefined;
