@@ -71,12 +71,14 @@
 // above) or by getting corrected through Stock Movements.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, PackageCheck } from 'lucide-react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, PackageCheck, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { useAppStore } from '../store';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockLot } from '../lib/types';
+import { COA_BUCKETS, CoaBucket, coaAgeBucket, coaAgeDays, isCoaMissing } from '../lib/coaAge';
+import { CoaAttachModal } from '../components/CoaAttachModal';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
 
@@ -138,6 +140,9 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string>('serialNo');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  // A "COA missing" card picked: only those lots, oldest inward date first.
+  const [coaFilter, setCoaFilter] = useState<'all' | CoaBucket | null>(null);
+  const [coaLot, setCoaLot] = useState<StockLot | null>(null);
 
   // Single scroll container for both axes — sticky headers below need to
   // stick to the SAME element that scrolls vertically, and nesting a
@@ -181,9 +186,28 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
     else { setSortCol(col); setSortDir('asc'); }
   };
 
+  const pickCoaFilter = (next: 'all' | CoaBucket | null) => {
+    setCoaFilter(next);
+    setSortCol(next ? 'inwardDate' : 'serialNo');
+    setSortDir('asc');
+  };
+
+  const coaMissingLots = useMemo(() => lots.filter(isCoaMissing), [lots]);
+  const coaCounts = useMemo(() => {
+    const counts = new Map<CoaBucket, number>();
+    for (const l of coaMissingLots) counts.set(coaAgeBucket(l), (counts.get(coaAgeBucket(l)) ?? 0) + 1);
+    return counts;
+  }, [coaMissingLots]);
+  const coaCards: { key: 'all' | CoaBucket; label: string; count: number; sub: string; cls: string }[] = [
+    { key: 'all', label: 'Total missing', count: coaMissingLots.length, sub: `of ${lots.length} lots`, cls: 'bg-g100 text-g700' },
+    ...COA_BUCKETS.map(b => ({ key: b.key, label: b.label, count: coaCounts.get(b.key) ?? 0, sub: b.range, cls: b.card })),
+  ];
+  const coaFilterLabel = coaCards.find(c => c.key === coaFilter)?.label;
+
   const filtered = useMemo(() => {
     const q = normalizeSearchText(search.trim());
     let list = lots.filter(l => {
+      if (coaFilter && (!isCoaMissing(l) || (coaFilter !== 'all' && coaAgeBucket(l) !== coaFilter))) return false;
       if (!q) return true;
       const hay = normalizeSearchText([
         l.whLotNo, l.factLotNo, l.productCode, l.productName, l.make, l.remark,
@@ -203,7 +227,7 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
       return 0;
     });
     return list;
-  }, [lots, search, sortCol, sortDir]);
+  }, [lots, search, sortCol, sortDir, coaFilter]);
 
   // sticky top-0 + z-10 + an explicit (non-transparent) background pins
   // these header cells to the top of the table's own scroll container as
@@ -235,7 +259,29 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
+      <div className="px-6 mt-3 shrink-0">
+        <div className="flex items-baseline gap-2 mb-1.5">
+          <span className="font-mono text-[9px] font-bold tracking-[1.5px] uppercase text-g500">COA missing</span>
+          <span className="text-[10.5px] text-g400">pending since inward date · click a card to see those lots</span>
+        </div>
+        <div className="grid grid-cols-6 gap-2">
+          {coaCards.map(c => (
+            <button
+              key={c.key}
+              type="button"
+              aria-pressed={coaFilter === c.key}
+              onClick={() => pickCoaFilter(coaFilter === c.key ? null : c.key)}
+              className={`text-left border border-g200 rounded-[6px] px-3 py-1.5 min-w-0 transition-opacity hover:opacity-85 ${c.cls} ${coaFilter === c.key ? 'outline-2 outline-current' : ''}`}
+            >
+              <div className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase opacity-80 truncate">{c.label}</div>
+              <div className="text-[22px] font-bold leading-tight">{loading ? '…' : c.count}</div>
+              <div className="text-[10px] opacity-75 truncate">{c.sub}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-3">
         {tabs}
         {tabs && <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>}
         <div className="flex items-center gap-1.5 bg-white border border-g200 rounded px-2 h-7 min-w-[240px] transition-colors focus-within:border-red-mrt focus-within:ring-2 focus-within:ring-red-lt">
@@ -248,6 +294,13 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
             className="bg-transparent border-none outline-none font-sans text-xs text-blk w-full placeholder:text-g400"
           />
         </div>
+
+        {coaFilterLabel && (
+          <span className="inline-flex items-center gap-1 h-7 pl-2.5 pr-1 rounded-full bg-red-lt border border-red-mrt/30 text-[11px] font-semibold text-red-mrt whitespace-nowrap">
+            COA missing · {coaFilter === 'all' ? 'All' : coaFilterLabel}
+            <button type="button" title="Clear" onClick={() => pickCoaFilter(null)} className="p-0.5 rounded-full hover:bg-red-mrt/10"><X size={11} /></button>
+          </span>
+        )}
 
         <button
           type="button"
@@ -329,7 +382,19 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
                         : <span className="text-[10px] text-g400">No</span>}
                     </td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] whitespace-nowrap max-w-[160px] truncate">
-                      {l.coaUrl ? (
+                      {isCoaMissing(l) ? (() => {
+                        const days = coaAgeDays(l);
+                        const bucket = COA_BUCKETS.find(b => b.key === coaAgeBucket(l))!;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setCoaLot(l)}
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[9.5px] font-bold tracking-[0.5px] whitespace-nowrap hover:opacity-85 transition-opacity ${bucket.pill}`}
+                          >
+                            MISSING · {days === null ? 'no date' : `${days} day${days === 1 ? '' : 's'}`}
+                          </button>
+                        );
+                      })() : l.coaUrl ? (
                         <a
                           href={l.coaUrl}
                           target="_blank"
@@ -340,10 +405,8 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
                         >
                           {l.coaFile || 'View PDF'}
                         </a>
-                      ) : l.coaFile ? (
-                        <span className="text-g600" title="No PDF on file for this lot yet">{l.coaFile}</span>
                       ) : (
-                        <span className="text-g600">—</span>
+                        <span className="text-g600" title="No PDF on file for this lot yet">{l.coaFile}</span>
                       )}
                     </td>
                     {/* Read-only historical snapshot — stock_lots.no_of_barrels is
@@ -395,6 +458,13 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
       </div>
       <FloatingHorizontalScrollbar containerRef={tableScrollRef} />
       <FloatingVerticalScrollbar containerRef={tableScrollRef} horizontalContainerRef={tableScrollRef} />
+      {coaLot && (
+        <CoaAttachModal
+          lot={coaLot}
+          onClose={() => setCoaLot(null)}
+          onSaved={() => { setCoaLot(null); load(); onLotsChanged?.(); }}
+        />
+      )}
     </div>
   );
 }
