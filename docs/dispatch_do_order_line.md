@@ -32,8 +32,8 @@ Migration: `supabase/migrations/20261103120000_outward_do_multi_line.sql`
   `adjust_lot_stock`. Edit (`p_movement_id` = any line of the DO): puts back
   every OLD line's stock, then takes every NEW line's stock; lines are updated
   in place by line number, extra new lines inserted, removed lines deleted.
-  Any refusal (not enough stock, unknown lot, same lot / order line twice,
-  missing barrels / packing) raises, so nothing is saved and no stock changes.
+  Any refusal (not enough stock, unknown lot, same lot twice, missing
+  barrels / packing) raises, so nothing is saved and no stock changes.
   Errors name the line and lot, e.g. `Line 2 (Lot 101010) — NOT_ENOUGH_STOCK: …`.
   A new DO whose number was just taken fails with 23505 and the form retries
   with a fresh number (`saveOutwardDoWithRetry`).
@@ -72,8 +72,9 @@ the row and blocks Save; it is never changed automatically. Opening a saved
 DO shows its saved barrels.
 
 Save is blocked while ANY row has a problem — no valid lot, product not in
-the order, same lot or same order line on two rows, missing packing, no stock,
-barrels more than the lot has, barrels more than the order line still needs.
+the order, same lot on two rows, missing packing, no stock, barrels more than
+the lot has, barrels more than the order line still needs (summed over the
+line's rows — see "One product from 2+ lots" below).
 Since the 2026-11-03 UI cleanup there is no text under the rows: the box
 that is wrong (Lot No, No of Barrels or Packing) gets a red border with the
 message as its tooltip ("Available at …" / "Order needs (remaining)" are in
@@ -130,8 +131,11 @@ The lot's product must be in the order, and the row uses THAT order line.
 2. Both names are compared with letters and digits only, lower case. A line
    matches when the names are equal; if no line is equal, a line matches when
    one name starts with the other ("betapinene" / "betapinene95").
-3. Lines no other row of the DO uses win; then lines with barrels still left;
-   then the row's current line; else the first.
+3. A line picked for the row with "+ Add product … for <line>" wins when it
+   matches. Otherwise lines no other row of the DO uses win (a default only —
+   a line already on another row still matches, see "One product from 2+
+   lots"); then lines with barrels still left; then the row's current line;
+   else the first.
 4. The row switches to that line: Billing Name = the line's product name as in
    the order, and "Order needs (remaining)", the packing note and the barrels
    check follow it. Product Name / Code, Packing, Packing Type and MOU stay the
@@ -140,10 +144,41 @@ The lot's product must be in the order, and the row uses THAT order line.
    in order SO-…. Order has: …") and Save is blocked.
 
 The old "Product (from order)" picker is gone — a row's order line always
-comes from its lot.
+comes from its lot (or the line picked with "+ Add product", when the lot
+matches it).
 
 Code: `src/lib/doOrderLine.ts` (matching) and `src/pages/NewStockOutward.tsx`
-(`fillFromLot`, `rowInfos`, `saveBlock`).
+(`pickOrderLine`, `fillFromLot`, `rowInfos`, `saveBlock`).
+
+## One product from 2+ lots (user decision 2026-11-03)
+
+Real case: ORD-2026-848 has ONE line "Anthamber Tops" × 4; DO B-0813 (BALAJI)
+fills it from lot 260902 × 3 + another lot × 1. This used to be blocked ("…
+is on another row of this DO — use one row per product").
+
+- The SAME order line may be on several rows of one DO, each with a
+  DIFFERENT lot. The same lot twice on one DO is still blocked (form and
+  `save_outward_do`). Wada DOs: same rule, a different Lot No on each row.
+- Barrels are checked per ORDER LINE: the rows of that line on this DO added
+  up must be ≤ the line's remaining (`barrelsByOrderLine` /
+  `orderOverMessage` in `doOrderLine.ts`). Too many → EVERY row of that line
+  gets the red No of Barrels box; tooltip / toast e.g. "Order needs only 20
+  barrels of Alpha Pinene — rows 1 + 2 of this DO add up to 25." The No of
+  Barrels tooltip also shows "This DO (rows 1 + 2): 25 barrels". Each row
+  still can't go over its own lot's stock at the warehouse.
+- "Remaining" is as before: the order line minus the dispatch entries of
+  EARLIER rounds (`remainingByLine`). Other DOs of the same round are not
+  subtracted (unchanged).
+- "+ Add product" (Board / linked DO) has a "for …" choice: the line matching
+  the lot's product (default; Wada: the line its Billing Name matches) or a
+  chosen order line — also one already on the DO. A picked row starts with
+  that line's Billing Name and goes back to it if its lot is cleared.
+- Database: migration `20261103190000_outward_do_same_order_line_many_lots.sql`
+  removes ONLY `save_outward_do`'s "The same order line is on two lines of
+  this DO." check.
+- Board / Step 6 / Outward list / Stock Book / PDF / DOCX / email: unchanged —
+  each row is already its own `stock_movements` row, Stock Book row and PDF /
+  DOCX table row (own Lot No / Lot Date, Total row adds them up).
 
 ## Wada warehouse (no stock link, added 2026-11-03)
 
@@ -166,8 +201,9 @@ so its DOs are made, emailed and listed here like any other.
   Name from the line), and the order rules stay — there is no lot, so the
   typed Billing Name picks the order line with the same matcher
   (`orderLinesForLot` / `orderLineSeqForLot`, `onBillingChange`). Not in the
-  order → red Billing Name; barrels must be ≤ that line's remaining; one row
-  per order line. Code: `wadaRowInfo` in `NewStockOutward.tsx`.
+  order → red Billing Name; the line's rows together must be ≤ its remaining
+  (several rows per line allowed, each with its own Lot No — see "One product
+  from 2+ lots"). Code: `wadaRowInfo` in `NewStockOutward.tsx`.
 - **Switching warehouse** to / from Wada on a NEW DO: DO number regenerates;
   header fields and each row's Lot No, Billing Name and order line are kept;
   the other row fields are cleared and the new warehouse's rules apply. A

@@ -175,7 +175,10 @@
 //      or unknown Lot No clears that row's lot fields). "+ Add product" adds a
 //      row, ✕ removes one (at least one stays). Totals under the table. The
 //      old "Product (from order)" picker is gone — a row's order line comes
-//      from its lot; two rows may not share a lot or an order line.
+//      from its lot; two rows may not share a lot. (Later 2026-11-03, user
+//      decision: they MAY share an order line — one product from 2+ lots;
+//      that line's rows together must stay ≤ its remaining. "+ Add product"
+//      can pick the line.)
 //   3. Party, Transporter, Fulfilment Type, Note — once, as before.
 // Changing the Warehouse clears every row's lot fields (they refill from the
 // new warehouse's stock) and, for a new DO, regenerates the DO number.
@@ -210,7 +213,7 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 // comment above for why the two lists couldn't stay separate once Product
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
-import { lotBillingName, orderLineSeqForLot, orderLinesForLot } from '../lib/doOrderLine';
+import { lotBillingName, orderLineSeqForLot, orderLinesForLot, barrelsByOrderLine, orderOverMessage } from '../lib/doOrderLine';
 import { isImportedEntry, orderLinesWithoutDo } from '../lib/dispatchFlow';
 import { Loader2, Plus, X } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
@@ -454,6 +457,10 @@ type Line = {
   lotTouched: boolean;             // false = a saved row whose Lot No / Warehouse wasn't changed yet
   lotFilled: boolean;              // a lot has filled this row (so there is something to clear)
   savedTotal?: number | null;      // edit: total_qty as saved
+  // 2026-11-03: the order line the user picked for this row with "+ Add
+  // product" (Board / linked DO). Wins over the matcher whenever the row's lot
+  // (or, for Wada, its Billing Name) matches it, and survives a lot clear.
+  pin: { seq: number; desc: string } | null;
 };
 let lineCounter = 0;
 const newLine = (p: Partial<Line> = {}): Line => ({
@@ -461,14 +468,15 @@ const newLine = (p: Partial<Line> = {}): Line => ({
   lotNo: '', lotDate: '', productName: '', productCode: '', billingName: '',
   numArticles: '', packing: '', packagingType: '', weightType: '',
   orderLineSeq: null, billingTyped: false, userBarrelsKey: null, autoBarrels: null,
-  lotTouched: true, lotFilled: false,
+  lotTouched: true, lotFilled: false, pin: null,
   ...p,
 });
-// b14a218 for one row: every lot field emptied (Lot No itself stays).
+// b14a218 for one row: every lot field emptied (Lot No itself stays). A row
+// pinned to an order line goes back to that line.
 const clearedLine = (l: Line): Line => ({
-  ...l, lotDate: '', productName: '', productCode: '', billingName: '',
+  ...l, lotDate: '', productName: '', productCode: '', billingName: l.pin?.desc ?? '',
   numArticles: '', packing: '', packagingType: '', weightType: '',
-  orderLineSeq: null, billingTyped: false, userBarrelsKey: null, autoBarrels: null, lotFilled: false,
+  orderLineSeq: l.pin?.seq ?? null, billingTyped: false, userBarrelsKey: null, autoBarrels: null, lotFilled: false,
 });
 
 // Returns a finite number, or null if v is empty/not a valid number (never NaN, never "" as 0).
@@ -902,19 +910,32 @@ function OutwardForm() {
   // this Warehouse + Lot No; Billing Name = the order line's product name
   // (Board / linked DO) or the catalogue billing name (plain New Outward,
   // unless typed). From the Board / a linked DO, the lot's product picks the
-  // row's order line (orderLineSeqForLot, lines other rows use lose).
+  // row's order line (pickOrderLine: a picked line wins, then lines other rows
+  // don't use; a line already on another row still matches — 2+ lots of one
+  // product are fine).
   // Empty or unknown Lot No → that row's lot fields are cleared (b14a218).
   // A saved row in edit mode keeps its saved values until its Lot No (or the
   // Warehouse) is changed — the lookup only records the lot (locked fields,
   // "Available (after this DO)").
+  // The order line for a row whose product (lot's billing name, or Wada's
+  // typed Billing Name) is `productBilling`. 2026-11-03: the same order line
+  // may be on several rows (one per lot), so a line other rows use still
+  // matches — free lines only win as the default (25231ee rule 3), and a line
+  // the user picked with "+ Add product" (pin) wins when it matches.
+  const pickOrderLine = (l: Line, productBilling: string, othersCount: (o: Line) => boolean): number | null => {
+    if (!rowsOrder) return null;
+    if (l.pin && orderLinesForLot(rowsOrder, productBilling).some(m => m.seq === l.pin!.seq)) return l.pin.seq;
+    const taken = new Set(linesRef.current
+      .filter(o => o.key !== l.key && othersCount(o) && o.orderLineSeq != null).map(o => o.orderLineSeq as number));
+    return orderLineSeqForLot(rowsOrder, orderEntries, productBilling, l.orderLineSeq, taken);
+  };
+
   const fillFromLot = (l: Line, lot: LotDetails, key: string): Line => {
     if (!l.lotTouched) return l;
     let orderLineSeq = l.orderLineSeq;
     let billingName = l.billingName;
     if (rowsOrder) {
-      const taken = new Set(linesRef.current
-        .filter(o => o.key !== l.key && o.lotFilled && o.orderLineSeq != null).map(o => o.orderLineSeq as number));
-      const seq = orderLineSeqForLot(rowsOrder, orderEntries, lotBillingName(lot.productName, billingNameForProductName), l.orderLineSeq, taken);
+      const seq = pickOrderLine(l, lotBillingName(lot.productName, billingNameForProductName), o => o.lotFilled);
       orderLineSeq = seq;
       if (seq !== null) billingName = (rowsOrder.items.find(i => i.seq === seq)?.desc || '').trim();
     } else if (!l.billingTyped) {
@@ -994,34 +1015,51 @@ function OutwardForm() {
   // line (same matcher and tie-break as a lot's product, fillFromLot).
   const onBillingChange = (l: Line, billingName: string) => {
     if (isNoStockWarehouse(header.warehouse) && rowsOrder) {
-      const taken = new Set(linesRef.current
-        .filter(o => o.key !== l.key && o.orderLineSeq != null).map(o => o.orderLineSeq as number));
-      const orderLineSeq = billingName.trim() ? orderLineSeqForLot(rowsOrder, orderEntries, billingName, l.orderLineSeq, taken) : null;
+      const orderLineSeq = billingName.trim() ? pickOrderLine(l, billingName, () => true) : null;
       updateLine(l.key, { billingName, billingTyped: true, orderLineSeq, lotTouched: true });
       return;
     }
     updateLine(l.key, { billingName, billingTyped: true });
   };
 
-  const addLine = () => setLines(ls => [...ls, newLine()]);
+  // 2026-11-03: "+ Add product" from the Board / a linked DO can add a row for
+  // a chosen order line — also one already on the DO (one product filled from
+  // 2+ lots). '' = no choice: the row's lot (Wada: Billing Name) picks the line.
+  const [addForSeq, setAddForSeq] = useState('');
+  const addLine = () => {
+    const item = rowsOrder && addForSeq ? rowsOrder.items.find(i => String(i.seq) === addForSeq) : undefined;
+    const desc = (item?.desc || '').trim();
+    setLines(ls => [...ls, item
+      ? newLine({ billingName: desc, orderLineSeq: item.seq, pin: { seq: item.seq, desc } })
+      : newLine()]);
+  };
   const removeLine = (key: string) => setLines(ls => ls.length > 1 ? ls.filter(l => l.key !== key) : ls);
 
   // ── Per-row checks ────────────────────────────────────────────────────────
   // Save is blocked while ANY row has a problem; the problem shows on its row.
-  const lockedOf = (l: Line): LotDetails | null => {
-    const lk = lookups[l.key];
-    return lk && lk.key === lotKeyOf(header.warehouse, l.lotNo) ? lk.lot : null;
-  };
   type RowInfo = {
     lot: LotDetails | null; lookedUp: boolean; total: number | null; maxBarrels: number | null;
     orderNeeds: number | null; orderPacking: string; packingMismatch: boolean;
     problem: string; problemSoft: boolean;   // soft = not filled in yet (no red border)
     problemField: 'lot' | 'barrels' | 'packing' | 'product' | 'billing' | null;   // the box that gets the red border + tooltip
+    lineOnDo: { sum: number; rows: number[] } | null;   // this row's order line on 2+ rows of this DO: their barrels / row numbers
   };
   const isWada = isNoStockWarehouse(header.warehouse);
+  // 2026-11-03 (user decision): one order line may be on several rows of a DO
+  // (one product filled from 2+ lots — each row its own lot; the same lot
+  // twice is still blocked). The order check is per LINE: the barrels of all
+  // its rows together must be ≤ what the line still needs. Too many → every
+  // row of that line gets the red No of Barrels box + the total in its tooltip.
+  const lineSums = barrelsByOrderLine(lines);
+  const lineOnDoOf = (l: Line) => {
+    const s = l.orderLineSeq != null ? lineSums.get(l.orderLineSeq) : undefined;
+    return s && s.rows.length > 1 ? s : null;
+  };
+  const overOrder = (l: Line, barrels: number, orderNeeds: number | null, desc: string) =>
+    orderOverMessage(barrels, orderNeeds, desc, lineOnDoOf(l));
   // 2026-11-03 (Wada): no lot, so a row's order line comes from its typed
   // Billing Name — same matcher as a lot's product (orderLinesForLot), and the
-  // order rules (in the order, one row per line, barrels ≤ remaining) apply.
+  // order rules (in the order, one lot per row, line's barrels ≤ remaining) apply.
   const wadaRowInfo = (l: Line): RowInfo => {
     const barrels = parseNum(l.numArticles);
     const total = lineTotal(l);
@@ -1036,7 +1074,6 @@ function OutwardForm() {
       return `${billing} is not in order ${rowsOrder.soNumber || rowsOrder.id}. Order has: ${has}.`;
     })();
     const dupLot = !!l.lotNo.trim() && lines.some(o => o.key !== l.key && sameLot(o.lotNo, l.lotNo));
-    const dupLine = l.orderLineSeq != null && lines.some(o => o.key !== l.key && o.orderLineSeq === l.orderLineSeq);
     let problem = '';
     let problemSoft = false;
     let problemField: RowInfo['problemField'] = null;
@@ -1045,11 +1082,10 @@ function OutwardForm() {
     else if (!billing) { problem = 'Enter a Billing Name.'; problemSoft = true; problemField = 'billing'; }
     else if (lineMismatch) { problem = lineMismatch; problemField = 'billing'; }
     else if (dupLot) { problem = `Lot ${l.lotNo.trim()} is on another row of this DO — use one row per lot.`; problemField = 'lot'; }
-    else if (dupLine) { problem = `${item?.desc?.trim() || 'This order line'} is on another row of this DO — use one row per product.`; problemField = 'billing'; }
     else if (barrels === null || barrels <= 0) { problem = 'Enter No of Barrels.'; problemSoft = true; problemField = 'barrels'; }
     else if (parseNum(l.packing) === null) { problem = l.packing.trim() ? 'Packing must be a number.' : 'Enter Packing.'; problemSoft = !l.packing.trim(); problemField = 'packing'; }
-    else if (orderNeeds !== null && barrels > orderNeeds) { problem = `Order needs only ${orderNeeds} barrel${orderNeeds === 1 ? '' : 's'} of ${item?.desc?.trim() || 'this product'} — you entered ${barrels}.`; problemField = 'barrels'; }
-    return { lot: null, lookedUp: false, total, maxBarrels: null, orderNeeds, orderPacking, packingMismatch: false, problem, problemSoft, problemField };
+    else if ((problem = overOrder(l, barrels, orderNeeds, item?.desc?.trim() || 'this product'))) problemField = 'barrels';
+    return { lot: null, lookedUp: false, total, maxBarrels: null, orderNeeds, orderPacking, packingMismatch: false, problem, problemSoft, problemField, lineOnDo: lineOnDoOf(l) };
   };
   const rowInfos: RowInfo[] = lines.map(l => {
     if (isWada) return wadaRowInfo(l);
@@ -1080,14 +1116,13 @@ function OutwardForm() {
       return `${lotText} — this product is not in order ${rowsOrder.soNumber || rowsOrder.id}. Order has: ${has}.`;
     })();
     const dupLot = !!lot && lines.some(o => o.key !== l.key && sameLot(o.lotNo, l.lotNo));
-    const dupLine = !!lot && l.orderLineSeq != null && lines.some(o => o.key !== l.key && o.orderLineSeq === l.orderLineSeq && !!lockedOf(o));
     // 2026-11-03 (UI cleanup, user's rule): no text under the row any more.
     // The problem's box (problemField) gets a red border and the message as
     // its tooltip; Save shows the first problem as a toast. Soft problems
     // (row not filled in yet) block Save but don't turn a box red.
     let problem = '';
     let problemSoft = false;
-    let problemField: 'lot' | 'barrels' | 'packing' | null = null;
+    let problemField: RowInfo['problemField'] = null;
     if (!header.warehouse) { problem = 'Select a Warehouse first.'; problemSoft = true; }
     else if (!PARTY_COLUMN[header.warehouse]) problem = 'Select a Warehouse that exists in Stock Summary.';
     else if (!lot) {
@@ -1097,15 +1132,15 @@ function OutwardForm() {
     }
     else if (lineMismatch) { problem = lineMismatch; problemField = 'lot'; }
     else if (dupLot) { problem = `Lot ${lot.lotNo} is on another row of this DO — use one row per lot.`; problemField = 'lot'; }
-    else if (dupLine) { problem = `${item?.desc?.trim() || 'This order line'} is on another row of this DO — use one row per product.`; problemField = 'lot'; }
     else if (parseNum(l.packing) === null) { problem = `Packing missing for lot ${lot.lotNo} — update the lot's packing in Stock Summary first.`; problemField = 'packing'; }
     else if (maxBarrels !== null && maxBarrels <= 0) { problem = `No stock found for this lot at ${header.warehouse}.`; problemField = 'lot'; }
     else if (barrels === null || barrels <= 0) { problem = 'Enter No of Barrels.'; problemSoft = true; problemField = 'barrels'; }
     else if (maxBarrels !== null && barrels > maxBarrels) { problem = `Only ${maxBarrels} barrels available at ${header.warehouse} (Lot ${lot.lotNo}) — you entered ${barrels}.`; problemField = 'barrels'; }
     // 2026-11-03 (later): barrels start at the lot's full stock, so this is
     // the usual first problem on a Board row — never corrected automatically.
-    else if (orderNeeds !== null && barrels > orderNeeds) { problem = `Order needs only ${orderNeeds} barrel${orderNeeds === 1 ? '' : 's'} of ${item?.desc?.trim() || 'this product'} — you entered ${barrels}.`; problemField = 'barrels'; }
-    return { lot, lookedUp, total, maxBarrels, orderNeeds, orderPacking, packingMismatch, problem, problemSoft, problemField };
+    // 2026-11-03: per order line — the sum of all its rows on this DO.
+    else if ((problem = overOrder(l, barrels, orderNeeds, item?.desc?.trim() || 'this product'))) problemField = 'barrels';
+    return { lot, lookedUp, total, maxBarrels, orderNeeds, orderPacking, packingMismatch, problem, problemSoft, problemField, lineOnDo: lineOnDoOf(l) };
   });
   const firstProblem = rowInfos.findIndex(r => !!r.problem);
   // "Row 1 (Lot 101010): order needs only 20 barrels of Alpha Pinene — you entered 30."
@@ -1488,6 +1523,7 @@ function OutwardForm() {
                         ? `Available (after this DO): ${lot.available}`
                         : `Available at ${header.warehouse} (Lot ${lot.lotNo}): ${info.maxBarrels ?? lot.available} barrels`),
                       info.orderNeeds !== null && `Order needs (remaining): ${info.orderNeeds} barrels`,
+                      info.lineOnDo && `This DO (rows ${info.lineOnDo.rows.join(' + ')}): ${info.lineOnDo.sum} barrels`,
                     ].filter(Boolean).join(' · ');
                     const packingTip = info.packingMismatch && lot
                       ? `Order packing is ${info.orderPacking} per barrel, but lot ${lot.lotNo} is ${lot.packing} — the lot's packing is used.`
@@ -1564,6 +1600,22 @@ function OutwardForm() {
             </div>
             <div className="flex items-center gap-4 mt-3">
               <Button size="sm" variant="secondary" onClick={addLine}><Plus size={12} className="mr-1 inline" /> Add product</Button>
+              {/* 2026-11-03: which order line the new row is for — also one
+                  already on the DO (same product from another lot). */}
+              {rowsOrder && (
+                <label className="flex items-center gap-2 text-[11.5px] text-g600">
+                  for
+                  <select className="font-sans text-[12px] text-blk bg-white border border-g300 rounded-[3px] px-[6px] py-[4px] outline-none focus:border-red-mrt"
+                    value={addForSeq} onChange={e => setAddForSeq(e.target.value)}>
+                    <option value="">{isWada ? 'the line its Billing Name matches' : "the line matching the lot's product"}</option>
+                    {rowsOrder.items.map(i => (
+                      <option key={i.seq} value={String(i.seq)}>
+                        {`${(i.desc || 'Item').trim()} (needs ${orderRemaining.get(i.seq) ?? 0})`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="ml-auto text-[12px] text-g600">
                 Total: <strong className="text-blk">{totalBarrels} barrel{totalBarrels === 1 ? '' : 's'}</strong>
                 <span className="mx-2 text-g300">·</span>

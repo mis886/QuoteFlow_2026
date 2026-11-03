@@ -24,6 +24,32 @@ export function orderLinesForLot(o: Order, lotBilling: string) {
 }
 
 /**
+ * 2026-11-03 (user decision): one order line may be on several rows of a DO
+ * (one product filled from 2+ lots). Per order line: its rows' barrels added
+ * up and their row numbers (1-based), for the "line's rows ≤ remaining" check.
+ */
+export function barrelsByOrderLine(rows: { orderLineSeq: number | null; numArticles: string }[]) {
+  const sums = new Map<number, { sum: number; rows: number[] }>();
+  rows.forEach((r, i) => {
+    if (r.orderLineSeq == null) return;
+    const s = sums.get(r.orderLineSeq) ?? { sum: 0, rows: [] };
+    const n = Number((r.numArticles ?? '').trim());
+    s.sum += (r.numArticles ?? '').trim() !== '' && Number.isFinite(n) ? n : 0;
+    s.rows.push(i + 1);
+    sums.set(r.orderLineSeq, s);
+  });
+  return sums;
+}
+
+/** The "too many barrels for the order line" message for one row, or ''. `onDo` = the line's rows when it is on 2+ rows. */
+export function orderOverMessage(barrels: number, orderNeeds: number | null, desc: string, onDo: { sum: number; rows: number[] } | null): string {
+  if (orderNeeds === null) return '';
+  const needs = `Order needs only ${orderNeeds} barrel${orderNeeds === 1 ? '' : 's'} of ${desc}`;
+  if (onDo) return onDo.sum > orderNeeds ? `${needs} — rows ${onDo.rows.join(' + ')} of this DO add up to ${onDo.sum}.` : '';
+  return barrels > orderNeeds ? `${needs} — you entered ${barrels}.` : '';
+}
+
+/**
  * The order line a DO for this lot should use, or null if the lot's product
  * isn't in the order. Lines with barrels left win; among those the line
  * already picked stays, else the first.
