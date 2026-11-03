@@ -562,6 +562,11 @@ function OutwardForm() {
   // Plain New Outward: set once the user types their own Billing Name, so the
   // catalogue lookup (product pick / lot auto-fill) stops replacing it.
   const billingTyped = useRef(false);
+  // Edit mode: the user changed the Lot No (until then the saved DO's values stay).
+  const lotNoTouched = useRef(false);
+  // New DO: a lot has filled the form, so there is something to clear. Until
+  // then the order prefill (Billing Name from the Board) is left alone.
+  const lotFilled = useRef(false);
   // Board flow: "you are dispatching ALL barrels but the order needs fewer" confirm.
   const [confirmAllStock, setConfirmAllStock] = useState(false);
   // 2026-10-12: stock_movements.email_sent_at of the entry being edited
@@ -940,6 +945,14 @@ function OutwardForm() {
   // Packing Type and MOU are emptied (they only ever come from a lot), so
   // Total Quantity empties too and Save is blocked (see saveBlock).
   // Edit mode keeps the saved values.
+  // 2026-11-03: an empty Lot No, or one that matches no lot, clears EVERY lot
+  // field (Lot Date, Product Name / Code, Billing Name, No of Barrels,
+  // Packing, Total Quantity, Packing Type, MOU) and the order line picked
+  // from the lot, for new and edited DOs alike, so the old lot's data never
+  // stays behind. Warehouse, DO Number / Date, Party, Transporter, Fulfilment
+  // Type and Note stay. Edit mode does this only once the user has changed
+  // the Lot No (lotNoTouched): opening a saved DO still shows its saved
+  // values. Only the screen changes; Save stays blocked without a lot.
   useEffect(() => {
     setLotWarning('');
     setLotStock(null);
@@ -948,9 +961,16 @@ function OutwardForm() {
     const lotNo = form.lotNo.trim();
     const partyCol = PARTY_COLUMN[warehouse];
     const clearLotFields = () => {
-      if (isEditing) return;
-      setForm(f => (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo) ? f
-        : (f.packing || f.packagingType || f.weightType) ? { ...f, packing: '', packagingType: '', weightType: '' } : f);
+      if (isEditing ? !lotNoTouched.current : !lotFilled.current) return;
+      lotFilled.current = false;
+      userBarrelsKey.current = null;
+      autoBarrels.current = null;
+      billingTyped.current = false;
+      setOrderLineSeq(null);
+      setForm(f => (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo) ? f : {
+        ...f, lotDate: '', productName: '', productCode: '', billingName: '',
+        numArticles: '', packing: '', totalQty: '', packagingType: '', weightType: '',
+      });
     };
     if (!lotNo || !partyCol) { clearLotFields(); setLotLookedUp(''); return; }
     const key = lotKeyOf(warehouse, lotNo);
@@ -997,11 +1017,36 @@ function OutwardForm() {
           setLotStock({ key, warehouse, lotNo, available: Number(existing[partyCol]) || 0 });
           setLotDetails(lot);
         }
+        // First load of the saved DO: keep its saved values.
+        if (!lotNoTouched.current) return;
+        if (!existing || !lot) { clearLotFields(); return; }
+        // 2026-11-03: the user typed a lot (again) — refill from it. Its own
+        // lot back → the DO's saved barrels; another lot → what that
+        // warehouse has. Save still reverses and re-applies stock as before.
+        const ownLot = !!original && lotKeyOf(original.warehouse, original.lotNo) === key;
+        setForm(f => {
+          if (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo) return f;
+          const next = {
+            ...f,
+            productName: lot.productName,
+            productCode: lot.productCode,
+            billingName: billingTyped.current ? f.billingName : billingNameForProductName(lot.productName),
+            packing: lot.packing,
+            packagingType: lot.packagingType,
+            weightType: lot.weightType,
+            lotDate: existing.inward_date || f.lotDate,
+            numArticles: ownLot ? original!.numArticles : (Number(existing[partyCol]) > 0 ? String(existing[partyCol]) : ''),
+          };
+          const barrels = parseNum(next.numArticles), packing = parseNum(next.packing);
+          next.totalQty = barrels !== null && packing !== null ? String(barrels * packing) : '';
+          return next;
+        });
         return;
       }
       // No match — Save is blocked (see saveBlock); the lot fields are emptied.
       if (!existing || !lot) { clearStaleAuto(); clearLotFields(); return; }
       setLotDetails(lot);
+      lotFilled.current = true;
       // 2026-11-03: from the Board, the DO is for the order line whose product
       // IS this lot's product (e.g. a Beta Pinene lot → the Beta Pinene line,
       // not the first line). Switch to it the same way the "Product (from
@@ -1609,7 +1654,7 @@ function OutwardForm() {
               </div>
               <div>
                 <label className={labelCls}>Lot No</label>
-                <input className={inputCls} value={form.lotNo} onChange={set('lotNo')} />
+                <input className={inputCls} value={form.lotNo} onChange={e => { lotNoTouched.current = true; set('lotNo')(e); }} />
                 {lotWarning && <p className="text-amber-600 text-[11px] mt-1">{lotWarning}</p>}
               </div>
               <div>
