@@ -155,6 +155,8 @@ export interface LinkedDOLine {
   id: string;
   orderLineSeq?: number;    // stock_movements.order_line_seq (null on old rows)
   billingName?: string;
+  whLotNo?: string;         // 2026-11-03: for the Step 6 Undo confirm ("101010 ×15")
+  articles?: number;
 }
 export interface LinkedDO {
   id: string;               // line 1's id — what "Open DO" opens (the form loads every line)
@@ -172,8 +174,15 @@ export const mapLinkedDOFromDB = (r: any): LinkedDO => ({
   round: r.dispatch_round ?? 1,
   emailSentAt: r.email_sent_at ?? undefined,
   articles: Number(r.num_articles) || 0,
-  lines: [{ id: r.id, orderLineSeq: r.order_line_seq ?? undefined, billingName: r.billing_name ?? undefined }],
+  lines: [{
+    id: r.id, orderLineSeq: r.order_line_seq ?? undefined, billingName: r.billing_name ?? undefined,
+    whLotNo: r.wh_lot_no ?? undefined, articles: Number(r.num_articles) || 0,
+  }],
 });
+
+/** "S-0012 (2 products: 101010 ×15, 202020 ×25)" — the Step 6 Undo confirm / log. */
+export const linkedDoSummary = (d: LinkedDO) =>
+  `${d.doNumber || '—'} (${d.lines.length} product${d.lines.length === 1 ? '' : 's'}: ${d.lines.map(l => `${l.whLotNo || '—'} ×${l.articles ?? 0}`).join(', ')})`;
 
 /** stock_movements rows → one LinkedDO per DO number (a row with no DO number stands alone). */
 export function groupLinkedDOs(rows: any[]): LinkedDO[] {

@@ -4,7 +4,7 @@ import { Search, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { customerOfDoc, dispatchOrderView, canDeleteRecords, fmtIST, doerLabel, siteLabel, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, groupLinkedDOs, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
@@ -27,7 +27,7 @@ type BoardPill = typeof BOARD_PILLS[number];
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel } = useAppStore();
+  const { data, user, activeDoer, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canDelete = canDeleteRecords(user?.email);
@@ -68,14 +68,15 @@ export function Dispatch() {
     if (error) { console.error('Error loading dispatch steps:', error); return; }
     setStepRecords(rows.map(mapStepFromDB));
   });
+  const reloadLinkedDOs = () => fetchAllRows(() => supabase.from('stock_movements').select('id, do_number, do_line_no, order_id, dispatch_round, email_sent_at, num_articles, order_line_seq, billing_name, wh_lot_no').eq('type', 'outward').not('order_id', 'is', null).order('id'))
+    .then(({ data: rows, error }) => {
+      if (error) { console.error('Error loading linked DOs:', error); return; }
+      // 2026-11-03: one LinkedDO per DO number, however many product lines it has.
+      setLinkedDOs(groupLinkedDOs(rows));
+    });
   useEffect(() => {
     reloadSteps();
-    fetchAllRows(() => supabase.from('stock_movements').select('id, do_number, do_line_no, order_id, dispatch_round, email_sent_at, num_articles, order_line_seq, billing_name').eq('type', 'outward').not('order_id', 'is', null).order('id'))
-      .then(({ data: rows, error }) => {
-        if (error) { console.error('Error loading linked DOs:', error); return; }
-        // 2026-11-03: one LinkedDO per DO number, however many product lines it has.
-        setLinkedDOs(groupLinkedDOs(rows));
-      });
+    reloadLinkedDOs();
   }, [now]);
 
   // Done / Hold / Resume on steps 1–7: Samata (mum@) + ADMIN_EMAILS only;
@@ -304,7 +305,8 @@ export function Dispatch() {
   // "Undo last step" (card link + drawer button): takes back the most recent
   // click of the order's open round — deletes that click's dispatch_steps rows, or
   // un-resumes a resumed hold. Only dispatch_steps is touched; never dispatch
-  // entries, the order, its status, or a Step 6 Outward entry (DO).
+  // entries, the order or its status. 2026-11-03: EXCEPT Step 6 Done with
+  // DOs linked — those DOs are deleted and stock put back (see step6UndoDos).
   // 2026-10-13: was ADMIN_EMAILS only — now everyone who can click the step
   // buttons (canActOnDispatchBoard, not the read-only login).
   const canUndoOnBoard = canActOnBoard;
@@ -319,11 +321,21 @@ export function Dispatch() {
       .filter(([id, recs]) => lastOpenRoundClick(recs, data.dispatchEntries.filter(e => e.orderId === id)))
       .map(([id]) => id));
   }, [stepRecords, data.dispatchEntries]);
-  // Step 6 "DO issued ✓" also saved an Outward entry (the DO), which reduced
-  // stock. Undo removes ONLY the Step 6 dispatch_steps row — never the
-  // stock_movements row, stock_lots or the DO number.
+  // Step 6 "DO issued ✓" — the click being undone is Step 6 Done.
   const undoesStep6Do = (click: LastStepClick) =>
     click.kind === 'delete' && click.rows.some(r => r.stepNo === 6 && r.status === 'done');
+  // 2026-11-03 (user decision — replaces 33961c5's "Undo never touches the
+  // DO"): undoing Step 6 Done undoes the DO completely. Every DO linked to
+  // that order + round is deleted (all lines) and its stock put back, and the
+  // Step 6 row goes — ONE transaction in undo_step6_with_dos (supabase/
+  // migrations/20261103150000_undo_step6_with_dos.sql). MIS / Shishir only,
+  // like every DO delete. Step 6 with no DO linked, and every other step,
+  // undo as before (the click's dispatch_steps rows only).
+  const step6UndoDos = (order: Order, click: LastStepClick): LinkedDO[] => {
+    if (!undoesStep6Do(click) || click.kind !== 'delete') return [];
+    const round = click.rows.find(r => r.stepNo === 6)!.round;
+    return linkedDOs.filter(d => d.orderId === order.id && d.round === round);
+  };
   const [undoBusy, setUndoBusy] = useState(false);
   // The click waiting in the in-app confirm box (Cancel = nothing changes).
   const [undoTarget, setUndoTarget] = useState<{ order: Order; click: LastStepClick } | null>(null);
@@ -332,7 +344,45 @@ export function Dispatch() {
   const requestUndo = (order: Order, click?: LastStepClick) => {
     if (!canUndoOnBoard || undoBusy) return;
     const target = click ?? lastOpenRoundClick(stepRecords.filter(r => r.orderId === order.id), data.dispatchEntries.filter(e => e.orderId === order.id));
-    if (target) setUndoTarget({ order, click: target });
+    if (!target) return;
+    if (step6UndoDos(order, target).length && !canDeleteRecords(user?.email)) {
+      alert('Only MIS / Shishir can undo Step 6, because it deletes the DO and restores stock.');
+      return;
+    }
+    setUndoTarget({ order, click: target });
+  };
+  // Step 6 with DOs: the database function, then the board's copy is reloaded.
+  const undoStep6WithDos = async (order: Order, click: LastStepClick, dos: LinkedDO[]) => {
+    if (click.kind !== 'delete') return;
+    const round = click.rows.find(r => r.stepNo === 6)!.round;
+    const { data: res, error } = await supabase.rpc('undo_step6_with_dos', {
+      p_order_id: order.id, p_round: round, p_actor: activeDoer?.email ?? user?.email ?? null,
+    });
+    if (error) throw error;
+    const deletedLines: any[] = res?.dos ?? [];
+    const deletedSteps: any[] = res?.deleted_steps ?? [];
+    const stepIds = new Set(deletedSteps.map(s => s.id));
+    const lineIds = new Set(deletedLines.map(d => d.id));
+    setStepRecords(prev => prev.filter(r => !stepIds.has(r.id)));
+    setLinkedDOs(prev => prev.filter(d => !d.lines.some(l => lineIds.has(l.id))));
+    reloadSteps();
+    reloadLinkedDOs();
+    // "Step 6 undone — DO S-0012 deleted, stock restored (101010 +15, 202020 +25)"
+    const doNos = [...new Set(deletedLines.map(d => d.do_number || '—'))];
+    const restored = deletedLines.map(d => `${d.wh_lot_no || '—'} +${Number(d.articles_added) || 0}`).join(', ');
+    logActivity({
+      module: 'dispatch_steps', recordId: order.id,
+      recordLabel: `${order.soNumber || order.id} · Step 6 undone — DO ${doNos.join(', ') || dos.map(d => d.doNumber || '—').join(', ')} deleted, stock restored (${restored || 'nothing to put back'})`,
+      action: 'delete',
+      before: {
+        round, steps: deletedSteps,
+        dos: deletedLines.map(d => ({
+          do_number: d.do_number, lot_no: d.wh_lot_no, warehouse: d.warehouse, product: d.product_name,
+          barrels_added_back: d.articles_added, quantity_added_back: d.qty_added,
+          lot_unfinished: d.unfinished, was_emailed: !!d.email_sent_at,
+        })),
+      },
+    });
   };
   const confirmUndo = async () => {
     if (!undoTarget || !canUndoOnBoard || undoBusy) return;
@@ -340,9 +390,14 @@ export function Dispatch() {
     const what = describeStepClick(click);
     setUndoBusy(true);
     try {
-      // A Step 6 undo leaves the Outward entry (DO) and the stock alone — the log says so.
+      const doUndo = step6UndoDos(order, click);
+      if (doUndo.length) {
+        await undoStep6WithDos(order, click, doUndo);
+        return;
+      }
+      // Any other step (or Step 6 with no DO linked): the click's rows only.
       const label = undoesStep6Do(click)
-        ? `${order.soNumber || order.id} · Undo · Step 6 ${stepDef(6).title} — DO not deleted`
+        ? `${order.soNumber || order.id} · Undo · Step 6 ${stepDef(6).title} (no DO linked)`
         : `${order.soNumber || order.id} · Undo · ${what}`;
       if (click.kind === 'delete') {
         const ids = click.rows.map(r => r.id);
@@ -764,23 +819,30 @@ export function Dispatch() {
         const { order, click } = undoTarget;
         const by = click.kind === 'delete' ? click.rows[0].doneBy : click.row.doneBy;
         const when = fmtIST(new Date(click.at), 'dd MMM, hh:mm a');
-        // Step 6 "DO issued ✓" also saved an Outward entry — Undo leaves it alone.
-        const undoesDo = undoesStep6Do(click);
+        // 2026-11-03: Step 6 Done with DOs → those DOs are deleted and stock restored.
+        const undoDos = step6UndoDos(order, click);
+        const emailed = undoDos.filter(d => d.emailSentAt);
         return (
           <ConfirmDialog
             title={`Undo the last step for ${order.soNumber || order.id}?`}
-            confirmLabel="Undo"
+            confirmLabel={undoDos.length ? `Undo & delete DO${undoDos.length > 1 ? 's' : ''}` : 'Undo'}
             busy={undoBusy}
             onConfirm={confirmUndo}
             onCancel={() => setUndoTarget(null)}
           >
             <div className="font-semibold text-blk">{describeStepClick(click)}</div>
             <div className="text-g500">({when}{by ? ` by ${doerLabel(by, data.roster)}` : ''})</div>
-            <div className="mt-2">The card moves back to where it was. Dispatch entries and the order's status are not changed.</div>
-            {undoesDo && (
-              <div className="mt-2 font-semibold text-[#8A4500] bg-[#FFF3E0] border border-[#E9730C]/40 rounded-[4px] px-2.5 py-2">
-                This only moves the card back to Step 6. The DO (Outward entry) is NOT deleted and the stock is NOT put back. If the DO was wrong, ask MIS / Shishir to delete it from Stock Movements → Outward — that will restore the stock.
+            {undoDos.length ? (
+              <div className="mt-2 font-semibold text-[#9A0000] bg-red-lt border border-red-mrt/30 rounded-[4px] px-2.5 py-2">
+                This will DELETE {undoDos.length > 1 ? 'these DOs' : 'DO'} {undoDos.map(linkedDoSummary).join('; ')} and put the stock back in Stock Summary. {undoDos.length > 1 ? 'Their' : 'Its'} Stock Book entries will be removed. The card goes back to Step 6.
+                {emailed.map(d => (
+                  <div key={d.id} className="mt-1.5">
+                    DO {d.doNumber || '—'} was already emailed on {fmtIST(new Date(d.emailSentAt!), 'dd MMM yyyy, hh:mm a')} — tell the warehouse/customer it's cancelled.
+                  </div>
+                ))}
               </div>
+            ) : (
+              <div className="mt-2">The card moves back to where it was. Dispatch entries and the order's status are not changed.</div>
             )}
           </ConfirmDialog>
         );
