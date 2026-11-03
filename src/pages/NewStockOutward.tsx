@@ -189,6 +189,13 @@
 // replaces the browser-side adjustLotStock() + insertOutwardWithRetry() /
 // row update of 2026-10-26; the DO-number retry on 23505 is kept
 // (saveOutwardDoWithRetry). See docs/dispatch_do_order_line.md.
+//
+// 2026-11-03 (later): "Wada" warehouse, NOT linked to stock (its lots are in
+// another system). DO numbers W-0001…; every row field is typed (no lot
+// lookup, no stock checks); from the Board the typed Billing Name picks the
+// order line and the order rules still apply (wadaRowInfo / onBillingChange).
+// Saving / deleting never touches stock_lots (20261103170000 migration). A
+// saved DO can't be switched between Wada and a stock warehouse.
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -207,7 +214,7 @@ import { lotBillingName, orderLineSeqForLot, orderLinesForLot } from '../lib/doO
 import { isImportedEntry, orderLinesWithoutDo } from '../lib/dispatchFlow';
 import { Loader2, Plus, X } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
-import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError } from '../lib/utils';
+import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
 import { downloadOutwardDOCX } from '../lib/outwardDocx';
@@ -248,7 +255,12 @@ const cardCls = "bg-white border border-g200 p-[18px_20px]";
 // (2026-09-11) rather than kept as dead data, since qty_wada no longer
 // exists as a stock_lots column at all — see
 // supabase/migrations/20260911150000_stock_summary_drop_wada_columns.sql.
-const WAREHOUSES = ['Hariom', 'Reliable', 'Swastik', 'BALAJI'];
+// 2026-11-03: "Wada" is back, as a NO-STOCK warehouse (Outward / DO only):
+// its lots live in another system, so a Wada DO never touches stock_lots —
+// see isNoStockWarehouse below and docs/dispatch_do_order_line.md.
+const WAREHOUSES = ['Hariom', 'Reliable', 'Swastik', 'BALAJI', 'Wada'];
+// Wada rows are fully manual — Lot No is free text (no lot lookup, no stock
+// checks, nothing cleared when it changes) and every field is typed.
 
 // Party/godown → the stock_lots quantity column it feeds. Only the 4 known
 // parties have an entry — "Other" (and any custom typed name) intentionally
@@ -303,6 +315,8 @@ const DO_NUMBER_PREFIX: Record<string, string> = {
   Reliable: 'R',
   Swastik: 'S',
   BALAJI: 'B',
+  // 2026-11-03: W-0001, W-0002 … (no hand-typed history, so no start number).
+  Wada: 'W',
 };
 
 // 2026-11-02 (user decision): each warehouse's sequence continues from the
@@ -640,9 +654,9 @@ function OutwardForm() {
         lotNo: r.wh_lot_no || '',
         lotDate: r.inward_date || '',
         productName: r.product_name || '',
-        // stock_movements has no product_code column of its own — same
-        // exact-match derivation as before.
-        productCode: codeForProductName(r.product_name || ''),
+        // Stock lines have no saved product_code — same exact-match
+        // derivation as before. 2026-11-03: a Wada line keeps the code typed.
+        productCode: r.product_code || codeForProductName(r.product_name || ''),
         // 2026-10-16: the saved billing_name; entries saved before it existed
         // fall back to the catalogue lookup.
         billingName: r.billing_name || billingNameForProductName(r.product_name || ''),
@@ -840,9 +854,21 @@ function OutwardForm() {
 
   // 2026-11-03: a Warehouse change clears every row's lot fields (b14a218) —
   // the lots are then looked up again at the new warehouse and refill.
+  // 2026-11-03 (Wada): a switch to / from Wada (no stock) — a saved DO may not
+  // make it (its stock would go out of step; save_outward_do refuses it too).
+  // A new DO keeps every header field and each row's Lot No, Billing Name and
+  // order line; the other row fields are cleared (they belonged to a stock lot,
+  // or were typed for Wada) and the new warehouse's rules take over.
   const onWarehouseChange = (warehouse: string) => {
+    const crossesWada = isNoStockWarehouse(warehouse) !== isNoStockWarehouse(headerRef.current.warehouse);
+    if (crossesWada && isEditing) {
+      showToast('err', 'Make a new DO instead — a saved DO cannot be moved between Wada and a stock warehouse.');
+      return;
+    }
     setHeader(h => ({ ...h, warehouse }));
-    setLines(ls => ls.map(l => (l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true })));
+    setLines(ls => ls.map(l => crossesWada
+      ? { ...clearedLine(l), billingName: l.billingName, billingTyped: l.billingTyped, orderLineSeq: l.orderLineSeq, lotTouched: true }
+      : (l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true })));
     setLookups({});
   };
 
@@ -913,6 +939,8 @@ function OutwardForm() {
   const lookupSig = `${header.warehouse}#${lines.map(l => `${l.key}=${l.lotNo.trim().toLowerCase()}`).join(',')}`;
   useEffect(() => {
     const warehouse = header.warehouse;
+    // 2026-11-03: Wada — Lot No is free text: no lookup, nothing cleared.
+    if (isNoStockWarehouse(warehouse)) return;
     const partyCol = PARTY_COLUMN[warehouse];
     // No Lot No / no stock warehouse → clear straight away.
     const empty = linesRef.current.filter(l => !l.lotNo.trim() || !partyCol).map(l => l.key);
@@ -962,6 +990,19 @@ function OutwardForm() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [lookupSig]);
 
+  // 2026-11-03 (Wada): no lot, so the typed Billing Name picks the row's order
+  // line (same matcher and tie-break as a lot's product, fillFromLot).
+  const onBillingChange = (l: Line, billingName: string) => {
+    if (isNoStockWarehouse(header.warehouse) && rowsOrder) {
+      const taken = new Set(linesRef.current
+        .filter(o => o.key !== l.key && o.orderLineSeq != null).map(o => o.orderLineSeq as number));
+      const orderLineSeq = billingName.trim() ? orderLineSeqForLot(rowsOrder, orderEntries, billingName, l.orderLineSeq, taken) : null;
+      updateLine(l.key, { billingName, billingTyped: true, orderLineSeq, lotTouched: true });
+      return;
+    }
+    updateLine(l.key, { billingName, billingTyped: true });
+  };
+
   const addLine = () => setLines(ls => [...ls, newLine()]);
   const removeLine = (key: string) => setLines(ls => ls.length > 1 ? ls.filter(l => l.key !== key) : ls);
 
@@ -975,9 +1016,43 @@ function OutwardForm() {
     lot: LotDetails | null; lookedUp: boolean; total: number | null; maxBarrels: number | null;
     orderNeeds: number | null; orderPacking: string; packingMismatch: boolean;
     problem: string; problemSoft: boolean;   // soft = not filled in yet (no red border)
-    problemField: 'lot' | 'barrels' | 'packing' | null;   // the box that gets the red border + tooltip
+    problemField: 'lot' | 'barrels' | 'packing' | 'product' | 'billing' | null;   // the box that gets the red border + tooltip
+  };
+  const isWada = isNoStockWarehouse(header.warehouse);
+  // 2026-11-03 (Wada): no lot, so a row's order line comes from its typed
+  // Billing Name — same matcher as a lot's product (orderLinesForLot), and the
+  // order rules (in the order, one row per line, barrels ≤ remaining) apply.
+  const wadaRowInfo = (l: Line): RowInfo => {
+    const barrels = parseNum(l.numArticles);
+    const total = lineTotal(l);
+    const item = rowsOrder && l.orderLineSeq != null ? rowsOrder.items.find(i => i.seq === l.orderLineSeq) : undefined;
+    const orderNeeds = item ? (orderRemaining.get(item.seq) ?? 0) : null;
+    const orderPacking = item ? String(item.packing ?? '').trim() : '';
+    const billing = l.billingName.trim();
+    const lineMismatch = (() => {
+      if (!rowsOrder || !l.lotTouched || !billing) return '';
+      if (item && orderLinesForLot(rowsOrder, billing).some(m => m.seq === item.seq)) return '';
+      const has = rowsOrder.items.map(i => (i.desc || '').trim()).filter(Boolean).join(', ');
+      return `${billing} is not in order ${rowsOrder.soNumber || rowsOrder.id}. Order has: ${has}.`;
+    })();
+    const dupLot = !!l.lotNo.trim() && lines.some(o => o.key !== l.key && sameLot(o.lotNo, l.lotNo));
+    const dupLine = l.orderLineSeq != null && lines.some(o => o.key !== l.key && o.orderLineSeq === l.orderLineSeq);
+    let problem = '';
+    let problemSoft = false;
+    let problemField: RowInfo['problemField'] = null;
+    if (!l.lotNo.trim()) { problem = 'Enter a Lot No.'; problemSoft = true; problemField = 'lot'; }
+    else if (!l.productName.trim()) { problem = 'Enter a Product Name.'; problemSoft = true; problemField = 'product'; }
+    else if (!billing) { problem = 'Enter a Billing Name.'; problemSoft = true; problemField = 'billing'; }
+    else if (lineMismatch) { problem = lineMismatch; problemField = 'billing'; }
+    else if (dupLot) { problem = `Lot ${l.lotNo.trim()} is on another row of this DO — use one row per lot.`; problemField = 'lot'; }
+    else if (dupLine) { problem = `${item?.desc?.trim() || 'This order line'} is on another row of this DO — use one row per product.`; problemField = 'billing'; }
+    else if (barrels === null || barrels <= 0) { problem = 'Enter No of Barrels.'; problemSoft = true; problemField = 'barrels'; }
+    else if (parseNum(l.packing) === null) { problem = l.packing.trim() ? 'Packing must be a number.' : 'Enter Packing.'; problemSoft = !l.packing.trim(); problemField = 'packing'; }
+    else if (orderNeeds !== null && barrels > orderNeeds) { problem = `Order needs only ${orderNeeds} barrel${orderNeeds === 1 ? '' : 's'} of ${item?.desc?.trim() || 'this product'} — you entered ${barrels}.`; problemField = 'barrels'; }
+    return { lot: null, lookedUp: false, total, maxBarrels: null, orderNeeds, orderPacking, packingMismatch: false, problem, problemSoft, problemField };
   };
   const rowInfos: RowInfo[] = lines.map(l => {
+    if (isWada) return wadaRowInfo(l);
     const key = lotKeyOf(header.warehouse, l.lotNo);
     const lk = lookups[l.key];
     const lookedUp = !!lk && lk.key === key;
@@ -1229,6 +1304,8 @@ function OutwardForm() {
     const linesPayload = lines.map(l => ({
       wh_lot_no: l.lotNo.trim(),
       product_name: l.productName.trim(),
+      // 2026-11-03: stored for Wada lines only (save_outward_do).
+      product_code: l.productCode.trim() || null,
       billing_name: l.billingName.trim() || null,
       inward_date: l.lotDate || null,
       num_articles: l.numArticles.trim(),
@@ -1354,6 +1431,7 @@ function OutwardForm() {
                   {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
                   {header.warehouse && !WAREHOUSES.includes(header.warehouse) && <option value={header.warehouse}>{header.warehouse}</option>}
                 </select>
+                {isWada && <p className="text-[11px] text-g500 mt-1">Wada: not linked to stock — type every product field.</p>}
               </div>
               {isOtherWarehouse && (
                 <div>
@@ -1383,11 +1461,11 @@ function OutwardForm() {
                     <th className={thCls}>#</th>
                     <th className={thCls}>Lot No *</th>
                     <th className={thCls}>Lot Date</th>
-                    <th className={thCls}>Product Name</th>
+                    <th className={thCls}>Product Name{isWada && ' *'}</th>
                     <th className={thCls}>Product Code</th>
-                    <th className={thCls}>Billing Name</th>
+                    <th className={thCls}>Billing Name{isWada && ' *'}</th>
                     <th className={thCls}>No of Barrels *</th>
-                    <th className={thCls}>Packing</th>
+                    <th className={thCls}>Packing{isWada && ' *'}</th>
                     <th className={thCls}>Total Qty</th>
                     <th className={thCls}>Packing Type</th>
                     <th className={thCls}>MOU</th>
@@ -1427,32 +1505,49 @@ function OutwardForm() {
                           <input type="date" className={cellInput} value={l.lotDate} onChange={e => updateLine(l.key, { lotDate: e.target.value })} />
                         </td>
                         <td className="px-[5px] py-[5px] min-w-[170px]">
-                          {/* 2026-10-16: Product Name / Code always come from the lot. */}
-                          <input className={cellLocked} value={l.productName} readOnly title={fromLot} />
+                          {/* 2026-10-16: Product Name / Code always come from the lot.
+                              2026-11-03: Wada (no lot) — every field is typed. */}
+                          {isWada
+                            ? <input className={`${cellInput} ${bad('product') ? redCls : ''}`} value={l.productName} title={tip('product')}
+                                onChange={e => updateLine(l.key, { productName: e.target.value })} />
+                            : <input className={cellLocked} value={l.productName} readOnly title={fromLot} />}
                         </td>
                         <td className="px-[5px] py-[5px] w-[100px]">
-                          <input className={cellLocked} value={l.productCode} readOnly title={fromLot} />
+                          {isWada
+                            ? <input className={cellInput} value={l.productCode} onChange={e => updateLine(l.key, { productCode: e.target.value })} />
+                            : <input className={cellLocked} value={l.productCode} readOnly title={fromLot} />}
                         </td>
                         <td className="px-[5px] py-[5px] min-w-[150px]">
                           {/* 2026-10-16: editable. From the Board it is the order line's product name. */}
-                          <input className={cellInput} value={l.billingName}
-                            onChange={e => updateLine(l.key, { billingName: e.target.value, billingTyped: true })} />
+                          <input className={`${cellInput} ${bad('billing') ? redCls : ''}`} value={l.billingName} title={tip('billing')}
+                            onChange={e => onBillingChange(l, e.target.value)} />
                         </td>
                         <td className="px-[5px] py-[5px] w-[90px]">
                           <input type="number" className={`${cellInput} ${bad('barrels') ? redCls : ''}`} value={l.numArticles} title={tip('barrels', stockTip)}
                             onChange={e => updateLine(l.key, { numArticles: e.target.value, userBarrelsKey: lotKeyOf(header.warehouse, l.lotNo) })} />
                         </td>
                         <td className="px-[5px] py-[5px] w-[75px]">
-                          <input className={`${cellLocked} ${bad('packing') ? redCls : ''}`} value={l.packing} readOnly title={tip('packing', packingTip)} />
+                          {isWada
+                            ? <input className={`${cellInput} ${bad('packing') ? redCls : ''}`} value={l.packing} title={tip('packing')}
+                                onChange={e => updateLine(l.key, { packing: e.target.value })} />
+                            : <input className={`${cellLocked} ${bad('packing') ? redCls : ''}`} value={l.packing} readOnly title={tip('packing', packingTip)} />}
                         </td>
                         <td className="px-[5px] py-[5px] w-[95px]">
                           <input className={`${cellLocked} font-semibold`} value={info.total === null ? '' : String(info.total)} readOnly title={totalTip} />
                         </td>
                         <td className="px-[5px] py-[5px] w-[130px]">
-                          <input className={cellLocked} value={l.packagingType} readOnly title={l.packagingType} />
+                          {isWada
+                            ? <input className={cellInput} value={l.packagingType} onChange={e => updateLine(l.key, { packagingType: e.target.value })} />
+                            : <input className={cellLocked} value={l.packagingType} readOnly title={l.packagingType} />}
                         </td>
                         <td className="px-[5px] py-[5px] w-[60px]">
-                          <input className={cellLocked} value={l.weightType} readOnly />
+                          {isWada
+                            ? <select className={cellInput} value={l.weightType} onChange={e => updateLine(l.key, { weightType: e.target.value })}>
+                                <option value=""></option>
+                                {MOU_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                                {l.weightType && !MOU_OPTIONS.includes(l.weightType) && <option value={l.weightType}>{l.weightType}</option>}
+                              </select>
+                            : <input className={cellLocked} value={l.weightType} readOnly />}
                         </td>
                         <td className="px-[5px] py-[9px] w-[28px]">
                           <button type="button" onClick={() => removeLine(l.key)} disabled={lines.length <= 1}

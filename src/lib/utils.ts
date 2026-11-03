@@ -14,8 +14,17 @@ export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himala
 const STOCK_COLUMN_WAREHOUSE: Record<string, string> = {
   qty_hariom: 'Hariom', qty_reliable: 'Reliable', qty_swastik: 'Swastik', qty_balaji: 'BALAJI',
 };
+// 2026-11-03: Wada — an Outward / DO warehouse NOT linked to stock (its lots
+// live in another system). Its DOs never change stock_lots and are left out of
+// the Stock Book. Case-insensitive, like save_outward_do /
+// delete_outward_movement (supabase/migrations/20261103170000_outward_do_wada_no_stock.sql).
+export const isNoStockWarehouse = (w: string | null | undefined) => (w || '').trim().toLowerCase() === 'wada';
+
 export function friendlyStockError(err: any): string {
   const msg: string = err?.message || String(err ?? '');
+  // 2026-11-03: an edit may not move a DO between Wada (no stock) and a stock warehouse.
+  const sw = msg.match(/WAREHOUSE_SWITCH: (.*)$/);
+  if (sw) return sw[1];
   // 2026-11-03: save_outward_do puts "Line 2 (Lot 101010) — " in front; kept.
   const tagged = msg.match(/^(.*?)(NOT_ENOUGH_STOCK|LOT_NOT_FOUND|UNKNOWN_WAREHOUSE): (.*)$/);
   if (tagged) {

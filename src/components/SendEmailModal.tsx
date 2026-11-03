@@ -33,6 +33,8 @@ const OUTWARD_PICKUP_CONTACTS: Record<string, string> = {
   balaji: 'Kiran / Sunny\n+91 82918 87543 / +91 78753 29222',
   swastik: 'Kiran / Sunny\n+91 82918 87543 / +91 78753 29222',
   reliable: 'Suraj\n+91 90825 15434',
+  // 2026-11-03: Wada (no stock link) — contact given by the user.
+  wada: 'Girish\n+91 86570 00602',
 };
 
 // ── helpers ──────────────────────────────────────────────────────────────────

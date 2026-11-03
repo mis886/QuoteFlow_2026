@@ -58,6 +58,12 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
     address: 'Godown No 1240/3-4, 1020/3, Gr Floor, Dropati Chaya Compound,\nOld Agra Road, Purna Village, Tal. Bhiwandi, Thane - 421302',
     mobile: '82918 87543, 78753 29222',
   },
+  // 2026-11-03: Wada (no stock link) — details given by the user.
+  Wada: {
+    name: 'WADA FACTORY',
+    address: 'GUT N 227, 228 & Jamghar, Post Nehroli, Wada,\nDist. Palghar, MUMBAI SUBURBAN, Pin 421303',
+    mobile: '+91 86570 00602',
+  },
 };
 
 function r(text: string, opts: { bold?: boolean; size?: number; color?: string; italics?: boolean; underline?: boolean } = {}) {

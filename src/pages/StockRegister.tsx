@@ -36,7 +36,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, RefreshCw, Warehouse, List, BookOpen, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { fmtDate, fmtIST, normalizeSearchText } from '../lib/utils';
+import { fmtDate, fmtIST, normalizeSearchText, isNoStockWarehouse } from '../lib/utils';
 import { StockLot, StockMovement } from '../lib/types';
 import { StockSummary, mapRow as mapLotRow } from './StockSummary';
 import { mapRow as mapMovementRow } from './StockMovements';
@@ -115,7 +115,9 @@ export function StockRegister() {
       fetchAll('stock_movements', 'created_at'),
     ]);
     setLots(lotsRes.rows.map(mapLotRow));
-    setMovements(movRes.rows.map(mapMovementRow).filter(m => isInward(m) || isOutward(m)));
+    // 2026-11-03: Wada DOs are not linked to stock (no stock_lots change), so
+    // they are not in the Stock Book.
+    setMovements(movRes.rows.map(mapMovementRow).filter(m => (isInward(m) || isOutward(m)) && !isNoStockWarehouse(m.warehouse)));
     setLoadError([lotsRes.error && `Stock lots: ${lotsRes.error}`, movRes.error && `Stock movements: ${movRes.error}`].filter(Boolean).join(' · '));
     setLoading(false);
   };

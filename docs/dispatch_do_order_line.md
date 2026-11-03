@@ -6,7 +6,7 @@ One DO = ONE warehouse + ONE DO number + ONE OR MORE product lines. It is
 saved, printed (PDF / DOCX) and emailed to the customer as ONE document in
 ONE email. Products in a different warehouse need a separate DO (a different
 DO number), because the DO number prefix comes from the warehouse
-(B- / S- / R- / H-).
+(B- / S- / R- / H-, and W- for Wada — see "Wada warehouse" below).
 
 ### Storage
 
@@ -144,6 +144,58 @@ comes from its lot.
 
 Code: `src/lib/doOrderLine.ts` (matching) and `src/pages/NewStockOutward.tsx`
 (`fillFromLot`, `rowInfos`, `saveBlock`).
+
+## Wada warehouse (no stock link, added 2026-11-03)
+
+Wada's lots live in a different website (separate Supabase project). EnqBoss
+has NO Wada stock and must not get any, but orders are dispatched from Wada,
+so its DOs are made, emailed and listed here like any other.
+
+- **Where:** only the Outward / DO form's Warehouse list (after BALAJI). Not
+  in Stock Inward, Stock Summary columns or anywhere else.
+- **DO number:** `W-0001`, `W-0002` … (same generator as R- / S- / H- / B-;
+  no start number). No other warehouse uses `W-`.
+- **Rows are fully manual.** Lot No is free text — no `stock_lots` lookup, no
+  auto-fill, no "lot not found" / "no stock" / barrels-vs-stock checks, and
+  nothing is cleared when Lot No changes. The user types Lot No, Lot Date,
+  Product Name, Product Code, Billing Name, No of Barrels, Packing, Packing
+  Type and MOU; Total Qty = barrels × packing. Required: Lot No, Product
+  Name, Billing Name, No of Barrels, Packing (same red box + tooltip + one
+  toast on Save). Same lot twice on one DO is still refused.
+- **From the Dispatch board:** rows prefilled from the order lines (Billing
+  Name from the line), and the order rules stay — there is no lot, so the
+  typed Billing Name picks the order line with the same matcher
+  (`orderLinesForLot` / `orderLineSeqForLot`, `onBillingChange`). Not in the
+  order → red Billing Name; barrels must be ≤ that line's remaining; one row
+  per order line. Code: `wadaRowInfo` in `NewStockOutward.tsx`.
+- **Switching warehouse** to / from Wada on a NEW DO: DO number regenerates;
+  header fields and each row's Lot No, Billing Name and order line are kept;
+  the other row fields are cleared and the new warehouse's rules apply. A
+  SAVED DO can't be switched between Wada and a stock warehouse (toast "Make
+  a new DO instead…"; the database refuses it too — `WAREHOUSE_SWITCH`).
+- **Database** (`supabase/migrations/20261103170000_outward_do_wada_no_stock.sql`):
+  `save_outward_do` with warehouse `wada` (case-insensitive) saves / updates
+  the `stock_movements` rows only — never `adjust_lot_stock`, never reads
+  `stock_lots` (also requires Product Name + Billing Name).
+  `delete_outward_movement` deletes a Wada line with no stock put back, so
+  `delete_outward_do`, Outward → Delete, `undo_step6_with_dos` and
+  `delete_dispatch_entry_reset` (which all delete through it) work unchanged.
+  New nullable `stock_movements.product_code` holds the typed Product Code —
+  written for Wada lines only; stock lines still take their code from the
+  catalogue.
+- **Lists:** shown in Stock Movements → Outward (one row per DO; Edit / PDF /
+  DOCX / Email). NOT in Stock Summary (stock_lots never changes) and left out
+  of the Stock Register → Stock Book (`isNoStockWarehouse` filter in
+  `StockRegister.tsx`).
+- **Dispatch board:** a Wada DO counts like any other DO (grouped by
+  `do_number`); emailing it completes Step 6; "+ New DO (another warehouse)"
+  offers Wada.
+- **PDF / DOCX / email:** godown block "M/s. WADA FACTORY", GUT N 227, 228 &
+  Jamghar, Post Nehroli, Wada, Dist. Palghar, MUMBAI SUBURBAN, Pin 421303,
+  Mobile +91 86570 00602 (`GODOWN_ADDRESSES` in pdfGenerator.ts +
+  outwardDocx.ts). Self Pickup email contact: Girish / +91 86570 00602
+  (`OUTWARD_PICKUP_CONTACTS`, SendEmailModal.tsx).
+- **History Log:** same rows as other DOs, warehouse "Wada".
 
 ## Example
 
