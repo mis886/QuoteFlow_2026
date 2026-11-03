@@ -74,7 +74,12 @@ DO shows its saved barrels.
 Save is blocked while ANY row has a problem — no valid lot, product not in
 the order, same lot or same order line on two rows, missing packing, no stock,
 barrels more than the lot has, barrels more than the order line still needs.
-The problem shows on its row and in the Save button's tooltip.
+Since the 2026-11-03 UI cleanup there is no text under the rows: the box
+that is wrong (Lot No, No of Barrels or Packing) gets a red border with the
+message as its tooltip ("Available at …" / "Order needs (remaining)" are in
+the No of Barrels tooltip). Save stays clickable; with a problem it saves
+nothing and shows one toast, e.g. "Row 1 (Lot 101010): order needs only 20
+barrels of Alpha Pinene — you entered 30."
 
 Edit opens the whole DO (any line's id loads every line with that DO
 number). A saved row keeps its saved values until its Lot No (or the

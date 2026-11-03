@@ -583,6 +583,15 @@ function OutwardForm() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // 2026-11-03 (UI cleanup): Save with a row problem shows it as ONE toast
+  // (same toast pattern as Customers.tsx) instead of text under the rows.
+  const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (type: 'ok' | 'err', msg: string, ms = 6000) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ type, msg });
+    toastTimer.current = setTimeout(() => setToast(null), ms);
+  };
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [loadingMovement, setLoadingMovement] = useState(isEditing);
   // Edit: every saved line as loaded — what stock_lots was last changed by
@@ -965,7 +974,8 @@ function OutwardForm() {
   type RowInfo = {
     lot: LotDetails | null; lookedUp: boolean; total: number | null; maxBarrels: number | null;
     orderNeeds: number | null; orderPacking: string; packingMismatch: boolean;
-    problem: string; problemSoft: boolean;   // soft = not filled in yet (amber), else red
+    problem: string; problemSoft: boolean;   // soft = not filled in yet (no red border)
+    problemField: 'lot' | 'barrels' | 'packing' | null;   // the box that gets the red border + tooltip
   };
   const rowInfos: RowInfo[] = lines.map(l => {
     const key = lotKeyOf(header.warehouse, l.lotNo);
@@ -996,28 +1006,40 @@ function OutwardForm() {
     })();
     const dupLot = !!lot && lines.some(o => o.key !== l.key && sameLot(o.lotNo, l.lotNo));
     const dupLine = !!lot && l.orderLineSeq != null && lines.some(o => o.key !== l.key && o.orderLineSeq === l.orderLineSeq && !!lockedOf(o));
+    // 2026-11-03 (UI cleanup, user's rule): no text under the row any more.
+    // The problem's box (problemField) gets a red border and the message as
+    // its tooltip; Save shows the first problem as a toast. Soft problems
+    // (row not filled in yet) block Save but don't turn a box red.
     let problem = '';
     let problemSoft = false;
+    let problemField: 'lot' | 'barrels' | 'packing' | null = null;
     if (!header.warehouse) { problem = 'Select a Warehouse first.'; problemSoft = true; }
     else if (!PARTY_COLUMN[header.warehouse]) problem = 'Select a Warehouse that exists in Stock Summary.';
     else if (!lot) {
       problemSoft = !l.lotNo.trim() || !lookedUp;
+      problemField = 'lot';
       problem = !l.lotNo.trim() ? 'Enter a Lot No.' : !lookedUp ? 'Looking up lot…' : `Lot ${l.lotNo.trim()} is not in Stock Summary.`;
     }
-    else if (lineMismatch) problem = lineMismatch;
-    else if (dupLot) problem = `Lot ${lot.lotNo} is on another line of this DO — use one line per lot.`;
-    else if (dupLine) problem = `${item?.desc?.trim() || 'This order line'} is on another line of this DO — use one line per product.`;
-    else if (parseNum(l.packing) === null) problem = `Packing missing for lot ${lot.lotNo} — update the lot's packing in Stock Summary first.`;
-    else if (maxBarrels !== null && maxBarrels <= 0) problem = `No stock found for this lot at ${header.warehouse}.`;
-    else if (barrels === null || barrels <= 0) { problem = 'Enter No of Barrels.'; problemSoft = true; }
-    else if (maxBarrels !== null && barrels > maxBarrels) problem = `Only ${maxBarrels} barrels available at ${header.warehouse} (Lot ${lot.lotNo}). You entered ${barrels}.`;
-    // 2026-11-03 (later): barrels now start at the lot's full stock, so this
-    // is the usual first note on a Board row — never corrected automatically.
-    else if (orderNeeds !== null && barrels > orderNeeds) problem = `Order needs only ${orderNeeds} barrel${orderNeeds === 1 ? '' : 's'} of ${item?.desc?.trim() || 'this product'} — enter how many to dispatch (you entered ${barrels}).`;
-    return { lot, lookedUp, total, maxBarrels, orderNeeds, orderPacking, packingMismatch, problem, problemSoft };
+    else if (lineMismatch) { problem = lineMismatch; problemField = 'lot'; }
+    else if (dupLot) { problem = `Lot ${lot.lotNo} is on another row of this DO — use one row per lot.`; problemField = 'lot'; }
+    else if (dupLine) { problem = `${item?.desc?.trim() || 'This order line'} is on another row of this DO — use one row per product.`; problemField = 'lot'; }
+    else if (parseNum(l.packing) === null) { problem = `Packing missing for lot ${lot.lotNo} — update the lot's packing in Stock Summary first.`; problemField = 'packing'; }
+    else if (maxBarrels !== null && maxBarrels <= 0) { problem = `No stock found for this lot at ${header.warehouse}.`; problemField = 'lot'; }
+    else if (barrels === null || barrels <= 0) { problem = 'Enter No of Barrels.'; problemSoft = true; problemField = 'barrels'; }
+    else if (maxBarrels !== null && barrels > maxBarrels) { problem = `Only ${maxBarrels} barrels available at ${header.warehouse} (Lot ${lot.lotNo}) — you entered ${barrels}.`; problemField = 'barrels'; }
+    // 2026-11-03 (later): barrels start at the lot's full stock, so this is
+    // the usual first problem on a Board row — never corrected automatically.
+    else if (orderNeeds !== null && barrels > orderNeeds) { problem = `Order needs only ${orderNeeds} barrel${orderNeeds === 1 ? '' : 's'} of ${item?.desc?.trim() || 'this product'} — you entered ${barrels}.`; problemField = 'barrels'; }
+    return { lot, lookedUp, total, maxBarrels, orderNeeds, orderPacking, packingMismatch, problem, problemSoft, problemField };
   });
   const firstProblem = rowInfos.findIndex(r => !!r.problem);
-  const saveBlock = firstProblem >= 0 ? `Line ${firstProblem + 1}: ${rowInfos[firstProblem].problem}` : '';
+  // "Row 1 (Lot 101010): order needs only 20 barrels of Alpha Pinene — you entered 30."
+  const saveBlock = (() => {
+    if (firstProblem < 0) return '';
+    const p = rowInfos[firstProblem].problem;
+    const lotNo = lines[firstProblem].lotNo.trim();
+    return `Row ${firstProblem + 1}${lotNo ? ` (Lot ${lotNo})` : ''}: ${p.charAt(0).toLowerCase()}${p.slice(1)}`;
+  })();
   const totalBarrels = lines.reduce((s, l) => s + (parseNum(l.numArticles) ?? 0), 0);
   const totalQty = rowInfos.reduce((s, r) => s + (r.total ?? 0), 0);
 
@@ -1174,7 +1196,7 @@ function OutwardForm() {
 
   const save = async () => {
     if (!isValid) { setError('Please select a Warehouse (DO Number is generated from it).'); return; }
-    if (saveBlock) { setError(saveBlock); return; }
+    if (saveBlock) { setError(''); showToast('err', saveBlock); return; }
     if (!FULFILMENT_TYPES.includes(header.fulfilmentType)) {
       setFulfilmentError(true);
       setError('Please select Fulfilment Type (Delivery or Self Pickup).');
@@ -1376,75 +1398,70 @@ function OutwardForm() {
                   {lines.map((l, idx) => {
                     const info = rowInfos[idx];
                     const lot = info.lot;
+                    // 2026-11-03 (UI cleanup, user's rule): no text under the
+                    // row. A real problem turns its box red with the message as
+                    // the box's tooltip; stock / order figures are tooltips too.
+                    const bad = (f: RowInfo['problemField']) => !!info.problem && !info.problemSoft && info.problemField === f;
+                    const tip = (f: RowInfo['problemField'], normal?: string) => (info.problem && info.problemField === f ? info.problem : normal) || undefined;
+                    const redCls = 'border-red-mrt ring-[2px] ring-red-lt';
+                    const fromLot = lot ? `From lot ${lot.lotNo}` : undefined;
+                    const stockTip = [
+                      lot && (isEditing && !l.lotTouched
+                        ? `Available (after this DO): ${lot.available}`
+                        : `Available at ${header.warehouse} (Lot ${lot.lotNo}): ${info.maxBarrels ?? lot.available} barrels`),
+                      info.orderNeeds !== null && `Order needs (remaining): ${info.orderNeeds} barrels`,
+                    ].filter(Boolean).join(' · ');
+                    const packingTip = info.packingMismatch && lot
+                      ? `Order packing is ${info.orderPacking} per barrel, but lot ${lot.lotNo} is ${lot.packing} — the lot's packing is used.`
+                      : fromLot;
+                    const totalTip = isEditing && !l.lotTouched && l.savedTotal != null && info.total !== null && Number(l.savedTotal) !== info.total
+                      ? `Recalculated from barrels × packing (saved: ${String(l.savedTotal)})` : '= No of Barrels × Packing';
                     return (
-                      <React.Fragment key={l.key}>
-                        <tr className="align-top">
-                          <td className="px-[5px] pt-[12px] font-mono text-[11px] text-g500">{idx + 1}</td>
-                          <td className="px-[5px] pt-[5px] w-[110px]">
-                            <input className={cellInput} value={l.lotNo}
-                              onChange={e => updateLine(l.key, { lotNo: e.target.value, lotTouched: true, userBarrelsKey: null })} />
-                          </td>
-                          <td className="px-[5px] pt-[5px] w-[130px]">
-                            <input type="date" className={cellInput} value={l.lotDate} onChange={e => updateLine(l.key, { lotDate: e.target.value })} />
-                          </td>
-                          <td className="px-[5px] pt-[5px] min-w-[170px]">
-                            {/* 2026-10-16: Product Name / Code always come from the lot. */}
-                            <input className={cellLocked} value={l.productName} readOnly />
-                          </td>
-                          <td className="px-[5px] pt-[5px] w-[100px]">
-                            <input className={cellLocked} value={l.productCode} readOnly />
-                          </td>
-                          <td className="px-[5px] pt-[5px] min-w-[150px]">
-                            {/* 2026-10-16: editable. From the Board it is the order line's product name. */}
-                            <input className={cellInput} value={l.billingName}
-                              onChange={e => updateLine(l.key, { billingName: e.target.value, billingTyped: true })} />
-                          </td>
-                          <td className="px-[5px] pt-[5px] w-[90px]">
-                            <input type="number" className={cellInput} value={l.numArticles}
-                              onChange={e => updateLine(l.key, { numArticles: e.target.value, userBarrelsKey: lotKeyOf(header.warehouse, l.lotNo) })} />
-                          </td>
-                          <td className="px-[5px] pt-[5px] w-[75px]">
-                            <input className={cellLocked} value={l.packing} readOnly />
-                          </td>
-                          <td className="px-[5px] pt-[5px] w-[95px]">
-                            <input className={`${cellLocked} font-semibold`} value={info.total === null ? '' : String(info.total)} readOnly />
-                          </td>
-                          <td className="px-[5px] pt-[5px] w-[130px]">
-                            <input className={cellLocked} value={l.packagingType} readOnly title={l.packagingType} />
-                          </td>
-                          <td className="px-[5px] pt-[5px] w-[60px]">
-                            <input className={cellLocked} value={l.weightType} readOnly />
-                          </td>
-                          <td className="px-[5px] pt-[9px] w-[28px]">
-                            <button type="button" onClick={() => removeLine(l.key)} disabled={lines.length <= 1}
-                              title={lines.length <= 1 ? 'A DO needs at least one product' : 'Remove this product'}
-                              className="p-1 text-g400 hover:text-red-mrt disabled:opacity-30 disabled:cursor-not-allowed">
-                              <X size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                        <tr className="border-b border-g100">
-                          <td></td>
-                          <td colSpan={11} className="px-[5px] pb-[8px] pt-[3px] text-[11px] leading-[1.45]">
-                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-g600">
-                              {lot && <span className="text-g500">From lot {lot.lotNo}</span>}
-                              {lot && (isEditing && !l.lotTouched
-                                ? <span>Available (after this DO): {lot.available}</span>
-                                : <span>Available at {header.warehouse} (Lot {lot.lotNo}): <strong className="text-blk">{info.maxBarrels ?? lot.available} barrels</strong></span>)}
-                              {info.orderNeeds !== null && <span>Order needs (remaining): <strong className="text-blk">{info.orderNeeds} barrels</strong></span>}
-                              {!isEditing || l.lotTouched ? null : (l.savedTotal != null && info.total !== null && Number(l.savedTotal) !== info.total && (
-                                <span className="text-amber-600">Total recalculated from barrels × packing (saved: {String(l.savedTotal)})</span>
-                              ))}
-                            </div>
-                            {info.packingMismatch && lot && (
-                              <p className="text-amber-600 mt-0.5">Order packing is {info.orderPacking} per barrel, but lot {lot.lotNo} is {lot.packing} — the lot's packing is used.</p>
-                            )}
-                            {info.problem && (
-                              <p className={`mt-0.5 font-semibold ${info.problemSoft ? 'text-amber-700' : 'text-red-mrt font-bold'}`}>{info.problem}</p>
-                            )}
-                          </td>
-                        </tr>
-                      </React.Fragment>
+                      <tr key={l.key} className="align-top border-b border-g100">
+                        <td className="px-[5px] py-[11px] font-mono text-[11px] text-g500">{idx + 1}</td>
+                        <td className="px-[5px] py-[5px] w-[110px]">
+                          <input className={`${cellInput} ${bad('lot') ? redCls : ''}`} value={l.lotNo} title={tip('lot', fromLot)}
+                            onChange={e => updateLine(l.key, { lotNo: e.target.value, lotTouched: true, userBarrelsKey: null })} />
+                        </td>
+                        <td className="px-[5px] py-[5px] w-[130px]">
+                          <input type="date" className={cellInput} value={l.lotDate} onChange={e => updateLine(l.key, { lotDate: e.target.value })} />
+                        </td>
+                        <td className="px-[5px] py-[5px] min-w-[170px]">
+                          {/* 2026-10-16: Product Name / Code always come from the lot. */}
+                          <input className={cellLocked} value={l.productName} readOnly title={fromLot} />
+                        </td>
+                        <td className="px-[5px] py-[5px] w-[100px]">
+                          <input className={cellLocked} value={l.productCode} readOnly title={fromLot} />
+                        </td>
+                        <td className="px-[5px] py-[5px] min-w-[150px]">
+                          {/* 2026-10-16: editable. From the Board it is the order line's product name. */}
+                          <input className={cellInput} value={l.billingName}
+                            onChange={e => updateLine(l.key, { billingName: e.target.value, billingTyped: true })} />
+                        </td>
+                        <td className="px-[5px] py-[5px] w-[90px]">
+                          <input type="number" className={`${cellInput} ${bad('barrels') ? redCls : ''}`} value={l.numArticles} title={tip('barrels', stockTip)}
+                            onChange={e => updateLine(l.key, { numArticles: e.target.value, userBarrelsKey: lotKeyOf(header.warehouse, l.lotNo) })} />
+                        </td>
+                        <td className="px-[5px] py-[5px] w-[75px]">
+                          <input className={`${cellLocked} ${bad('packing') ? redCls : ''}`} value={l.packing} readOnly title={tip('packing', packingTip)} />
+                        </td>
+                        <td className="px-[5px] py-[5px] w-[95px]">
+                          <input className={`${cellLocked} font-semibold`} value={info.total === null ? '' : String(info.total)} readOnly title={totalTip} />
+                        </td>
+                        <td className="px-[5px] py-[5px] w-[130px]">
+                          <input className={cellLocked} value={l.packagingType} readOnly title={l.packagingType} />
+                        </td>
+                        <td className="px-[5px] py-[5px] w-[60px]">
+                          <input className={cellLocked} value={l.weightType} readOnly />
+                        </td>
+                        <td className="px-[5px] py-[9px] w-[28px]">
+                          <button type="button" onClick={() => removeLine(l.key)} disabled={lines.length <= 1}
+                            title={lines.length <= 1 ? 'A DO needs at least one product' : 'Remove this product'}
+                            className="p-1 text-g400 hover:text-red-mrt disabled:opacity-30 disabled:cursor-not-allowed">
+                            <X size={14} />
+                          </button>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -1521,7 +1538,9 @@ function OutwardForm() {
       </div>
 
       <div className="flex items-center gap-2 p-[14px_20px] bg-g100 border-t border-g200 sticky bottom-0">
-        <Button variant="primary" onClick={() => save()} disabled={!isValid || saving || !!saveBlock}
+        {/* 2026-11-03 (UI cleanup): clickable even with a problem — save()
+            then shows the first problem as a toast and saves nothing. */}
+        <Button variant="primary" onClick={() => save()} disabled={saving}
           title={saveBlock || undefined}>
           {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save Outward Entry'}
         </Button>
@@ -1544,6 +1563,12 @@ function OutwardForm() {
         <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>
         {error && <div className="ml-4 text-red-mrt text-[11px] font-bold max-w-[420px]">{error}</div>}
       </div>
+
+      {toast && (
+        <div className={`fixed bottom-5 right-5 z-50 max-w-[560px] flex items-start gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white animate-in slide-in-from-bottom-2 ${toast.type === 'ok' ? 'bg-sW' : 'bg-red-mrt'}`}>
+          {toast.msg}
+        </div>
+      )}
 
       {showEmailModal && (
         <SendEmailModal
