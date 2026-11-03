@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, Order, QuoteItem, Quote, TeamMember } from './types';
+import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, Order, QuoteItem, Quote, TeamMember, OutwardDO, OutwardDoLine } from './types';
 
 export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'];
 
@@ -16,10 +16,11 @@ const STOCK_COLUMN_WAREHOUSE: Record<string, string> = {
 };
 export function friendlyStockError(err: any): string {
   const msg: string = err?.message || String(err ?? '');
-  const tagged = msg.match(/(NOT_ENOUGH_STOCK|LOT_NOT_FOUND|UNKNOWN_WAREHOUSE): (.*)$/);
+  // 2026-11-03: save_outward_do puts "Line 2 (Lot 101010) — " in front; kept.
+  const tagged = msg.match(/^(.*?)(NOT_ENOUGH_STOCK|LOT_NOT_FOUND|UNKNOWN_WAREHOUSE): (.*)$/);
   if (tagged) {
-    const detail = tagged[2].charAt(0).toUpperCase() + tagged[2].slice(1);
-    return tagged[1] === 'NOT_ENOUGH_STOCK' ? `Not enough stock. ${detail}.` : `${detail}.`;
+    const detail = tagged[3].charAt(0).toUpperCase() + tagged[3].slice(1);
+    return tagged[1] + (tagged[2] === 'NOT_ENOUGH_STOCK' ? `Not enough stock. ${detail}.` : `${detail}.`);
   }
   const col = msg.match(/stock_lots_(qty_\w+|quantity)_nonneg/);
   if (col) {
@@ -33,6 +34,14 @@ export function friendlyStockError(err: any): string {
 
 export const outwardTransporterName =(m: { transporter?: string | null; otherTransporter?: string | null }): string =>
   ((m.transporter === 'Other' ? m.otherTransporter : m.transporter) || '').trim();
+
+// 2026-11-03: the product lines a DO prints (PDF / DOCX) — its `lines`, or,
+// for a caller that passes one row, that row itself.
+export const outwardDoLines = (m: OutwardDO): OutwardDoLine[] => m.lines?.length ? m.lines : [{
+  whLotNo: m.whLotNo, inwardDate: m.inwardDate, productName: m.productName, productCode: m.productCode,
+  billingName: m.billingName, numArticles: m.numArticles, packing: m.packing, totalQty: m.totalQty,
+  packagingType: m.packagingType, weightType: m.weightType,
+}];
 
 // ── Payment Terms — shared across Orders, Quotations, and Customers ──────────
 

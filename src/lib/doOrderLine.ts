@@ -27,10 +27,15 @@ export function orderLinesForLot(o: Order, lotBilling: string) {
  * The order line a DO for this lot should use, or null if the lot's product
  * isn't in the order. Lines with barrels left win; among those the line
  * already picked stays, else the first.
+ * 2026-11-03 (one DO, many products): `taken` = order lines other rows of the
+ * same DO already use — free lines win; if only taken lines match, one of
+ * them is still returned and the form shows the duplicate.
  */
-export function orderLineSeqForLot(o: Order, entries: DispatchEntry[], lotBilling: string, currentSeq: number | null): number | null {
-  const matches = orderLinesForLot(o, lotBilling);
-  if (!matches.length) return null;
+export function orderLineSeqForLot(o: Order, entries: DispatchEntry[], lotBilling: string, currentSeq: number | null, taken: Set<number> = new Set()): number | null {
+  const all = orderLinesForLot(o, lotBilling);
+  if (!all.length) return null;
+  const free = all.filter(i => !taken.has(i.seq));
+  const matches = free.length ? free : all;
   const remaining = remainingByLine(o, entries);
   const withBarrels = matches.filter(i => (remaining.get(i.seq) ?? 0) > 0);
   const pool = withBarrels.length ? withBarrels : matches;

@@ -767,7 +767,31 @@ export interface StockMovement {
   // at least once (never set at insert time).
   updated_by?: string;
   updated_at?: string;
+  // 2026-11-03: one DO, many products — stock_movements.do_line_no (1, 2, …
+  // within the DO; old rows are all 1) and order_line_seq (the order line the
+  // product line is for, null when unknown / plain New Outward).
+  doLineNo?: number;
+  orderLineSeq?: number;
 }
+
+// 2026-11-03: one product line of a DO (one stock_movements row).
+export interface OutwardDoLine {
+  whLotNo?: string;
+  inwardDate?: string;       // the lot's date ("Lot Date")
+  productName: string;
+  productCode?: string;
+  billingName?: string;
+  numArticles?: string;
+  packing?: number;
+  totalQty?: number;
+  packagingType?: string;
+  weightType?: string;
+}
+
+// The whole DO as PDF / DOCX / Email take it: the header (and line 1's
+// fields, for older callers) plus every product line in `lines`. A DO with
+// no `lines` is printed from its own single-line fields, as before.
+export type OutwardDO = StockMovement & { productCode?: string; lines?: OutwardDoLine[] };
 
 export interface AuthorizedSignatory {
   id: string;

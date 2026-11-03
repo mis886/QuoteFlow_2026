@@ -158,6 +158,37 @@
 // before Save is clicked. Customer is resolved for the Email modal by
 // matching Party Name against data.customers — a non-match (e.g. "Other")
 // just leaves the To field blank, an expected fallback.
+//
+// 2026-11-03 (user decision): ONE DO, MANY PRODUCTS. One DO = ONE warehouse +
+// ONE DO number + ONE OR MORE product lines, saved, printed (PDF / DOCX) and
+// emailed as ONE document. Products in another warehouse need another DO (the
+// DO number's prefix comes from the warehouse). The form is now:
+//   1. Header, filled once — Warehouse → DO Number (generated as before,
+//      never regenerated in edit mode), DO Date.
+//   2. Product lines table — per row: Lot No, Lot Date, Product Name / Code
+//      (from the lot), Billing Name, No of Barrels, Packing, Total Quantity,
+//      Packing Type, MOU. Each row keeps the old single-lot behaviour: the lot
+//      is looked up in the HEADER warehouse (findOutwardLot + that
+//      warehouse's column), "Available at …", "From lot …", the barrels
+//      auto-fill, the 25231ee rule (the lot's product picks the order line;
+//      not in the order → red note, Save blocked) and the b14a218 rule (empty
+//      or unknown Lot No clears that row's lot fields). "+ Add product" adds a
+//      row, ✕ removes one (at least one stays). Totals under the table. The
+//      old "Product (from order)" picker is gone — a row's order line comes
+//      from its lot; two rows may not share a lot or an order line.
+//   3. Party, Transporter, Fulfilment Type, Note — once, as before.
+// Changing the Warehouse clears every row's lot fields (they refill from the
+// new warehouse's stock) and, for a new DO, regenerates the DO number.
+// From the Dispatch board the form opens with one row per order line that
+// still has barrels left (or the lines in ?lines=, for "+ New DO (another
+// warehouse)"), Billing Name prefilled, lot fields empty.
+// Save goes through the save_outward_do database function (supabase/
+// migrations/20261103120000_outward_do_multi_line.sql): ONE transaction that
+// writes one stock_movements row per line and changes every line's stock
+// (edit: puts back every old line first). Any refusal saves nothing. This
+// replaces the browser-side adjustLotStock() + insertOutwardWithRetry() /
+// row update of 2026-10-26; the DO-number retry on 23505 is kept
+// (saveOutwardDoWithRetry). See docs/dispatch_do_order_line.md.
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -166,7 +197,6 @@ import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { Button } from '../components/ui';
 import { SearchableCombobox } from '../components/SearchableCombobox';
-import { usePackingTypes } from '../hooks/usePackingTypes';
 // 2026-09-07: Product Name now draws from the same PRODUCTS list Inward
 // uses (instead of stockMovementOptions.ts's plain-string PRODUCT_NAMES),
 // so a Product Code can be looked up on selection — see the file-header
@@ -174,14 +204,14 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { lotBillingName, orderLineSeqForLot, orderLinesForLot } from '../lib/doOrderLine';
-import { Loader2 } from 'lucide-react';
-import { StockMovement, Order, DispatchEntry } from '../lib/types';
+import { isImportedEntry, orderLinesWithoutDo } from '../lib/dispatchFlow';
+import { Loader2, Plus, X } from 'lucide-react';
+import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
 import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
 import { downloadOutwardDOCX } from '../lib/outwardDocx';
 import { SendEmailModal } from '../components/SendEmailModal';
-import { ConfirmDialog } from '../components/ConfirmDialog';
 
 // Combobox options — derived from PRODUCTS, the single source of truth also
 // used for the Product Code auto-fill lookup below (same pattern as
@@ -242,13 +272,6 @@ const TRANSPORTERS = [
   'YASHWANT TRANSPORT', 'Other',
 ];
 
-const emptyForm = {
-  warehouse: '', otherWarehouse: '',
-  doNumber: '', doDate: '', lotNo: '', lotDate: '', productName: '', productCode: '', billingName: '',
-  numArticles: '', packing: '', totalQty: '', weightType: '', packagingType: '',
-  partyName: '', otherParty: '', transporter: '', otherTransporter: '', fulfilmentType: '', note: '',
-};
-
 // THE lot an Outward entry draws from: wh_lot_no matched case-insensitively
 // (ilike), first row in a FIXED order — stock_lots has duplicate wh_lot_no
 // rows, so without one, save and delete could pick different rows.
@@ -259,20 +282,6 @@ const findOutwardLot = (lotNo: string) => supabase.from('stock_lots').select('*'
   .order('created_at', { ascending: true })
   .order('id', { ascending: true })
   .limit(1);
-
-// 2026-10-26: EVERY Outward stock change (save and edit) goes through the
-// adjust_lot_stock database function (supabase/migrations/
-// 20261026150000_stock_lots_no_negative.sql) — same lot as findOutwardLot,
-// row locked, never below 0. Replaces the old browser-side best-effort
-// adjustLot(). barrelsDelta is the warehouse column (Number of Articles),
-// qtyDelta the lot's Total Quantity; negative takes stock, positive puts it
-// back. Returns the database's error (null = done) — callers must stop on it.
-async function adjustLotStock(partyCol: string, whLotNo: string, barrelsDelta: number, qtyDelta: number, userEmail?: string | null) {
-  const { error } = await supabase.rpc('adjust_lot_stock', {
-    p_lot_no: whLotNo, p_party_col: partyCol, p_barrels_delta: barrelsDelta, p_qty_delta: qtyDelta, p_user: userEmail ?? null,
-  });
-  return error;
-}
 
 // 2026-09-09: DO Number auto-generation, replacing free-hand entry.
 // 2026-09-19: prefix shortened from each warehouse's first 4 letters to just
@@ -339,43 +348,33 @@ async function generateNextDoNumber(warehouse: string): Promise<string> {
   return `${prefix}-${String(next).padStart(4, '0')}`;
 }
 
-// Guards the create-mode insert against a duplicate DO Number from two
-// people saving for the same warehouse at nearly the same time (both
-// generating the same "next" number before either had saved) — the DB-side
-// stock_movements_do_number_unique constraint (see that migration) rejects
-// the second insert with a 23505 unique-violation, caught here so it can be
-// retried with a freshly-regenerated number instead of surfacing a raw DB
-// error. onRetryDoNumber keeps the visible form field in sync with whatever
-// number is actually being attempted, so a final failure (retries
-// exhausted) still shows the user what was last tried rather than a stale
-// value. Never used by edit-mode's update path — an existing entry's DO
-// Number never changes, so there's nothing to conflict with there.
-async function insertOutwardWithRetry(
-  payload: Record<string, any>,
-  warehouse: string,
+// 2026-11-03: saves the WHOLE DO (every line + its stock) in one database
+// transaction — save_outward_do. A new DO whose number someone else just
+// took fails with 23505 (unique do_number + do_line_no, see the migration):
+// retried with a freshly generated number, as insertOutwardWithRetry did.
+// onRetryDoNumber keeps the visible DO Number in step with the number tried.
+// An edit never changes the DO number, so it is never retried.
+type SaveDoResult = { do_number: string; ids: string[]; before: any[]; after: any[] };
+async function saveOutwardDoWithRetry(
+  movementId: string | null,
+  header: Record<string, any>,
+  lines: Record<string, any>[],
+  actor: string | null,
   onRetryDoNumber: (doNumber: string) => void,
-  maxAttempts = 3
-): Promise<{ error: any; saved?: Record<string, any>; id?: string }> {
-  let attemptPayload = payload;
+  maxAttempts = 3,
+): Promise<{ error: any; result?: SaveDoResult }> {
+  let attemptHeader = header;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    // 2026-10-16: returns the new row's id (a Board save reopens it in edit mode).
-    const { data: rows, error } = await supabase.from('stock_movements').insert(attemptPayload).select('id');
-    // `saved` = the payload that actually went in (with the final DO Number), for the activity log.
-    if (!error) {
-      let id: string | undefined = rows?.[0]?.id;
-      if (!id) {
-        // Inserted but not returned — DO Number is unique, so look it up.
-        const { data: found } = await supabase.from('stock_movements').select('id').eq('do_number', attemptPayload.do_number).limit(1);
-        id = found?.[0]?.id;
-      }
-      return { error: null, saved: attemptPayload, id };
-    }
-    if (error.code !== '23505' || attempt === maxAttempts - 1) return { error };
-    const nextDoNumber = await generateNextDoNumber(warehouse);
-    attemptPayload = { ...attemptPayload, do_number: nextDoNumber };
+    const { data, error } = await supabase.rpc('save_outward_do', {
+      p_movement_id: movementId, p_header: attemptHeader, p_lines: lines, p_actor: actor,
+    });
+    if (!error) return { error: null, result: data as SaveDoResult };
+    if (movementId || error.code !== '23505' || attempt === maxAttempts - 1) return { error };
+    const nextDoNumber = await generateNextDoNumber(header.warehouse);
+    attemptHeader = { ...attemptHeader, do_number: nextDoNumber };
     onRetryDoNumber(nextDoNumber);
   }
-  return { error: new Error('Could not save entry after several attempts — please try again.') };
+  return { error: new Error('Could not save the DO after several attempts — please try again.') };
 }
 
 // 2026-10-05: the same form can also be opened from the Dispatch board
@@ -383,61 +382,14 @@ async function insertOutwardWithRetry(
 // 2026-10-06: that no longer happens in a popup. Dispatch.tsx now navigates
 // to this same page as a normal full page (like New Enquiry):
 //   /stock-movements/new-outward?fromDispatch=1&orderRef=<order id>&round=<n>&plannedAt=<iso>
-// The page finds the order in the store, prefills the form once, and after
-// a successful save marks Step 6 done in dispatch_steps (same row
-// runStepAction in Dispatch.tsx writes) and goes back to the board. Save
-// logic for the Outward entry itself is 100% unchanged. The old
-// embedded / prefill / onSaved / onCancel props are gone.
-export type OutwardPrefill = Partial<typeof emptyForm>;
-
-// The order line a DO is being made for. 2026-10-13: the given line (the
-// "Product (from order)" picker) if there is one, else the first line that
-// still has barrels left to dispatch, else — as before — the first line with
-// a qty.
-export function orderLineFor(o: Order, entries: DispatchEntry[], seq?: number | null) {
-  const picked = seq != null ? o.items.find(i => i.seq === seq) : undefined;
-  if (picked) return picked;
-  const remaining = remainingByLine(o, entries);
-  return o.items.find(i => (remaining.get(i.seq) ?? 0) > 0) || o.items.find(i => i.qty > 0) || o.items[0];
-}
-
-// Builds the Dispatch prefill from an order (moved here from Dispatch.tsx
-// on 2026-10-06). Uses orderLineFor's line.
-// 2026-10-16: Billing Name = the order line's product name, exactly as in the
-// order. Product Name / Code and Packing / Packing Type start EMPTY — they
-// come from the lot once Warehouse + Lot No match (see the Lot No auto-fill).
-export function outwardPrefillFor(o: Order, entries: DispatchEntry[], seq?: number | null): OutwardPrefill {
-  const item = orderLineFor(o, entries, seq);
-  const desc = (item?.desc || '').trim();
-  // 2026-10-13: No of Barrels / Total Quantity are NOT prefilled from the
-  // order any more — they come from the lot's stock at the chosen Warehouse
-  // (see the Lot No auto-fill). The order qty is shown next to the field as
-  // "Order needs" instead (orderBarrelsFor below).
-  return {
-    doDate: fmtIST(new Date(), 'yyyy-MM-dd'),
-    productName: '',
-    productCode: '',
-    billingName: desc,
-    packing: '',
-    packagingType: '',
-    partyName: o.cust || '',
-    note: `${o.soNumber || ''}${o.soNumber ? ' · ' : ''}${o.id}`,
-  };
-}
-
-// Barrels of the order still REMAINING to dispatch (order qty minus every
-// dispatch entry so far) — for the same line outwardPrefillFor takes the
-// product from.
-export function orderBarrelsFor(o: Order, entries: DispatchEntry[], seq?: number | null): number | null {
-  const item = orderLineFor(o, entries, seq);
-  if (!item) return null;
-  return remainingByLine(o, entries).get(item.seq) ?? 0;
-}
-
+// The page finds the order in the store and prefills the form once.
+// 2026-11-03: &lines=<seq,seq> = "+ New DO (another warehouse)" — rows only
+// for those order lines.
 const DISPATCH_BOARD_PATH = '/dispatch';
 
 // Warehouse + Lot No as one comparable key (lot match is case-insensitive).
 const lotKeyOf = (warehouse: string, lotNo: string) => `${warehouse}|${lotNo.trim().toLowerCase()}`;
+const sameLot = (a: string, b: string) => !!a.trim() && a.trim().toLowerCase() === b.trim().toLowerCase();
 
 // 2026-10-12: Fulfilment Type is now required and must be one of these two
 // ("Both" is a customer-level value, not something one Outward entry can be).
@@ -468,6 +420,72 @@ function clearOldOutwardDrafts() {
   } catch { /* storage unavailable — nothing to clean */ }
 }
 
+// ── The DO: header (once) + product lines ──────────────────────────────────
+const emptyHeader = {
+  warehouse: '', otherWarehouse: '', doNumber: '', doDate: '',
+  partyName: '', otherParty: '', transporter: '', otherTransporter: '', fulfilmentType: '', note: '',
+};
+type Header = typeof emptyHeader;
+
+// One product line (one stock_movements row). Total Quantity is never stored
+// here — it is always No of Barrels × Packing (lineTotal).
+type Line = {
+  key: string;
+  lotNo: string; lotDate: string; productName: string; productCode: string; billingName: string;
+  numArticles: string; packing: string; packagingType: string; weightType: string;
+  orderLineSeq: number | null;     // the order line this row is for (from its lot)
+  billingTyped: boolean;           // plain New Outward: the user typed their own Billing Name
+  userBarrelsKey: string | null;   // Warehouse + Lot No the user typed their own No of Barrels for
+  autoBarrels: string | null;      // what the barrels auto-fill last put in
+  lotTouched: boolean;             // false = a saved row whose Lot No / Warehouse wasn't changed yet
+  lotFilled: boolean;              // a lot has filled this row (so there is something to clear)
+  savedTotal?: number | null;      // edit: total_qty as saved
+};
+let lineCounter = 0;
+const newLine = (p: Partial<Line> = {}): Line => ({
+  key: `line${++lineCounter}`,
+  lotNo: '', lotDate: '', productName: '', productCode: '', billingName: '',
+  numArticles: '', packing: '', packagingType: '', weightType: '',
+  orderLineSeq: null, billingTyped: false, userBarrelsKey: null, autoBarrels: null,
+  lotTouched: true, lotFilled: false,
+  ...p,
+});
+// b14a218 for one row: every lot field emptied (Lot No itself stays).
+const clearedLine = (l: Line): Line => ({
+  ...l, lotDate: '', productName: '', productCode: '', billingName: '',
+  numArticles: '', packing: '', packagingType: '', weightType: '',
+  orderLineSeq: null, billingTyped: false, userBarrelsKey: null, autoBarrels: null, lotFilled: false,
+});
+
+// Returns a finite number, or null if v is empty/not a valid number (never NaN, never "" as 0).
+const parseNum = (v: string): number | null => {
+  const t = (v ?? '').trim();
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+};
+const lineTotal = (l: Line): number | null => {
+  const b = parseNum(l.numArticles), p = parseNum(l.packing);
+  return b !== null && p !== null ? b * p : null;
+};
+
+// What the Lot No lookup found: the lot's own details and its barrels at the
+// header warehouse. key = the Warehouse + Lot No it was looked up for.
+type LotDetails = {
+  lotNo: string; productName: string; productCode: string; packing: string;
+  packagingType: string; weightType: string; inwardDate: string; available: number;
+};
+type Lookup = { key: string; lot: LotDetails | null };
+
+// Board prefill: one row per order line (the given seqs, else every line
+// with barrels left), Billing Name = the line's product name, lot fields empty.
+function dispatchRowsFor(o: Order, entries: DispatchEntry[], seqs: number[] | null): Line[] {
+  const remaining = remainingByLine(o, entries);
+  const items = seqs ? o.items.filter(i => seqs.includes(i.seq)) : o.items.filter(i => (remaining.get(i.seq) ?? 0) > 0);
+  const rows = items.map(i => newLine({ billingName: (i.desc || '').trim(), orderLineSeq: i.seq }));
+  return rows.length ? rows : [newLine()];
+}
+
 // The page itself is a thin shell: the form below is re-created from scratch
 // (fresh state, fresh prefill / saved record) whenever the thing being filled
 // in changes (another order / round, another entry, or plain New Outward).
@@ -479,7 +497,7 @@ export function NewStockOutward() {
   // 2026-10-16: `saved` changes after every save from the Board, so the form
   // reloads the entry fresh (edit mode) instead of keeping stale state.
   const formKey = movementId ? `edit:${movementId}:${searchParams.get('saved') || ''}`
-    : fromDispatch ? `dispatch:${orderRef}:${Number(searchParams.get('round')) || 1}`
+    : fromDispatch ? `dispatch:${orderRef}:${Number(searchParams.get('round')) || 1}:${searchParams.get('lines') || ''}`
     : 'new';
   useEffect(() => { clearOldOutwardDrafts(); }, []);
   return <OutwardForm key={formKey} />;
@@ -493,7 +511,6 @@ function OutwardForm() {
   const isEditing = !!movementId;
 
   // 2026-10-06: opened from the Dispatch board's Step 6 "DO issued ✓".
-  // Always "create new" — ignored when editing an existing entry.
   const orderRef = searchParams.get('orderRef') || '';
   // 2026-10-16: boardLink = opened from the Board, new DO OR an existing one
   // ("Open DO → Email to Client") — Back goes to the board. fromDispatch
@@ -503,82 +520,28 @@ function OutwardForm() {
   const dispatchRound = Number(searchParams.get('round')) || 1;
   const dispatchPlannedAt = searchParams.get('plannedAt') || '';
   const dispatchRemark = searchParams.get('remark') || '';
+  const linesParam = searchParams.get('lines');
+  const prefillSeqs = linesParam ? linesParam.split(',').map(Number).filter(n => Number.isFinite(n)) : null;
   // 2026-10-12: a Self Pickup card's Step 6 opens this form with Fulfilment
   // Type prefilled as Self Pickup (still editable).
   const dispatchFulfilment = fromDispatch && searchParams.get('fulfilment') === 'self_pickup' ? 'Self Pickup' : '';
-  // The copy saved when the order was sent to Dispatch: see dispatchOrderView.
-  const dispatchOrder = useMemo(() => {
-    const order = fromDispatch ? data.orders.find(o => o.id === orderRef) : undefined;
-    return order && dispatchOrderView(order);
-  }, [fromDispatch, data.orders, orderRef]);
 
-  // The order line picked in "Product (from order)" (null = the default line,
-  // see orderLineFor).
-  const [orderLineSeq, setOrderLineSeq] = useState<number | null>(null);
-  // For the Lot No auto-fill's delayed lookup, which runs after this render.
-  const orderLineSeqRef = useRef<number | null>(null);
-  orderLineSeqRef.current = orderLineSeq;
-  // The store's entries (the Lot No lookup below has its own `data`).
-  const allDispatchEntries = data.dispatchEntries;
-  // Barrels the order still has left to dispatch (Board flow only) — shown
-  // as "Order needs (remaining)".
-  const orderBarrels = dispatchOrder ? orderBarrelsFor(dispatchOrder, data.dispatchEntries, orderLineSeq) : null;
-  // Order lines that still have barrels left — 2 or more get the
-  // "Product (from order)" picker at the top of the form.
-  const orderLinesLeft = dispatchOrder
-    ? (() => {
-      const remaining = remainingByLine(dispatchOrder, data.dispatchEntries);
-      return dispatchOrder.items.map(i => ({ seq: i.seq, desc: (i.desc || '').trim(), left: remaining.get(i.seq) ?? 0 })).filter(l => l.left > 0);
-    })()
-    : [];
-  const currentOrderLineSeq = dispatchOrder ? orderLineFor(dispatchOrder, data.dispatchEntries, orderLineSeq)?.seq ?? null : null;
+  const [header, setHeader] = useState<Header>(emptyHeader);
+  const [lines, setLines] = useState<Line[]>(() => [newLine()]);
+  const headerRef = useRef(header); headerRef.current = header;
+  const linesRef = useRef(lines); linesRef.current = lines;
+  const [lookups, setLookups] = useState<Record<string, Lookup>>({});
+  const lookupsRef = useRef(lookups); lookupsRef.current = lookups;
 
-  const [form, setForm] = useState(emptyForm);
-  const packingTypes = usePackingTypes();
-
-  // No of Barrels auto-fill bookkeeping (see the Lot No lookup below):
-  //   userBarrelsKey — the Warehouse + Lot No the user typed their OWN No of
-  //     Barrels for; the auto-fill leaves that value alone.
-  //   autoBarrels — the value the auto-fill last put in, so a stale one can be
-  //     cleared when the Warehouse / Lot No moves to a lot with no stock.
-  const userBarrelsKey = useRef<string | null>(null);
-  const autoBarrels = useRef<string | null>(null);
-  // Stock found for the current Warehouse + Lot No (null = none / not looked up).
-  const [lotStock, setLotStock] = useState<{ key: string; warehouse: string; lotNo: string; available: number } | null>(null);
-  // 2026-10-16: the matched lot's Packing / Packing Type / MOU. While the
-  // form's Warehouse + Lot No still match it, those three fields come from
-  // the lot and are locked — only No of Barrels is edited. The ref mirrors it
-  // for setForm updaters (order prefill / product picker) so they never put
-  // the order line's packing back over the lot's.
-  // 2026-10-16: Product Name / Product Code are locked from the lot too.
-  type LotDetails = { key: string; lotNo: string; productName: string; productCode: string; packing: string; packagingType: string; weightType: string };
-  const [lotDetails, setLotDetailsState] = useState<LotDetails | null>(null);
-  const lotDetailsRef = useRef<LotDetails | null>(null);
-  const setLotDetails = (d: LotDetails | null) => { lotDetailsRef.current = d; setLotDetailsState(d); };
-  const lockedLotFor = (f: typeof emptyForm) => {
-    const d = lotDetailsRef.current;
-    return d && d.key === lotKeyOf(f.warehouse, f.lotNo) ? d : null;
-  };
-  // Plain New Outward: set once the user types their own Billing Name, so the
-  // catalogue lookup (product pick / lot auto-fill) stops replacing it.
-  const billingTyped = useRef(false);
-  // Edit mode: the user changed the Lot No (until then the saved DO's values stay).
-  const lotNoTouched = useRef(false);
-  // New DO: a lot has filled the form, so there is something to clear. Until
-  // then the order prefill (Billing Name from the Board) is left alone.
-  const lotFilled = useRef(false);
-  // Board flow: "you are dispatching ALL barrels but the order needs fewer" confirm.
-  const [confirmAllStock, setConfirmAllStock] = useState(false);
-  // 2026-10-12: stock_movements.email_sent_at of the entry being edited
-  // (null = still in the Saved sub-tab). Set by markOutwardEmailSent below.
+  // 2026-10-12: stock_movements.email_sent_at of the DO being edited (null =
+  // still in the Saved sub-tab). Set by markOutwardEmailSent below.
   const [emailSentAt, setEmailSentAt] = useState<string | null>(null);
-  // Set when Save is clicked with no Fulfilment Type — shown under the field.
   const [fulfilmentError, setFulfilmentError] = useState(false);
   // 2026-10-26: Transporter is required for Delivery (the DO email names it).
   const [transporterError, setTransporterError] = useState(false);
 
   // Where to go on Back / Cancel.
-  const goBack = () => navigate(boardLink ? DISPATCH_BOARD_PATH : outwardListPath(!!emailSentAt, form.fulfilmentType || 'Delivery'));
+  const goBack = () => navigate(boardLink ? DISPATCH_BOARD_PATH : outwardListPath(!!emailSentAt, header.fulfilmentType || 'Delivery'));
   // 2026-10-16: the order + round this DO belongs to (stock_movements.order_id /
   // dispatch_round) — from the saved row in edit mode, else from the Board URL.
   const [linkedOrder, setLinkedOrder] = useState<{ orderId: string; round: number } | null>(
@@ -586,82 +549,113 @@ function OutwardForm() {
   // Green note after Email to Client completed Step 6 (or why it didn't).
   const [emailResult, setEmailResult] = useState<{ ok: boolean; msg: string; retry?: boolean } | null>(null);
 
+  // The order the DO's rows are checked against (order lines, "Order needs"):
+  // a new DO from the Board, or a saved DO linked to an order. Dispatch's
+  // copy of the order (see dispatchOrderView).
+  const rowsOrder = useMemo(() => {
+    const id = linkedOrder?.orderId;
+    const order = id ? data.orders.find(o => o.id === id) : undefined;
+    return order && dispatchOrderView(order);
+  }, [linkedOrder, data.orders]);
+  // The order's dispatch entries BEFORE this DO's round — "remaining" for a
+  // saved DO whose round already has its entry must not count that entry.
+  const orderEntries = useMemo(() => {
+    if (!rowsOrder || !linkedOrder) return [] as DispatchEntry[];
+    const all = data.dispatchEntries.filter(e => e.orderId === rowsOrder.id);
+    const real = all.filter(e => !isImportedEntry(e))
+      .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+    const later = new Set(real.slice(linkedOrder.round - 1).map(e => e.id));
+    return all.filter(e => !later.has(e.id));
+  }, [rowsOrder, linkedOrder, data.dispatchEntries]);
+  const orderRemaining = useMemo(() => rowsOrder ? remainingByLine(rowsOrder, orderEntries) : new Map<number, number>(), [rowsOrder, orderEntries]);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [loadingMovement, setLoadingMovement] = useState(isEditing);
-  // Captured once, when loading an existing entry for editing — the values
-  // stock_lots was last decremented with, so save() can reverse that OLD
-  // effect before applying the edited one (see adjustLotStock() above). Raw
-  // values straight off the stock_movements row, NOT routed through the
-  // Warehouse dropdown's isOtherWarehouse fallback — unlike `form`, which
-  // may fold a legacy warehouse value (e.g. "WADA", no longer in this
-  // form's own WAREHOUSES list) into 'Other'+otherWarehouse for display.
-  const [original, setOriginal] = useState<{ warehouse: string; lotNo: string; totalQty: number; numArticles: string } | null>(null);
-  // The full stock_movements row as loaded for editing — the activity log's "before".
-  const originalRow = useRef<Record<string, any> | null>(null);
+  // Edit: every saved line as loaded — what stock_lots was last changed by
+  // (its lots' "Available" already excludes these barrels), and the activity
+  // log's "before". savedIds = the DO's rows (Email to Client stamps them all).
+  const originalLines = useRef<{ warehouse: string; lotNo: string; numArticles: string }[]>([]);
+  const originalRows = useRef<any[]>([]);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!movementId) return;
     let cancelled = false;
     setLoadingMovement(true);
     (async () => {
-      const { data, error: fetchErr } = await supabase.from('stock_movements').select('*').eq('id', movementId).single();
+      const { data: first, error: fetchErr } = await supabase.from('stock_movements').select('*').eq('id', movementId).single();
       if (cancelled) return;
-      if (fetchErr || !data) {
+      if (fetchErr || !first) {
         setError(fetchErr?.message || 'Could not load this Outward entry.');
         setLoadingMovement(false);
         return;
       }
-      const isKnownWarehouse = WAREHOUSES.includes(data.warehouse);
-      setForm({
-        warehouse: isKnownWarehouse ? data.warehouse : (data.warehouse ? 'Other' : ''),
-        otherWarehouse: isKnownWarehouse ? '' : (data.warehouse || ''),
-        doNumber: data.do_number || '',
-        doDate: data.do_date || '',
-        lotNo: data.wh_lot_no || '',
-        lotDate: data.inward_date || '',
-        productName: data.product_name || '',
-        // stock_movements has no product_code column of its own (see the
-        // file-header comment) — same exact-match derivation the Product
-        // Name combobox's own onChange already uses, same as
-        // OutwardEditModal.tsx did.
-        productCode: codeForProductName(data.product_name || ''),
+      // 2026-11-03: the whole DO — every line with this DO number.
+      let rows: any[] = [first];
+      if (first.do_number) {
+        const { data: all, error: allErr } = await supabase.from('stock_movements').select('*')
+          .eq('type', 'outward').eq('do_number', first.do_number)
+          .order('do_line_no', { ascending: true }).order('created_at', { ascending: true });
+        if (cancelled) return;
+        if (allErr) { setError(allErr.message); setLoadingMovement(false); return; }
+        if (all && all.length) rows = all;
+      }
+      const isKnownWarehouse = WAREHOUSES.includes(first.warehouse);
+      setHeader({
+        warehouse: isKnownWarehouse ? first.warehouse : (first.warehouse ? 'Other' : ''),
+        otherWarehouse: isKnownWarehouse ? '' : (first.warehouse || ''),
+        doNumber: first.do_number || '',
+        doDate: first.do_date || '',
+        partyName: first.party_name || '',
+        otherParty: first.other_party || '',
+        transporter: first.transporter || '',
+        otherTransporter: first.other_transporter || '',
+        fulfilmentType: first.fulfilment_type || '',
+        note: first.note || '',
+      });
+      setLines(rows.map(r => newLine({
+        lotNo: r.wh_lot_no || '',
+        lotDate: r.inward_date || '',
+        productName: r.product_name || '',
+        // stock_movements has no product_code column of its own — same
+        // exact-match derivation as before.
+        productCode: codeForProductName(r.product_name || ''),
         // 2026-10-16: the saved billing_name; entries saved before it existed
         // fall back to the catalogue lookup.
-        billingName: data.billing_name || billingNameForProductName(data.product_name || ''),
-        numArticles: data.num_articles || '',
-        packing: data.packing?.toString() ?? '',
-        totalQty: data.total_qty?.toString() ?? '',
-        weightType: data.weight_type || '',
-        packagingType: data.packaging_type || '',
-        partyName: data.party_name || '',
-        otherParty: data.other_party || '',
-        transporter: data.transporter || '',
-        otherTransporter: data.other_transporter || '',
-        fulfilmentType: data.fulfilment_type || '',
-        note: data.note || '',
-      });
-      originalRow.current = data;
-      setLinkedOrder(data.order_id && data.dispatch_round ? { orderId: data.order_id, round: data.dispatch_round } : null);
-      setOriginal({
-        warehouse: data.warehouse || '',
-        lotNo: (data.wh_lot_no || '').trim(),
-        totalQty: data.total_qty ?? 0,
-        numArticles: data.num_articles || '',
-      });
-      setEmailSentAt(data.email_sent_at || null);
+        billingName: r.billing_name || billingNameForProductName(r.product_name || ''),
+        numArticles: r.num_articles || '',
+        packing: r.packing?.toString() ?? '',
+        packagingType: r.packaging_type || '',
+        weightType: r.weight_type || '',
+        orderLineSeq: r.order_line_seq ?? null,
+        lotTouched: false,
+        lotFilled: true,
+        savedTotal: r.total_qty ?? null,
+      })));
+      originalRows.current = rows;
+      originalLines.current = rows.map(r => ({ warehouse: r.warehouse || '', lotNo: (r.wh_lot_no || '').trim(), numArticles: r.num_articles || '' }));
+      setSavedIds(rows.map(r => r.id));
+      setLinkedOrder(first.order_id && first.dispatch_round ? { orderId: first.order_id, round: first.dispatch_round } : null);
+      setEmailSentAt(rows.every(r => !!r.email_sent_at) ? first.email_sent_at : null);
       setLoadingMovement(false);
     })();
     return () => { cancelled = true; };
   }, [movementId]);
 
+  // Edit: barrels this DO already took from that lot at that warehouse (its
+  // lot's "Available" is after this DO, so they count as available again).
+  const originalBarrelsFor = (warehouse: string, lotNo: string): number | null => {
+    const o = originalLines.current.find(x => PARTY_COLUMN[x.warehouse] && PARTY_COLUMN[x.warehouse] === PARTY_COLUMN[warehouse] && sameLot(x.lotNo, lotNo));
+    return o ? (parseNum(o.numArticles) ?? 0) : null;
+  };
+
   // 2026-09-07: Party Name options + the customer->transporter lookup used
   // to auto-fill Transporter, both sourced live from `customers` — see the
   // file-header comment. Only customers with a preferred_transporter on
   // file are included (fulfilment_type is not filtered on). 'Other' is
-  // appended so a party not yet in the customers table can still be typed
-  // in via the existing isOtherParty/otherParty free-text field.
+  // appended so a party not yet in the customers table can still be typed in.
   const [partyNameOptions, setPartyNameOptions] = useState<string[]>([]);
   const [transporterOptions, setTransporterOptions] = useState<string[]>([]);
   const [transporterByParty, setTransporterByParty] = useState<Record<string, string>>({});
@@ -685,9 +679,6 @@ function OutwardForm() {
       for (const row of data as { company_name: string | null; preferred_transporter: string | null; fulfilment_type: string | null }[]) {
         const name = (row.company_name || '').trim();
         const transporter = (row.preferred_transporter || '').trim();
-        // Independent of the transporter `continue` guard below — a customer
-        // might have a fulfilment_type on file even without a
-        // preferred_transporter, so this is checked before that guard runs.
         const fulfilmentType = (row.fulfilment_type || '').trim();
         // 2026-10-12: only Delivery / Self Pickup are auto-filled — a "Both"
         // customer leaves the (now required) field empty for the user to pick.
@@ -702,59 +693,58 @@ function OutwardForm() {
       setTransporterOptions([...Array.from(transporterSet).sort(), 'Other']);
       // Prefilled Party Name (Dispatch board) never goes through the
       // combobox onChange, so fill Transporter / Fulfilment Type here the
-      // same way picking the party by hand would — only if still empty, so an
-      // order's own Fulfilment Type set by the prefill is never overwritten.
-      setForm(f => f.partyName ? {
-        ...f,
-        transporter: f.transporter || map[f.partyName] || '',
-        fulfilmentType: f.fulfilmentType || fulfilmentMap[f.partyName] || '',
-      } : f);
+      // same way picking the party by hand would — only if still empty.
+      setHeader(h => h.partyName ? {
+        ...h,
+        transporter: h.transporter || map[h.partyName] || '',
+        fulfilmentType: h.fulfilmentType || fulfilmentMap[h.partyName] || '',
+      } : h);
     };
     loadPartyTransporters();
     return () => { cancelled = true; };
   }, []);
 
   // 2026-10-06: Dispatch prefill. Runs ONCE, as soon as the order is found
-  // in the store (orders may still be loading on a direct page open) — the
-  // ref stops it from running again and overwriting what the user typed.
-  // Transporter / Fulfilment Type are filled here from the customer's
-  // preferred transporter if the customers query above has already
-  // finished; if it finishes later, its own fill-if-empty does the same.
+  // in the store (orders may still be loading on a direct page open).
+  // 2026-11-03: one row per order line with barrels left (or the ?lines= ones).
   const dispatchPrefilled = useRef(false);
   useEffect(() => {
-    if (!dispatchOrder || dispatchPrefilled.current) return;
+    if (!fromDispatch || !rowsOrder || dispatchPrefilled.current) return;
     dispatchPrefilled.current = true;
-    const prefill = outwardPrefillFor(dispatchOrder, data.dispatchEntries, orderLineSeq);
-    const party = prefill.partyName || '';
-    const orderFulfilment = dispatchOrder.fulfillmentType === 'delivery' ? 'Delivery'
-      : dispatchOrder.fulfillmentType === 'self_pickup' ? 'Self Pickup' : '';
-    setForm(f => ({
-      ...f,
-      ...prefill,
-      // A lot already matched keeps its own product / packing (see lotDetails).
-      ...(lockedLotFor(f) ? { productName: f.productName, productCode: f.productCode, packing: f.packing, packagingType: f.packagingType } : {}),
-      transporter: f.transporter || transporterByParty[party] || '',
+    const party = rowsOrder.cust || '';
+    const orderFulfilment = rowsOrder.fulfillmentType === 'delivery' ? 'Delivery'
+      : rowsOrder.fulfillmentType === 'self_pickup' ? 'Self Pickup' : '';
+    setLines(dispatchRowsFor(rowsOrder, orderEntries, prefillSeqs));
+    setHeader(h => ({
+      ...h,
+      doDate: fmtIST(new Date(), 'yyyy-MM-dd'),
+      partyName: party,
+      note: `${rowsOrder.soNumber || ''}${rowsOrder.soNumber ? ' · ' : ''}${rowsOrder.id}`,
+      transporter: h.transporter || transporterByParty[party] || '',
       // 2026-10-16: the ORDER's own Fulfilment Type wins, then the Board URL,
-      // then whatever is already in (the customer's type, if the customers
-      // query finished first). Still editable.
-      fulfilmentType: orderFulfilment || dispatchFulfilment || f.fulfilmentType || fulfilmentTypeByParty[party] || '',
+      // then whatever is already in. Still editable.
+      fulfilmentType: orderFulfilment || dispatchFulfilment || h.fulfilmentType || fulfilmentTypeByParty[party] || '',
     }));
-  }, [dispatchOrder]);
+  }, [rowsOrder]);
 
   // Marks Dispatch Step 6 done — same dispatch_steps row + activity log
   // runStepAction in Dispatch.tsx writes.
-  // 2026-10-16: called when the DO is EMAILED (not on save any more), with
-  // the DO's own order + round and the email time. Step 6 is written only
-  // once EVERY DO linked to that order + round has been emailed, and never
-  // twice (the "already marked" check).
+  // 2026-10-16: called when the DO is EMAILED, with the DO's own order + round
+  // and the email time. Step 6 is written only once EVERY DO linked to that
+  // order + round has been emailed, and never twice.
+  // 2026-11-03: DOs are counted by DO number (a DO with 3 lines is one DO);
+  // this DO's own lines don't count.
   type StepResult = { kind: 'done' } | { kind: 'waiting'; notEmailed: number } | { kind: 'error'; msg: string };
   const markDispatchStepDone = async (link: { orderId: string; round: number }, doneAt: string): Promise<StepResult> => {
     if (!canActOnDispatchBoard(user?.email) || isReadOnlyUser) return { kind: 'error', msg: 'you do not have permission to act on the Dispatch board' };
     try {
-      const { data: others, error: othersErr } = await supabase.from('stock_movements').select('id')
+      const { data: others, error: othersErr } = await supabase.from('stock_movements').select('id, do_number')
         .eq('order_id', link.orderId).eq('dispatch_round', link.round).is('email_sent_at', null);
       if (othersErr) throw othersErr;
-      const notEmailed = (others || []).filter(r => r.id !== movementId).length;
+      const notEmailedDos = new Set((others || [])
+        .filter(r => !savedIds.includes(r.id) && !(r.do_number && r.do_number === header.doNumber))
+        .map(r => r.do_number || r.id));
+      const notEmailed = notEmailedDos.size;
       if (notEmailed > 0) return { kind: 'waiting', notEmailed };
       // Already marked (page opened twice / email sent again)? Don't add a second row.
       const { data: already, error: checkErr } = await supabase.from('dispatch_steps').select('id')
@@ -775,7 +765,7 @@ function OutwardForm() {
       const so = data.orders.find(o => o.id === link.orderId)?.soNumber;
       logActivity({
         module: 'dispatch_steps', recordId: link.orderId,
-        recordLabel: `${so || link.orderId} · Step 6 Transporter & DO · Done (DO ${form.doNumber || '—'} emailed)`,
+        recordLabel: `${so || link.orderId} · Step 6 Transporter & DO · Done (DO ${header.doNumber || '—'} emailed)`,
         action: 'insert', after: inserted?.[0],
       });
       return { kind: 'done' };
@@ -795,17 +785,15 @@ function OutwardForm() {
   };
 
   // After a successful save: plain Stock Movements goes back to its list.
-  // 2026-10-16: from the Board, Step 6 is NOT marked done any more — the form
-  // stays open on the saved entry (edit mode) with a "click Email to Client"
-  // banner; Step 6 completes when the DO is emailed (markOutwardEmailSent).
+  // 2026-10-16: from the Board the form stays open on the saved DO (edit
+  // mode); Step 6 completes when the DO is emailed (markOutwardEmailSent).
   const afterSave = async (savedId?: string) => {
     if (boardLink) {
       const id = savedId || movementId;
       navigate(id ? boardEditUrl(id) : DISPATCH_BOARD_PATH, { replace: true });
       return;
     }
-    // 2026-10-12: back to the Outward sub-tab + pill this entry now sits in.
-    navigate(outwardListPath(!!emailSentAt, form.fulfilmentType));
+    navigate(outwardListPath(!!emailSentAt, header.fulfilmentType));
   };
 
   const retryDispatchStep = async () => {
@@ -821,448 +809,281 @@ function OutwardForm() {
     : r.kind === 'waiting' ? { ok: false, msg: `Email sent. ${r.notEmailed} other DO${r.notEmailed === 1 ? '' : 's'} for this order ${r.notEmailed === 1 ? 'is' : 'are'} not emailed yet — Step 6 completes when every DO is emailed.` }
     : { ok: false, msg: `Email sent, but Dispatch Step 6 could not be marked done: ${r.msg}.`, retry: true };
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setForm(f => ({ ...f, [k]: e.target.value }));
+  const setH = (k: keyof Header) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setHeader(h => ({ ...h, [k]: e.target.value }));
+  const updateLine = (key: string, patch: Partial<Line>) => setLines(ls => ls.map(l => l.key === key ? { ...l, ...patch } : l));
 
-  const num = (v: string) => (v.trim() === '' ? null : Number(v));
+  const isOtherWarehouse = header.warehouse === 'Other';
+  const isOtherParty = header.partyName === 'Other';
+  const isOtherTransporter = header.transporter === 'Other';
 
-  // Returns a finite number, or null if v is empty/not a valid number — same
-  // helper NewStockInward.tsx uses to gate its Total Quantity auto-calc
-  // below (never NaN, never treats "" as 0).
-  const parseNum = (v: string): number | null => {
-    const t = v.trim();
-    if (t === '') return null;
-    const n = Number(t);
-    return Number.isFinite(n) ? n : null;
+  // 2026-11-03: a Warehouse change clears every row's lot fields (b14a218) —
+  // the lots are then looked up again at the new warehouse and refill.
+  const onWarehouseChange = (warehouse: string) => {
+    setHeader(h => ({ ...h, warehouse }));
+    setLines(ls => ls.map(l => (l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true })));
+    setLookups({});
   };
-
-  // 2026-10-16: No of Barrels is the ONLY editable field in the Quantity
-  // section. Packing / Packing Type / MOU come from the lot and Total
-  // Quantity is always No of Barrels × Packing (the sync effect below) —
-  // none of them can be typed in.
-  const onNumArticlesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value;
-    // The user's own figure for this Warehouse + Lot No — the stock auto-fill
-    // must not replace it (it does again once Warehouse or Lot No changes).
-    userBarrelsKey.current = lotKeyOf(form.warehouse, form.lotNo);
-    setForm(f => ({ ...f, numArticles: v }));
-  };
-
-  // Total Quantity = No of Barrels × Packing, kept in step whenever either
-  // changes ('' while either is missing). save() recalculates it again.
-  const computedTotal = (() => {
-    const barrels = parseNum(form.numArticles);
-    const packing = parseNum(form.packing);
-    return barrels !== null && packing !== null ? barrels * packing : null;
-  })();
-  useEffect(() => {
-    const s = computedTotal === null ? '' : String(computedTotal);
-    setForm(f => (f.totalQty === s ? f : { ...f, totalQty: s }));
-  }, [computedTotal]);
-
-  // "Product (from order)" picker: switches the order line the DO is for.
-  // 2026-10-16: only Billing Name follows it (the selected line's product
-  // name) — Product Name / Code and Packing come from the lot, so they and
-  // Warehouse, Lot No, No of Barrels, Total Quantity stay as they are. The
-  // "Order needs" line and the packing mismatch note follow the new line.
-  const pickOrderLine = (seq: number) => {
-    if (!dispatchOrder) return;
-    const p = outwardPrefillFor(dispatchOrder, data.dispatchEntries, seq);
-    setOrderLineSeq(seq);
-    setForm(f => ({ ...f, billingName: p.billingName ?? '' }));
-  };
-
-  const isOtherWarehouse = form.warehouse === 'Other';
-  const isOtherParty = form.partyName === 'Other';
-  const isOtherTransporter = form.transporter === 'Other';
 
   // 2026-09-09: auto-generates the DO Number the moment a Warehouse is
-  // picked, and regenerates it if the Warehouse selection changes again
-  // before saving — see generateNextDoNumber() above. Skipped entirely
-  // while editing (isEditing): an existing entry's DO Number is already
-  // saved and must never be regenerated, per the task. Clears the field
-  // back to blank if Warehouse is deselected (or set to a warehouse with no
-  // prefix mapping) rather than leaving a stale number for the wrong
-  // warehouse sitting in the field.
+  // picked, and regenerates it if the Warehouse changes again before saving
+  // — see generateNextDoNumber() above. Never while editing: an existing DO's
+  // number is saved and must never change.
   useEffect(() => {
     if (isEditing) return;
-    const warehouse = form.warehouse;
+    const warehouse = header.warehouse;
     if (!DO_NUMBER_PREFIX[warehouse]) {
-      setForm(f => (f.doNumber ? { ...f, doNumber: '' } : f));
+      setHeader(h => (h.doNumber ? { ...h, doNumber: '' } : h));
       return;
     }
     let cancelled = false;
     generateNextDoNumber(warehouse).then(doNumber => {
       if (cancelled) return;
-      // Warehouse may have moved on again while this was in flight — only
-      // apply if it still matches what this generation was for.
-      setForm(f => (f.warehouse === warehouse ? { ...f, doNumber } : f));
+      setHeader(h => (h.warehouse === warehouse ? { ...h, doNumber } : h));
     });
     return () => { cancelled = true; };
-  }, [form.warehouse, isEditing]);
+  }, [header.warehouse, isEditing]);
 
-  // "No stock found for this lot at <Warehouse>" — set by the auto-fill
-  // lookup below when Lot No matches a real stock_lots row but that party
-  // column is 0/null, so the user knows their Warehouse/Lot No combination
-  // looks off instead of silently getting no auto-fill and no explanation.
-  const [lotWarning, setLotWarning] = useState('');
-  // The Warehouse + Lot No key whose stock_lots lookup has finished (match or
-  // not) — the "no such lot" note only shows once the lookup is done.
-  const [lotLookedUp, setLotLookedUp] = useState('');
-
-  // Auto-fills the rest of the form from the matching stock_lots row once
-  // both Warehouse and Lot No are filled in, added 2026-09-08 at the user's
-  // request. Debounced 400ms after the last Lot No keystroke (and re-run on
-  // Warehouse change) so it doesn't query on every keystroke — same ilike
-  // match on wh_lot_no that save() itself uses below, so "will this
-  // auto-fill" and "will this decrement a real lot at save time" always
-  // agree. A lot that isn't found is treated as a brand-new lot (no error,
-  // no warning) — only an existing lot with zero stock at the selected
-  // Warehouse gets the inline warning; every other field is only ever
-  // filled in when currently empty, never overwriting something the user
-  // already typed.
-  // 2026-09-09: skipped entirely while editing (isEditing) — see the
-  // file-header comment for why (every field is already populated from the
-  // movement being edited, and this movement's own not-yet-reversed
-  // decrement could make the "no stock" warning fire spuriously).
-  // 2026-10-13: No of Barrels is no longer "fill only if empty". Every time
-  // Warehouse or Lot No changes it is set to that lot's barrels at that
-  // warehouse (overwriting the previous auto value) and Total Quantity is
-  // recalculated — unless the user already typed their own No of Barrels for
-  // this same Warehouse + Lot No (userBarrelsKey). The user then edits it down
-  // to what is actually being sent; save() only ever deducts what is in the
-  // field. While editing, nothing in the form is changed — the lookup only
-  // feeds the "Available (after this DO)" line.
-  // 2026-10-16: once a lot matches, Packing (packing, else packing_detail),
-  // Packing Type, MOU and Lot Date are OVERWRITTEN from the lot (no longer
-  // "only if empty" — the order line's packing must not win), and Total
-  // Quantity = No of Barrels × the lot's Packing. Packing / Packing Type / MOU
-  // are then locked (see lotDetails). Product Name / Code are overwritten and
-  // locked from the lot the same way; Billing Name, Party, Transporter and
-  // Note are not taken from the lot. Edit mode still changes nothing — it
-  // only records the lot so those fields show locked.
-  // 2026-10-16: no lot matched (or Warehouse / Lot No cleared) → Packing,
-  // Packing Type and MOU are emptied (they only ever come from a lot), so
-  // Total Quantity empties too and Save is blocked (see saveBlock).
-  // Edit mode keeps the saved values.
-  // 2026-11-03: an empty Lot No, or one that matches no lot, clears EVERY lot
-  // field (Lot Date, Product Name / Code, Billing Name, No of Barrels,
-  // Packing, Total Quantity, Packing Type, MOU) and the order line picked
-  // from the lot, for new and edited DOs alike, so the old lot's data never
-  // stays behind. Warehouse, DO Number / Date, Party, Transporter, Fulfilment
-  // Type and Note stay. Edit mode does this only once the user has changed
-  // the Lot No (lotNoTouched): opening a saved DO still shows its saved
-  // values. Only the screen changes; Save stays blocked without a lot.
-  useEffect(() => {
-    setLotWarning('');
-    setLotStock(null);
-    setLotDetails(null);
-    const warehouse = form.warehouse;
-    const lotNo = form.lotNo.trim();
-    const partyCol = PARTY_COLUMN[warehouse];
-    const clearLotFields = () => {
-      if (isEditing ? !lotNoTouched.current : !lotFilled.current) return;
-      lotFilled.current = false;
-      userBarrelsKey.current = null;
-      autoBarrels.current = null;
-      billingTyped.current = false;
-      setOrderLineSeq(null);
-      setForm(f => (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo) ? f : {
-        ...f, lotDate: '', productName: '', productCode: '', billingName: '',
-        numArticles: '', packing: '', totalQty: '', packagingType: '', weightType: '',
-      });
+  // ── Lot No lookup, per row ────────────────────────────────────────────────
+  // Each row's lot is looked up in the HEADER warehouse, 400ms after the last
+  // keystroke (same findOutwardLot the database functions use), and the row
+  // is filled from it exactly as the single-lot form did (see the 2026-09-08 …
+  // 2026-11-03 notes in git history / docs): Product Name / Code, Packing,
+  // Packing Type, MOU, Lot Date always from the lot (and locked); No of
+  // Barrels = the lot's barrels at the warehouse unless the user typed their
+  // own for this Warehouse + Lot No (from the Board: never more than the
+  // order line still needs); Billing Name = the order line's product name
+  // (Board / linked DO) or the catalogue billing name (plain New Outward,
+  // unless typed). From the Board / a linked DO, the lot's product picks the
+  // row's order line (orderLineSeqForLot, lines other rows use lose).
+  // Empty or unknown Lot No → that row's lot fields are cleared (b14a218).
+  // A saved row in edit mode keeps its saved values until its Lot No (or the
+  // Warehouse) is changed — the lookup only records the lot (locked fields,
+  // "Available (after this DO)").
+  const fillFromLot = (l: Line, lot: LotDetails, key: string): Line => {
+    if (!l.lotTouched) return l;
+    let orderLineSeq = l.orderLineSeq;
+    let billingName = l.billingName;
+    if (rowsOrder) {
+      const taken = new Set(linesRef.current
+        .filter(o => o.key !== l.key && o.lotFilled && o.orderLineSeq != null).map(o => o.orderLineSeq as number));
+      const seq = orderLineSeqForLot(rowsOrder, orderEntries, lotBillingName(lot.productName, billingNameForProductName), l.orderLineSeq, taken);
+      orderLineSeq = seq;
+      if (seq !== null) billingName = (rowsOrder.items.find(i => i.seq === seq)?.desc || '').trim();
+    } else if (!l.billingTyped) {
+      billingName = billingNameForProductName(lot.productName);
+    }
+    let numArticles = l.numArticles;
+    let autoBarrels = l.autoBarrels;
+    const own = isEditing ? originalBarrelsFor(headerRef.current.warehouse, lot.lotNo) : null;
+    if (l.userBarrelsKey !== key) {
+      if (own !== null) {
+        // Edit: its own lot back → the DO's saved barrels.
+        numArticles = String(own);
+      } else if (lot.available > 0) {
+        const left = rowsOrder && orderLineSeq !== null ? (orderRemaining.get(orderLineSeq) ?? 0) : 0;
+        numArticles = String(left > 0 ? Math.min(lot.available, left) : lot.available);
+      } else if (autoBarrels !== null && numArticles === autoBarrels) {
+        numArticles = '';
+      }
+      autoBarrels = numArticles || null;
+    }
+    return {
+      ...l,
+      productName: lot.productName, productCode: lot.productCode,
+      packing: lot.packing, packagingType: lot.packagingType, weightType: lot.weightType,
+      lotDate: lot.inwardDate || l.lotDate,
+      billingName, orderLineSeq, numArticles, autoBarrels, lotFilled: true,
     };
-    if (!lotNo || !partyCol) { clearLotFields(); setLotLookedUp(''); return; }
-    const key = lotKeyOf(warehouse, lotNo);
+  };
 
-    // A value the auto-fill put in for a previous Warehouse / Lot No must not
-    // be left standing when the new one has no stock to offer.
-    const clearStaleAuto = () => setForm(f => {
-      if (lotKeyOf(f.warehouse, f.lotNo) !== key || userBarrelsKey.current === key) return f;
-      if (autoBarrels.current === null || !f.numArticles || f.numArticles !== autoBarrels.current) return f;
-      return { ...f, numArticles: '', totalQty: '' };
-    });
-
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      const { data } = await findOutwardLot(lotNo);
-      if (cancelled) return;
-      setLotLookedUp(key);
-
-      const existing = data?.[0];
-      // Same packing/packingDetail fallback StockSummary.tsx's own Packing
-      // column uses: the legacy numeric `packing` column wins when set,
-      // otherwise fall back to the text `packing_detail` column Inward
-      // actually writes.
-      // 2026-09-08: prefer the lot's own product_code (written directly by
-      // NewStockInward.tsx's dropdown at lot creation) over re-deriving it
-      // from product_name — legacy/sheet-imported lots' free-text names
-      // (e.g. "Alpha Pinene 95 % -ve") don't exactly match PRODUCTS'
-      // stricter entries (e.g. "Alpha Pinene 95% -ve 24"), so a name-based
-      // lookup silently came back blank for exactly the lots most likely
-      // to need it. codeForProductName is still tried as a best-effort
-      // fallback for the rarer case of an old lot with no product_code at
-      // all — exact match only, no fuzzy matching (a wrong code on a real
-      // Delivery Order is worse than a blank one the user fills in).
-      const lot: LotDetails | null = existing ? {
-        key, lotNo,
-        productName: existing.product_name || '',
-        productCode: existing.product_code || codeForProductName(existing.product_name || ''),
-        packing: existing.packing != null ? String(existing.packing) : (existing.packing_detail || ''),
-        packagingType: existing.packing_type || '',
-        weightType: existing.mou || '',
-      } : null;
-      if (isEditing) {
-        if (existing) {
-          setLotStock({ key, warehouse, lotNo, available: Number(existing[partyCol]) || 0 });
-          setLotDetails(lot);
-        }
-        // First load of the saved DO: keep its saved values.
-        if (!lotNoTouched.current) return;
-        if (!existing || !lot) { clearLotFields(); return; }
-        // 2026-11-03: the user typed a lot (again) — refill from it. Its own
-        // lot back → the DO's saved barrels; another lot → what that
-        // warehouse has. Save still reverses and re-applies stock as before.
-        const ownLot = !!original && lotKeyOf(original.warehouse, original.lotNo) === key;
-        setForm(f => {
-          if (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo) return f;
-          const next = {
-            ...f,
-            productName: lot.productName,
-            productCode: lot.productCode,
-            billingName: billingTyped.current ? f.billingName : billingNameForProductName(lot.productName),
-            packing: lot.packing,
-            packagingType: lot.packagingType,
-            weightType: lot.weightType,
-            lotDate: existing.inward_date || f.lotDate,
-            numArticles: ownLot ? original!.numArticles : (Number(existing[partyCol]) > 0 ? String(existing[partyCol]) : ''),
-          };
-          const barrels = parseNum(next.numArticles), packing = parseNum(next.packing);
-          next.totalQty = barrels !== null && packing !== null ? String(barrels * packing) : '';
-          return next;
-        });
-        return;
-      }
-      // No match — Save is blocked (see saveBlock); the lot fields are emptied.
-      if (!existing || !lot) { clearStaleAuto(); clearLotFields(); return; }
-      setLotDetails(lot);
-      lotFilled.current = true;
-      // 2026-11-03: from the Board, the DO is for the order line whose product
-      // IS this lot's product (e.g. a Beta Pinene lot → the Beta Pinene line,
-      // not the first line). Switch to it the same way the "Product (from
-      // order)" picker does, so Billing Name, "Order needs", the packing note
-      // and the barrels check all follow. No such line → lotLineMismatch
-      // below shows it and blocks Save.
-      if (fromDispatch && dispatchOrder) {
-        const seq = orderLineSeqForLot(dispatchOrder, allDispatchEntries,
-          lotBillingName(lot.productName, billingNameForProductName), orderLineSeqRef.current);
-        if (seq !== null) pickOrderLine(seq);
-      }
-
-      // The lot's own details — always overwritten, for this Warehouse + Lot No only.
-      // 2026-10-16: Product Name / Code too. Billing Name: from the Board it
-      // stays the order's product name (never touched here); plain New
-      // Outward keeps the catalogue lookup unless the user typed their own.
-      const withLotDetails = (f: typeof emptyForm) => ({
-        ...f,
-        productName: lot.productName,
-        productCode: lot.productCode,
-        billingName: fromDispatch || billingTyped.current ? f.billingName : billingNameForProductName(lot.productName),
-        packing: lot.packing,
-        packagingType: lot.packagingType,
-        weightType: lot.weightType,
-        lotDate: existing.inward_date || f.lotDate,
-      });
-
-      const qtyAtWarehouse = existing[partyCol];
-      if (!qtyAtWarehouse || qtyAtWarehouse <= 0) {
-        setLotWarning(`No stock found for this lot at ${warehouse}.`);
-        setForm(f => (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo ? f : withLotDetails(f)));
-        clearStaleAuto();
-        return;
-      }
-      setLotStock({ key, warehouse, lotNo, available: Number(qtyAtWarehouse) });
-
-      setForm(f => {
-        // Warehouse/Lot No may have moved on while this lookup was in
-        // flight — cancelled (above) only covers a fully superseded effect
-        // run; this covers the same run's result arriving after the user
-        // already changed one of the two fields again.
-        if (f.warehouse !== warehouse || f.lotNo.trim() !== lotNo) return f;
-
-        const next = withLotDetails(f);
-        // 2026-09-08: sourced from the party qty_* column (qtyAtWarehouse,
-        // already read above to decide the "no stock" warning), NOT
-        // stock_lots.no_of_barrels — per this module's 2026-09-05 fix,
-        // no_of_barrels is a lot-wide field deliberately decoupled from the
-        // real per-warehouse barrel count and is null on plenty of real
-        // rows (e.g. lot W0686-R: qty_reliable=7, no_of_barrels=null).
-        // StockSummary.tsx stopped displaying no_of_barrels for the same
-        // reason — qty_* is the only trustworthy barrel count left.
-        const autoFillBarrels = userBarrelsKey.current !== key;
-        if (autoFillBarrels) {
-          next.numArticles = String(qtyAtWarehouse);
-          autoBarrels.current = next.numArticles;
-        }
-        // Packing / Packing Type / MOU / Lot Date already come from the lot
-        // (withLotDetails above). stock_lots.inward_date is a plain `date`
-        // column, so it is already "YYYY-MM-DD".
-
-        // Same barrels×packing auto-calc onNumArticlesChange uses — never
-        // from stock_lots.quantity directly, which is the lot's total
-        // remaining stock across every party, not this transaction.
-        // 2026-10-16: always recalculated, since Packing is now always the
-        // lot's (the user's own barrels × the lot's packing).
-        const barrels = parseNum(next.numArticles);
-        const packing = parseNum(next.packing);
-        if (barrels !== null && packing !== null) next.totalQty = String(barrels * packing);
-
+  const lookupSig = `${header.warehouse}#${lines.map(l => `${l.key}=${l.lotNo.trim().toLowerCase()}`).join(',')}`;
+  useEffect(() => {
+    const warehouse = header.warehouse;
+    const partyCol = PARTY_COLUMN[warehouse];
+    // No Lot No / no stock warehouse → clear straight away.
+    const empty = linesRef.current.filter(l => !l.lotNo.trim() || !partyCol).map(l => l.key);
+    if (empty.length) {
+      setLines(ls => ls.map(l => empty.includes(l.key) && l.lotTouched && l.lotFilled ? clearedLine(l) : l));
+      setLookups(p => {
+        const next = { ...p };
+        empty.forEach(k => delete next[k]);
         return next;
       });
-    }, 400);
-
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [form.warehouse, form.lotNo]);
-
-  // Stock line under No of Barrels — only while it still belongs to the
-  // Warehouse + Lot No currently in the form.
-  const currentLotStock = lotStock && lotStock.key === lotKeyOf(form.warehouse, form.lotNo) ? lotStock : null;
-  const enteredBarrels = parseNum(form.numArticles);
-  // 2026-10-16: lot matched → Packing / Packing Type / MOU are locked.
-  const lockedLot = lotDetails && lotDetails.key === lotKeyOf(form.warehouse, form.lotNo) ? lotDetails : null;
-  // Order line packing vs the lot's (Board flow) — an amber note only, never blocks.
-  const orderPacking = dispatchOrder ? String(orderLineFor(dispatchOrder, data.dispatchEntries, orderLineSeq)?.packing ?? '').trim() : '';
-  const packingMismatch = (() => {
-    if (!lockedLot || !orderPacking || !lockedLot.packing.trim()) return false;
-    const a = parseNum(orderPacking), b = parseNum(lockedLot.packing);
-    return a !== null && b !== null ? a !== b : orderPacking.toLowerCase() !== lockedLot.packing.trim().toLowerCase();
-  })();
-  // 2026-11-03: from the Board, the lot's product must be the picked order
-  // line's product (see the Lot No auto-fill, which picks that line itself).
-  // Shown in red under Product Name and blocks Save (saveBlock).
-  const lotLineMismatch = (() => {
-    if (!fromDispatch || !dispatchOrder || !lockedLot) return '';
-    const matches = orderLinesForLot(dispatchOrder, lotBillingName(lockedLot.productName, billingNameForProductName));
-    const line = orderLineFor(dispatchOrder, data.dispatchEntries, orderLineSeq);
-    if (line && matches.some(m => m.seq === line.seq)) return '';
-    const lotText = `Lot ${lockedLot.lotNo} is ${lockedLot.productName}`;
-    if (!matches.length) {
-      const has = dispatchOrder.items.map(i => (i.desc || '').trim()).filter(Boolean).join(', ');
-      return `${lotText} — this product is not in order ${dispatchOrder.soNumber || dispatchOrder.id}. Order has: ${has}.`;
     }
-    return `${lotText} — but the order line picked is ${(line?.desc || '').trim()}. Pick ${(matches[0].desc || '').trim()} in Product (from order).`;
-  })();
-  const lockedCls = 'bg-g100 text-g600 cursor-not-allowed';
+    if (!partyCol) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      for (const l of linesRef.current) {
+        const lotNo = l.lotNo.trim();
+        if (!lotNo) continue;
+        const key = lotKeyOf(warehouse, lotNo);
+        if (lookupsRef.current[l.key]?.key === key) continue;
+        (async () => {
+          const { data: found } = await findOutwardLot(lotNo);
+          if (cancelled) return;
+          const existing = found?.[0];
+          // Same packing/packingDetail fallback as Stock Summary; the lot's own
+          // product_code wins over a name lookup (2026-09-08).
+          const lot: LotDetails | null = existing ? {
+            lotNo,
+            productName: existing.product_name || '',
+            productCode: existing.product_code || codeForProductName(existing.product_name || ''),
+            packing: existing.packing != null ? String(existing.packing) : (existing.packing_detail || ''),
+            packagingType: existing.packing_type || '',
+            weightType: existing.mou || '',
+            inwardDate: existing.inward_date || '',
+            // The party qty_* column — never no_of_barrels (see 2026-09-08).
+            available: Number(existing[partyCol]) || 0,
+          } : null;
+          setLookups(p => ({ ...p, [l.key]: { key, lot } }));
+          setLines(ls => ls.map(x => {
+            // The row may have moved on while this lookup was in flight.
+            if (x.key !== l.key || lotKeyOf(headerRef.current.warehouse, x.lotNo) !== key) return x;
+            if (!lot) return x.lotTouched && x.lotFilled ? clearedLine(x) : x;
+            return fillFromLot(x, lot, key);
+          }));
+        })();
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [lookupSig]);
 
-  // 2026-09-07: Number of Articles ("No of Barrels" now) and Total Quantity
-  // became required here too, matching Inward's Quantity section exactly —
-  // previously both were optional (see the file-header comment's now-stale
-  // note about that). PARTY_COLUMN's decrement below already treated
-  // numArticles as the barrel-count-equivalent field; this just makes that
-  // relationship required rather than optional, same as Inward's.
-  // 2026-10-16: Total Quantity is no longer typed (always barrels × packing),
-  // so it isn't checked here — saveBlock below explains why it's missing.
-  const isValid = !!(
-    form.warehouse && (!isOtherWarehouse || form.otherWarehouse.trim()) &&
-    form.doNumber.trim() && form.productName.trim() &&
-    form.numArticles.trim()
-  );
+  const addLine = () => setLines(ls => [...ls, newLine()]);
+  const removeLine = (key: string) => setLines(ls => ls.length > 1 ? ls.filter(l => l.key !== key) : ls);
 
-  // 2026-10-26: No of Barrels can never be more than the warehouse has. New
-  // DO: the lot's stock at that warehouse. Edit: that stock is already after
-  // this DO, so its own original barrels count too — but only while it is
-  // still the same warehouse + lot (a different one only has its own stock).
-  // The database (adjust_lot_stock) enforces the same rule at save time.
-  const sameLotAsOriginal = !!(isEditing && original && PARTY_COLUMN[original.warehouse]
-    && PARTY_COLUMN[original.warehouse] === PARTY_COLUMN[form.warehouse]
-    && original.lotNo.toLowerCase() === form.lotNo.trim().toLowerCase());
-  const maxBarrels = currentLotStock
-    ? currentLotStock.available + (sameLotAsOriginal ? (parseNum(original!.numArticles) ?? 0) : 0)
-    : null;
-  const overStockMsg = currentLotStock && maxBarrels !== null && enteredBarrels !== null && enteredBarrels > maxBarrels
-    ? `Only ${maxBarrels} barrels available at ${currentLotStock.warehouse} (Lot ${currentLotStock.lotNo}). You entered ${enteredBarrels}.`
-    : '';
-
-  // 2026-10-16: Save needs a real lot (Packing / Total come only from it), a
-  // packing on that lot, and — for a new DO — stock at that warehouse.
-  // 2026-10-26: and never more barrels than available (overStockMsg), in
-  // edit mode too.
-  const saveBlock = !lockedLot ? 'Select a Warehouse and a Lot No that exists in Stock Summary.'
-    : lotLineMismatch ? lotLineMismatch
-    : parseNum(form.packing) === null ? `Packing missing for lot ${lockedLot.lotNo} — update the lot's packing in Stock Summary first.`
-    : !isEditing && lotWarning ? lotWarning
-    : overStockMsg ? overStockMsg
-    : '';
-  // Shown under the Quantity section only once the lot lookup has finished.
-  const showSaveBlock = !!saveBlock && (!!lockedLot || (!!form.lotNo.trim() && lotLookedUp === lotKeyOf(form.warehouse, form.lotNo)) || (!!form.warehouse && !PARTY_COLUMN[form.warehouse]));
-  // Edit mode: an old entry whose saved Total ≠ its barrels × packing.
-  const savedTotalMismatch = (() => {
-    const r = originalRow.current;
-    if (!isEditing || !r) return false;
-    const b = parseNum(String(r.num_articles ?? '')), p = parseNum(String(r.packing ?? '')), t = r.total_qty;
-    return b !== null && p !== null && t != null && Number(t) !== b * p;
-  })();
-
-  // 2026-09-08: keep an out-of-list Packing Type/MOU value visible in its
-  // <select> — needed now that the Lot No auto-fill above can set either
-  // field to a legacy stock_lots value (e.g. "New Plastic", "Kg") that isn't
-  // one of this form's own fixed options. A native <select> shows nothing
-  // selected when its value doesn't match any <option>, which is exactly
-  // why auto-filled Packing Type/MOU were rendering as blank "Select..."
-  // despite the value being set in form state.
-  const packagingTypeOptions =
-    form.packagingType && !packingTypes.includes(form.packagingType)
-      ? [...packingTypes, form.packagingType]
-      : packingTypes;
-  const weightTypeOptions =
-    form.weightType && form.weightType !== 'KG' && form.weightType !== 'LTR'
-      ? [...MOU_OPTIONS, form.weightType]
-      : MOU_OPTIONS;
-
-  // Assembles a StockMovement-shaped object straight from the current form
-  // state — mirrors the exact field mapping save()'s own movementPayload
-  // below uses, so PDF/DOCX/Email always reflect whatever is currently
-  // filled in, even before Save is clicked. `id` is the DB row id when
-  // editing an existing entry, or '' for a brand-new one — PDF/DOCX/Email
-  // never key off `.id` for Outward anyway (see SendEmailModal.tsx's
-  // docId gotcha), they use `.doNumber` instead.
-  // productCode is UI-only (see the file-header comment — it's derived
-  // locally, never written to stock_movements/stock_lots), so it isn't part
-  // of the shared StockMovement interface. generateOutwardPDF/
-  // downloadOutwardDOCX both read it via `(movement as any).productCode`,
-  // so it's widened on here rather than added to StockMovement itself.
-  // 2026-10-16: billingName — in Edit mode the form holds the SAVED
-  // billing_name (see the load effect), so PDF/DOCX/Email match the DO as created.
-  const buildOutwardData = (): StockMovement & { productCode?: string } => ({
-    id: movementId || '',
-    type: 'outward',
-    warehouse: isOtherWarehouse ? form.otherWarehouse.trim() : form.warehouse,
-    whLotNo: form.lotNo.trim() || undefined,
-    productName: form.productName.trim(),
-    productCode: form.productCode || undefined,
-    billingName: form.billingName.trim() || undefined,
-    doNumber: form.doNumber.trim() || undefined,
-    doDate: form.doDate || undefined,
-    inwardDate: form.lotDate || undefined,
-    numArticles: form.numArticles.trim() || undefined,
-    packing: num(form.packing) ?? undefined,
-    weightType: form.weightType || undefined,
-    packagingType: form.packagingType || undefined,
-    totalQty: num(form.totalQty) ?? undefined,
-    partyName: form.partyName || undefined,
-    otherParty: isOtherParty ? (form.otherParty.trim() || undefined) : undefined,
-    transporter: form.transporter || undefined,
-    otherTransporter: isOtherTransporter ? (form.otherTransporter.trim() || undefined) : undefined,
-    fulfilmentType: form.fulfilmentType || undefined,
-    note: form.note.trim() || undefined,
-    created_by: user?.email ?? undefined,
+  // ── Per-row checks ────────────────────────────────────────────────────────
+  // Save is blocked while ANY row has a problem; the problem shows on its row.
+  const lockedOf = (l: Line): LotDetails | null => {
+    const lk = lookups[l.key];
+    return lk && lk.key === lotKeyOf(header.warehouse, l.lotNo) ? lk.lot : null;
+  };
+  type RowInfo = {
+    lot: LotDetails | null; lookedUp: boolean; total: number | null; maxBarrels: number | null;
+    orderNeeds: number | null; orderPacking: string; packingMismatch: boolean;
+    problem: string; problemSoft: boolean;   // soft = not filled in yet (amber), else red
+  };
+  const rowInfos: RowInfo[] = lines.map(l => {
+    const key = lotKeyOf(header.warehouse, l.lotNo);
+    const lk = lookups[l.key];
+    const lookedUp = !!lk && lk.key === key;
+    const lot = lookedUp ? lk.lot : null;
+    const barrels = parseNum(l.numArticles);
+    const total = lineTotal(l);
+    const own = isEditing ? originalBarrelsFor(header.warehouse, l.lotNo) : null;
+    const maxBarrels = lot ? lot.available + (own ?? 0) : null;
+    const item = rowsOrder && l.orderLineSeq != null ? rowsOrder.items.find(i => i.seq === l.orderLineSeq) : undefined;
+    const orderNeeds = item ? (orderRemaining.get(item.seq) ?? 0) : null;
+    const orderPacking = item ? String(item.packing ?? '').trim() : '';
+    const packingMismatch = (() => {
+      if (!lot || !orderPacking || !lot.packing.trim()) return false;
+      const a = parseNum(orderPacking), b = parseNum(lot.packing);
+      return a !== null && b !== null ? a !== b : orderPacking.toLowerCase() !== lot.packing.trim().toLowerCase();
+    })();
+    // 25231ee: the lot's product must be in the order (Board / linked DO; a
+    // saved row is only checked once its lot is changed).
+    const lineMismatch = (() => {
+      if (!rowsOrder || !lot || !l.lotTouched) return '';
+      const matches = orderLinesForLot(rowsOrder, lotBillingName(lot.productName, billingNameForProductName));
+      if (item && matches.some(m => m.seq === item.seq)) return '';
+      const lotText = `Lot ${lot.lotNo} is ${lot.productName}`;
+      const has = rowsOrder.items.map(i => (i.desc || '').trim()).filter(Boolean).join(', ');
+      return `${lotText} — this product is not in order ${rowsOrder.soNumber || rowsOrder.id}. Order has: ${has}.`;
+    })();
+    const dupLot = !!lot && lines.some(o => o.key !== l.key && sameLot(o.lotNo, l.lotNo));
+    const dupLine = !!lot && l.orderLineSeq != null && lines.some(o => o.key !== l.key && o.orderLineSeq === l.orderLineSeq && !!lockedOf(o));
+    let problem = '';
+    let problemSoft = false;
+    if (!header.warehouse) { problem = 'Select a Warehouse first.'; problemSoft = true; }
+    else if (!PARTY_COLUMN[header.warehouse]) problem = 'Select a Warehouse that exists in Stock Summary.';
+    else if (!lot) {
+      problemSoft = !l.lotNo.trim() || !lookedUp;
+      problem = !l.lotNo.trim() ? 'Enter a Lot No.' : !lookedUp ? 'Looking up lot…' : `Lot ${l.lotNo.trim()} is not in Stock Summary.`;
+    }
+    else if (lineMismatch) problem = lineMismatch;
+    else if (dupLot) problem = `Lot ${lot.lotNo} is on another line of this DO — use one line per lot.`;
+    else if (dupLine) problem = `${item?.desc?.trim() || 'This order line'} is on another line of this DO — use one line per product.`;
+    else if (parseNum(l.packing) === null) problem = `Packing missing for lot ${lot.lotNo} — update the lot's packing in Stock Summary first.`;
+    else if (maxBarrels !== null && maxBarrels <= 0) problem = `No stock found for this lot at ${header.warehouse}.`;
+    else if (barrels === null || barrels <= 0) { problem = 'Enter No of Barrels.'; problemSoft = true; }
+    else if (maxBarrels !== null && barrels > maxBarrels) problem = `Only ${maxBarrels} barrels available at ${header.warehouse} (Lot ${lot.lotNo}). You entered ${barrels}.`;
+    else if (orderNeeds !== null && barrels > orderNeeds) problem = `Order needs only ${orderNeeds} barrels of ${item?.desc?.trim() || 'this product'} (remaining). You entered ${barrels}.`;
+    return { lot, lookedUp, total, maxBarrels, orderNeeds, orderPacking, packingMismatch, problem, problemSoft };
   });
+  const firstProblem = rowInfos.findIndex(r => !!r.problem);
+  const saveBlock = firstProblem >= 0 ? `Line ${firstProblem + 1}: ${rowInfos[firstProblem].problem}` : '';
+  const totalBarrels = lines.reduce((s, l) => s + (parseNum(l.numArticles) ?? 0), 0);
+  const totalQty = rowInfos.reduce((s, r) => s + (r.total ?? 0), 0);
 
-  // Cheap customer resolution for the Email modal — same approach
-  // NewOrder.tsx uses. If Party Name is "Other" or doesn't match any
-  // customer record, `customer` is simply undefined and the modal's To
-  // field starts blank — an expected fallback, not a bug.
-  const customer = data.customers.find(c => c.name === form.partyName);
+  const isValid = !!(header.warehouse && (!isOtherWarehouse || header.otherWarehouse.trim()) && header.doNumber.trim());
+
+  // "+ New DO (another warehouse)" (a saved DO opened from the Board): order
+  // lines with barrels left that are on no DO of this round yet.
+  const [roundDoLines, setRoundDoLines] = useState<{ orderLineSeq?: number; billingName?: string }[] | null>(null);
+  useEffect(() => {
+    if (!isEditing || !boardLink || !linkedOrder) return;
+    let cancelled = false;
+    supabase.from('stock_movements').select('order_line_seq, billing_name')
+      .eq('type', 'outward').eq('order_id', linkedOrder.orderId).eq('dispatch_round', linkedOrder.round)
+      .then(({ data: rows, error: e }) => {
+        if (cancelled || e) return;
+        setRoundDoLines((rows || []).map(r => ({ orderLineSeq: r.order_line_seq ?? undefined, billingName: r.billing_name ?? undefined })));
+      });
+    return () => { cancelled = true; };
+  }, [isEditing, boardLink, linkedOrder]);
+  const linesWithoutDo = rowsOrder && roundDoLines
+    ? orderLinesWithoutDo(rowsOrder, orderEntries, [{ lines: roundDoLines.map((l, i) => ({ id: String(i), ...l })) }])
+    : [];
+  const openNewDoForRest = () => {
+    if (!linkedOrder || !linesWithoutDo.length) return;
+    const p = new URLSearchParams({ fromDispatch: '1', orderRef: linkedOrder.orderId, round: String(linkedOrder.round) });
+    if (dispatchPlannedAt) p.set('plannedAt', dispatchPlannedAt);
+    if (dispatchRemark.trim()) p.set('remark', dispatchRemark.trim());
+    if (header.fulfilmentType === 'Self Pickup') p.set('fulfilment', 'self_pickup');
+    p.set('lines', linesWithoutDo.map(l => l.seq).join(','));
+    navigate(`/stock-movements/new-outward?${p.toString()}`);
+  };
+
+  // The whole DO for PDF / DOCX / Email — from the form as it is now, even
+  // before Save. Line 1's fields are also on the top level for older readers;
+  // generateOutwardPDF / downloadOutwardDOCX print every line in `lines`.
+  // In Edit mode the rows hold the SAVED billing_name (see the load effect).
+  const num = (v: string) => (v.trim() === '' ? null : Number(v));
+  const buildOutwardData = (): OutwardDO => {
+    const doLines: OutwardDoLine[] = lines.map(l => ({
+      whLotNo: l.lotNo.trim() || undefined,
+      inwardDate: l.lotDate || undefined,
+      productName: l.productName.trim(),
+      productCode: l.productCode || undefined,
+      billingName: l.billingName.trim() || undefined,
+      numArticles: l.numArticles.trim() || undefined,
+      packing: num(l.packing) ?? undefined,
+      totalQty: lineTotal(l) ?? undefined,
+      packagingType: l.packagingType || undefined,
+      weightType: l.weightType || undefined,
+    }));
+    const first = doLines[0];
+    return {
+      id: movementId || '',
+      type: 'outward',
+      warehouse: isOtherWarehouse ? header.otherWarehouse.trim() : header.warehouse,
+      ...first,
+      doNumber: header.doNumber.trim() || undefined,
+      doDate: header.doDate || undefined,
+      partyName: header.partyName || undefined,
+      otherParty: isOtherParty ? (header.otherParty.trim() || undefined) : undefined,
+      transporter: header.transporter || undefined,
+      otherTransporter: isOtherTransporter ? (header.otherTransporter.trim() || undefined) : undefined,
+      fulfilmentType: header.fulfilmentType || undefined,
+      note: header.note.trim() || undefined,
+      created_by: user?.email ?? undefined,
+      lines: doLines,
+    };
+  };
+
+  // Cheap customer resolution for the Email modal — a Party Name that isn't
+  // a customer just leaves the To field blank (expected fallback).
+  const customer = data.customers.find(c => c.name === header.partyName);
 
   const handleGeneratePDF = async () => {
     const unit = data.units.find(u => u.is_default);
@@ -1274,11 +1095,10 @@ function OutwardForm() {
     await downloadOutwardDOCX(buildOutwardData(), customer, data.settings, data.signatories.find(s => s.is_default), unit);
   };
 
-  // 2026-10-12: "Email to Client" only works on a saved entry — its
-  // email_sent_at needs a stock_movements row to be written to.
+  // 2026-10-12: "Email to Client" only works on a saved DO.
   // 2026-10-26: a Delivery DO's email names its transporter, so it must be
-  // SAVED on the entry — checked against the database, and the form must
-  // not hold unsaved Transporter / Fulfilment Type changes.
+  // SAVED — checked against the database, and the form must not hold unsaved
+  // Transporter / Fulfilment Type changes.
   const openEmailModal = async () => {
     if (!movementId) { setError('Please save the outward entry first'); return; }
     setError('');
@@ -1286,8 +1106,8 @@ function OutwardForm() {
       .select('transporter, other_transporter, fulfilment_type').eq('id', movementId).maybeSingle();
     if (loadErr || !saved) { setError(`Could not check this DO: ${loadErr?.message || 'entry not found'}`); return; }
     const savedTransporter = outwardTransporterName({ transporter: saved.transporter, otherTransporter: saved.other_transporter });
-    const formTransporter = outwardTransporterName({ transporter: form.transporter, otherTransporter: isOtherTransporter ? form.otherTransporter : '' });
-    if ((saved.fulfilment_type || '') !== form.fulfilmentType || (form.fulfilmentType === 'Delivery' && savedTransporter !== formTransporter)) {
+    const formTransporter = outwardTransporterName({ transporter: header.transporter, otherTransporter: isOtherTransporter ? header.otherTransporter : '' });
+    if ((saved.fulfilment_type || '') !== header.fulfilmentType || (header.fulfilmentType === 'Delivery' && savedTransporter !== formTransporter)) {
       setError('Please save your changes first.');
       return;
     }
@@ -1299,27 +1119,23 @@ function OutwardForm() {
     setShowEmailModal(true);
   };
 
-  // 2026-10-12: stamps email_sent_at on this entry after "Email to Client"
-  // succeeds (SendEmailModal's onSent — a failed send never gets here), same
-  // pattern as markDispatchEmailSent in src/store/index.tsx. Writes only
-  // that column; sending again just refreshes the time. Then goes to the
-  // Email Sent sub-tab, under the pill of the entry's SAVED Fulfilment Type.
-  // 2026-10-16: a DO linked to a Board order (order_id + dispatch_round)
-  // also completes Dispatch Step 6 here, then stays on the page with an
-  // "Email sent — Step 6 completed" note and a Back to Board button. A login
-  // not allowed on the board still sends the email; Step 6 is left for
-  // MIS / Samata.
+  // 2026-10-12: stamps email_sent_at after "Email to Client" succeeds.
+  // 2026-11-03: on EVERY line of the DO (one email, one PDF), logged once.
+  // 2026-10-16: a DO linked to a Board order also completes Dispatch Step 6
+  // here (once every DO of the round is emailed).
   const markOutwardEmailSent = async () => {
     if (!movementId) return;
     const sentAt = new Date().toISOString();
     try {
-      const { data: rows, error: updErr } = await supabase.from('stock_movements')
-        .update({ email_sent_at: sentAt }).eq('id', movementId).select('id, do_number, fulfilment_type');
+      const ids = savedIds.length ? savedIds : [movementId];
+      let q = supabase.from('stock_movements').update({ email_sent_at: sentAt }).eq('type', 'outward');
+      q = header.doNumber ? q.eq('do_number', header.doNumber) : q.in('id', ids);
+      const { data: rows, error: updErr } = await q.select('id, do_number, fulfilment_type');
       if (updErr) throw updErr;
       if (!rows || rows.length === 0) throw new Error('entry not found');
       logActivity({
         module: 'stock_movements', recordId: movementId,
-        recordLabel: `${rows[0].do_number || form.doNumber || movementId} · Outward · Email to Client sent`,
+        recordLabel: `${rows[0].do_number || header.doNumber || movementId} · Outward · Email to Client sent${rows.length > 1 ? ` (${rows.length} products)` : ''}`,
         action: 'update', before: { email_sent_at: emailSentAt }, after: { email_sent_at: sentAt },
       });
       setEmailSentAt(sentAt);
@@ -1337,199 +1153,81 @@ function OutwardForm() {
     }
   };
 
-  const save = async (confirmedAllStock = false) => {
-    if (!isValid) { setError('Please fill in all required fields.'); return; }
+  // The History Log's view of a DO: header once, one readable line per product.
+  const doLogShape = (rows: any[]) => {
+    const r0 = rows[0] || {};
+    const shape: Record<string, any> = {
+      do_number: r0.do_number, warehouse: r0.warehouse, do_date: r0.do_date, party_name: r0.party_name,
+      transporter: r0.transporter, fulfilment_type: r0.fulfilment_type, note: r0.note,
+    };
+    rows.forEach((r, i) => {
+      shape[`line_${i + 1}`] = `Lot ${r.wh_lot_no || '—'} · ${r.product_name || '—'} · ${r.billing_name || '—'} · ${r.num_articles || 0} × ${r.packing ?? '—'} = ${r.total_qty ?? '—'}`;
+    });
+    return shape;
+  };
+
+  const save = async () => {
+    if (!isValid) { setError('Please select a Warehouse (DO Number is generated from it).'); return; }
     if (saveBlock) { setError(saveBlock); return; }
-    if (!FULFILMENT_TYPES.includes(form.fulfilmentType)) {
+    if (!FULFILMENT_TYPES.includes(header.fulfilmentType)) {
       setFulfilmentError(true);
       setError('Please select Fulfilment Type (Delivery or Self Pickup).');
       return;
     }
-    if (form.fulfilmentType === 'Delivery'
-      && !outwardTransporterName({ transporter: form.transporter, otherTransporter: isOtherTransporter ? form.otherTransporter : '' })) {
+    if (header.fulfilmentType === 'Delivery'
+      && !outwardTransporterName({ transporter: header.transporter, otherTransporter: isOtherTransporter ? header.otherTransporter : '' })) {
       setTransporterError(true);
       setError('Please select a transporter for Delivery.');
       return;
     }
-    // 2026-10-13 safety check (Board flow only): the field still holds the
-    // lot's WHOLE stock at this warehouse although the order needs fewer —
-    // ask before deducting all of it.
-    if (!confirmedAllStock && fromDispatch && currentLotStock && orderBarrels !== null
-      && enteredBarrels === currentLotStock.available && enteredBarrels > orderBarrels) {
-      setConfirmAllStock(true);
-      return;
-    }
     setSaving(true);
     setError('');
-
-    const warehouseToSave = isOtherWarehouse ? form.otherWarehouse.trim() : form.warehouse;
-    const lotNo = form.lotNo.trim();
-    // The party column tracks Number of Articles (barrel/article count),
-    // not Total Quantity — see the file-header comment above.
-    const numArticles = num(form.numArticles);
-    // 2026-10-16: recalculated here (never read from the field), so the saved
-    // total_qty and the stock deduction are always barrels × packing.
-    const packingNum = num(form.packing);
-    const totalQty = numArticles !== null && packingNum !== null ? numArticles * packingNum : null;
-
-    // Editing an existing entry: ported from OutwardEditModal.tsx's own
-    // save() — reverse the OLD decrement, re-apply the NEW one, then update
-    // the stock_movements row in place instead of inserting a new one. See
-    // the file-header comment for why this is a faithful port of the old
-    // modal's logic rather than Inward's more involved lotId-pinning fix.
-    if (isEditing && movementId && original) {
-      const oldPartyCol = PARTY_COLUMN[original.warehouse];
-      const newPartyCol = PARTY_COLUMN[warehouseToSave];
-      const oldNumArticles = num(original.numArticles) ?? 0;
-      const newNumArticles = numArticles ?? 0;
-      const newTotalQty = totalQty ?? 0;
-
-      // 2026-09-19: activeDoer (the specific person acting right now,
-      // matching SendEmailModal.tsx's "who is sending this" identity),
-      // falling back to the raw login email — was raw user?.email only.
-      const actingEmail = activeDoer?.email ?? user?.email;
-      // 2026-10-26: stock first, through adjust_lot_stock — any refusal stops
-      // the save with the movement untouched. Same warehouse + lot: ONE call
-      // with the net change (all-or-nothing). Otherwise put the old DO's
-      // stock back, then take the new — and undo the first if the second
-      // fails. A DO that never took stock (unknown warehouse / no lot) has
-      // nothing to put back; neither does one whose lot no longer exists.
-      const fail = (err: any) => { setError(friendlyStockError(err)); setSaving(false); };
-      const oldTookStock = !!(oldPartyCol && original.lotNo && (oldNumArticles || original.totalQty));
-      const sameLot = oldTookStock && oldPartyCol === newPartyCol && original.lotNo.toLowerCase() === lotNo.toLowerCase();
-      // What to run to put the stock exactly back as it was if the movement update fails.
-      let undoStock: () => Promise<any> = async () => null;
-      if (!newPartyCol || !lotNo) { setError('Select a Warehouse and a Lot No that exists in Stock Summary.'); setSaving(false); return; }
-      if (sameLot) {
-        const err = await adjustLotStock(newPartyCol, lotNo, oldNumArticles - newNumArticles, original.totalQty - newTotalQty, actingEmail);
-        if (err) { fail(err); return; }
-        undoStock = () => adjustLotStock(newPartyCol, lotNo, newNumArticles - oldNumArticles, newTotalQty - original.totalQty, actingEmail);
-      } else {
-        let restored = false;
-        if (oldTookStock) {
-          const err = await adjustLotStock(oldPartyCol!, original.lotNo, oldNumArticles, original.totalQty, actingEmail);
-          if (err && !/LOT_NOT_FOUND/.test(err.message)) { fail(err); return; }
-          restored = !err;
-        }
-        const takeErr = await adjustLotStock(newPartyCol, lotNo, -newNumArticles, -newTotalQty, actingEmail);
-        if (takeErr) {
-          const undoErr = restored ? await adjustLotStock(oldPartyCol!, original.lotNo, -oldNumArticles, -original.totalQty, actingEmail) : null;
-          setError(friendlyStockError(takeErr) + (undoErr ? ` Also, the old lot's stock could not be put back as it was (${friendlyStockError(undoErr)}) — please check Stock Summary.` : ''));
-          setSaving(false);
-          return;
-        }
-        undoStock = async () => {
-          const e1 = await adjustLotStock(newPartyCol, lotNo, newNumArticles, newTotalQty, actingEmail);
-          const e2 = restored ? await adjustLotStock(oldPartyCol!, original.lotNo, -oldNumArticles, -original.totalQty, actingEmail) : null;
-          return e1 || e2;
-        };
-      }
-
-      // 3. Update the stock_movements row itself.
-      const updatePayload = {
-        warehouse: warehouseToSave,
-        wh_lot_no: lotNo || null,
-        product_name: form.productName.trim(),
-        billing_name: form.billingName.trim() || null,
-        do_number: form.doNumber.trim(),
-        do_date: form.doDate || null,
-        inward_date: form.lotDate || null,
-        num_articles: form.numArticles.trim() || null,
-        packing: num(form.packing),
-        weight_type: form.weightType || null,
-        packaging_type: form.packagingType || null,
-        total_qty: totalQty,
-        party_name: form.partyName || null,
-        other_party: isOtherParty ? (form.otherParty.trim() || null) : null,
-        transporter: form.transporter || null,
-        other_transporter: isOtherTransporter ? (form.otherTransporter.trim() || null) : null,
-        fulfilment_type: form.fulfilmentType || null,
-        note: form.note.trim() || null,
-        // 2026-09-19: at the user's request — who last edited this Outward
-        // entry (stock_movements had no updated_by/updated_at at all before
-        // this; see the migration that added them alongside dispatch_entries.updated_by).
-        updated_at: new Date().toISOString(),
-        updated_by: actingEmail ?? null,
-      };
-      const { error: moveErr } = await supabase.from('stock_movements').update(updatePayload).eq('id', movementId);
-
-      if (moveErr) {
-        // The DO wasn't changed, so the stock change above is undone.
-        const undoErr = await undoStock();
-        setError(moveErr.message + (undoErr ? ` Also, the stock could not be put back (${friendlyStockError(undoErr)}) — please check Stock Summary.` : ''));
-        setSaving(false);
-        return;
-      }
-      logActivity({
-        module: 'stock_movements', recordId: movementId,
-        recordLabel: `DO ${updatePayload.do_number || '—'} · ${updatePayload.product_name} · Lot ${lotNo || '—'}`,
-        action: 'update', before: originalRow.current ?? undefined, after: { ...originalRow.current, ...updatePayload },
-      });
-      await afterSave();
-      setSaving(false);
-      return;
-    }
-
-    const movementPayload = {
-      type: 'outward',
-      warehouse: warehouseToSave,
-      wh_lot_no: lotNo || null,
-      product_name: form.productName.trim(),
-      billing_name: form.billingName.trim() || null,
-      do_number: form.doNumber.trim(),
-      do_date: form.doDate || null,
-      inward_date: form.lotDate || null,
-      num_articles: form.numArticles.trim() || null,
-      packing: num(form.packing),
-      weight_type: form.weightType || null,
-      packaging_type: form.packagingType || null,
-      total_qty: totalQty,
-      party_name: form.partyName || null,
-      other_party: isOtherParty ? (form.otherParty.trim() || null) : null,
-      transporter: form.transporter || null,
-      other_transporter: isOtherTransporter ? (form.otherTransporter.trim() || null) : null,
-      fulfilment_type: form.fulfilmentType || null,
-      note: form.note.trim() || null,
-      created_by: activeDoer?.email ?? user?.email ?? null,
-      // 2026-10-16: a DO made from the Board is linked to its order + round,
-      // so the Board knows it's saved and Step 6 completes when it's emailed.
+    // 2026-09-19: activeDoer (the person acting right now), else the login.
+    const actingEmail = activeDoer?.email ?? user?.email ?? null;
+    const headerPayload = {
+      warehouse: isOtherWarehouse ? header.otherWarehouse.trim() : header.warehouse,
+      do_number: header.doNumber.trim(),
+      do_date: header.doDate || null,
+      party_name: header.partyName || null,
+      other_party: isOtherParty ? (header.otherParty.trim() || null) : null,
+      transporter: header.transporter || null,
+      other_transporter: isOtherTransporter ? (header.otherTransporter.trim() || null) : null,
+      fulfilment_type: header.fulfilmentType || null,
+      note: header.note.trim() || null,
+      // 2026-10-16: a DO made from the Board is linked to its order + round.
       order_id: fromDispatch ? orderRef : null,
       dispatch_round: fromDispatch ? dispatchRound : null,
     };
-
-    // 2026-10-26: take the stock FIRST, through adjust_lot_stock (locked,
-    // never below 0). If it is refused — not enough stock, or anything else —
-    // the DO is not saved at all. Replaces the old best-effort decrement that
-    // ran after the insert and swallowed its errors.
-    const partyCol = PARTY_COLUMN[form.warehouse];
-    if (!partyCol || !lotNo) { setError('Select a Warehouse and a Lot No that exists in Stock Summary.'); setSaving(false); return; }
-    const actingEmail = activeDoer?.email ?? user?.email ?? null;
-    const stockErr = await adjustLotStock(partyCol, lotNo, -(numArticles ?? 0), -(totalQty ?? 0), actingEmail);
-    if (stockErr) { setError(friendlyStockError(stockErr)); setSaving(false); return; }
-
-    // insertOutwardWithRetry (not a plain insert) so a DO Number collision
-    // under concurrent saves for the same warehouse gets one fresh number
-    // and a retry instead of a raw DB error — see that function's comment
-    // and the stock_movements_do_number_unique migration.
-    const { error: moveErr, saved, id: newId } = await insertOutwardWithRetry(
-      movementPayload,
-      form.warehouse,
-      doNumber => setForm(f => ({ ...f, doNumber }))
+    const linesPayload = lines.map(l => ({
+      wh_lot_no: l.lotNo.trim(),
+      product_name: l.productName.trim(),
+      billing_name: l.billingName.trim() || null,
+      inward_date: l.lotDate || null,
+      num_articles: l.numArticles.trim(),
+      packing: l.packing.trim(),
+      weight_type: l.weightType || null,
+      packaging_type: l.packagingType || null,
+      order_line_seq: l.orderLineSeq,
+    }));
+    const { error: saveErr, result } = await saveOutwardDoWithRetry(
+      isEditing ? movementId : null, headerPayload, linesPayload, actingEmail,
+      doNumber => setHeader(h => ({ ...h, doNumber })),
     );
-    if (moveErr) {
-      // The DO wasn't saved, so the stock taken above goes back.
-      const undoErr = await adjustLotStock(partyCol, lotNo, numArticles ?? 0, totalQty ?? 0, actingEmail);
-      setError((moveErr.message || 'Failed to save entry.') + (undoErr ? ` Also, the stock could not be put back (${friendlyStockError(undoErr)}) — please check Stock Summary.` : ''));
+    if (saveErr || !result) {
+      // Nothing was saved and no stock changed (one database transaction).
+      setError(friendlyStockError(saveErr) || 'Failed to save the DO.');
       setSaving(false);
       return;
     }
+    const products = lines.map(l => l.productName.trim()).filter(Boolean).join(', ');
     logActivity({
-      module: 'stock_movements', recordId: newId || saved?.do_number || movementPayload.do_number,
-      recordLabel: `DO ${saved?.do_number || '—'} · ${movementPayload.product_name} · Lot ${lotNo || '—'}`,
-      action: 'insert', after: saved,
+      module: 'stock_movements', recordId: result.ids[0],
+      recordLabel: `DO ${result.do_number || '—'} · ${products} · Lot ${lines.map(l => l.lotNo.trim() || '—').join(', ')}`,
+      action: isEditing ? 'update' : 'insert',
+      before: isEditing ? doLogShape(result.before) : undefined,
+      after: doLogShape(result.after),
     });
-
-    await afterSave(newId);
+    await afterSave(result.ids[0]);
     setSaving(false);
   };
 
@@ -1542,9 +1240,8 @@ function OutwardForm() {
     );
   }
 
-  // 2026-10-06: the Dispatch board now shows "DO issued ✓" (disabled) to
-  // every login, so a login that isn't allowed to act on the board could
-  // still type this URL — no form for them, just a way back.
+  // 2026-10-06: a login that isn't allowed to act on the board could still
+  // type this URL — no form for them, just a way back.
   if (fromDispatch && (!canActOnDispatchBoard(user?.email) || isReadOnlyUser)) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
@@ -1554,12 +1251,15 @@ function OutwardForm() {
     );
   }
 
-  // 2026-10-16: the order this DO belongs to (header line) — new DO from the
-  // Board, or a saved DO linked to an order.
-  const linkedHeaderOrder = data.orders.find(o => o.id === (linkedOrder?.orderId || (boardLink ? orderRef : '')));
-  const headerOrder = dispatchOrder || (linkedHeaderOrder && dispatchOrderView(linkedHeaderOrder));
+  // 2026-10-16: the order this DO belongs to (header line).
+  const headerOrder = rowsOrder || (boardLink ? data.orders.find(o => o.id === orderRef) : undefined);
   // A saved DO linked to a Board order that isn't emailed yet.
   const awaitingEmail = isEditing && !!linkedOrder && !emailSentAt && !emailResult;
+  const canNewDo = isEditing && boardLink && !!linkedOrder && linesWithoutDo.length > 0
+    && canActOnDispatchBoard(user?.email) && !isReadOnlyUser;
+  const cellInput = 'w-full font-sans text-[12.5px] text-blk bg-white border border-g300 rounded-[3px] px-[7px] py-[6px] outline-none focus:border-red-mrt focus:ring-[2px] focus:ring-red-lt';
+  const cellLocked = `${cellInput} bg-g100 text-g600 cursor-not-allowed`;
+  const thCls = 'font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g500 text-left px-[5px] py-[6px] whitespace-nowrap border-b border-g200';
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -1571,7 +1271,7 @@ function OutwardForm() {
               {isEditing ? <>Edit <em className="italic text-red-mrt">Outward Entry</em></> : <>Log <em className="italic text-red-mrt">New Outward</em></>}
             </h1>
             <p className="text-xs text-g500 mt-1 font-light">
-              {isEditing ? 'Update a previously logged Delivery Order stock outward.' : 'Record a Delivery Order stock outward — replaces the Delivery Order Sale Google Form.'}
+              {isEditing ? 'Update a previously logged Delivery Order stock outward.' : 'Record a Delivery Order stock outward — one warehouse, one or more products.'}
             </p>
             {(boardLink || linkedOrder) && headerOrder && (
               <p className="text-[12px] text-blk mt-1 font-semibold">
@@ -1584,13 +1284,13 @@ function OutwardForm() {
         {/* 2026-10-16: Step 6 completes when the DO is EMAILED, not on save. */}
         {awaitingEmail && (
           <div className="mt-3 border border-amber-300 bg-amber-50 text-amber-800 rounded-[4px] px-3 py-2 text-[12.5px] font-semibold">
-            DO {form.doNumber || '—'} saved. Click Email to Client to complete Step 6.
+            DO {header.doNumber || '—'} saved. Click Email to Client to complete Step 6.
           </div>
         )}
         {/* Opened from the Board after Step 6 was undone — the DO was already emailed once. */}
         {boardLink && isEditing && !!linkedOrder && !!emailSentAt && !emailResult && (
           <div className="mt-3 border border-amber-300 bg-amber-50 text-amber-800 rounded-[4px] px-3 py-2 text-[12.5px] font-semibold">
-            DO {form.doNumber || '—'} was emailed {fmtIST(new Date(emailSentAt), 'dd-MMM-yyyy hh:mm a')}. Click Email to Client again to complete Step 6.
+            DO {header.doNumber || '—'} was emailed {fmtIST(new Date(emailSentAt), 'dd-MMM-yyyy hh:mm a')}. Click Email to Client again to complete Step 6.
           </div>
         )}
         {emailResult && (
@@ -1602,154 +1302,158 @@ function OutwardForm() {
             <Button size="sm" variant="primary" onClick={() => navigate(DISPATCH_BOARD_PATH)}>Back to Board</Button>
           </div>
         )}
+        {/* 2026-11-03: products of this order not on any DO of this round yet
+            (e.g. stock in another warehouse) — they need their own DO. */}
+        {canNewDo && (
+          <div className="mt-3 border border-g200 bg-g50 rounded-[4px] px-3 py-2 text-[12.5px] flex flex-wrap items-center gap-2">
+            <span className="flex-1 min-w-[200px] text-g700">
+              Not on any DO yet: <strong className="text-blk">{linesWithoutDo.map(l => `${l.desc || 'Item'} (${l.left})`).join(', ')}</strong>
+            </span>
+            <Button size="sm" variant="secondary" onClick={openNewDoForRest}>+ New DO (another warehouse)</Button>
+          </div>
+        )}
       </div>
 
       <div className="px-6 pb-7 pt-[14px] flex-1 overflow-y-auto">
         <div className="flex flex-col gap-[14px]">
-          {/* 2026-10-13: an order with 2+ product lines still to dispatch —
-              pick which line this DO is for. */}
-          {fromDispatch && orderLinesLeft.length >= 2 && (
-            <div className={cardCls}>
-              <div className={sectionHeaderCls}>Product (from order)</div>
-              <div className="max-w-[520px]">
-                <select className={selectCls} value={currentOrderLineSeq ?? ''} onChange={e => pickOrderLine(Number(e.target.value))}>
-                  {currentOrderLineSeq !== null && !orderLinesLeft.some(l => l.seq === currentOrderLineSeq) && (
-                    <option value={currentOrderLineSeq}>{(dispatchOrder?.items.find(i => i.seq === currentOrderLineSeq)?.desc || 'Item').trim()} — 0 barrels left</option>
-                  )}
-                  {orderLinesLeft.map(l => <option key={l.seq} value={l.seq}>{l.desc || 'Item'} — {l.left} barrels left</option>)}
-                </select>
-              </div>
-            </div>
-          )}
           <div className={cardCls}>
-            <div className={sectionHeaderCls}>DO &amp; Lot Details</div>
-            {/* 2026-09-07: grid-cols-4 -> -5 so Warehouse/DO Number/DO Date/
-                Lot No/Lot Date sit on one line and Product Name/Product Code
-                wrap to the next, at the user's request. */}
-            <div className="grid grid-cols-5 gap-[12px]">
+            <div className={sectionHeaderCls}>DO Details</div>
+            <div className="grid grid-cols-4 gap-[12px]">
               <div>
                 <label className={labelCls}>Warehouse <span className="text-red-mrt">*</span></label>
-                <select className={selectCls} value={form.warehouse} onChange={set('warehouse')}>
+                <select className={selectCls} value={header.warehouse} onChange={e => onWarehouseChange(e.target.value)}>
                   <option value="">Select...</option>
                   {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
+                  {header.warehouse && !WAREHOUSES.includes(header.warehouse) && <option value={header.warehouse}>{header.warehouse}</option>}
                 </select>
               </div>
               {isOtherWarehouse && (
                 <div>
                   <label className={labelCls}>Other Warehouse <span className="text-red-mrt">*</span></label>
-                  <input className={inputCls} value={form.otherWarehouse} onChange={set('otherWarehouse')} />
+                  <input className={inputCls} value={header.otherWarehouse} onChange={setH('otherWarehouse')} />
                 </div>
               )}
               <div>
                 <label className={labelCls}>DO Number <span className="text-red-mrt">*</span></label>
-                {/* 2026-09-09: auto-generated, never hand-typed — see the
-                    Warehouse-select effect above. Read-only in both create
-                    mode (regenerated on Warehouse change) and edit mode
-                    (loads and keeps the entry's existing saved value). */}
-                <input className={`${inputCls} bg-g100 text-g600 cursor-not-allowed`} value={form.doNumber} readOnly />
+                {/* 2026-09-09: auto-generated from the Warehouse, never typed;
+                    never changes once saved. */}
+                <input className={`${inputCls} bg-g100 text-g600 cursor-not-allowed`} value={header.doNumber} readOnly />
               </div>
               <div>
                 <label className={labelCls}>DO Date</label>
-                <input type="date" className={inputCls} value={form.doDate} onChange={set('doDate')} />
-              </div>
-              <div>
-                <label className={labelCls}>Lot No</label>
-                <input className={inputCls} value={form.lotNo} onChange={e => { lotNoTouched.current = true; set('lotNo')(e); }} />
-                {lotWarning && <p className="text-amber-600 text-[11px] mt-1">{lotWarning}</p>}
-              </div>
-              <div>
-                <label className={labelCls}>Lot Date</label>
-                <input type="date" className={inputCls} value={form.lotDate} onChange={set('lotDate')} />
-              </div>
-              <div>
-                <label className={labelCls}>Product Name <span className="text-red-mrt">*</span></label>
-                {/* 2026-10-16: locked to the lot's product while a lot is matched. */}
-                {lockedLot ? (
-                  <input className={`${inputCls} ${lockedCls}`} value={form.productName} readOnly />
-                ) : (
-                  <SearchableCombobox
-                    className={inputCls}
-                    options={PRODUCT_NAME_OPTIONS}
-                    value={form.productName}
-                    // From the Board, Billing Name is the order's product name — picking a
-                    // product doesn't replace it; nor does it once the user typed their own.
-                    onChange={v => setForm(f => ({ ...f, productName: v, productCode: codeForProductName(v), billingName: fromDispatch || billingTyped.current ? f.billingName : billingNameForProductName(v) }))}
-                  />
-                )}
-                {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
-                {lotLineMismatch && <p className="text-red-mrt text-[11px] font-bold mt-0.5">{lotLineMismatch}</p>}
-              </div>
-              <div>
-                <label className={labelCls}>Product Code</label>
-                <input className={`${inputCls} bg-g100 text-g600 cursor-not-allowed`} value={form.productCode} readOnly />
-                {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
-              </div>
-              <div>
-                <label className={labelCls}>Billing Name</label>
-                {/* 2026-10-16: editable. From the Board it starts as the order's product name. */}
-                <input className={inputCls} value={form.billingName} onChange={e => { billingTyped.current = true; set('billingName')(e); }} />
+                <input type="date" className={inputCls} value={header.doDate} onChange={setH('doDate')} />
               </div>
             </div>
           </div>
 
           <div className={cardCls}>
-            <div className={sectionHeaderCls}>Quantity</div>
-            <div className="grid grid-cols-5 gap-[12px]">
-              <div>
-                <label className={labelCls}>No of Barrels <span className="text-red-mrt">*</span></label>
-                <input type="number" className={inputCls} value={form.numArticles} onChange={onNumArticlesChange} />
-                {/* 2026-10-13: what the lot has at this warehouse, and (from
-                    the Board) what the order asks for. 2026-10-26: more than
-                    available blocks Save (overStockMsg), new and edit. */}
-                {currentLotStock && (isEditing ? (
-                  <p className="text-g500 text-[11px] mt-1">Available (after this DO): {currentLotStock.available}</p>
-                ) : (
-                  <p className="text-g600 text-[11px] mt-1">Available at {currentLotStock.warehouse} (Lot {currentLotStock.lotNo}): <strong className="text-blk">{currentLotStock.available} barrels</strong></p>
-                ))}
-                {overStockMsg && <p className="text-red-mrt text-[11px] font-bold mt-0.5">{overStockMsg}</p>}
-                {fromDispatch && orderBarrels !== null && (
-                  <p className="text-g600 text-[11px] mt-0.5">Order needs (remaining): <strong className="text-blk">{orderBarrels} barrels</strong></p>
-                )}
-              </div>
-              <div>
-                <label className={labelCls}>Packing</label>
-                {/* 2026-10-16: Packing / Total Quantity / Packing Type / MOU are
-                    always read-only — only No of Barrels is typed. */}
-                <input className={`${inputCls} ${lockedCls}`} value={form.packing} readOnly />
-                {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
-                {packingMismatch && lockedLot && (
-                  <p className="text-amber-600 text-[11px] mt-0.5">Order packing is {orderPacking} per barrel, but lot {lockedLot.lotNo} is {lockedLot.packing} — the lot's packing is used.</p>
-                )}
-              </div>
-              <div>
-                <label className={labelCls}>Total Quantity <span className="text-red-mrt">*</span></label>
-                <input className={`${inputCls} ${lockedCls}`} value={form.totalQty} readOnly />
-                <p className="text-g500 text-[11px] mt-1">= No of Barrels × Packing</p>
-                {savedTotalMismatch && computedTotal !== null && (
-                  <p className="text-amber-600 text-[11px] mt-0.5">Recalculated from barrels × packing (saved: {String(originalRow.current?.total_qty)})</p>
-                )}
-              </div>
-              <div>
-                <label className={labelCls}>Packing Type</label>
-                <select className={`${selectCls} ${lockedCls}`} value={form.packagingType} disabled>
-                  <option value="">—</option>
-                  {packagingTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
-              </div>
-              <div>
-                <label className={labelCls}>MOU (Measure of Unit)</label>
-                <select className={`${selectCls} ${lockedCls}`} value={form.weightType} disabled>
-                  <option value="">—</option>
-                  {weightTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
+            <div className={sectionHeaderCls}>Products</div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse min-w-[1100px]">
+                <thead>
+                  <tr>
+                    <th className={thCls}>#</th>
+                    <th className={thCls}>Lot No *</th>
+                    <th className={thCls}>Lot Date</th>
+                    <th className={thCls}>Product Name</th>
+                    <th className={thCls}>Product Code</th>
+                    <th className={thCls}>Billing Name</th>
+                    <th className={thCls}>No of Barrels *</th>
+                    <th className={thCls}>Packing</th>
+                    <th className={thCls}>Total Qty</th>
+                    <th className={thCls}>Packing Type</th>
+                    <th className={thCls}>MOU</th>
+                    <th className={thCls}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l, idx) => {
+                    const info = rowInfos[idx];
+                    const lot = info.lot;
+                    return (
+                      <React.Fragment key={l.key}>
+                        <tr className="align-top">
+                          <td className="px-[5px] pt-[12px] font-mono text-[11px] text-g500">{idx + 1}</td>
+                          <td className="px-[5px] pt-[5px] w-[110px]">
+                            <input className={cellInput} value={l.lotNo}
+                              onChange={e => updateLine(l.key, { lotNo: e.target.value, lotTouched: true })} />
+                          </td>
+                          <td className="px-[5px] pt-[5px] w-[130px]">
+                            <input type="date" className={cellInput} value={l.lotDate} onChange={e => updateLine(l.key, { lotDate: e.target.value })} />
+                          </td>
+                          <td className="px-[5px] pt-[5px] min-w-[170px]">
+                            {/* 2026-10-16: Product Name / Code always come from the lot. */}
+                            <input className={cellLocked} value={l.productName} readOnly />
+                          </td>
+                          <td className="px-[5px] pt-[5px] w-[100px]">
+                            <input className={cellLocked} value={l.productCode} readOnly />
+                          </td>
+                          <td className="px-[5px] pt-[5px] min-w-[150px]">
+                            {/* 2026-10-16: editable. From the Board it is the order line's product name. */}
+                            <input className={cellInput} value={l.billingName}
+                              onChange={e => updateLine(l.key, { billingName: e.target.value, billingTyped: true })} />
+                          </td>
+                          <td className="px-[5px] pt-[5px] w-[90px]">
+                            <input type="number" className={cellInput} value={l.numArticles}
+                              onChange={e => updateLine(l.key, { numArticles: e.target.value, userBarrelsKey: lotKeyOf(header.warehouse, l.lotNo) })} />
+                          </td>
+                          <td className="px-[5px] pt-[5px] w-[75px]">
+                            <input className={cellLocked} value={l.packing} readOnly />
+                          </td>
+                          <td className="px-[5px] pt-[5px] w-[95px]">
+                            <input className={`${cellLocked} font-semibold`} value={info.total === null ? '' : String(info.total)} readOnly />
+                          </td>
+                          <td className="px-[5px] pt-[5px] w-[130px]">
+                            <input className={cellLocked} value={l.packagingType} readOnly title={l.packagingType} />
+                          </td>
+                          <td className="px-[5px] pt-[5px] w-[60px]">
+                            <input className={cellLocked} value={l.weightType} readOnly />
+                          </td>
+                          <td className="px-[5px] pt-[9px] w-[28px]">
+                            <button type="button" onClick={() => removeLine(l.key)} disabled={lines.length <= 1}
+                              title={lines.length <= 1 ? 'A DO needs at least one product' : 'Remove this product'}
+                              className="p-1 text-g400 hover:text-red-mrt disabled:opacity-30 disabled:cursor-not-allowed">
+                              <X size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                        <tr className="border-b border-g100">
+                          <td></td>
+                          <td colSpan={11} className="px-[5px] pb-[8px] pt-[3px] text-[11px] leading-[1.45]">
+                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-g600">
+                              {lot && <span className="text-g500">From lot {lot.lotNo}</span>}
+                              {lot && (isEditing && !l.lotTouched
+                                ? <span>Available (after this DO): {lot.available}</span>
+                                : <span>Available at {header.warehouse} (Lot {lot.lotNo}): <strong className="text-blk">{info.maxBarrels ?? lot.available} barrels</strong></span>)}
+                              {info.orderNeeds !== null && <span>Order needs (remaining): <strong className="text-blk">{info.orderNeeds} barrels</strong></span>}
+                              {!isEditing || l.lotTouched ? null : (l.savedTotal != null && info.total !== null && Number(l.savedTotal) !== info.total && (
+                                <span className="text-amber-600">Total recalculated from barrels × packing (saved: {String(l.savedTotal)})</span>
+                              ))}
+                            </div>
+                            {info.packingMismatch && lot && (
+                              <p className="text-amber-600 mt-0.5">Order packing is {info.orderPacking} per barrel, but lot {lot.lotNo} is {lot.packing} — the lot's packing is used.</p>
+                            )}
+                            {info.problem && (
+                              <p className={`mt-0.5 font-semibold ${info.problemSoft ? 'text-amber-700' : 'text-red-mrt font-bold'}`}>{info.problem}</p>
+                            )}
+                          </td>
+                        </tr>
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center gap-4 mt-3">
+              <Button size="sm" variant="secondary" onClick={addLine}><Plus size={12} className="mr-1 inline" /> Add product</Button>
+              <div className="ml-auto text-[12px] text-g600">
+                Total: <strong className="text-blk">{totalBarrels} barrel{totalBarrels === 1 ? '' : 's'}</strong>
+                <span className="mx-2 text-g300">·</span>
+                <strong className="text-blk">{totalQty.toLocaleString('en-IN')}</strong> total quantity
+                <span className="mx-2 text-g300">·</span>
+                {lines.length} product{lines.length === 1 ? '' : 's'}
               </div>
             </div>
-            {/* 2026-10-16: why Save is blocked (no lot / no packing / no stock). */}
-            {showSaveBlock && saveBlock !== lotWarning && saveBlock !== overStockMsg && saveBlock !== lotLineMismatch && (
-              <p className="text-amber-700 text-[11.5px] font-semibold mt-2">{saveBlock}</p>
-            )}
           </div>
 
           <div className={cardCls}>
@@ -1760,27 +1464,27 @@ function OutwardForm() {
                 <SearchableCombobox
                   className={inputCls}
                   options={partyNameOptions}
-                  value={form.partyName}
-                  onChange={v => setForm(f => ({ ...f, partyName: v, transporter: transporterByParty[v] || f.transporter, fulfilmentType: fulfilmentTypeByParty[v] || f.fulfilmentType }))}
+                  value={header.partyName}
+                  onChange={v => setHeader(h => ({ ...h, partyName: v, transporter: transporterByParty[v] || h.transporter, fulfilmentType: fulfilmentTypeByParty[v] || h.fulfilmentType }))}
                 />
               </div>
               {isOtherParty && (
                 <div>
                   <label className={labelCls}>Other Party</label>
-                  <input className={inputCls} value={form.otherParty} onChange={set('otherParty')} />
+                  <input className={inputCls} value={header.otherParty} onChange={setH('otherParty')} />
                 </div>
               )}
               <div>
-                <label className={labelCls}>Transporter{form.fulfilmentType === 'Delivery' && <> <span className="text-red-mrt">*</span></>}</label>
-                <SearchableCombobox className={`${inputCls} ${transporterError && !isOtherTransporter ? 'border-red-mrt' : ''}`} options={transporterOptions} value={form.transporter}
-                  onChange={v => { setTransporterError(false); setForm(f => ({ ...f, transporter: v })); }} />
+                <label className={labelCls}>Transporter{header.fulfilmentType === 'Delivery' && <> <span className="text-red-mrt">*</span></>}</label>
+                <SearchableCombobox className={`${inputCls} ${transporterError && !isOtherTransporter ? 'border-red-mrt' : ''}`} options={transporterOptions} value={header.transporter}
+                  onChange={v => { setTransporterError(false); setHeader(h => ({ ...h, transporter: v })); }} />
                 {transporterError && <p className="text-red-mrt text-[11px] mt-1">Please select a transporter for Delivery.</p>}
               </div>
               {isOtherTransporter && (
                 <div>
-                  <label className={labelCls}>Other Transporter{form.fulfilmentType === 'Delivery' && <> <span className="text-red-mrt">*</span></>}</label>
-                  <input className={`${inputCls} ${transporterError ? 'border-red-mrt' : ''}`} value={form.otherTransporter}
-                    onChange={e => { setTransporterError(false); set('otherTransporter')(e); }} />
+                  <label className={labelCls}>Other Transporter{header.fulfilmentType === 'Delivery' && <> <span className="text-red-mrt">*</span></>}</label>
+                  <input className={`${inputCls} ${transporterError ? 'border-red-mrt' : ''}`} value={header.otherTransporter}
+                    onChange={e => { setTransporterError(false); setH('otherTransporter')(e); }} />
                 </div>
               )}
               <div>
@@ -1790,13 +1494,13 @@ function OutwardForm() {
                     Save asks for one of the two. */}
                 <select
                   className={`${selectCls} ${fulfilmentError ? 'border-red-mrt' : ''}`}
-                  value={form.fulfilmentType}
-                  onChange={e => { setFulfilmentError(false); setTransporterError(false); setError(''); set('fulfilmentType')(e); }}
+                  value={header.fulfilmentType}
+                  onChange={e => { setFulfilmentError(false); setTransporterError(false); setError(''); setH('fulfilmentType')(e); }}
                 >
                   <option value="">Select...</option>
                   {FULFILMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  {form.fulfilmentType && !FULFILMENT_TYPES.includes(form.fulfilmentType) && (
-                    <option value={form.fulfilmentType}>{form.fulfilmentType}</option>
+                  {header.fulfilmentType && !FULFILMENT_TYPES.includes(header.fulfilmentType) && (
+                    <option value={header.fulfilmentType}>{header.fulfilmentType}</option>
                   )}
                 </select>
                 {fulfilmentError && <p className="text-red-mrt text-[11px] mt-1">Please select Delivery or Self Pickup.</p>}
@@ -1804,14 +1508,15 @@ function OutwardForm() {
             </div>
             <div className="mt-3">
               <label className={labelCls}>Note</label>
-              <textarea className={`${inputCls} min-h-[68px]`} value={form.note} onChange={set('note')} />
+              <textarea className={`${inputCls} min-h-[68px]`} value={header.note} onChange={setH('note')} />
             </div>
           </div>
         </div>
       </div>
 
       <div className="flex items-center gap-2 p-[14px_20px] bg-g100 border-t border-g200 sticky bottom-0">
-        <Button variant="primary" onClick={() => save()} disabled={!isValid || saving || !!overStockMsg}>
+        <Button variant="primary" onClick={() => save()} disabled={!isValid || saving || !!saveBlock}
+          title={saveBlock || undefined}>
           {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Save Outward Entry'}
         </Button>
         <button type="button" onClick={handleGeneratePDF} disabled={saving}
@@ -1831,19 +1536,8 @@ function OutwardForm() {
         </button>
         <Button variant="secondary" onClick={goBack} disabled={saving}>Cancel</Button>
         <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>
-        {error && <div className="ml-4 text-red-mrt text-[11px] font-bold">{error}</div>}
+        {error && <div className="ml-4 text-red-mrt text-[11px] font-bold max-w-[420px]">{error}</div>}
       </div>
-
-      {confirmAllStock && currentLotStock && (
-        <ConfirmDialog
-          title={`Dispatch all ${currentLotStock.available} barrels?`}
-          confirmLabel="Continue"
-          onConfirm={() => { setConfirmAllStock(false); save(true); }}
-          onCancel={() => setConfirmAllStock(false)}
-        >
-          You are dispatching all {currentLotStock.available} barrels of Lot {currentLotStock.lotNo} at {currentLotStock.warehouse}, but the order needs {orderBarrels} (remaining). Continue?
-        </ConfirmDialog>
-      )}
 
       {showEmailModal && (
         <SendEmailModal

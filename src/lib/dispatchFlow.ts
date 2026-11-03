@@ -12,7 +12,7 @@
 //     themselves from the entry's invoice no. / LR files / email.
 // Nothing here ever changes an order's status.
 import type { DispatchEntry, DispatchFulfillmentType, Order } from './types';
-import { remainingByLine, totalRemaining, BOARD_GO_LIVE_AT } from './utils';
+import { remainingByLine, totalRemaining, BOARD_GO_LIVE_AT, dispatchOrderView } from './utils';
 
 export type StepNo = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
 /** Board column: steps 1–11, or 12 = Done. */
@@ -147,13 +147,23 @@ export const mapStepFromDB = (r: any): DispatchStepRecord => ({
 // not when it is saved. A DO saved from the Board carries its order + round;
 // while any DO of the card's current round is not emailed (or Step 6 was
 // undone after the email), the card stays at Step 6 and shows it.
-export interface LinkedDO {
+// 2026-11-03 (one DO, many products): a DO can have several product lines
+// (one stock_movements row each, same do_number). Everything on the board
+// counts a DO ONCE — LinkedDO is the whole DO (groupLinkedDOs below), with
+// its lines in `lines`.
+export interface LinkedDOLine {
   id: string;
+  orderLineSeq?: number;    // stock_movements.order_line_seq (null on old rows)
+  billingName?: string;
+}
+export interface LinkedDO {
+  id: string;               // line 1's id — what "Open DO" opens (the form loads every line)
   doNumber?: string;
   orderId: string;
   round: number;
-  emailSentAt?: string;
-  articles?: number;        // Number of Articles (barrels) — what deleting the DO adds back to stock
+  emailSentAt?: string;     // set only when EVERY line is emailed
+  articles?: number;        // Number of Articles (barrels), all lines — what deleting the DO adds back to stock
+  lines: LinkedDOLine[];
 }
 export const mapLinkedDOFromDB = (r: any): LinkedDO => ({
   id: r.id,
@@ -162,7 +172,45 @@ export const mapLinkedDOFromDB = (r: any): LinkedDO => ({
   round: r.dispatch_round ?? 1,
   emailSentAt: r.email_sent_at ?? undefined,
   articles: Number(r.num_articles) || 0,
+  lines: [{ id: r.id, orderLineSeq: r.order_line_seq ?? undefined, billingName: r.billing_name ?? undefined }],
 });
+
+/** stock_movements rows → one LinkedDO per DO number (a row with no DO number stands alone). */
+export function groupLinkedDOs(rows: any[]): LinkedDO[] {
+  const sorted = [...rows].sort((a, b) => (Number(a.do_line_no) || 1) - (Number(b.do_line_no) || 1));
+  const byDo = new Map<string, LinkedDO>();
+  for (const r of sorted) {
+    const one = mapLinkedDOFromDB(r);
+    const k = r.do_number ? `do:${r.do_number}` : `id:${r.id}`;
+    const have = byDo.get(k);
+    if (!have) { byDo.set(k, one); continue; }
+    have.articles = (have.articles || 0) + (one.articles || 0);
+    have.lines.push(...one.lines);
+    if (!one.emailSentAt) have.emailSentAt = undefined;
+  }
+  return [...byDo.values()];
+}
+
+const normName = (s?: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * Order lines that still have barrels left AND are not on any of the given
+ * DOs — what "+ New DO (another warehouse)" opens rows for. A DO line saved
+ * before order_line_seq existed is matched by its billing name.
+ */
+export function orderLinesWithoutDo(liveOrder: Order, entries: DispatchEntry[], dos: { lines: LinkedDOLine[] }[]) {
+  const order = dispatchOrderView(liveOrder);
+  const covered = new Set<number>();
+  for (const l of dos.flatMap(d => d.lines)) {
+    if (l.orderLineSeq != null) { covered.add(l.orderLineSeq); continue; }
+    const item = order.items.find(i => !!normName(i.desc) && normName(i.desc) === normName(l.billingName));
+    if (item) covered.add(item.seq);
+  }
+  const remaining = remainingByLine(order, entries);
+  return order.items
+    .map(i => ({ seq: i.seq, desc: (i.desc || '').trim(), left: remaining.get(i.seq) ?? 0 }))
+    .filter(l => l.left > 0 && !covered.has(l.seq));
+}
 
 export interface DoPending {
   dos: LinkedDO[];          // every DO linked to this order + round
