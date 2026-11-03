@@ -11,7 +11,7 @@
 //     (entry_id = the entry) — see entryPosition. Until then they moved by
 //     themselves from the entry's invoice no. / LR files / email.
 // Nothing here ever changes an order's status.
-import type { DispatchEntry, DispatchFulfillmentType, Order } from './types';
+import type { Customer, DispatchEntry, DispatchFulfillmentType, Order } from './types';
 import { remainingByLine, totalRemaining, BOARD_GO_LIVE_AT, dispatchOrderView } from './utils';
 
 export type StepNo = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
@@ -391,6 +391,30 @@ export function entryStepBlock(e: DispatchEntry, stepNo: number): string | undef
   // Checked in the app only — the database trigger covers 8, 9 and 10.
   if (stepNo === 11 && !e.emailSentAt) return 'Send Email to Client first';
   return undefined;
+}
+
+/**
+ * 2026-11-03: Step 11 "Send through WhatsApp" (Dispatch drawer, entry at
+ * Step 11). The app sends nothing — it records that the documents went out
+ * on WhatsApp (email_sent_at + docs_sent_via = 'whatsapp'), then writes Step
+ * 11 like the email does. Shown while the entry is AT Step 11 (so 8, 9 and
+ * 10 are finished — entryPosition) and not sent yet; never for imported
+ * entries. Blocked while a document this customer requires with every
+ * dispatch (customers.req_doc_*) is not saved on the entry — the same list
+ * the entry page enforces from Step 11 (LR not for Self Pickup).
+ */
+export const STEP11_WHATSAPP_LABEL = 'Send through WhatsApp';
+export const STEP11_WHATSAPP_REMARK = 'sent via WhatsApp';
+export const showStep11WhatsApp = (e: DispatchEntry, column: number) =>
+  column === 11 && !e.emailSentAt && !isImportedEntry(e);
+export function step11WhatsAppBlock(e: DispatchEntry, customer?: Pick<Customer, 'reqDocInvoice' | 'reqDocEwayBill' | 'reqDocLr' | 'reqDocCoa' | 'reqDocSupplierPortal'>): string | undefined {
+  if (!customer) return undefined;
+  const missing: string[] = [];
+  if ((customer.reqDocInvoice || customer.reqDocEwayBill) && !entryHasInvoiceFile(e)) missing.push('Invoice / Eway Bill');
+  if (customer.reqDocLr && e.fulfillmentType !== 'self_pickup' && !entryHasLr(e)) missing.push('LR');
+  if (customer.reqDocCoa && !((e.coaFiles?.length ?? 0) > 0 || !!e.coaUrl)) missing.push('COA');
+  if (customer.reqDocSupplierPortal && !e.supplierPortalUrl) missing.push('Supplier Portal');
+  return missing.length ? `This customer needs ${missing.join(', ')} with every dispatch — attach ${missing.length > 1 ? 'them' : 'it'} on the entry first` : undefined;
 }
 
 /**

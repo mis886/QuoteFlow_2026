@@ -4,8 +4,8 @@ import { Search, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { customerOfDoc, dispatchOrderView, canDeleteRecords, fmtIST, doerLabel, siteLabel, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
-import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
+import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, isImportedEntry, orderFulfillmentFor, unionBoardRows, STEP_ACTIONS, STEP11_WHATSAPP_REMARK, showStep11WhatsApp, step11WhatsAppBlock } from '../lib/dispatchFlow';
+import { saveEntryStepRows, loadEntryStepRecords } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
 import { DispatchEntryActions } from '../components/DispatchEntryCells';
@@ -27,7 +27,7 @@ type BoardPill = typeof BOARD_PILLS[number];
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, activeDoer, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel } = useAppStore();
+  const { data, user, activeDoer, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canDelete = canDeleteRecords(user?.email);
@@ -170,6 +170,82 @@ export function Dispatch() {
     }
   };
   const markEntryStep9Manually = (card: BoardEntryCard) => runEntryStepAction(card, STEP9_MANUAL_ACTION, undefined, true);
+
+  // 2026-11-03: Step 11 "Send through WhatsApp" — for customers with no
+  // email, the documents go out on WhatsApp outside the app. Nothing is sent
+  // here: after the confirm box it records docs_sent_via = 'whatsapp' +
+  // email_sent_at (so the entry counts as "documents sent" everywhere, like
+  // an emailed one), then writes Step 11 Done with the remark "sent via
+  // WhatsApp". Checked again against the database first (still at Step 11,
+  // not sent, required documents saved). If Step 11 can't be written the
+  // WhatsApp mark is taken back, so the entry never ends up half-done.
+  const [whatsAppTarget, setWhatsAppTarget] = useState<BoardEntryCard | null>(null);
+  const requestStep11WhatsApp = (card: BoardEntryCard) => {
+    if (!canActOnBoard || busyCardKey) return;
+    setWhatsAppTarget(card);
+  };
+  const confirmStep11WhatsApp = async () => {
+    const card = whatsAppTarget;
+    if (!card || !canActOnBoard || busyCardKey) return;
+    const e = card.entry;
+    const orderLabel = card.order ? (card.order.soNumber || card.order.id) : e.orderId;
+    setBusyCardKey(card.key);
+    try {
+      const [{ data: fresh, error: freshErr }, records] = await Promise.all([
+        supabase.from('dispatch_entries')
+          .select('email_sent_at, invoice_eway_bill_files, invoice_eway_bill_url, lr_files, lr_url, coa_files, coa_url, supplier_portal_url, fulfillment_type')
+          .eq('id', e.id).single(),
+        loadEntryStepRecords(e.id),
+      ]);
+      if (freshErr) throw freshErr;
+      const now: DispatchEntry = {
+        ...e,
+        emailSentAt: fresh.email_sent_at || undefined,
+        invoiceEwayBillFiles: Array.isArray(fresh.invoice_eway_bill_files) ? fresh.invoice_eway_bill_files : undefined,
+        invoiceEwayBillUrl: fresh.invoice_eway_bill_url || undefined,
+        lrFiles: Array.isArray(fresh.lr_files) ? fresh.lr_files : undefined,
+        lrUrl: fresh.lr_url || undefined,
+        coaFiles: Array.isArray(fresh.coa_files) ? fresh.coa_files : undefined,
+        coaUrl: fresh.coa_url || undefined,
+        supplierPortalUrl: fresh.supplier_portal_url || undefined,
+        fulfillmentType: fresh.fulfillment_type || e.fulfillmentType,
+      };
+      const stale = 'The documents for this entry were already sent — the board is refreshed.';
+      if (now.emailSentAt || !showStep11WhatsApp(now, entryPosition(now, records).column)) {
+        reloadSteps();
+        throw new Error(now.emailSentAt ? stale : 'This entry is not at Step 11 any more — the board is refreshed.');
+      }
+      const order = card.order ?? dispatchOrders.find(o => o.id === e.orderId);
+      const blocked = step11WhatsAppBlock(now, order ? customerOfDoc(order, data.customers) : undefined);
+      if (blocked) throw new Error(blocked);
+      const sentAt = await markDispatchDocsSentWhatsApp(e.id);
+      if (!sentAt) throw new Error(stale);
+      let result: Awaited<ReturnType<typeof saveEntryStepRows>>;
+      try {
+        result = await saveEntryStepRows({
+          entry: { ...now, emailSentAt: sentAt, docsSentVia: 'whatsapp' }, entries: data.dispatchEntries,
+          action: STEP_ACTIONS[11]![0], remark: STEP11_WHATSAPP_REMARK,
+          doneBy: user?.email ?? null, orderLabel, logNote: 'documents sent on WhatsApp',
+        });
+      } catch (err) {
+        await clearDispatchDocsSentWhatsApp(e.id).catch(() => {});
+        throw err;
+      }
+      logActivity({
+        module: 'dispatch_entries', recordId: e.id,
+        recordLabel: `${orderLabel} · ${e.invoiceNumber ? `INV ${e.invoiceNumber} · ` : ''}Step 11 done — documents sent on WhatsApp`,
+        action: 'update', before: { email_sent_at: null, docs_sent_via: null }, after: { email_sent_at: sentAt, docs_sent_via: 'whatsapp' },
+      });
+      if (result.inserted.length) setStepRecords(prev => [...prev, ...result.inserted.map(mapStepFromDB)]);
+      else await stepAlreadyDone(result.alreadyDone);
+      showToast('ok', 'Documents marked as sent on WhatsApp — moved to Delivered.');
+    } catch (err: any) {
+      showToast('err', err?.message || `Could not save: ${JSON.stringify(err)}`);
+    } finally {
+      setBusyCardKey(null);
+      setWhatsAppTarget(null);
+    }
+  };
 
   const resumeHold = async (card: BoardOrderCard, remark?: string) => {
     const hold = card.position.hold?.record;
@@ -384,6 +460,21 @@ export function Dispatch() {
       },
     });
   };
+  // 2026-11-03: the entry whose Step 11 this click is, when that Step 11 was
+  // "Send through WhatsApp" (its Undo also clears the WhatsApp mark).
+  const whatsAppStep11Entry = (click: LastStepClick): DispatchEntry | undefined => {
+    if (click.kind !== 'delete') return undefined;
+    const s11 = click.rows.find(r => r.stepNo === 11 && r.entryId);
+    const entry = s11 ? data.dispatchEntries.find(x => x.id === s11.entryId) : undefined;
+    return entry?.docsSentVia === 'whatsapp' ? entry : undefined;
+  };
+  const restoreWhatsAppMark = async (e: DispatchEntry) => {
+    try {
+      await markDispatchDocsSentWhatsApp(e.id, e.emailSentAt);
+    } catch (err: any) {
+      throw new Error(`Undo failed and the WhatsApp mark could not be put back (${err?.message || 'check your connection'}) — mark it again from the drawer.`);
+    }
+  };
   const confirmUndo = async () => {
     if (!undoTarget || !canUndoOnBoard || undoBusy) return;
     const { order, click } = undoTarget;
@@ -401,11 +492,27 @@ export function Dispatch() {
         : `${order.soNumber || order.id} · Undo · ${what}`;
       if (click.kind === 'delete') {
         const ids = click.rows.map(r => r.id);
+        // 2026-11-03: Step 11 marked "sent on WhatsApp" — the mark is taken
+        // back first (email_sent_at + docs_sent_via cleared), so the entry is
+        // back at Step 11, not sent. If the step row then can't be removed,
+        // the mark is put back as it was.
+        const wa = whatsAppStep11Entry(click);
+        if (wa) await clearDispatchDocsSentWhatsApp(wa.id);
         const { data: deleted, error } = await supabase.from('dispatch_steps').delete().in('id', ids).select('id');
-        if (error) throw error;
-        if ((deleted || []).length !== ids.length) throw new Error('The step could not be removed (it may already have been undone). Refresh and try again.');
+        if (error || (deleted || []).length !== ids.length) {
+          if (wa) await restoreWhatsAppMark(wa);
+          if (error) throw error;
+          throw new Error('The step could not be removed (it may already have been undone). Refresh and try again.');
+        }
         setStepRecords(prev => prev.filter(r => !ids.includes(r.id)));
-        logActivity({ module: 'dispatch_steps', recordId: order.id, recordLabel: label, action: 'delete', before: { undone: click.rows } });
+        logActivity({ module: 'dispatch_steps', recordId: order.id, recordLabel: wa ? `${label} (documents sent on WhatsApp — mark cleared)` : label, action: 'delete', before: { undone: click.rows } });
+        if (wa) {
+          logActivity({
+            module: 'dispatch_entries', recordId: wa.id,
+            recordLabel: `${order.soNumber || order.id} · ${wa.invoiceNumber ? `INV ${wa.invoiceNumber} · ` : ''}Step 11 undone — WhatsApp "documents sent" cleared`,
+            action: 'update', before: { email_sent_at: wa.emailSentAt ?? null, docs_sent_via: 'whatsapp' }, after: { email_sent_at: null, docs_sent_via: null },
+          });
+        }
       } else {
         const { data: updated, error } = await supabase.from('dispatch_steps').update({ done_at: null }).eq('id', click.row.id).select('id');
         if (error) throw error;
@@ -801,6 +908,8 @@ export function Dispatch() {
             onNewDo={openNewDoForRest}
             onEntryAction={runEntryStepAction}
             onEntryManualStep9={markEntryStep9Manually}
+            onEntryStep11WhatsApp={requestStep11WhatsApp}
+            step11WhatsAppBlocked={drawerCard?.kind === 'entry' ? step11WhatsAppBlock(drawerCard.entry, customerOfDoc(o, data.customers)) : undefined}
             onResume={resumeHold}
             canUndo={canUndoOnBoard}
             undoBusy={undoBusy}
@@ -814,6 +923,21 @@ export function Dispatch() {
           />
         );
       })()}
+
+      {whatsAppTarget && (
+        <ConfirmDialog
+          title="Mark documents as sent on WhatsApp?"
+          confirmLabel="Yes, mark sent"
+          busy={!!busyCardKey}
+          onConfirm={confirmStep11WhatsApp}
+          onCancel={() => setWhatsAppTarget(null)}
+        >
+          <div className="font-semibold text-blk">
+            {whatsAppTarget.order?.soNumber || whatsAppTarget.entry.orderId} · {whatsAppTarget.order?.cust || ''}{whatsAppTarget.entry.invoiceNumber ? ` · INV ${whatsAppTarget.entry.invoiceNumber}` : ''}
+          </div>
+          <div className="mt-2">This completes Step 11 and moves this entry to Delivered. Nothing is sent from the app.</div>
+        </ConfirmDialog>
+      )}
 
       {undoTarget && (() => {
         const { order, click } = undoTarget;
@@ -841,6 +965,8 @@ export function Dispatch() {
                   </div>
                 ))}
               </div>
+            ) : whatsAppStep11Entry(click) ? (
+              <div className="mt-2">The documents-sent-on-WhatsApp mark is cleared too — the entry goes back to Step 11, not sent, and leaves Delivered. The order's status is not changed.</div>
             ) : (
               <div className="mt-2">The card moves back to where it was. Dispatch entries and the order's status are not changed.</div>
             )}

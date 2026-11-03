@@ -43,7 +43,9 @@ export function TimeBar({ card, now, wrap = false }: { card: BoardCard; now: num
   // A done entry: email time if emailed, else when Step 11 was clicked; with
   // neither, its order was marked Delivered (List → Delivered).
   else if (state === 'done' && card.kind === 'entry') {
-    text = card.entry.emailSentAt ? `Email sent ${fmtClock(card.entry.emailSentAt, now)}`
+    // 2026-11-03: "Sent on WhatsApp …" when docs_sent_via = 'whatsapp'.
+    text = card.entry.emailSentAt
+      ? `${card.entry.docsSentVia === 'whatsapp' ? 'Sent on WhatsApp' : 'Email sent'} ${fmtClock(card.entry.emailSentAt, now)}`
       : card.position.doneAt ? `Documents sent ${fmtClock(card.position.doneAt, now)}`
       : 'Marked delivered';
   }

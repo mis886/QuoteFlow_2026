@@ -565,7 +565,12 @@ export interface DispatchEntry {
   sentAt?: string;
   // Set by markDispatchEmailSent() when "Email to Client" succeeds — moves
   // the entry from Dispatched to Email Sent. Never cleared by a form Save.
+  // 2026-11-03: also set by "Send through WhatsApp" (Step 11) — it means
+  // "documents sent", by either way; docsSentVia says which.
   emailSentAt?: string;
+  // 2026-11-03: dispatch_entries.docs_sent_via — how the documents went out.
+  // Undefined = not sent (or saved before this existed and never sent).
+  docsSentVia?: 'email' | 'whatsapp';
   // 2026-10-30: set by markDispatchBhiwandiEmailSent() when the Bhiwandi
   // email (Step 9 mode of Email to Client) succeeds — the proof for Dispatch
   // Step 9. Never cleared by a form Save.

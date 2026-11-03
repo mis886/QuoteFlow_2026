@@ -115,6 +115,8 @@ interface AppContextType {
   updateDispatchEntry: (id: string, updates: Partial<DispatchEntry>) => Promise<void>;
   deleteDispatchEntry: (id: string) => Promise<{ deletedSteps: any[]; restartStep?: number; deletedDoIds: string[] }>;
   markDispatchEmailSent: (id: string) => Promise<void>;
+  markDispatchDocsSentWhatsApp: (id: string, at?: string) => Promise<string | null>;
+  clearDispatchDocsSentWhatsApp: (id: string) => Promise<boolean>;
   markDispatchBhiwandiEmailSent: (id: string) => Promise<void>;
   addCustomer: (customer: Customer) => Promise<Customer>;
   updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
@@ -715,6 +717,7 @@ const mapEnquiryToDB = (e: any) => {
     estimatedDeliveryDate: d.estimated_delivery_date || undefined,
     sentAt: d.sent_at || undefined,
     emailSentAt: d.email_sent_at || undefined,
+    docsSentVia: d.docs_sent_via === 'email' || d.docs_sent_via === 'whatsapp' ? d.docs_sent_via : undefined,
     bhiwandiEmailSentAt: d.bhiwandi_email_sent_at || undefined,
     formFilledBy: d.form_filled_by || undefined,
     createdBy: d.created_by || undefined,
@@ -1238,17 +1241,54 @@ const mapEnquiryToDB = (e: any) => {
   // Stamps email_sent_at on ONE dispatch entry after "Email to Client"
   // succeeds (SendEmailModal's onSent) — moves it to the Email Sent tab in
   // Dispatch.tsx. Writes only that column; re-sending just refreshes it.
+  // 2026-11-03: also records docs_sent_via = 'email' (vs 'whatsapp').
   const markDispatchEmailSent = async (id: string) => {
     const emailSentAt = new Date().toISOString();
-    const { error } = await supabase.from('dispatch_entries').update({ email_sent_at: emailSentAt }).eq('id', id);
+    const { error } = await supabase.from('dispatch_entries').update({ email_sent_at: emailSentAt, docs_sent_via: 'email' }).eq('id', id);
     if (error) {
       console.error('Error marking dispatch email sent:', error);
       throw error;
     }
     setData(prev => ({
       ...prev,
-      dispatchEntries: prev.dispatchEntries.map(d => d.id === id ? { ...d, emailSentAt } : d)
+      dispatchEntries: prev.dispatchEntries.map(d => d.id === id ? { ...d, emailSentAt, docsSentVia: 'email' as const } : d)
     }));
+  };
+
+  // 2026-11-03: Dispatch Step 11 "Send through WhatsApp" — records that the
+  // documents were sent on WhatsApp (outside the app; nothing is sent). Sets
+  // email_sent_at too, so every "documents sent" check treats it like an
+  // email. Only while the entry is not sent yet: returns null if it already
+  // was (someone else, or a stale screen) — nothing is changed then.
+  // `at`: the time to record (default now) — Undo uses it to put a mark back.
+  const markDispatchDocsSentWhatsApp = async (id: string, at?: string): Promise<string | null> => {
+    const sentAt = at || new Date().toISOString();
+    const { data: rows, error } = await supabase.from('dispatch_entries')
+      .update({ email_sent_at: sentAt, docs_sent_via: 'whatsapp' })
+      .eq('id', id).is('email_sent_at', null).select('id');
+    if (error) throw error;
+    if (!rows || rows.length === 0) return null;
+    setData(prev => ({
+      ...prev,
+      dispatchEntries: prev.dispatchEntries.map(d => d.id === id ? { ...d, emailSentAt: sentAt, docsSentVia: 'whatsapp' as const } : d)
+    }));
+    return sentAt;
+  };
+
+  // 2026-11-03: takes back a WhatsApp "documents sent" (Undo of Step 11, or a
+  // failed Step 11 write right after the mark). Only a WhatsApp mark — an
+  // emailed entry is never touched. Returns false if there was none.
+  const clearDispatchDocsSentWhatsApp = async (id: string): Promise<boolean> => {
+    const { data: rows, error } = await supabase.from('dispatch_entries')
+      .update({ email_sent_at: null, docs_sent_via: null })
+      .eq('id', id).eq('docs_sent_via', 'whatsapp').select('id');
+    if (error) throw error;
+    if (!rows || rows.length === 0) return false;
+    setData(prev => ({
+      ...prev,
+      dispatchEntries: prev.dispatchEntries.map(d => d.id === id ? { ...d, emailSentAt: undefined, docsSentVia: undefined } : d)
+    }));
+    return true;
   };
 
   // 2026-10-30: stamps bhiwandi_email_sent_at on ONE dispatch entry after
@@ -2320,6 +2360,8 @@ const mapEnquiryToDB = (e: any) => {
         updateDispatchEntry,
         deleteDispatchEntry,
         markDispatchEmailSent,
+        markDispatchDocsSentWhatsApp,
+        clearDispatchDocsSentWhatsApp,
         markDispatchBhiwandiEmailSent,
         addCustomer,
         updateCustomer,

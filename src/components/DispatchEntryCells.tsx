@@ -10,6 +10,18 @@ export const thCenterClsCompact = 'font-mono text-[8.5px] font-bold tracking-[1.
 
 const dash = <span className="text-g400">—</span>;
 
+/**
+ * 2026-11-03: how an entry's documents were sent — a small "WhatsApp" or
+ * "Email" tag next to the sent date (Delivered list, board rows, drawer).
+ * Nothing for an entry with no docs_sent_via (not sent).
+ */
+export function SentViaTag({ via }: { via?: DispatchEntry['docsSentVia'] }) {
+  if (!via) return null;
+  return via === 'whatsapp'
+    ? <span className="inline-block align-middle font-mono text-[8.5px] font-bold uppercase tracking-[0.5px] rounded-[3px] px-1.5 py-[1px] bg-[#DCF8E7] text-[#0B6B3A] border border-[#9FDDB8]">WhatsApp</span>
+    : <span className="inline-block align-middle font-mono text-[8.5px] font-bold uppercase tracking-[0.5px] rounded-[3px] px-1.5 py-[1px] bg-[#EAF2FF] text-[#1E4FA8] border border-[#B9CFF3]">Email</span>;
+}
+
 /** Order … Email Sent On header cells; Actions not included. */
 export function DispatchEntryHeadCells() {
   const th = thCenterClsCompact;
@@ -49,7 +61,11 @@ export function DispatchEntryCells({ entry, order, orderCell }: { entry?: Dispat
           : dash}
       </td>
       <td className={`${td} whitespace-nowrap`}>{entry?.created_at ? fmtIST(new Date(entry.created_at), 'dd MMM hh:mm a') : '--'}</td>
-      <td className={`${td} whitespace-nowrap`}>{entry?.emailSentAt ? fmtIST(new Date(entry.emailSentAt), 'dd-MMM-yyyy hh:mm a') : '—'}</td>
+      <td className={`${td} whitespace-nowrap`}>
+        {entry?.emailSentAt
+          ? <>{fmtIST(new Date(entry.emailSentAt), 'dd-MMM-yyyy hh:mm a')}{entry.docsSentVia && <div className="mt-0.5"><SentViaTag via={entry.docsSentVia} /></div>}</>
+          : '—'}
+      </td>
     </>
   );
 }
