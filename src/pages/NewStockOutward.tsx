@@ -173,6 +173,7 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 // comment above for why the two lists couldn't stay separate once Product
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
+import { lotBillingName, orderLineSeqForLot, orderLinesForLot } from '../lib/doOrderLine';
 import { Loader2 } from 'lucide-react';
 import { StockMovement, Order, DispatchEntry } from '../lib/types';
 import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError } from '../lib/utils';
@@ -514,6 +515,11 @@ function OutwardForm() {
   // The order line picked in "Product (from order)" (null = the default line,
   // see orderLineFor).
   const [orderLineSeq, setOrderLineSeq] = useState<number | null>(null);
+  // For the Lot No auto-fill's delayed lookup, which runs after this render.
+  const orderLineSeqRef = useRef<number | null>(null);
+  orderLineSeqRef.current = orderLineSeq;
+  // The store's entries (the Lot No lookup below has its own `data`).
+  const allDispatchEntries = data.dispatchEntries;
   // Barrels the order still has left to dispatch (Board flow only) — shown
   // as "Order needs (remaining)".
   const orderBarrels = dispatchOrder ? orderBarrelsFor(dispatchOrder, data.dispatchEntries, orderLineSeq) : null;
@@ -996,6 +1002,17 @@ function OutwardForm() {
       // No match — Save is blocked (see saveBlock); the lot fields are emptied.
       if (!existing || !lot) { clearStaleAuto(); clearLotFields(); return; }
       setLotDetails(lot);
+      // 2026-11-03: from the Board, the DO is for the order line whose product
+      // IS this lot's product (e.g. a Beta Pinene lot → the Beta Pinene line,
+      // not the first line). Switch to it the same way the "Product (from
+      // order)" picker does, so Billing Name, "Order needs", the packing note
+      // and the barrels check all follow. No such line → lotLineMismatch
+      // below shows it and blocks Save.
+      if (fromDispatch && dispatchOrder) {
+        const seq = orderLineSeqForLot(dispatchOrder, allDispatchEntries,
+          lotBillingName(lot.productName, billingNameForProductName), orderLineSeqRef.current);
+        if (seq !== null) pickOrderLine(seq);
+      }
 
       // The lot's own details — always overwritten, for this Warehouse + Lot No only.
       // 2026-10-16: Product Name / Code too. Billing Name: from the Board it
@@ -1075,6 +1092,21 @@ function OutwardForm() {
     const a = parseNum(orderPacking), b = parseNum(lockedLot.packing);
     return a !== null && b !== null ? a !== b : orderPacking.toLowerCase() !== lockedLot.packing.trim().toLowerCase();
   })();
+  // 2026-11-03: from the Board, the lot's product must be the picked order
+  // line's product (see the Lot No auto-fill, which picks that line itself).
+  // Shown in red under Product Name and blocks Save (saveBlock).
+  const lotLineMismatch = (() => {
+    if (!fromDispatch || !dispatchOrder || !lockedLot) return '';
+    const matches = orderLinesForLot(dispatchOrder, lotBillingName(lockedLot.productName, billingNameForProductName));
+    const line = orderLineFor(dispatchOrder, data.dispatchEntries, orderLineSeq);
+    if (line && matches.some(m => m.seq === line.seq)) return '';
+    const lotText = `Lot ${lockedLot.lotNo} is ${lockedLot.productName}`;
+    if (!matches.length) {
+      const has = dispatchOrder.items.map(i => (i.desc || '').trim()).filter(Boolean).join(', ');
+      return `${lotText} — this product is not in order ${dispatchOrder.soNumber || dispatchOrder.id}. Order has: ${has}.`;
+    }
+    return `${lotText} — but the order line picked is ${(line?.desc || '').trim()}. Pick ${(matches[0].desc || '').trim()} in Product (from order).`;
+  })();
   const lockedCls = 'bg-g100 text-g600 cursor-not-allowed';
 
   // 2026-09-07: Number of Articles ("No of Barrels" now) and Total Quantity
@@ -1111,6 +1143,7 @@ function OutwardForm() {
   // 2026-10-26: and never more barrels than available (overStockMsg), in
   // edit mode too.
   const saveBlock = !lockedLot ? 'Select a Warehouse and a Lot No that exists in Stock Summary.'
+    : lotLineMismatch ? lotLineMismatch
     : parseNum(form.packing) === null ? `Packing missing for lot ${lockedLot.lotNo} — update the lot's packing in Stock Summary first.`
     : !isEditing && lotWarning ? lotWarning
     : overStockMsg ? overStockMsg
@@ -1599,6 +1632,7 @@ function OutwardForm() {
                   />
                 )}
                 {lockedLot && <p className="text-g500 text-[11px] mt-1">From lot {lockedLot.lotNo}</p>}
+                {lotLineMismatch && <p className="text-red-mrt text-[11px] font-bold mt-0.5">{lotLineMismatch}</p>}
               </div>
               <div>
                 <label className={labelCls}>Product Code</label>
@@ -1668,7 +1702,7 @@ function OutwardForm() {
               </div>
             </div>
             {/* 2026-10-16: why Save is blocked (no lot / no packing / no stock). */}
-            {showSaveBlock && saveBlock !== lotWarning && saveBlock !== overStockMsg && (
+            {showSaveBlock && saveBlock !== lotWarning && saveBlock !== overStockMsg && saveBlock !== lotLineMismatch && (
               <p className="text-amber-700 text-[11.5px] font-semibold mt-2">{saveBlock}</p>
             )}
           </div>
