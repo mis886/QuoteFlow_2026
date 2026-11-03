@@ -120,6 +120,8 @@ export function mapRow(r: any): StockMovement {
     created_at: r.created_at ?? undefined,
     updated_by: r.updated_by ?? undefined,
     updated_at: r.updated_at ?? undefined,
+    doLineNo: r.do_line_no ?? undefined,
+    orderLineSeq: r.order_line_seq ?? undefined,
   };
 }
 
@@ -139,6 +141,34 @@ const OUTWARD_TYPE_LABEL: Record<OutwardType, string> = { delivery: 'Delivery', 
 const pillCls = (active: boolean) => `px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${active ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`;
 
 const num = (v?: number) => (v === undefined || v === null ? '—' : v.toLocaleString('en-IN'));
+
+// 2026-11-03 (one DO, many products): the Outward tab shows ONE row per DO
+// number — its lines (one stock_movements row per product) grouped. `head` is
+// line 1 (header fields are the same on every line); Edit opens the whole DO,
+// Delete deletes every line. A row with no DO number stands alone.
+type OutwardDoRow = { head: StockMovement; lines: StockMovement[] };
+function groupOutwardDos(rows: StockMovement[]): OutwardDoRow[] {
+  const byDo = new Map<string, OutwardDoRow>();
+  for (const m of rows) {
+    const k = m.doNumber ? `do:${m.doNumber}` : `id:${m.id}`;
+    const g = byDo.get(k);
+    if (g) g.lines.push(m); else byDo.set(k, { head: m, lines: [m] });
+  }
+  return [...byDo.values()].map(g => {
+    const lines = [...g.lines].sort((a, b) => (a.doLineNo ?? 1) - (b.doLineNo ?? 1));
+    return { head: lines[0], lines };
+  });
+}
+const doBarrels = (g: OutwardDoRow) => g.lines.reduce((s, l) => s + (Number(l.numArticles) || 0), 0);
+const doQty = (g: OutwardDoRow) => g.lines.some(l => l.totalQty != null) ? g.lines.reduce((s, l) => s + (l.totalQty ?? 0), 0) : undefined;
+// The DO's products as a short list — "Beta Pinene 95% ×40, Alpha Pinene 95% -ve 24 ×20".
+const doProducts = (g: OutwardDoRow) => g.lines.length === 1 ? g.head.productName
+  : g.lines.map(l => `${l.productName || '—'} ×${l.numArticles || 0}`).join(', ');
+// One value when every line agrees, else each line's value.
+const doField = (g: OutwardDoRow, f: (l: StockMovement) => string | undefined) => {
+  const vals = g.lines.map(l => f(l) || '—');
+  return new Set(vals).size === 1 ? vals[0] : vals.join(', ');
+};
 
 // Party/godown → the stock_lots quantity column each side's entries feed —
 // kept in sync with INWARD's Balaji/OUTWARD's BALAJI casing difference (see
@@ -247,14 +277,20 @@ export function StockMovements() {
     // function a Dispatch delete uses for its DOs (supabase/migrations/
     // 20261026120000_dispatch_delete_with_dos.sql). If it fails, nothing is
     // deleted. Inward deletes keep the logic below.
+    // 2026-11-03: delete_outward_do deletes EVERY line of the DO (same DO
+    // number) and puts each line's stock back, in one transaction
+    // (supabase/migrations/20261103120000_outward_do_multi_line.sql).
     if (m.type === 'outward') {
-      const { error } = await supabase.rpc('delete_outward_movement', { p_id: m.id, p_actor: activeDoer?.email ?? user?.email ?? null });
+      const { data: res, error } = await supabase.rpc('delete_outward_do', { p_id: m.id, p_actor: activeDoer?.email ?? user?.email ?? null });
       if (error) { alert(`Delete failed — nothing was changed: ${error.message}`); return; }
-      setMovements(prev => prev.filter(x => x.id !== m.id));
+      const deleted: any[] = Array.isArray(res) ? res : [];
+      const ids = new Set<string>([m.id, ...deleted.map(d => d.id as string)]);
+      const lines = movements.filter(x => ids.has(x.id));
+      setMovements(prev => prev.filter(x => !ids.has(x.id)));
       logActivity({
         module: 'stock_movements', recordId: m.id,
-        recordLabel: `DO ${m.doNumber || '—'} · ${m.productName} · Lot ${m.whLotNo || '—'}`,
-        action: 'delete', before: m,
+        recordLabel: `DO ${m.doNumber || '—'} · ${lines.map(l => l.productName).join(', ') || m.productName} · Lot ${lines.map(l => l.whLotNo || '—').join(', ') || m.whLotNo || '—'}`,
+        action: 'delete', before: lines.length > 1 ? { lines } : m,
       });
       return;
     }
@@ -331,41 +367,42 @@ export function StockMovements() {
   };
 
   const inwardCount = movements.filter(m => m.type === 'inward').length;
-  const outwardCount = movements.filter(m => m.type === 'outward').length;
 
   // Outward sub-tab + pill counts (not narrowed by the search box, same as
-  // the Inward / Outward tab counts above).
-  const outwardMovements = movements.filter(m => m.type === 'outward');
-  const savedCount = outwardMovements.filter(m => !m.emailSentAt).length;
-  const emailSentCount = outwardMovements.length - savedCount;
+  // the Inward / Outward tab counts). 2026-11-03: counted per DO, not per line.
+  const outwardDos = useMemo(() => groupOutwardDos(movements.filter(m => m.type === 'outward')), [movements]);
+  const outwardCount = outwardDos.length;
+  const savedCount = outwardDos.filter(g => !g.head.emailSentAt).length;
+  const emailSentCount = outwardDos.length - savedCount;
   const isEmailSentSub = tab === 'outward' && outwardSub === 'emailSent';
-  const activeOutward = outwardMovements.filter(m => !!m.emailSentAt === (outwardSub === 'emailSent'));
-  const deliveryCount = activeOutward.filter(m => outwardTypeOf(m) === 'delivery').length;
-  const selfPickupCount = activeOutward.filter(m => outwardTypeOf(m) === 'self_pickup').length;
+  const activeOutward = outwardDos.filter(g => !!g.head.emailSentAt === (outwardSub === 'emailSent'));
+  const deliveryCount = activeOutward.filter(g => outwardTypeOf(g.head) === 'delivery').length;
+  const selfPickupCount = activeOutward.filter(g => outwardTypeOf(g.head) === 'self_pickup').length;
   const notSetCount = activeOutward.length - deliveryCount - selfPickupCount;
   const outwardColCount = isEmailSentSub ? 17 : 16;
 
+  const matchesSearch = (m: StockMovement, q: string) => normalizeSearchText([
+    m.whLotNo, m.stockCategory, m.productName, m.billingName, m.warehouse, m.make, m.remark,
+    m.doNumber, m.partyName, m.otherParty, m.transporter, m.otherTransporter, m.note,
+  ].filter(Boolean).join(' ')).includes(q);
+
+  // Inward rows.
   const filtered = useMemo(() => {
     const q = normalizeSearchText(search.trim());
-    const rows = movements.filter(m => {
-      if (m.type !== tab) return false;
-      if (tab === 'outward') {
-        if (!!m.emailSentAt !== (outwardSub === 'emailSent')) return false;
-        if (outwardTypeOf(m) !== outwardType) return false;
-      }
-      if (!q) return true;
-      const hay = normalizeSearchText([
-        m.whLotNo, m.stockCategory, m.productName, m.warehouse, m.make, m.remark,
-        m.doNumber, m.partyName, m.otherParty, m.transporter, m.otherTransporter, m.note,
-      ].filter(Boolean).join(' '));
-      return hay.includes(q);
-    });
+    return movements.filter(m => m.type === tab && (!q || matchesSearch(m, q)));
+  }, [movements, search, tab]);
+
+  // Outward DOs — a DO is found by ANY of its lines' lot / product.
+  const filteredDos = useMemo(() => {
+    const q = normalizeSearchText(search.trim());
+    const rows = activeOutward.filter(g => outwardTypeOf(g.head) === outwardType && (!q || g.lines.some(l => matchesSearch(l, q))));
     // Email Sent: newest email first. Everything else keeps load() order
     // (newest entry first).
-    return tab === 'outward' && outwardSub === 'emailSent'
-      ? rows.sort((a, b) => (b.emailSentAt || '').localeCompare(a.emailSentAt || ''))
+    return outwardSub === 'emailSent'
+      ? rows.sort((a, b) => (b.head.emailSentAt || '').localeCompare(a.head.emailSentAt || ''))
       : rows;
-  }, [movements, search, tab, outwardSub, outwardType]);
+  }, [activeOutward, search, outwardSub, outwardType]);
+  const shownCount = tab === 'outward' ? filteredDos.length : filtered.length;
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
@@ -444,7 +481,7 @@ export function StockMovements() {
               <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
             </button>
 
-            <div className="ml-auto font-mono text-[10px] text-g500">{filtered.length} entr{filtered.length === 1 ? 'y' : 'ies'}</div>
+            <div className="ml-auto font-mono text-[10px] text-g500">{shownCount} {tab === 'outward' ? `DO${shownCount === 1 ? '' : 's'}` : `entr${shownCount === 1 ? 'y' : 'ies'}`}</div>
           </>
         )}
       </div>
@@ -506,19 +543,26 @@ export function StockMovements() {
               <tbody>
                 {loading ? (
                   <tr><td colSpan={outwardColCount} className="text-center p-8 text-g400 text-[13px]">Loading…</td></tr>
-                ) : filtered.length === 0 ? (
+                ) : filteredDos.length === 0 ? (
                   <tr><td colSpan={outwardColCount} className="text-center p-8 text-g400 text-[13px]">{search.trim() ? 'No outward entries match this filter' : `No ${OUTWARD_TYPE_LABEL[outwardType]} outward entries ${isEmailSentSub ? 'emailed yet' : 'saved'}`}</td></tr>
                 ) : (
-                  filtered.map(m => (
+                  // 2026-11-03: one row per DO (see groupOutwardDos). Lot No /
+                  // Billing Name / Packing / MOU / Packing Type show one value
+                  // when every line agrees, else each line's; barrels and
+                  // Total Qty are the DO's totals.
+                  filteredDos.map(g => { const m = g.head; const multi = g.lines.length > 1; return (
                     <tr key={m.id} className="group transition-colors border-b border-g100 last:border-b-0 hover:bg-red-mrt/5">
                       <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{fmtDate(m.doDate)}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">{m.doNumber || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] font-bold text-red-mrt whitespace-nowrap">
+                        {m.doNumber || '—'}
+                        {multi && <div className="font-sans text-[10px] font-normal text-g500">{g.lines.length} products</div>}
+                      </td>
                       {isEmailSentSub && (
                         <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.emailSentAt ? fmtIST(new Date(m.emailSentAt), 'dd-MMM-yyyy hh:mm a') : '—'}</td>
                       )}
-                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600 whitespace-nowrap">{m.whLotNo || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center font-semibold text-blk min-w-[180px]">{m.productName}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center text-g600 min-w-[140px]">{m.billingName || '—'}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600">{doField(g, l => l.whLotNo)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-semibold text-blk min-w-[180px]">{doProducts(g)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 min-w-[140px]">{doField(g, l => l.billingName)}</td>
                       <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.warehouse}</td>
                       <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap max-w-[180px] truncate" title={m.partyName === 'Other' ? m.otherParty : m.partyName}>
                         {m.partyName === 'Other' ? (m.otherParty || 'Other') : (m.partyName || '—')}
@@ -527,11 +571,11 @@ export function StockMovements() {
                         {m.transporter === 'Other' ? (m.otherTransporter || 'Other') : (m.transporter || '—')}
                       </td>
                       <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.fulfilmentType || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{m.numArticles || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{num(m.packing)}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.weightType || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.packagingType || '—'}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(m.totalQty)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{multi ? doBarrels(g) : (m.numArticles || '—')}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{multi ? doField(g, l => num(l.packing)) : num(m.packing)}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{multi ? doField(g, l => l.weightType) : (m.weightType || '—')}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600">{multi ? doField(g, l => l.packagingType) : (m.packagingType || '—')}</td>
+                      <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(multi ? doQty(g) : m.totalQty)}</td>
                       <td className="px-[13px] py-[9px] align-top text-center text-g500 max-w-[220px] truncate" title={m.note}>{m.note || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top text-center">
                         <div className="flex flex-col items-center gap-[3px]">
@@ -561,7 +605,7 @@ export function StockMovements() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                  ); })
                 )}
               </tbody>
             </table>
@@ -650,17 +694,26 @@ export function StockMovements() {
         </div>
       )}
 
-      {deleteTarget && (
+      {deleteTarget && (() => {
+        // 2026-11-03: an Outward delete removes the whole DO (every product line).
+        const doRow = deleteTarget.type === 'outward' ? outwardDos.find(g => g.head.id === deleteTarget.id) : undefined;
+        const multi = !!doRow && doRow.lines.length > 1;
+        return (
         <ConfirmDialog
-          title={`Delete this ${deleteTarget.type} entry for "${deleteTarget.productName}" (${deleteTarget.whLotNo || 'no lot no.'})?`}
+          title={multi
+            ? `Delete DO ${deleteTarget.doNumber || '—'} with all ${doRow!.lines.length} products (${doProducts(doRow!)})?`
+            : `Delete this ${deleteTarget.type} entry for "${deleteTarget.productName}" (${deleteTarget.whLotNo || 'no lot no.'})?`}
           confirmLabel="Delete"
           busy={deleting}
           onConfirm={confirmDelete}
           onCancel={() => setDeleteTarget(null)}
         >
-          This also reverses its effect on the matching Stock Summary lot, if one is found.
+          {multi
+            ? 'Every line\'s barrels go back to its Stock Summary lot.'
+            : 'This also reverses its effect on the matching Stock Summary lot, if one is found.'}
         </ConfirmDialog>
-      )}
+        );
+      })()}
     </div>
   );
 }
