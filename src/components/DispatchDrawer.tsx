@@ -6,7 +6,7 @@ import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
   BoardCard, BoardEntryCard, BoardOrderCard, DispatchStepRecord, EntryColumn, LastStepClick, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
   drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastOpenRoundClick, lastEntryStepClick, describeStepClick, allowedStepStatuses,
-  step6AlreadyEmailed, STEP_ACTIONS, STEP9_MANUAL_ACTION, DONE_COLUMN,
+  step6AlreadyEmailed, orderLinesWithoutDo, STEP_ACTIONS, STEP9_MANUAL_ACTION, DONE_COLUMN,
 } from '../lib/dispatchFlow';
 import { EntryStepButtons, StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot, step6Label } from './DispatchBoard';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -55,10 +55,11 @@ function StepIcon({ step, late }: { step: OrderStepHistory; late: boolean }) {
   return <span className="w-[18px] h-[18px] rounded-full border-2 border-g300 bg-white inline-block" />;
 }
 
-function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
+function StepRow({ step, now, roster, onEdit, doLines, rowAction, secondaryAction }: {
   step: OrderStepHistory; now: number; roster: TeamMember[]; onEdit?: () => void;
   doLines?: { text: string; pending: boolean }[];   // Step 6: the round's linked DOs
   rowAction?: { label: string; busy: boolean; onClick: () => void };   // Step 6: "Mark Step 6 done (DO already emailed)"
+  secondaryAction?: { label: string; busy: boolean; onClick: () => void };   // Step 6: "+ New DO (another warehouse)" (2026-11-03)
 }) {
   const def = stepDef(step.stepNo);
   const planned = ms(step.plannedAt);
@@ -120,6 +121,12 @@ function StepRow({ step, now, roster, onEdit, doLines, rowAction }: {
             {rowAction.label}
           </button>
         )}
+        {secondaryAction && (
+          <button type="button" onClick={secondaryAction.onClick} disabled={secondaryAction.busy}
+            className="mt-1.5 block text-left text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[5px] border border-g300 bg-white text-blk hover:bg-g100 transition-colors disabled:opacity-50 disabled:cursor-wait">
+            {secondaryAction.label}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -138,7 +145,7 @@ const entryActionLabel = (col: EntryColumn) =>
 const entryPagePath = (entryId: string) => `/dispatch/new?entryId=${entryId}`;
 
 export function DispatchDrawer({
-  order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onEntryAction, onEntryManualStep9, onResume,
+  order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onNewDo, onEntryAction, onEntryManualStep9, onResume,
   canUndo, undoBusy, onUndo, openedFrom, canDelete, onSaveStep, onDelete, onClose,
 }: {
   order: Order;
@@ -155,6 +162,8 @@ export function DispatchDrawer({
   canAct: boolean;
   busy: boolean;
   onAction: (card: BoardOrderCard, action: StepAction, remark?: string) => Promise<void> | void;
+  // 2026-11-03: Step 6 "+ New DO (another warehouse)" — a new DO for these order lines.
+  onNewDo?: (card: BoardOrderCard, seqs: number[], remark?: string) => void;
   // Steps 8–11 of the entry the drawer was opened from.
   onEntryAction: (card: BoardEntryCard, action: StepAction, remark?: string) => Promise<void> | void;
   // "Mark Step 9 done (Bhiwandi already informed)" — Step 9 without the email.
@@ -248,13 +257,24 @@ export function DispatchDrawer({
   // closed one): saved / emailed.
   const focusRound = openedEntryId ? realEntries.findIndex(e => e.id === openedEntryId) + 1
     : orderCard ? orderCard.position.round : realEntries.length;
+  // 2026-11-03: linkedDOs are whole DOs (grouped by DO number) — one line per DO.
+  const doLabel = (d: LinkedDO) => `DO ${d.doNumber || '—'}${d.lines.length > 1 ? ` (${d.lines.length} products)` : ''}`;
   const step6DoLines = linkedDOs.filter(d => d.round === focusRound).map(d => d.emailSentAt
-    ? { text: `DO ${d.doNumber || '—'} emailed ${fmtWhen(d.emailSentAt)}`, pending: false }
-    : { text: `DO ${d.doNumber || '—'} saved, email pending`, pending: true });
+    ? { text: `${doLabel(d)} emailed ${fmtWhen(d.emailSentAt)}`, pending: false }
+    : { text: `${doLabel(d)} saved, email pending`, pending: true });
   // Every DO already emailed but no Step 6 row — the Step 6 row gets "Mark
   // Step 6 done (DO already emailed)" (board logins only; no email is sent).
   const markStep6Action = orderCard && canAct && step6AlreadyEmailed(orderCard)
     ? (STEP_ACTIONS[6] || []).find(a => a.primary) : undefined;
+  // 2026-11-03: at Step 6 with a DO saved, order lines (barrels left) that
+  // are on no DO of this round yet → "+ New DO (another warehouse)".
+  const newDoLines = orderCard && canAct && onNewDo && orderCard.position.step === 6 && !orderCard.position.hold && orderCard.doPending
+    ? orderLinesWithoutDo(order, entries, orderCard.doPending.dos) : [];
+  const newDoAction = orderCard && newDoLines.length > 0 ? {
+    label: `+ New DO (another warehouse) — ${newDoLines.map(l => `${l.desc || 'Item'} ${l.left}`).join(', ')}`,
+    busy,
+    onClick: () => { onNewDo!(orderCard, newDoLines.map(l => l.seq), remark); setRemark(''); },
+  } : undefined;
 
   const act = async (card: BoardOrderCard, action: StepAction) => { if (!canAct) return; await onAction(card, action, remark); setRemark(''); };
   const actEntry = async (card: BoardEntryCard, action: StepAction) => { if (!canAct) return; await onEntryAction(card, action, remark); setRemark(''); };
@@ -338,7 +358,8 @@ export function DispatchDrawer({
             {steps.map(s => (
               <StepRow key={s.stepNo} step={s} now={now} roster={roster} onEdit={() => openStepEditor(s)}
                 doLines={s.stepNo === 6 ? step6DoLines : undefined}
-                rowAction={s.stepNo === 6 && markStep6Action ? { label: step6Label(orderCard!), busy, onClick: () => act(orderCard!, markStep6Action) } : undefined} />
+                rowAction={s.stepNo === 6 && markStep6Action ? { label: step6Label(orderCard!), busy, onClick: () => act(orderCard!, markStep6Action) } : undefined}
+                secondaryAction={s.stepNo === 6 ? newDoAction : undefined} />
             ))}
           </div>
 

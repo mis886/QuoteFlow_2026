@@ -4,7 +4,7 @@ import { Search, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { customerOfDoc, dispatchOrderView, canDeleteRecords, fmtIST, doerLabel, siteLabel, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, mapLinkedDOFromDB, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, groupLinkedDOs, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
@@ -70,10 +70,11 @@ export function Dispatch() {
   });
   useEffect(() => {
     reloadSteps();
-    fetchAllRows(() => supabase.from('stock_movements').select('id, do_number, order_id, dispatch_round, email_sent_at, num_articles').eq('type', 'outward').not('order_id', 'is', null).order('id'))
+    fetchAllRows(() => supabase.from('stock_movements').select('id, do_number, do_line_no, order_id, dispatch_round, email_sent_at, num_articles, order_line_seq, billing_name').eq('type', 'outward').not('order_id', 'is', null).order('id'))
       .then(({ data: rows, error }) => {
         if (error) { console.error('Error loading linked DOs:', error); return; }
-        setLinkedDOs(rows.map(mapLinkedDOFromDB));
+        // 2026-11-03: one LinkedDO per DO number, however many product lines it has.
+        setLinkedDOs(groupLinkedDOs(rows));
       });
   }, [now]);
 
@@ -269,6 +270,24 @@ export function Dispatch() {
     return runStepAction(card, action, remark);
   };
 
+  // 2026-11-03: Step 6 with a DO already saved, but some order lines (barrels
+  // left) are on no DO of this round yet — e.g. their stock is in another
+  // warehouse. Opens a NEW DO for the same order + round with rows only for
+  // those lines (?lines=).
+  const openNewDoForRest = (card: BoardOrderCard, seqs: number[], remark?: string) => {
+    if (!canActOnBoard || busyCardKey || !seqs.length) return;
+    const params = new URLSearchParams({
+      fromDispatch: '1',
+      orderRef: card.order.id,
+      round: String(card.position.round),
+      plannedAt: card.position.plannedAt || '',
+      lines: seqs.join(','),
+    });
+    if (remark?.trim()) params.set('remark', remark.trim());
+    if (card.fulfillment === 'self_pickup') params.set('fulfilment', 'self_pickup');
+    navigate(`/stock-movements/new-outward?${params.toString()}`);
+  };
+
   // 2026-10-06: step buttons are shown to every login; canAct decides whether
   // they can be clicked (disabled + tooltip otherwise). The guards inside
   // runStepAction / resumeHold / handleStepAction stay as the real lock.
@@ -409,7 +428,7 @@ export function Dispatch() {
   const afterEntryDeleted = (deletedSteps: any[], restartStep?: number, deletedDoIds: string[] = []) => {
     const ids = new Set(deletedSteps.map(r => r.id));
     if (ids.size) setStepRecords(prev => prev.filter(r => !ids.has(r.id)));
-    if (deletedDoIds.length) setLinkedDOs(prev => prev.filter(d => !deletedDoIds.includes(d.id)));
+    if (deletedDoIds.length) setLinkedDOs(prev => prev.filter(d => !d.lines.some(l => deletedDoIds.includes(l.id))));
     return restartStep ? ` The order restarts from Step ${restartStep}.` : '';
   };
   const [deleteCard, setDeleteCard] = useState<BoardCard | null>(null);
@@ -724,6 +743,7 @@ export function Dispatch() {
             canAct={canActOnBoard}
             busy={!!busyCardKey && (busyCardKey === orderCard?.key || busyCardKey === drawerCard?.key)}
             onAction={handleStepAction}
+            onNewDo={openNewDoForRest}
             onEntryAction={runEntryStepAction}
             onEntryManualStep9={markEntryStep9Manually}
             onResume={resumeHold}
