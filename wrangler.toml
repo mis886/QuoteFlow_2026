@@ -1,6 +1,18 @@
 name = "quoteflow--2026"
 compatibility_date = "2024-09-23"
 
+# Server code: serves the website + sends the daily MIS report email.
+main = "worker/index.ts"
+
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
+# /api/* goes to worker/index.ts first; without this, the single-page setting
+# above can answer it with the website's index.html instead.
+run_worker_first = ["/api/*"]
+
+# Daily Sales Activity Report to the MD.
+# 13:30 UTC = 7:00 PM India time, Monday to Saturday.
+[triggers]
+crons = ["0 5 * * *"]   # TEST: 05:00 UTC = 10:30 AM IST today. Change back to "30 13 * * MON-SAT" after testing
