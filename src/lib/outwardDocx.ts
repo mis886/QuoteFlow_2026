@@ -9,8 +9,8 @@ import {
   TextRun, WidthType, AlignmentType, BorderStyle, ShadingType,
   convertInchesToTwip, UnderlineType,
 } from 'docx';
-import type { StockMovement, Customer, AppSettings, CompanyUnit } from './types';
-import { fmtDate as utilFmtDate } from './utils';
+import type { OutwardDO, Customer, AppSettings, CompanyUnit } from './types';
+import { fmtDate as utilFmtDate, outwardDoLines } from './utils';
 
 type SigPerson = { name: string; designation: string; phone?: string };
 
@@ -120,14 +120,21 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+// 2026-11-03 (one DO, many products): `movement` is the whole DO (header +
+// movement.lines). Same layout rule as generateOutwardPDF: a 1-line DO is
+// unchanged; 2+ lines → no separate Lot No./Dated line, one table row per
+// product with Lot No / Lot Date columns, and a Total row.
 export async function downloadOutwardDOCX(
-  movement: StockMovement,
+  movement: OutwardDO,
   customer: Customer | undefined,
   settings: AppSettings | null,
   defaultSignatory?: SigPerson,
   unit?: CompanyUnit,
 ) {
-  const productCode = (movement as any).productCode || '—';
+  const doLines = outwardDoLines(movement);
+  const multi = doLines.length > 1;
+  const one = doLines[0];
+  const productCode = one.productCode || '—';
   const partyNameDisplay = (movement.partyName === 'Other' ? movement.otherParty : movement.partyName) || '—';
   const transporterDisplay = (movement.transporter === 'Other' ? movement.otherTransporter : movement.transporter) || '—';
   const fulfilmentTypeDisplay = movement.fulfilmentType || '—';
@@ -147,9 +154,79 @@ export async function downloadOutwardDOCX(
   const godown = GODOWN_ADDRESSES[movement.warehouse];
 
   const dateStr = movement.doDate ? fmtDate(movement.doDate) : '—';
-  const lotDateText = movement.inwardDate
-    ? new Date(movement.inwardDate + 'T00:00:00').toLocaleDateString('en-GB').replace(/\//g, '-')
+  const lotDateOf = (iso?: string) => iso
+    ? new Date(iso + 'T00:00:00').toLocaleDateString('en-GB').replace(/\//g, '-')
     : '—';
+  const lotDateText = lotDateOf(one.inwardDate);
+
+  // 2+ lines: Lot No / Lot Date move into the table — narrower name column.
+  const wLot = 800, wLotDate = 900;
+  const wProdNameMulti = wProdName - wLot - wLotDate;
+  const totalBarrels = doLines.reduce((s, l) => s + (Number(l.numArticles) || 0), 0);
+  const totalQty = doLines.reduce((s, l) => s + (l.totalQty ?? 0), 0);
+  const C = AlignmentType.CENTER;
+  const boldCell = (text: string, w: number, align: Align = C) => new TableCell({
+    width: { size: w, type: WidthType.DXA },
+    borders: ALL_THIN,
+    margins: { top: 60, bottom: 60, left: 100, right: 100 },
+    children: [new Paragraph({ alignment: align, children: [r(text, { size: 17, bold: true })] })],
+  });
+  const itemRows: TableRow[] = multi
+    ? [
+      new TableRow({
+        tableHeader: true,
+        children: [
+          thCell('Product Name', wProdNameMulti), thCell('Product Code', wHsn), thCell('Lot No', wLot), thCell('Lot Date', wLotDate),
+          thCell('No of Barrels', wBarrels), thCell('Packing', wPacking), thCell('Total Qty', wTotalQty),
+          thCell('Packing Type', wPackType), thCell('MOU', wMou),
+        ],
+      }),
+      ...doLines.map(l => new TableRow({
+        children: [
+          tdCell(l.billingName || l.productName || '—', wProdNameMulti),
+          tdCell(l.productCode || '—', wHsn, C),
+          tdCell(l.whLotNo || '—', wLot, C),
+          tdCell(lotDateOf(l.inwardDate), wLotDate, C),
+          tdCell(l.numArticles || '—', wBarrels, C),
+          tdCell(l.packing != null ? String(l.packing) : '—', wPacking, C),
+          tdCell(l.totalQty != null ? l.totalQty.toLocaleString('en-IN') : '—', wTotalQty, C),
+          tdCell(l.packagingType || '—', wPackType, C),
+          tdCell(l.weightType || '—', wMou, C),
+        ],
+      })),
+      new TableRow({
+        children: [
+          boldCell('Total', wProdNameMulti, AlignmentType.LEFT), boldCell('', wHsn), boldCell('', wLot), boldCell('', wLotDate),
+          boldCell(String(totalBarrels), wBarrels), boldCell('', wPacking), boldCell(totalQty.toLocaleString('en-IN'), wTotalQty),
+          boldCell('', wPackType), boldCell('', wMou),
+        ],
+      }),
+    ]
+    : [
+      new TableRow({
+        tableHeader: true,
+        children: [
+          thCell('Product Name', wProdName),
+          thCell('Product Code', wHsn),
+          thCell('No of Barrels', wBarrels),
+          thCell('Packing', wPacking),
+          thCell('Total Qty', wTotalQty),
+          thCell('Packing Type', wPackType),
+          thCell('MOU', wMou),
+        ],
+      }),
+      new TableRow({
+        children: [
+          tdCell(one.billingName || one.productName || '—', wProdName),
+          tdCell(productCode, wHsn, C),
+          tdCell(one.numArticles || '—', wBarrels, C),
+          tdCell(one.packing != null ? String(one.packing) : '—', wPacking, C),
+          tdCell(one.totalQty != null ? one.totalQty.toLocaleString('en-IN') : '—', wTotalQty, C),
+          tdCell(one.packagingType || '—', wPackType, C),
+          tdCell(one.weightType || '—', wMou, C),
+        ],
+      }),
+    ];
 
   const doc = new Document({
     sections: [{
@@ -194,46 +271,23 @@ export async function downloadOutwardDOCX(
           { size: 17 },
         )], AlignmentType.LEFT, 40),
 
-        // ── Lot No. | Dated — same field style as Delivery Order No./Date above
-        new Paragraph({
+        // ── Lot No. | Dated — same field style as Delivery Order No./Date
+        // above. 1-line DO only (2026-11-03); with 2+ lines it's in the table.
+        ...(multi ? [para([], AlignmentType.LEFT, 80)] : [new Paragraph({
           spacing: { after: 120 },
           children: [
             r('Lot No.: ', { size: 17 }),
-            r(movement.whLotNo || '—', { size: 17 }),
+            r(one.whLotNo || '—', { size: 17 }),
             r('     ', { size: 17 }),
             r('Dated: ', { size: 17 }),
             r(lotDateText, { size: 17 }),
           ],
-        }),
+        })]),
 
-        // ── Line-items table — single row, Outward only ever carries one item
+        // ── Line-items table — one row per product line (see itemRows above)
         new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
-          rows: [
-            new TableRow({
-              tableHeader: true,
-              children: [
-                thCell('Product Name', wProdName),
-                thCell('Product Code', wHsn),
-                thCell('No of Barrels', wBarrels),
-                thCell('Packing', wPacking),
-                thCell('Total Qty', wTotalQty),
-                thCell('Packing Type', wPackType),
-                thCell('MOU', wMou),
-              ],
-            }),
-            new TableRow({
-              children: [
-                tdCell(movement.billingName || movement.productName || '—', wProdName),
-                tdCell(productCode, wHsn, AlignmentType.CENTER),
-                tdCell(movement.numArticles || '—', wBarrels, AlignmentType.CENTER),
-                tdCell(movement.packing != null ? String(movement.packing) : '—', wPacking, AlignmentType.CENTER),
-                tdCell(movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—', wTotalQty, AlignmentType.CENTER),
-                tdCell(movement.packagingType || '—', wPackType, AlignmentType.CENTER),
-                tdCell(movement.weightType || '—', wMou, AlignmentType.CENTER),
-              ],
-            }),
-          ],
+          rows: itemRows,
         }),
 
         // ── Party Name | Transporter | Fulfilment Type — moved out of the

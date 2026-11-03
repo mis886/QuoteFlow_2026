@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, Paperclip, Mail, Loader2 } from 'lucide-react';
-import { Quote, Order, StockMovement, DispatchEntry, Customer, AppSettings, AuthorizedSignatory } from '../lib/types';
+import { Quote, Order, StockMovement, OutwardDO, DispatchEntry, Customer, AppSettings, AuthorizedSignatory } from '../lib/types';
 import { Button } from './ui';
 import { generateQuotePDF, generateOrderPDF, generateOutwardPDF } from '../lib/pdfGenerator';
 import { sendViaGmailAsUser } from '../lib/gmail';
@@ -99,7 +99,7 @@ interface BaseProps {
 }
 interface QuoteProps extends BaseProps { mode: 'quote'; doc: Quote; }
 interface OrderProps extends BaseProps { mode: 'order'; doc: Order; relatedQuote?: Quote; }
-interface OutwardProps extends BaseProps { mode: 'outward'; doc: StockMovement; }
+interface OutwardProps extends BaseProps { mode: 'outward'; doc: OutwardDO; }   // 2026-11-03: the whole DO — every product line goes into the ONE PDF
 // Attachments here are already-uploaded documents living on the dispatch
 // entry (the 4 Documents Attachment fields + COA — see NewDispatchEntry.tsx)
 // — this modal fetches and attaches each one as-is, rather than generating a
@@ -394,7 +394,7 @@ export function SendEmailModal(props: Props) {
           // is async (it looks up the product's HSN code from product_catalog),
           // not because Outward carries any bank data — it carries none.
           const unit = data.units.find(u => u.is_default);
-          doc = await generateOutwardPDF(props.doc as StockMovement, customer, props.settings, props.defaultSignatory, unit, false);
+          doc = await generateOutwardPDF(props.doc as OutwardDO, customer, props.settings, props.defaultSignatory, unit, false);
         } else {
           const op = props as OrderProps;
           const orderDoc = props.doc as Order;

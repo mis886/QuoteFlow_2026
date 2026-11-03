@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Customer, Quote, Order, AppSettings, CompanyUnit, BankAccount, StockMovement } from './types';
-import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate, getNegotiationExportTables, type ResolvedAdjustment } from './utils';
+import { Customer, Quote, Order, AppSettings, CompanyUnit, BankAccount, OutwardDO } from './types';
+import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate, getNegotiationExportTables, outwardDoLines, type ResolvedAdjustment } from './utils';
 import { supabase } from './supabase';
 
 export function getQuoteTotals(q: Quote) {
@@ -874,16 +874,25 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
  * comment below for why. 180mm wide (narrower than standard A4's 210mm) —
  * the line-items table is 7 columns with Party Name/Transporter/Fulfilment
  * Type on their own line below it, so it doesn't need full A4 width.
+ *
+ * 2026-11-03 (one DO, many products): `movement` is the whole DO — header +
+ * every product line in movement.lines (see outwardDoLines). A 1-line DO
+ * prints exactly as before. A DO with 2+ lines prints the header once, then
+ * one table row per product with its own Lot No / Lot Date columns (the
+ * separate "Lot No.: | Dated:" line is left out) and a Total row. Keep in
+ * sync with downloadOutwardDOCX (outwardDocx.ts).
  */
 export async function generateOutwardPDF(
-  movement: StockMovement,
+  movement: OutwardDO,
   customer: Customer | undefined,
   settings: AppSettings | null,
   defaultSignatory: SigPerson | undefined,
   unit: CompanyUnit | undefined,
   download: boolean,
 ): Promise<jsPDF> {
-  const productCode = (movement as any).productCode || '—';
+  const doLines = outwardDoLines(movement);
+  const multi = doLines.length > 1;
+  const productCode = doLines[0].productCode || '—';
   const partyNameDisplay = (movement.partyName === 'Other' ? movement.otherParty : movement.partyName) || '—';
   const transporterDisplay = (movement.transporter === 'Other' ? movement.otherTransporter : movement.transporter) || '—';
   const fulfilmentTypeDisplay = movement.fulfilmentType || '—';
@@ -980,35 +989,64 @@ export async function generateOutwardPDF(
     ) as string[];
     instrLines.forEach((line) => { doc.text(line, mx, y); y += 5; });
 
-    // ── Lot No. | Dated — same field style as Delivery Order No./Date above
-    y += 3;
-    doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-    const lotDateText = movement.inwardDate
-      ? new Date(movement.inwardDate + 'T00:00:00').toLocaleDateString('en-GB').replace(/\//g, '-')
+    // ── Lot No. | Dated — same field style as Delivery Order No./Date above.
+    // 2026-11-03: 1-line DO only; with 2+ lines each row has its own lot.
+    const lotDateOf = (iso?: string) => iso
+      ? new Date(iso + 'T00:00:00').toLocaleDateString('en-GB').replace(/\//g, '-')
       : '—';
-    drawField(mx, y, 'Lot No.: ', movement.whLotNo || '—');
-    drawField(rx, y, 'Dated: ', lotDateText, { align: 'right' });
+    const one = doLines[0];
+    if (!multi) {
+      y += 3;
+      doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+      drawField(mx, y, 'Lot No.: ', one.whLotNo || '—');
+      drawField(rx, y, 'Dated: ', lotDateOf(one.inwardDate), { align: 'right' });
+      y += 4;
+    } else {
+      y += 1;
+    }
 
-    y += 4;
-
-    // ── Line-items table — single row, Outward only ever carries one item.
-    // Same head/body/fillColor/grid styling as the item table in
-    // generateQuotePDF above, for visual consistency across generated docs.
-    const tableHead = [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']];
-    const tableBody = [[
-      movement.billingName || movement.productName || '—',
-      productCode,
-      movement.numArticles || '—',
-      movement.packing != null ? String(movement.packing) : '—',
-      movement.totalQty != null ? movement.totalQty.toLocaleString('en-IN') : '—',
-      movement.packagingType || '—',
-      movement.weightType || '—',
-    ]];
+    // ── Line-items table — one row per product line (a 1-line DO: the same
+    // single row as before). Same head/body/fillColor/grid styling as the
+    // item table in generateQuotePDF above.
+    const tableHead = multi
+      ? [['Product Name', 'Product Code', 'Lot No', 'Lot Date', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']]
+      : [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']];
+    const tableBody = multi
+      ? doLines.map(l => [
+        l.billingName || l.productName || '—',
+        l.productCode || '—',
+        l.whLotNo || '—',
+        lotDateOf(l.inwardDate),
+        l.numArticles || '—',
+        l.packing != null ? String(l.packing) : '—',
+        l.totalQty != null ? l.totalQty.toLocaleString('en-IN') : '—',
+        l.packagingType || '—',
+        l.weightType || '—',
+      ])
+      : [[
+        one.billingName || one.productName || '—',
+        productCode,
+        one.numArticles || '—',
+        one.packing != null ? String(one.packing) : '—',
+        one.totalQty != null ? one.totalQty.toLocaleString('en-IN') : '—',
+        one.packagingType || '—',
+        one.weightType || '—',
+      ]];
+    const totalBarrels = doLines.reduce((s, l) => s + (Number(l.numArticles) || 0), 0);
+    const totalQty = doLines.reduce((s, l) => s + (l.totalQty ?? 0), 0);
+    const tableFoot = multi
+      ? [['Total', '', '', '', String(totalBarrels), '', totalQty.toLocaleString('en-IN'), '', '']]
+      : undefined;
 
     autoTable(doc, {
       startY: y,
       head: tableHead,
       body: tableBody,
+      ...(tableFoot ? {
+        foot: tableFoot,
+        showFoot: 'lastPage' as const,
+        footStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 8.5, cellPadding: 1.5, lineColor: [80, 80, 80], lineWidth: 0.35, halign: 'center' },
+      } : {}),
       theme: 'grid',
       headStyles: {
         fillColor: TRUST_BLUE,
@@ -1021,7 +1059,7 @@ export async function generateOutwardPDF(
         halign: 'center',
       },
       bodyStyles: {
-        fontSize: 9,
+        fontSize: multi ? 8 : 9,
         cellPadding: 1.5,
         textColor: [30, 30, 30],
         lineColor: [80, 80, 80],
