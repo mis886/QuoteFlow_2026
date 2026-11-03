@@ -61,8 +61,15 @@ warehouse; an empty or unknown Lot No clears that row's lot fields
 Changing the Warehouse clears every row's lot fields (they refill from the
 new warehouse's stock) and, for a new DO, regenerates the DO number.
 
-From the Board, No of Barrels auto-fills with the lot's stock at the
-warehouse but never more than the order line still needs.
+No of Barrels fills with EXACTLY the lot's barrels at the header warehouse
+(Stock Summary's party column, the "Available at …" figure) when a Lot No is
+entered — not capped by the order (changed later on 2026-11-03, user's rule).
+The user edits it down; their figure stays until the Lot No or Warehouse
+changes. Rows prefilled from the Board start with No of Barrels empty. A lot
+with no stock there leaves it empty. More barrels than the order line still
+needs shows "Order needs only N barrels … — enter how many to dispatch" on
+the row and blocks Save; it is never changed automatically. Opening a saved
+DO shows its saved barrels.
 
 Save is blocked while ANY row has a problem — no valid lot, product not in
 the order, same lot or same order line on two rows, missing packing, no stock,

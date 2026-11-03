@@ -464,6 +464,18 @@ const parseNum = (v: string): number | null => {
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
 };
+// 2026-11-03 (later, user's rule): No of Barrels when a row's lot is entered
+// (or its Lot No / the header Warehouse changes) = EXACTLY the lot's barrels
+// at the header warehouse in Stock Summary (the stock_lots party column, the
+// "Available at …" figure) — NOT capped by what the order still needs (the
+// cap added in c168940 is removed). The user then edits it down; an order
+// over-dispatch is a row problem that blocks Save, never changed for them.
+// No stock there → empty (the "No stock found" note blocks Save). Edit mode,
+// the DO's own saved lot back → its saved barrels (that lot's Stock Summary
+// figure already has this DO taken off).
+export const barrelsForLot = (available: number, ownSaved: number | null): string =>
+  ownSaved !== null ? String(ownSaved) : available > 0 ? String(available) : '';
+
 const lineTotal = (l: Line): number | null => {
   const b = parseNum(l.numArticles), p = parseNum(l.packing);
   return b !== null && p !== null ? b * p : null;
@@ -850,9 +862,9 @@ function OutwardForm() {
   // is filled from it exactly as the single-lot form did (see the 2026-09-08 …
   // 2026-11-03 notes in git history / docs): Product Name / Code, Packing,
   // Packing Type, MOU, Lot Date always from the lot (and locked); No of
-  // Barrels = the lot's barrels at the warehouse unless the user typed their
-  // own for this Warehouse + Lot No (from the Board: never more than the
-  // order line still needs); Billing Name = the order line's product name
+  // Barrels = the lot's barrels at the warehouse (barrelsForLot — no cap by
+  // the order since 2026-11-03 later) unless the user typed their own for
+  // this Warehouse + Lot No; Billing Name = the order line's product name
   // (Board / linked DO) or the catalogue billing name (plain New Outward,
   // unless typed). From the Board / a linked DO, the lot's product picks the
   // row's order line (orderLineSeqForLot, lines other rows use lose).
@@ -877,15 +889,7 @@ function OutwardForm() {
     let autoBarrels = l.autoBarrels;
     const own = isEditing ? originalBarrelsFor(headerRef.current.warehouse, lot.lotNo) : null;
     if (l.userBarrelsKey !== key) {
-      if (own !== null) {
-        // Edit: its own lot back → the DO's saved barrels.
-        numArticles = String(own);
-      } else if (lot.available > 0) {
-        const left = rowsOrder && orderLineSeq !== null ? (orderRemaining.get(orderLineSeq) ?? 0) : 0;
-        numArticles = String(left > 0 ? Math.min(lot.available, left) : lot.available);
-      } else if (autoBarrels !== null && numArticles === autoBarrels) {
-        numArticles = '';
-      }
+      numArticles = barrelsForLot(lot.available, own);
       autoBarrels = numArticles || null;
     }
     return {
@@ -1007,7 +1011,9 @@ function OutwardForm() {
     else if (maxBarrels !== null && maxBarrels <= 0) problem = `No stock found for this lot at ${header.warehouse}.`;
     else if (barrels === null || barrels <= 0) { problem = 'Enter No of Barrels.'; problemSoft = true; }
     else if (maxBarrels !== null && barrels > maxBarrels) problem = `Only ${maxBarrels} barrels available at ${header.warehouse} (Lot ${lot.lotNo}). You entered ${barrels}.`;
-    else if (orderNeeds !== null && barrels > orderNeeds) problem = `Order needs only ${orderNeeds} barrels of ${item?.desc?.trim() || 'this product'} (remaining). You entered ${barrels}.`;
+    // 2026-11-03 (later): barrels now start at the lot's full stock, so this
+    // is the usual first note on a Board row — never corrected automatically.
+    else if (orderNeeds !== null && barrels > orderNeeds) problem = `Order needs only ${orderNeeds} barrel${orderNeeds === 1 ? '' : 's'} of ${item?.desc?.trim() || 'this product'} — enter how many to dispatch (you entered ${barrels}).`;
     return { lot, lookedUp, total, maxBarrels, orderNeeds, orderPacking, packingMismatch, problem, problemSoft };
   });
   const firstProblem = rowInfos.findIndex(r => !!r.problem);
@@ -1376,7 +1382,7 @@ function OutwardForm() {
                           <td className="px-[5px] pt-[12px] font-mono text-[11px] text-g500">{idx + 1}</td>
                           <td className="px-[5px] pt-[5px] w-[110px]">
                             <input className={cellInput} value={l.lotNo}
-                              onChange={e => updateLine(l.key, { lotNo: e.target.value, lotTouched: true })} />
+                              onChange={e => updateLine(l.key, { lotNo: e.target.value, lotTouched: true, userBarrelsKey: null })} />
                           </td>
                           <td className="px-[5px] pt-[5px] w-[130px]">
                             <input type="date" className={cellInput} value={l.lotDate} onChange={e => updateLine(l.key, { lotDate: e.target.value })} />
