@@ -394,8 +394,9 @@ export function entryStepBlock(e: DispatchEntry, stepNo: number): string | undef
 }
 
 /**
- * 2026-11-03: Step 11 "Send through WhatsApp" (Dispatch drawer, entry at
- * Step 11). The app sends nothing — it records that the documents went out
+ * 2026-11-03: Step 11 "Send through WhatsApp" (since 2026-11-04 on the entry
+ * page, NewDispatchEntry.tsx — no longer in the Dispatch drawer; written by
+ * markEntryDocsSentWhatsApp in dispatchEntrySteps.ts). The app sends nothing — it records that the documents went out
  * on WhatsApp (email_sent_at + docs_sent_via = 'whatsapp'), then writes Step
  * 11 like the email does. Shown while the entry is AT Step 11 (so 8, 9 and
  * 10 are finished — entryPosition) and not sent yet; never for imported

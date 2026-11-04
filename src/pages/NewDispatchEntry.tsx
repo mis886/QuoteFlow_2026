@@ -2,19 +2,21 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { customerOfDoc, dispatchOrderView, DispatchFormDetails, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining } from '../lib/utils';
+import { customerOfDoc, dispatchOrderView, DispatchFormDetails, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { ProductSearch } from '../components/ProductSearch';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
-import { Upload, ExternalLink, Loader2, Search, X, Mail } from 'lucide-react';
+import { Upload, ExternalLink, Loader2, Search, X, Mail, MessageCircle } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
-import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry, needsBhiwandiEmail, orderFulfillmentFor, readyForNewEntry } from '../lib/dispatchFlow';
-import { autoCompleteEntrySteps, loadEntryStepRecords, loadOrderStepRecords } from '../lib/dispatchEntrySteps';
+import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry, needsBhiwandiEmail, orderFulfillmentFor, readyForNewEntry, STEP11_WHATSAPP_LABEL, showStep11WhatsApp, step11WhatsAppBlock } from '../lib/dispatchFlow';
+import { autoCompleteEntrySteps, loadEntryStepRecords, loadOrderStepRecords, markEntryDocsSentWhatsApp } from '../lib/dispatchEntrySteps';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { STEP_BUTTONS_LOCKED_TIP } from '../components/DispatchBoard';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
 // entry is being saved as "Dispatch → Sent" (every save is one now — see
@@ -142,7 +144,7 @@ export function NewDispatchEntry() {
   // return to that pill.
   const boardPill = searchParams.get('pill');
   const dispatchHome = `/dispatch${boardPill && /^[a-z]+$/.test(boardPill) ? `?pill=${boardPill}` : ''}`;
-  const { data, user, loading, addDispatchEntry, updateDispatchEntry, saveDispatchFormDetails, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent, canSeeEnqQuote } = useAppStore();
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, saveDispatchFormDetails, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp, canSeeEnqQuote } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canEditTier = canDeleteRecords(user?.email);
@@ -680,6 +682,72 @@ export function NewDispatchEntry() {
     }
   };
 
+  // 2026-11-04 (user decision): Step 11 "Send through WhatsApp" lives HERE,
+  // first button of the bottom bar (moved from the Dispatch drawer). Same
+  // rules as before: a saved, non-imported entry AT Step 11 (8–10 done /
+  // skipped), not sent yet, the customer's required documents saved, board
+  // logins only — otherwise greyed with the reason as its tooltip. Hidden once
+  // the entry is sent (either way). Unsaved form changes → "Save the entry
+  // first" and nothing else. The writes are markEntryDocsSentWhatsApp's
+  // (dispatchEntrySteps.ts — the code the drawer used).
+  const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (type: 'ok' | 'err', msg: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ type, msg });
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
+  };
+  // Unsaved changes: everything Save writes, compared with how it was when
+  // the saved entry was loaded (or switched to after a Save).
+  const formSig = JSON.stringify([
+    type, contact, phone, email, customerTier, inco, curr, pay, shipAddr, custEnquiryDocNo, items, insurance,
+    transporter, remark, promisedDeliveryDate, estimatedDeliveryDate, invoiceNumber,
+    [...touchedDocs], [...multiDocTouched], coaTouched,
+  ]);
+  const savedSigRef = useRef<{ id: string; sig: string } | null>(null);
+  useEffect(() => {
+    if (existingEntryId && savedSigRef.current?.id !== existingEntryId) savedSigRef.current = { id: existingEntryId, sig: formSig };
+  });
+  const [whatsAppConfirm, setWhatsAppConfirm] = useState(false);
+  const [whatsAppBusy, setWhatsAppBusy] = useState(false);
+  // After it succeeds, Back / Cancel go to the List's Delivered pill.
+  const [sentOnWhatsApp, setSentOnWhatsApp] = useState(false);
+  const backHome = sentOnWhatsApp ? '/dispatch?pill=delivered' : dispatchHome;
+  const showWhatsApp = !currentEntry?.emailSentAt;
+  const whatsAppReason = ((): string | undefined => {
+    if (!currentEntry) return 'Save the dispatch entry first';
+    if (!canActOnDispatchBoard(user?.email) || isReadOnlyUser) return STEP_BUTTONS_LOCKED_TIP;
+    if (isImportedEntry(currentEntry)) return 'Imported entries are not tracked through the Dispatch steps';
+    if (entrySteps === null) return 'Checking the Dispatch steps…';
+    const col = entryPosition(currentEntry, entrySteps).column;
+    if (!showStep11WhatsApp(currentEntry, col)) return `Finish Step ${col} first — Steps 8–10 must be done (Step 9 Bhiwandi, LR or Self Pickup) before Step 11`;
+    return step11WhatsAppBlock(currentEntry, selectedCustomer);
+  })();
+  const requestWhatsApp = () => {
+    if (whatsAppReason || whatsAppBusy) return;
+    if (savedSigRef.current && savedSigRef.current.sig !== formSig) { showToast('err', 'Save the entry first'); return; }
+    setWhatsAppConfirm(true);
+  };
+  const confirmWhatsApp = async () => {
+    if (!currentEntry || whatsAppReason || whatsAppBusy) return;
+    setWhatsAppBusy(true);
+    try {
+      await markEntryDocsSentWhatsApp({
+        entry: currentEntry, entries: data.dispatchEntries, customer: selectedCustomer,
+        doneBy: user?.email ?? null, orderLabel: selectedOrder?.soNumber || currentEntry.orderId,
+        markSent: markDispatchDocsSentWhatsApp, clearMark: clearDispatchDocsSentWhatsApp,
+      });
+      setSentOnWhatsApp(true);
+      showToast('ok', 'Documents marked as sent on WhatsApp');
+    } catch (err: any) {
+      showToast('err', err?.message || `Could not save: ${JSON.stringify(err)}`);
+    } finally {
+      setWhatsAppBusy(false);
+      setWhatsAppConfirm(false);
+      loadEntryStepRecords(currentEntry.id).then(setEntrySteps, () => {});
+    }
+  };
+
   const scrollToField = (el: HTMLElement | null, focus?: HTMLElement | null) => requestAnimationFrame(() => {
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     focus?.focus({ preventScroll: true });
@@ -906,6 +974,8 @@ export function NewDispatchEntry() {
         // Stay on the saved entry so the warning can be read; a new entry
         // switches to edit mode so a second Save never creates another one.
         setStepWarning(warning);
+        // The form is saved now — "unsaved changes" start again from here.
+        savedSigRef.current = null;
         if (!existingEntryId) {
           setExistingEntryId(saved.id);
           navigate(`/dispatch/new?${new URLSearchParams({ entryId: saved.id, ...(boardPill ? { pill: boardPill } : {}) })}`, { replace: true });
@@ -969,7 +1039,7 @@ export function NewDispatchEntry() {
               <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
               <span className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] bg-g50 text-g700">Dispatch → Sent</span>
             </div>
-            <Button variant="secondary" onClick={() => navigate(dispatchHome)}>Back</Button>
+            <Button variant="secondary" onClick={() => navigate(backHome)}>Back</Button>
           </div>
         </div>
       </div>
@@ -1571,6 +1641,17 @@ export function NewDispatchEntry() {
                 block the one LR exception that's supposed to keep working. Every
                 other field on this page is locked, so Save can only ever persist
                 an LR change for this user — nothing else can have changed. */}
+            {/* 2026-11-04: Step 11 "Send through WhatsApp" — first, before Save
+                (rules + reasons: whatsAppReason). The span carries the tooltip
+                because a disabled Button gets no mouse events. */}
+            {showWhatsApp && (
+              <span title={whatsAppReason} className={whatsAppReason ? 'cursor-not-allowed' : undefined}>
+                <Button variant="dark" disabled={!!whatsAppReason || whatsAppBusy || saving} onClick={requestWhatsApp}>
+                  <MessageCircle size={12} />
+                  {whatsAppBusy ? 'Saving…' : STEP11_WHATSAPP_LABEL}
+                </Button>
+              </span>
+            )}
             <Button variant="dark" disabled={!selectedOrderId || saving} onClick={handleSubmit}>{saving ? 'Saving…' : 'Save'}</Button>
             {currentEntry?.bhiwandiEmailSentAt && (
               <span className="text-[11px] text-g500 whitespace-nowrap">
@@ -1587,7 +1668,7 @@ export function NewDispatchEntry() {
               Email to Client
             </Button>
             <div className="h-5 w-px bg-g200 mx-1" />
-            <Button variant="secondary" onClick={() => navigate(dispatchHome)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => navigate(backHome)}>Cancel</Button>
           </div>
         </div>
       </div>
@@ -1650,6 +1731,27 @@ export function NewDispatchEntry() {
             loadEntryStepRecords(existingEntryId).then(setEntrySteps, () => {});
           }}
         />
+      )}
+
+      {whatsAppConfirm && currentEntry && (
+        <ConfirmDialog
+          title="Mark documents as sent on WhatsApp?"
+          confirmLabel="Yes, mark sent"
+          busy={whatsAppBusy}
+          onConfirm={confirmWhatsApp}
+          onCancel={() => setWhatsAppConfirm(false)}
+        >
+          <div className="font-semibold text-blk">
+            {selectedOrder?.soNumber || currentEntry.orderId} · {selectedOrder?.cust || ''}{currentEntry.invoiceNumber ? ` · INV ${currentEntry.invoiceNumber}` : ''}
+          </div>
+          <div className="mt-2">This completes Step 11 and moves this entry to Delivered. Nothing is sent from the app.</div>
+        </ConfirmDialog>
+      )}
+
+      {toast && (
+        <div className={`fixed bottom-5 right-5 z-50 max-w-[560px] flex items-start gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white animate-in slide-in-from-bottom-2 ${toast.type === 'ok' ? 'bg-sW' : 'bg-red-mrt'}`}>
+          {toast.msg}
+        </div>
       )}
     </div>
   );

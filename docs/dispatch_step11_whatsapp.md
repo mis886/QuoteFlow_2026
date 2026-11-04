@@ -6,8 +6,12 @@ stuck at Step 11 "Send Documents".
 
 ## What the button does
 
-- Where: the Dispatch drawer opened from an ENTRY row at Step 11, under the
-  "Documents sent" / "Attach Documents & Send →" buttons.
+- Where (moved 2026-11-04, user decision): the dispatch ENTRY page
+  (`NewDispatchEntry.tsx`, the page "Attach Documents & Send →" opens), the
+  FIRST button of the bottom action bar, directly left of Save, same Button
+  style as Save / Email to Client. It is NOT in the Dispatch drawer any more
+  (the drawer's Step 11 is back to how it was before f34cf9f; its Undo still
+  clears a WhatsApp mark, see below).
 - It opens WhatsApp / sends NOTHING. After the confirm box ("Mark documents
   as sent on WhatsApp? … This completes Step 11 and moves this entry to
   Delivered." — "Yes, mark sent" / "Cancel") it:
@@ -16,22 +20,38 @@ stuck at Step 11 "Send Documents".
   2. writes Step 11 Done (`dispatch_steps`, remark "sent via WhatsApp"),
      through `saveEntryStepRows` like the "Documents sent" button.
   If step 2 fails, step 1 is taken back — never half-done.
+  Code: `markEntryDocsSentWhatsApp` in `src/lib/dispatchEntrySteps.ts` (the
+  drawer's code, moved there — one copy).
+- After it succeeds: toast "Documents marked as sent on WhatsApp"; the page
+  shows the sent state (Email Sent stage — View / Download, like after Email
+  to Client) and the button is gone; Back / Cancel go to the List's Delivered
+  pill (`/dispatch?pill=delivered`).
 - History Log: "… Step 11 Send Documents · Done (documents sent on WhatsApp)"
   (dispatch_steps) and "… Step 11 done — documents sent on WhatsApp"
   (dispatch_entries, before/after), each with the user and time.
 
 ## Rules (same as Email to Client)
 
-- Shown only while the entry is AT Step 11 (`showStep11WhatsApp`): saved,
-  Steps 8 and 9 finished, Step 10 done (Self Pickup skips it) — so not before
-  — and not sent yet (`email_sent_at` empty). Never for imported entries.
-- Required documents (`customers.req_doc_*`): blocked, with the reason in red,
-  while a required Invoice / Eway Bill, LR (not Self Pickup), COA or Supplier
-  Portal file is not saved on the entry (`step11WhatsAppBlock`).
-- Who: `canActOnDispatchBoard` logins (DISPATCH_BOARD_EMAILS), not the
-  read-only login. Others see it greyed with the usual tooltip.
-- Checked again against the database on confirm (still at Step 11, not sent,
-  documents saved).
+Shown on the entry page until the entry is sent (either way — `email_sent_at`
+set hides it). Enabled only when all of these hold, otherwise greyed with
+the reason as its tooltip (no text under the bar):
+
+- the entry is saved ("Save the dispatch entry first");
+- a `canActOnDispatchBoard` login (DISPATCH_BOARD_EMAILS), not the read-only
+  login (the usual board tooltip);
+- not a system-import entry;
+- the entry is AT Step 11 (`showStep11WhatsApp`): Steps 8 and 9 finished
+  (Step 9 Bhiwandi done), Step 10 done or skipped (Self Pickup) ("Finish Step
+  N first …");
+- required documents (`customers.req_doc_*`) saved on the entry — a required
+  Invoice / Eway Bill, LR (not Self Pickup), COA or Supplier Portal file
+  (`step11WhatsAppBlock`, its reason).
+
+Unsaved changes on the form when it is clicked → toast "Save the entry
+first" and nothing else (it never saves for you). "Unsaved" = any field
+Save writes differs from how the saved entry was loaded, or a document was
+added / removed. Checked again against the database on confirm (still at
+Step 11, not sent, documents saved).
 
 ## Why reusing `email_sent_at` works
 
@@ -55,7 +75,8 @@ or trigger reads `dispatch_entries.email_sent_at`, so nothing there changed.
 
 ## Undo
 
-Undo of a WhatsApp Step 11 (drawer "Undo last step") clears
+Undo of a WhatsApp Step 11 (drawer "Undo last step" — still in the drawer
+after the 2026-11-04 move) clears
 `email_sent_at` + `docs_sent_via` first, then deletes the Step 11 row (if
 that fails the mark is put back). The entry is back at Step 11, not sent, out
 of Delivered, tag gone. Logged in the History Log.
@@ -68,4 +89,4 @@ stays recorded (it really was sent).
 `docs_sent_via text` ('email' | 'whatsapp' | null), backfilled 'email' for
 every entry already sent, check: `docs_sent_via` set only together with
 `email_sent_at`. Email to Client (`markDispatchEmailSent`) now writes
-`docs_sent_via = 'email'`.
+`docs_sent_via = 'email'`. The 2026-11-04 move changed no database object.

@@ -7,7 +7,7 @@
 import { supabase } from './supabase';
 import { logActivity } from './activityLog';
 import type { DispatchEntry } from './types';
-import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, stepDef } from './dispatchFlow';
+import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef } from './dispatchFlow';
 
 /** The entry as saved in the database right now — the fields the Step 8–11 rules read. */
 async function freshEntry(entry: DispatchEntry): Promise<DispatchEntry> {
@@ -110,6 +110,75 @@ export async function saveEntryStepRows({ entry, entries, action, remark, doneBy
     });
   }
   return { inserted: inserted || [], alreadyDone: [] };
+}
+
+/**
+ * 2026-11-03: Step 11 "Send through WhatsApp" — the documents went out on
+ * WhatsApp outside the app (customers with no email). Nothing is sent: it
+ * records docs_sent_via = 'whatsapp' + email_sent_at (so the entry counts as
+ * "documents sent" everywhere, like an emailed one), then writes Step 11 Done
+ * with the remark "sent via WhatsApp". Checked again against the database
+ * first (still at Step 11, not sent, required documents saved). If Step 11
+ * can't be written the WhatsApp mark is taken back, so the entry never ends up
+ * half-done. Throws with the reason.
+ * 2026-11-04: moved here from Dispatch.tsx — the button is on the entry page
+ * (NewDispatchEntry.tsx) now, not the Dispatch drawer.
+ * `markSent` / `clearMark` = the store's markDispatchDocsSentWhatsApp /
+ * clearDispatchDocsSentWhatsApp (they also update the page's data).
+ */
+export async function markEntryDocsSentWhatsApp({ entry, entries, customer, doneBy, orderLabel, markSent, clearMark }: {
+  entry: DispatchEntry;
+  entries: DispatchEntry[];
+  customer?: Parameters<typeof step11WhatsAppBlock>[1];
+  doneBy?: string | null;
+  orderLabel: string;
+  markSent: (id: string) => Promise<string | null>;
+  clearMark: (id: string) => Promise<boolean>;
+}): Promise<{ sentAt: string; inserted: any[]; alreadyDone: DispatchStepRecord[] }> {
+  const e = entry;
+  const [{ data: fresh, error: freshErr }, records] = await Promise.all([
+    supabase.from('dispatch_entries')
+      .select('email_sent_at, invoice_eway_bill_files, invoice_eway_bill_url, lr_files, lr_url, coa_files, coa_url, supplier_portal_url, fulfillment_type')
+      .eq('id', e.id).single(),
+    loadEntryStepRecords(e.id),
+  ]);
+  if (freshErr) throw freshErr;
+  const now: DispatchEntry = {
+    ...e,
+    emailSentAt: fresh.email_sent_at || undefined,
+    invoiceEwayBillFiles: Array.isArray(fresh.invoice_eway_bill_files) ? fresh.invoice_eway_bill_files : undefined,
+    invoiceEwayBillUrl: fresh.invoice_eway_bill_url || undefined,
+    lrFiles: Array.isArray(fresh.lr_files) ? fresh.lr_files : undefined,
+    lrUrl: fresh.lr_url || undefined,
+    coaFiles: Array.isArray(fresh.coa_files) ? fresh.coa_files : undefined,
+    coaUrl: fresh.coa_url || undefined,
+    supplierPortalUrl: fresh.supplier_portal_url || undefined,
+    fulfillmentType: fresh.fulfillment_type || e.fulfillmentType,
+  };
+  const stale = 'The documents for this entry were already sent.';
+  if (now.emailSentAt) throw new Error(stale);
+  if (!showStep11WhatsApp(now, entryPosition(now, records).column)) throw new Error('This entry is not at Step 11 (Steps 8–10 must be done first).');
+  const blocked = step11WhatsAppBlock(now, customer);
+  if (blocked) throw new Error(blocked);
+  const sentAt = await markSent(e.id);
+  if (!sentAt) throw new Error(stale);
+  let result: Awaited<ReturnType<typeof saveEntryStepRows>>;
+  try {
+    result = await saveEntryStepRows({
+      entry: { ...now, emailSentAt: sentAt, docsSentVia: 'whatsapp' }, entries,
+      action: STEP_ACTIONS[11]![0], remark: STEP11_WHATSAPP_REMARK,
+      doneBy, orderLabel, logNote: 'documents sent on WhatsApp',
+    });
+  } catch (err) {
+    await clearMark(e.id).catch(() => {});
+    throw err;
+  }
+  logActivity({
+    module: 'dispatch_entries', recordId: e.id,
+    recordLabel: `${orderLabel} · ${e.invoiceNumber ? `INV ${e.invoiceNumber} · ` : ''}Step 11 done — documents sent on WhatsApp`,
+    action: 'update', before: { email_sent_at: null, docs_sent_via: null }, after: { email_sent_at: sentAt, docs_sent_via: 'whatsapp' },
+  });
+  return { sentAt, ...result };
 }
 
 /** What each auto-completed step says in the activity log. */

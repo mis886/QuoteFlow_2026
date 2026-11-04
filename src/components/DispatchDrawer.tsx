@@ -6,7 +6,7 @@ import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
   BoardCard, BoardEntryCard, BoardOrderCard, DispatchStepRecord, EntryColumn, LastStepClick, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
   drawerSteps, entryPosition, fmtDuration, isImportedEntry, stepDef, lastOpenRoundClick, lastEntryStepClick, describeStepClick, allowedStepStatuses,
-  step6AlreadyEmailed, orderLinesWithoutDo, STEP_ACTIONS, STEP9_MANUAL_ACTION, DONE_COLUMN, STEP11_WHATSAPP_LABEL, showStep11WhatsApp,
+  step6AlreadyEmailed, orderLinesWithoutDo, STEP_ACTIONS, STEP9_MANUAL_ACTION, DONE_COLUMN,
 } from '../lib/dispatchFlow';
 import { SentViaTag } from './DispatchEntryCells';
 import { EntryStepButtons, StepActionButtons, STEP_BUTTONS_LOCKED_TIP, TimeBar, TypeDot, step6Label } from './DispatchBoard';
@@ -146,7 +146,7 @@ const entryActionLabel = (col: EntryColumn) =>
 const entryPagePath = (entryId: string) => `/dispatch/new?entryId=${entryId}`;
 
 export function DispatchDrawer({
-  order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onNewDo, onEntryAction, onEntryManualStep9, onEntryStep11WhatsApp, step11WhatsAppBlocked, onResume,
+  order, site, entries, records, linkedDOs = [], fulfillment, orderCard, now, roster, canAct, busy, onAction, onNewDo, onEntryAction, onEntryManualStep9, onResume,
   canUndo, undoBusy, onUndo, openedFrom, canDelete, onSaveStep, onDelete, onClose,
 }: {
   order: Order;
@@ -169,10 +169,6 @@ export function DispatchDrawer({
   onEntryAction: (card: BoardEntryCard, action: StepAction, remark?: string) => Promise<void> | void;
   // "Mark Step 9 done (Bhiwandi already informed)" — Step 9 without the email.
   onEntryManualStep9: (card: BoardEntryCard) => Promise<void> | void;
-  // 2026-11-03: Step 11 "Send through WhatsApp" (the page asks to confirm
-  // first) and why it can't be clicked yet (required documents missing).
-  onEntryStep11WhatsApp?: (card: BoardEntryCard) => void;
-  step11WhatsAppBlocked?: string;
   onResume: (card: BoardOrderCard, remark?: string) => Promise<void> | void;
   canUndo: boolean;                    // same logins as the step buttons
   undoBusy: boolean;
@@ -430,25 +426,6 @@ export function DispatchDrawer({
                     {STEP9_MANUAL_ACTION.label}
                   </button>
                 )}
-                {/* 2026-11-03: documents sent on WhatsApp outside the app —
-                    records it (after a confirm box) and completes Step 11.
-                    Shown to every login at Step 11 until the entry is sent;
-                    greyed for logins that can't act, like the other buttons. */}
-                {onEntryStep11WhatsApp && showStep11WhatsApp(openedFrom.entry, openedFrom.column) && (() => {
-                  const off = busy || !canAct || !!step11WhatsAppBlocked;
-                  const tip = !canAct ? STEP_BUTTONS_LOCKED_TIP : step11WhatsAppBlocked;
-                  return (
-                    <div className="flex flex-col gap-1">
-                      <div className={off && !busy ? 'cursor-not-allowed' : undefined} title={tip}>
-                        <button type="button" disabled={off} title={tip} onClick={() => { if (!off) onEntryStep11WhatsApp(openedFrom); }}
-                          className={`w-full text-[11.5px] font-semibold rounded-[4px] px-2.5 py-[6px] bg-white text-blk border border-g300 hover:bg-g100 transition-colors disabled:opacity-50 ${busy ? 'disabled:cursor-wait' : 'disabled:cursor-not-allowed'}`}>
-                          {STEP11_WHATSAPP_LABEL}
-                        </button>
-                      </div>
-                      {canAct && step11WhatsAppBlocked && <div className="text-[11px] font-semibold text-[#9A0000]">{step11WhatsAppBlocked}</div>}
-                    </div>
-                  );
-                })()}
               </>
             )}
             {orderCard && hasStepActions && (
