@@ -24,8 +24,8 @@
 
 const SUPABASE_URL = 'https://nheujyknkqeimgpdfyiw.supabase.co';
 const SENDER_EMAIL = 'mis@himalayaterpene.com';     // mail goes out from this Gmail
-const MD_EMAIL = 'pc@himalayaterpene.com';           // TEST: report goes to pc@ only (change back to shishir@ after testing)
-const CC_EMAIL = '';                                // e.g. 'mis@himalayaterpene.com'
+const MD_EMAIL = 'shishir@himalayaterpene.com';      // report goes to the MD
+const CC_EMAIL = 'mis@himalayaterpene.com';          // in CC
 const TZ = 'Asia/Kolkata';
 
 export default {
@@ -45,9 +45,12 @@ export default {
             headers: { 'Content-Type': 'text/html; charset=utf-8' },
           });
         }
-        const to = url.searchParams.get('to') || MD_EMAIL;
-        await sendGmail(env, to, '', report.subject, report.html);
-        return new Response(`Sent "${report.subject}" to ${to}`);
+        // &to=someone → only that person, no CC (testing); no &to= → MD + CC, as the cron.
+        const toParam = url.searchParams.get('to');
+        const to = toParam || MD_EMAIL;
+        const cc = toParam ? '' : CC_EMAIL;
+        await sendGmail(env, to, cc, report.subject, report.html);
+        return new Response(`Sent "${report.subject}" to ${to}${cc ? ` (CC ${cc})` : ''}`);
       } catch (e: any) {
         return new Response('Error: ' + (e?.message || e), { status: 500 });
       }
@@ -182,7 +185,7 @@ async function buildReport(env: any, dateStr: string): Promise<{ subject: string
     ? table(['Customer', 'Product', 'Requested On', 'Days Waiting'], pending.map(s => {
         const from = s.sent_date || istDate(s.created_at);
         const days = Math.round((new Date(dateStr).getTime() - new Date(from).getTime()) / 86400000);
-        const d = `${days} days`;
+        const d = days === 1 ? '1 day' : `${days} days`;
         return [esc(s.cust), esc(s.product_name || ''), fmt(from, { day: '2-digit', month: 'short' }),
           days >= 10 ? `<b style="color:#c5221f;">${d}</b>` : d];
       }), [3])

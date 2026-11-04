@@ -15,7 +15,7 @@ run_worker_first = ["/api/*"]
 # Daily Sales Activity Report to the MD.
 # 13:30 UTC = 7:00 PM India time, Monday to Saturday.
 [triggers]
-crons = ["0 11 * * *"]   # TEST 4:30 PM IST: 11:00 UTC = 4:30 PM IST today. Change back to "30 13 * * MON-SAT" after testing
+crons = ["30 13 * * MON-SAT"]   # 13:30 UTC = 7:00 PM IST, Monday to Saturday
 
 # Keep Cloudflare logs on.
 [observability]
