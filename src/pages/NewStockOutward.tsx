@@ -213,7 +213,7 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 // comment above for why the two lists couldn't stay separate once Product
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
-import { lotBillingName, orderLineSeqForLot, orderLinesForLot, barrelsByOrderLine, orderOverMessage } from '../lib/doOrderLine';
+import { lotBillingName, orderLineSeqForLot, orderLinesForLot, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
 import { isImportedEntry, orderLinesWithoutDo } from '../lib/dispatchFlow';
 import { Loader2, Plus, X } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
@@ -920,14 +920,19 @@ function OutwardForm() {
   // The order line for a row whose product (lot's billing name, or Wada's
   // typed Billing Name) is `productBilling`. 2026-11-03: the same order line
   // may be on several rows (one per lot), so a line other rows use still
-  // matches — free lines only win as the default (25231ee rule 3), and a line
-  // the user picked with "+ Add product" (pin) wins when it matches.
+  // matches, and a line the user picked with "+ Add product" (pin) wins when
+  // it matches. 2026-11-04: otherwise a line with barrels left after the other
+  // rows of this DO wins (orderLineSeqForLot) — never one with 0 left while
+  // another matching line has some (ORD-2026-869, two "Camphor Powder" lines).
   const pickOrderLine = (l: Line, productBilling: string, othersCount: (o: Line) => boolean): number | null => {
     if (!rowsOrder) return null;
     if (l.pin && orderLinesForLot(rowsOrder, productBilling).some(m => m.seq === l.pin!.seq)) return l.pin.seq;
-    const taken = new Set(linesRef.current
-      .filter(o => o.key !== l.key && othersCount(o) && o.orderLineSeq != null).map(o => o.orderLineSeq as number));
-    return orderLineSeqForLot(rowsOrder, orderEntries, productBilling, l.orderLineSeq, taken);
+    const onDo = new Map<number, number>();
+    for (const o of linesRef.current) {
+      if (o.key === l.key || !othersCount(o) || o.orderLineSeq == null) continue;
+      onDo.set(o.orderLineSeq, (onDo.get(o.orderLineSeq) ?? 0) + (parseNum(o.numArticles) ?? 0));
+    }
+    return orderLineSeqForLot(rowsOrder, orderEntries, productBilling, l.orderLineSeq, onDo);
   };
 
   const fillFromLot = (l: Line, lot: LotDetails, key: string): Line => {
@@ -1055,8 +1060,9 @@ function OutwardForm() {
     const s = l.orderLineSeq != null ? lineSums.get(l.orderLineSeq) : undefined;
     return s && s.rows.length > 1 ? s : null;
   };
-  const overOrder = (l: Line, barrels: number, orderNeeds: number | null, desc: string) =>
-    orderOverMessage(barrels, orderNeeds, desc, lineOnDoOf(l));
+  // 2026-11-04: messages name the order line ("Line 2 – Camphor Powder 50 × 30").
+  const overOrder = (l: Line, barrels: number, orderNeeds: number | null) =>
+    orderOverMessage(barrels, orderNeeds, rowsOrder && l.orderLineSeq != null ? orderLineLabel(rowsOrder, l.orderLineSeq) : 'this product', lineOnDoOf(l));
   // 2026-11-03 (Wada): no lot, so a row's order line comes from its typed
   // Billing Name — same matcher as a lot's product (orderLinesForLot), and the
   // order rules (in the order, one lot per row, line's barrels ≤ remaining) apply.
@@ -1084,7 +1090,7 @@ function OutwardForm() {
     else if (dupLot) { problem = `Lot ${l.lotNo.trim()} is on another row of this DO — use one row per lot.`; problemField = 'lot'; }
     else if (barrels === null || barrels <= 0) { problem = 'Enter No of Barrels.'; problemSoft = true; problemField = 'barrels'; }
     else if (parseNum(l.packing) === null) { problem = l.packing.trim() ? 'Packing must be a number.' : 'Enter Packing.'; problemSoft = !l.packing.trim(); problemField = 'packing'; }
-    else if ((problem = overOrder(l, barrels, orderNeeds, item?.desc?.trim() || 'this product'))) problemField = 'barrels';
+    else if ((problem = overOrder(l, barrels, orderNeeds))) problemField = 'barrels';
     return { lot: null, lookedUp: false, total, maxBarrels: null, orderNeeds, orderPacking, packingMismatch: false, problem, problemSoft, problemField, lineOnDo: lineOnDoOf(l) };
   };
   const rowInfos: RowInfo[] = lines.map(l => {
@@ -1139,7 +1145,7 @@ function OutwardForm() {
     // 2026-11-03 (later): barrels start at the lot's full stock, so this is
     // the usual first problem on a Board row — never corrected automatically.
     // 2026-11-03: per order line — the sum of all its rows on this DO.
-    else if ((problem = overOrder(l, barrels, orderNeeds, item?.desc?.trim() || 'this product'))) problemField = 'barrels';
+    else if ((problem = overOrder(l, barrels, orderNeeds))) problemField = 'barrels';
     return { lot, lookedUp, total, maxBarrels, orderNeeds, orderPacking, packingMismatch, problem, problemSoft, problemField, lineOnDo: lineOnDoOf(l) };
   });
   const firstProblem = rowInfos.findIndex(r => !!r.problem);
@@ -1518,11 +1524,15 @@ function OutwardForm() {
                     const tip = (f: RowInfo['problemField'], normal?: string) => (info.problem && info.problemField === f ? info.problem : normal) || undefined;
                     const redCls = 'border-red-mrt ring-[2px] ring-red-lt';
                     const fromLot = lot ? `From lot ${lot.lotNo}` : undefined;
+                    // 2026-11-04: the row's order-line label (tooltip — no text under rows).
+                    const lineTip = rowsOrder && l.orderLineSeq != null
+                      ? `Order line: ${orderLineLabel(rowsOrder, l.orderLineSeq, orderRemaining.get(l.orderLineSeq) ?? 0)}` : undefined;
                     const stockTip = [
                       lot && (isEditing && !l.lotTouched
                         ? `Available (after this DO): ${lot.available}`
                         : `Available at ${header.warehouse} (Lot ${lot.lotNo}): ${info.maxBarrels ?? lot.available} barrels`),
                       info.orderNeeds !== null && `Order needs (remaining): ${info.orderNeeds} barrels`,
+                      lineTip,
                       info.lineOnDo && `This DO (rows ${info.lineOnDo.rows.join(' + ')}): ${info.lineOnDo.sum} barrels`,
                     ].filter(Boolean).join(' · ');
                     const packingTip = info.packingMismatch && lot
@@ -1555,7 +1565,7 @@ function OutwardForm() {
                         </td>
                         <td className="px-[5px] py-[5px] min-w-[150px]">
                           {/* 2026-10-16: editable. From the Board it is the order line's product name. */}
-                          <input className={`${cellInput} ${bad('billing') ? redCls : ''}`} value={l.billingName} title={tip('billing')}
+                          <input className={`${cellInput} ${bad('billing') ? redCls : ''}`} value={l.billingName} title={tip('billing', lineTip)}
                             onChange={e => onBillingChange(l, e.target.value)} />
                         </td>
                         <td className="px-[5px] py-[5px] w-[90px]">
@@ -1610,7 +1620,7 @@ function OutwardForm() {
                     <option value="">{isWada ? 'the line its Billing Name matches' : "the line matching the lot's product"}</option>
                     {rowsOrder.items.map(i => (
                       <option key={i.seq} value={String(i.seq)}>
-                        {`${(i.desc || 'Item').trim()} (needs ${orderRemaining.get(i.seq) ?? 0})`}
+                        {orderLineLabel(rowsOrder, i.seq, orderRemaining.get(i.seq) ?? 0)}
                       </option>
                     ))}
                   </select>

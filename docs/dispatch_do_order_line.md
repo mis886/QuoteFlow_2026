@@ -132,10 +132,23 @@ The lot's product must be in the order, and the row uses THAT order line.
    matches when the names are equal; if no line is equal, a line matches when
    one name starts with the other ("betapinene" / "betapinene95").
 3. A line picked for the row with "+ Add product … for <line>" wins when it
-   matches. Otherwise lines no other row of the DO uses win (a default only —
-   a line already on another row still matches, see "One product from 2+
-   lots"); then lines with barrels still left; then the row's current line;
-   else the first.
+   matches. Otherwise (changed 2026-11-04, ORD-2026-869 bug — two "Camphor
+   Powder" lines, line 1 140 × 25 with 140 left and line 2 50 × 30 with 0
+   left; the 2nd lot of line 1 defaulted to line 2 and Save failed): lines
+   with barrels still left AFTER the other rows of this DO win (remaining −
+   those rows' barrels > 0); if none, lines with any remaining; else every
+   match — so a line with 0 left is never picked while another matching line
+   has some. Within that: the row's current line stays, then a line already
+   on this DO (same product, another lot), else the first.
+   Lines are named "Line 1 – Camphor Powder 140 × 25 (140 left)" (Line No =
+   position in the order, qty × packing, remaining) in the "for …" options
+   and in the row's Billing Name / No of Barrels tooltips ("Order line: …"),
+   so lines with the same name can be told apart. A row on a line with 0 left
+   gets "Line 2 – Camphor Powder 50 × 30 has 0 left — to use another order
+   line, remove this row and add it again with "+ Add product" for that
+   line." (the "for …" choice only applies to a NEW row). Other barrel
+   messages name the line too: "Order needs only 20 barrels of Line 1 –
+   Alpha Pinene 20 × 180 — …".
 4. The row switches to that line: Billing Name = the line's product name as in
    the order, and "Order needs (remaining)", the packing note and the barrels
    check follow it. Product Name / Code, Packing, Packing Type and MOU stay the

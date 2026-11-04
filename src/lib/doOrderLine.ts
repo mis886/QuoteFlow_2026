@@ -41,29 +41,54 @@ export function barrelsByOrderLine(rows: { orderLineSeq: number | null; numArtic
   return sums;
 }
 
-/** The "too many barrels for the order line" message for one row, or ''. `onDo` = the line's rows when it is on 2+ rows. */
-export function orderOverMessage(barrels: number, orderNeeds: number | null, desc: string, onDo: { sum: number; rows: number[] } | null): string {
+/**
+ * 2026-11-04: an order line as the DO form names it, so two lines with the
+ * same product can be told apart: "Line 1 – Camphor Powder 140 × 25", and with
+ * `left` (the line's remaining) "… (140 left)". Line No = position in the order.
+ */
+export function orderLineLabel(o: Order, seq: number, left?: number): string {
+  const idx = o.items.findIndex(i => i.seq === seq);
+  if (idx < 0) return 'this product';
+  const i = o.items[idx];
+  const packing = String(i.packing ?? '').trim();
+  const size = `${Number(i.qty) || 0}${packing ? ` × ${packing}` : ''}`;
+  return `Line ${idx + 1} – ${(i.desc || 'Item').trim()} ${size}${left === undefined ? '' : ` (${left} left)`}`;
+}
+
+/**
+ * The "too many barrels for the order line" message for one row, or ''. `onDo` = the line's rows when it is on 2+ rows.
+ * `line` = orderLineLabel without "left". 2026-11-04: a line with nothing left
+ * says so and how to put the row on another line (the "for …" choice only
+ * applies to a new row, so the row has to be added again).
+ */
+export function orderOverMessage(barrels: number, orderNeeds: number | null, line: string, onDo: { sum: number; rows: number[] } | null): string {
   if (orderNeeds === null) return '';
-  const needs = `Order needs only ${orderNeeds} barrel${orderNeeds === 1 ? '' : 's'} of ${desc}`;
+  if (orderNeeds === 0 && (onDo ? onDo.sum : barrels) > 0) {
+    return `${line} has 0 left — to use another order line, remove this row and add it again with "+ Add product" for that line.`;
+  }
+  const needs = `Order needs only ${orderNeeds} barrel${orderNeeds === 1 ? '' : 's'} of ${line}`;
   if (onDo) return onDo.sum > orderNeeds ? `${needs} — rows ${onDo.rows.join(' + ')} of this DO add up to ${onDo.sum}.` : '';
   return barrels > orderNeeds ? `${needs} — you entered ${barrels}.` : '';
 }
 
 /**
  * The order line a DO for this lot should use, or null if the lot's product
- * isn't in the order. Lines with barrels left win; among those the line
- * already picked stays, else the first.
- * 2026-11-03 (one DO, many products): `taken` = order lines other rows of the
- * same DO already use — free lines win; if only taken lines match, one of
- * them is still returned and the form shows the duplicate.
+ * isn't in the order.
+ * 2026-11-04 (ORD-2026-869 bug: two "Camphor Powder" lines, the 2nd lot went
+ * to the line with 0 left): `onDo` = barrels the OTHER rows of this DO already
+ * put on each order line (a key = the line is used). Lines with barrels left
+ * AFTER those rows win, then lines with any remaining, else every match —
+ * so a line with 0 left is never picked while another match has some. Within
+ * that pool: the row's current line stays, then a line already on this DO
+ * (same product, another lot), else the first.
  */
-export function orderLineSeqForLot(o: Order, entries: DispatchEntry[], lotBilling: string, currentSeq: number | null, taken: Set<number> = new Set()): number | null {
-  const all = orderLinesForLot(o, lotBilling);
-  if (!all.length) return null;
-  const free = all.filter(i => !taken.has(i.seq));
-  const matches = free.length ? free : all;
+export function orderLineSeqForLot(o: Order, entries: DispatchEntry[], lotBilling: string, currentSeq: number | null, onDo: Map<number, number> = new Map()): number | null {
+  const matches = orderLinesForLot(o, lotBilling);
+  if (!matches.length) return null;
   const remaining = remainingByLine(o, entries);
-  const withBarrels = matches.filter(i => (remaining.get(i.seq) ?? 0) > 0);
-  const pool = withBarrels.length ? withBarrels : matches;
-  return (pool.find(i => i.seq === currentSeq) ?? pool[0]).seq;
+  const left = (seq: number) => (remaining.get(seq) ?? 0) - (onDo.get(seq) ?? 0);
+  const afterDo = matches.filter(i => left(i.seq) > 0);
+  const anyLeft = matches.filter(i => (remaining.get(i.seq) ?? 0) > 0);
+  const pool = afterDo.length ? afterDo : anyLeft.length ? anyLeft : matches;
+  return (pool.find(i => i.seq === currentSeq) ?? pool.find(i => onDo.has(i.seq)) ?? pool[0]).seq;
 }
