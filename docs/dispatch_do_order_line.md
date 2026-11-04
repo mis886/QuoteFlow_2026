@@ -71,8 +71,8 @@ needs shows "Order needs only N barrels … — enter how many to dispatch" on
 the row and blocks Save; it is never changed automatically. Opening a saved
 DO shows its saved barrels.
 
-Save is blocked while ANY row has a problem — no valid lot, product not in
-the order, same lot on two rows, missing packing, no stock, barrels more than
+Save is blocked while ANY row has a problem — no valid lot, same lot on two
+rows (a product not in the order is allowed since 2026-11-04), missing packing, no stock, barrels more than
 the lot has, barrels more than the order line still needs (summed over the
 line's rows — see "One product from 2+ lots" below).
 Since the 2026-11-03 UI cleanup there is no text under the rows: the box
@@ -123,7 +123,24 @@ Applies to every row of a DO opened from the Dispatch board, and to a
 changed row of a saved DO linked to an order. Plain Stock Movements → New
 Outward is not affected.
 
-The lot's product must be in the order, and the row uses THAT order line.
+**Product mismatch is ALLOWED (user decision 2026-11-04).** 25231ee
+required the lot's product to be in the order and blocked Save otherwise
+("Lot … is … — this product is not in order …"). That block is removed
+everywhere — new DO from the board, saved DO (edit), every row incl.
+"+ Add product", stock warehouses and Wada — because sometimes a different
+product is sent from a lot on purpose (e.g. ORD-2026-867 line "Dipentene" × 4
+sent from lot 260914 "Pine Oil 211 (MOL)" at BALAJI). No red Lot No / Billing
+Name box and no toast for it. The database never checked the product
+(`save_outward_do` checked live 2026-11-04: lots, barrels, packing, same lot
+twice, Wada names, stock — no product rule), so nothing changed there.
+
+A matching product still picks its order line (rules below). A product with
+NO matching line keeps the line picked with "+ Add product … for <line>",
+else the row's own line (Board prefill / the line it had), else the default
+of rule 3 over ALL lines — a row of a DO linked to an order always has a
+line (`orderLineForRow`). Every other check stays: the line's rows ≤ its
+remaining, barrels ≤ the lot's stock, Lot No in stock, required fields, same
+lot twice, Wada rules.
 
 1. When Warehouse + Lot No find the lot, the lot's product name is turned into
    its billing name (Stock Inward catalogue, e.g. "Beta Pinene 95%" →
@@ -149,16 +166,19 @@ The lot's product must be in the order, and the row uses THAT order line.
    line." (the "for …" choice only applies to a NEW row). Other barrel
    messages name the line too: "Order needs only 20 barrels of Line 1 –
    Alpha Pinene 20 × 180 — …".
-4. The row switches to that line: Billing Name = the line's product name as in
-   the order, and "Order needs (remaining)", the packing note and the barrels
-   check follow it. Product Name / Code, Packing, Packing Type and MOU stay the
-   lot's.
-5. No line matches → a red note on the row ("Lot … is … — this product is not
-   in order SO-…. Order has: …") and Save is blocked.
+4. The row switches to that line: "Order needs (remaining)", the packing note
+   and the barrels check follow it. Product Name / Code, Packing, Packing Type
+   and MOU stay the lot's. Billing Name (2026-11-04, `billingNameForRow`) is
+   filled automatically and stays editable: the lot's billing name from rule 1
+   (catalogue, else the lot's own name) when the product matched the line,
+   else the ORDER LINE's product name (lot 260914 on ORD-2026-867 →
+   "Dipentene").
+5. No line matches → allowed since 2026-11-04 (see above): no note, nothing
+   blocked.
 
-The old "Product (from order)" picker is gone — a row's order line always
-comes from its lot (or the line picked with "+ Add product", when the lot
-matches it).
+The old "Product (from order)" picker is gone — a row's order line comes from
+its lot, the line picked with "+ Add product", or (product not in the order)
+the row's own line.
 
 Code: `src/lib/doOrderLine.ts` (matching) and `src/pages/NewStockOutward.tsx`
 (`pickOrderLine`, `fillFromLot`, `rowInfos`, `saveBlock`).
@@ -213,8 +233,9 @@ so its DOs are made, emailed and listed here like any other.
 - **From the Dispatch board:** rows prefilled from the order lines (Billing
   Name from the line), and the order rules stay — there is no lot, so the
   typed Billing Name picks the order line with the same matcher
-  (`orderLinesForLot` / `orderLineSeqForLot`, `onBillingChange`). Not in the
-  order → red Billing Name; the line's rows together must be ≤ its remaining
+  (`orderLineForRow`, `onBillingChange`). Not in the order → allowed since
+  2026-11-04: the row keeps its "+ Add product" / own line (no red Billing
+  Name); the line's rows together must be ≤ its remaining
   (several rows per line allowed, each with its own Lot No — see "One product
   from 2+ lots"). Code: `wadaRowInfo` in `NewStockOutward.tsx`.
 - **Switching warehouse** to / from Wada on a NEW DO: DO number regenerates;

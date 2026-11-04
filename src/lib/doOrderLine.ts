@@ -1,7 +1,9 @@
-// 2026-11-03: a DO opened from the Dispatch board must be for the order line
-// whose product IS the lot's product (NewStockOutward.tsx). The lot's product
-// is turned into its billing name (Stock Inward catalogue, e.g. "Beta Pinene
-// 95%" → "Beta Pinene") and compared with each order line's product name.
+// 2026-11-03: a DO row linked to an order is for the order line whose product
+// IS the lot's product (NewStockOutward.tsx). The lot's product is turned into
+// its billing name (Stock Inward catalogue, e.g. "Beta Pinene 95%" → "Beta
+// Pinene") and compared with each order line's product name.
+// 2026-11-04 (user decision): a product NOT in the order is allowed — the row
+// then keeps its picked / own line (orderLineForRow); nothing is blocked.
 import type { DispatchEntry, Order } from './types';
 import { remainingByLine } from './utils';
 
@@ -83,12 +85,52 @@ export function orderOverMessage(barrels: number, orderNeeds: number | null, lin
  * (same product, another lot), else the first.
  */
 export function orderLineSeqForLot(o: Order, entries: DispatchEntry[], lotBilling: string, currentSeq: number | null, onDo: Map<number, number> = new Map()): number | null {
-  const matches = orderLinesForLot(o, lotBilling);
-  if (!matches.length) return null;
+  return bestLine(o, orderLinesForLot(o, lotBilling), entries, currentSeq, onDo);
+}
+
+// The 2a93408 default among `lines` (see orderLineSeqForLot), or null if none.
+function bestLine(o: Order, lines: Order['items'], entries: DispatchEntry[], currentSeq: number | null, onDo: Map<number, number>): number | null {
+  if (!lines.length) return null;
   const remaining = remainingByLine(o, entries);
   const left = (seq: number) => (remaining.get(seq) ?? 0) - (onDo.get(seq) ?? 0);
-  const afterDo = matches.filter(i => left(i.seq) > 0);
-  const anyLeft = matches.filter(i => (remaining.get(i.seq) ?? 0) > 0);
-  const pool = afterDo.length ? afterDo : anyLeft.length ? anyLeft : matches;
+  const afterDo = lines.filter(i => left(i.seq) > 0);
+  const anyLeft = lines.filter(i => (remaining.get(i.seq) ?? 0) > 0);
+  const pool = afterDo.length ? afterDo : anyLeft.length ? anyLeft : lines;
   return (pool.find(i => i.seq === currentSeq) ?? pool.find(i => onDo.has(i.seq)) ?? pool[0]).seq;
+}
+
+/**
+ * 2026-11-04 (user decision): a lot's product does NOT have to be in the order
+ * — sometimes another product is sent from a lot on purpose (order line
+ * "Dipentene", lot 260914 "Pine Oil 211 (MOL)"). The order line a DO row is
+ * for, and whether the row's product matched it:
+ * - product matches order lines → the "+ Add product" line (`pinSeq`) if it is
+ *   one of them, else orderLineSeqForLot (as before);
+ * - no match → the "+ Add product" line, else the row's own line (Board
+ *   prefill / its line so far), else the 2a93408 default over ALL lines — so a
+ *   row of a DO linked to an order always has a line (null only if the order
+ *   has no lines).
+ */
+export function orderLineForRow(
+  o: Order, entries: DispatchEntry[], productBilling: string,
+  row: { pinSeq: number | null; currentSeq: number | null }, onDo: Map<number, number> = new Map(),
+): { seq: number | null; matched: boolean } {
+  const matches = orderLinesForLot(o, productBilling);
+  if (matches.length) {
+    if (row.pinSeq != null && matches.some(m => m.seq === row.pinSeq)) return { seq: row.pinSeq, matched: true };
+    return { seq: bestLine(o, matches, entries, row.currentSeq, onDo), matched: true };
+  }
+  const own = [row.pinSeq, row.currentSeq].find(s => s != null && o.items.some(i => i.seq === s));
+  return { seq: own ?? bestLine(o, o.items, entries, null, onDo), matched: false };
+}
+
+/**
+ * 2026-11-04: a lot row's Billing Name on a DO linked to an order — the lot's
+ * billing name (catalogue, else the lot's own product name) when its product
+ * matched the row's line, else the ORDER LINE's product name. Never left empty
+ * while one of them has a value (`current` is the last resort).
+ */
+export function billingNameForRow(o: Order, pick: { seq: number | null; matched: boolean }, lotBilling: string, current: string): string {
+  const lineDesc = pick.seq !== null ? (o.items.find(i => i.seq === pick.seq)?.desc || '').trim() : '';
+  return (pick.matched ? lotBilling.trim() : lineDesc) || lineDesc || lotBilling.trim() || current;
 }

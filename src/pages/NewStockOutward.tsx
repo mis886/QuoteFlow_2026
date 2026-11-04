@@ -213,7 +213,7 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 // comment above for why the two lists couldn't stay separate once Product
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
-import { lotBillingName, orderLineSeqForLot, orderLinesForLot, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
+import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
 import { isImportedEntry, orderLinesWithoutDo } from '../lib/dispatchFlow';
 import { Loader2, Plus, X } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
@@ -907,9 +907,10 @@ function OutwardForm() {
   // Packing Type, MOU, Lot Date always from the lot (and locked); No of
   // Barrels = the lot's barrels at the warehouse (barrelsForLot — no cap by
   // the order since 2026-11-03 later) unless the user typed their own for
-  // this Warehouse + Lot No; Billing Name = the order line's product name
-  // (Board / linked DO) or the catalogue billing name (plain New Outward,
-  // unless typed). From the Board / a linked DO, the lot's product picks the
+  // this Warehouse + Lot No; Billing Name = the catalogue billing name (Board
+  // / linked DO: only when the lot's product matches the row's line, else the
+  // order line's product name — 2026-11-04; plain New Outward: unless typed).
+  // From the Board / a linked DO, the lot's product picks the
   // row's order line (pickOrderLine: a picked line wins, then lines other rows
   // don't use; a line already on another row still matches — 2+ lots of one
   // product are fine).
@@ -922,17 +923,19 @@ function OutwardForm() {
   // may be on several rows (one per lot), so a line other rows use still
   // matches, and a line the user picked with "+ Add product" (pin) wins when
   // it matches. 2026-11-04: otherwise a line with barrels left after the other
-  // rows of this DO wins (orderLineSeqForLot) — never one with 0 left while
+  // rows of this DO wins (orderLineForRow) — never one with 0 left while
   // another matching line has some (ORD-2026-869, two "Camphor Powder" lines).
-  const pickOrderLine = (l: Line, productBilling: string, othersCount: (o: Line) => boolean): number | null => {
-    if (!rowsOrder) return null;
-    if (l.pin && orderLinesForLot(rowsOrder, productBilling).some(m => m.seq === l.pin!.seq)) return l.pin.seq;
+  // 2026-11-04 (user decision): a product NOT in the order is allowed — the
+  // row keeps its "+ Add product" line, else its own line, else the default
+  // (orderLineForRow); `matched` = the product matched that line.
+  const pickOrderLine = (l: Line, productBilling: string, othersCount: (o: Line) => boolean): { seq: number | null; matched: boolean } => {
+    if (!rowsOrder) return { seq: null, matched: false };
     const onDo = new Map<number, number>();
     for (const o of linesRef.current) {
       if (o.key === l.key || !othersCount(o) || o.orderLineSeq == null) continue;
       onDo.set(o.orderLineSeq, (onDo.get(o.orderLineSeq) ?? 0) + (parseNum(o.numArticles) ?? 0));
     }
-    return orderLineSeqForLot(rowsOrder, orderEntries, productBilling, l.orderLineSeq, onDo);
+    return orderLineForRow(rowsOrder, orderEntries, productBilling, { pinSeq: l.pin?.seq ?? null, currentSeq: l.orderLineSeq }, onDo);
   };
 
   const fillFromLot = (l: Line, lot: LotDetails, key: string): Line => {
@@ -940,9 +943,13 @@ function OutwardForm() {
     let orderLineSeq = l.orderLineSeq;
     let billingName = l.billingName;
     if (rowsOrder) {
-      const seq = pickOrderLine(l, lotBillingName(lot.productName, billingNameForProductName), o => o.lotFilled);
-      orderLineSeq = seq;
-      if (seq !== null) billingName = (rowsOrder.items.find(i => i.seq === seq)?.desc || '').trim();
+      // 2026-11-04: Billing Name = the lot's catalogue billing name (a lot not
+      // in the catalogue: its own product name) when the lot's product matches
+      // the line, else the ORDER LINE's product name. Still editable.
+      const lotBilling = lotBillingName(lot.productName, billingNameForProductName);
+      const pick = pickOrderLine(l, lotBilling, o => o.lotFilled);
+      orderLineSeq = pick.seq;
+      billingName = billingNameForRow(rowsOrder, pick, lotBilling, billingName);
     } else if (!l.billingTyped) {
       billingName = billingNameForProductName(lot.productName);
     }
@@ -1020,7 +1027,8 @@ function OutwardForm() {
   // line (same matcher and tie-break as a lot's product, fillFromLot).
   const onBillingChange = (l: Line, billingName: string) => {
     if (isNoStockWarehouse(header.warehouse) && rowsOrder) {
-      const orderLineSeq = billingName.trim() ? pickOrderLine(l, billingName, () => true) : null;
+      // 2026-11-04: a Billing Name not in the order keeps the row's line.
+      const orderLineSeq = pickOrderLine(l, billingName, () => true).seq;
       updateLine(l.key, { billingName, billingTyped: true, orderLineSeq, lotTouched: true });
       return;
     }
@@ -1065,7 +1073,8 @@ function OutwardForm() {
     orderOverMessage(barrels, orderNeeds, rowsOrder && l.orderLineSeq != null ? orderLineLabel(rowsOrder, l.orderLineSeq) : 'this product', lineOnDoOf(l));
   // 2026-11-03 (Wada): no lot, so a row's order line comes from its typed
   // Billing Name — same matcher as a lot's product (orderLinesForLot), and the
-  // order rules (in the order, one lot per row, line's barrels ≤ remaining) apply.
+  // order rules (one lot per row, line's barrels ≤ remaining) apply.
+  // 2026-11-04 (user decision): a Billing Name not in the order is allowed.
   const wadaRowInfo = (l: Line): RowInfo => {
     const barrels = parseNum(l.numArticles);
     const total = lineTotal(l);
@@ -1073,12 +1082,6 @@ function OutwardForm() {
     const orderNeeds = item ? (orderRemaining.get(item.seq) ?? 0) : null;
     const orderPacking = item ? String(item.packing ?? '').trim() : '';
     const billing = l.billingName.trim();
-    const lineMismatch = (() => {
-      if (!rowsOrder || !l.lotTouched || !billing) return '';
-      if (item && orderLinesForLot(rowsOrder, billing).some(m => m.seq === item.seq)) return '';
-      const has = rowsOrder.items.map(i => (i.desc || '').trim()).filter(Boolean).join(', ');
-      return `${billing} is not in order ${rowsOrder.soNumber || rowsOrder.id}. Order has: ${has}.`;
-    })();
     const dupLot = !!l.lotNo.trim() && lines.some(o => o.key !== l.key && sameLot(o.lotNo, l.lotNo));
     let problem = '';
     let problemSoft = false;
@@ -1086,7 +1089,6 @@ function OutwardForm() {
     if (!l.lotNo.trim()) { problem = 'Enter a Lot No.'; problemSoft = true; problemField = 'lot'; }
     else if (!l.productName.trim()) { problem = 'Enter a Product Name.'; problemSoft = true; problemField = 'product'; }
     else if (!billing) { problem = 'Enter a Billing Name.'; problemSoft = true; problemField = 'billing'; }
-    else if (lineMismatch) { problem = lineMismatch; problemField = 'billing'; }
     else if (dupLot) { problem = `Lot ${l.lotNo.trim()} is on another row of this DO — use one row per lot.`; problemField = 'lot'; }
     else if (barrels === null || barrels <= 0) { problem = 'Enter No of Barrels.'; problemSoft = true; problemField = 'barrels'; }
     else if (parseNum(l.packing) === null) { problem = l.packing.trim() ? 'Packing must be a number.' : 'Enter Packing.'; problemSoft = !l.packing.trim(); problemField = 'packing'; }
@@ -1111,16 +1113,9 @@ function OutwardForm() {
       const a = parseNum(orderPacking), b = parseNum(lot.packing);
       return a !== null && b !== null ? a !== b : orderPacking.toLowerCase() !== lot.packing.trim().toLowerCase();
     })();
-    // 25231ee: the lot's product must be in the order (Board / linked DO; a
-    // saved row is only checked once its lot is changed).
-    const lineMismatch = (() => {
-      if (!rowsOrder || !lot || !l.lotTouched) return '';
-      const matches = orderLinesForLot(rowsOrder, lotBillingName(lot.productName, billingNameForProductName));
-      if (item && matches.some(m => m.seq === item.seq)) return '';
-      const lotText = `Lot ${lot.lotNo} is ${lot.productName}`;
-      const has = rowsOrder.items.map(i => (i.desc || '').trim()).filter(Boolean).join(', ');
-      return `${lotText} — this product is not in order ${rowsOrder.soNumber || rowsOrder.id}. Order has: ${has}.`;
-    })();
+    // 2026-11-04 (user decision): the 25231ee "lot's product must be in the
+    // order" block is removed — another product may be sent from a lot on
+    // purpose; the row keeps its order line (pickOrderLine) and its checks.
     const dupLot = !!lot && lines.some(o => o.key !== l.key && sameLot(o.lotNo, l.lotNo));
     // 2026-11-03 (UI cleanup, user's rule): no text under the row any more.
     // The problem's box (problemField) gets a red border and the message as
@@ -1136,7 +1131,6 @@ function OutwardForm() {
       problemField = 'lot';
       problem = !l.lotNo.trim() ? 'Enter a Lot No.' : !lookedUp ? 'Looking up lot…' : `Lot ${l.lotNo.trim()} is not in Stock Summary.`;
     }
-    else if (lineMismatch) { problem = lineMismatch; problemField = 'lot'; }
     else if (dupLot) { problem = `Lot ${lot.lotNo} is on another row of this DO — use one row per lot.`; problemField = 'lot'; }
     else if (parseNum(l.packing) === null) { problem = `Packing missing for lot ${lot.lotNo} — update the lot's packing in Stock Summary first.`; problemField = 'packing'; }
     else if (maxBarrels !== null && maxBarrels <= 0) { problem = `No stock found for this lot at ${header.warehouse}.`; problemField = 'lot'; }
