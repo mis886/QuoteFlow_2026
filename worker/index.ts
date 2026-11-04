@@ -24,7 +24,7 @@
 
 const SUPABASE_URL = 'https://nheujyknkqeimgpdfyiw.supabase.co';
 const SENDER_EMAIL = 'mis@himalayaterpene.com';     // mail goes out from this Gmail
-const MD_EMAIL = 'mis@himalayaterpene.com';          // TEST: report goes to mis@ only (change back to shishir@ after testing)
+const MD_EMAIL = 'pc@himalayaterpene.com';           // TEST: report goes to pc@ only (change back to shishir@ after testing)
 const CC_EMAIL = '';                                // e.g. 'mis@himalayaterpene.com'
 const TZ = 'Asia/Kolkata';
 
