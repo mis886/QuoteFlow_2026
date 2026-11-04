@@ -494,7 +494,8 @@ export default function FollowUps() {
   const handleMarkWon = async (quoteId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const quote = data.quotes.find(q => q.id === quoteId);
-    const hasPO = (quote?.attachments?.length ?? 0) > 0;
+    // 2026-11-04: COA / GC sent with the quotation email are not a PO.
+    const hasPO = (quote?.attachments ?? []).some(a => a.docType !== 'COA' && a.docType !== 'GC');
     if (!hasPO) {
       const proceed = confirm(
         '⚠️ No PO attachment found for this quote.\n\nPlease upload the Purchase Order before marking as Won.\n\nClick OK to open the attachments panel, or Cancel to go back.'

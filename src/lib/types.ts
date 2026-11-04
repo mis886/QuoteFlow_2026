@@ -99,6 +99,7 @@ export interface Attachment {
   fileName: string;
   storagePath: string;
   uploadedAt: string;
+  docType?: string;   // AttachmentModal's type ('PO Doc', 'COA', …); 'COA' / 'GC' = from coa_document
 }
 
 export interface Enquiry {

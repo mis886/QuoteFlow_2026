@@ -429,7 +429,8 @@ function Card({ card, onAdvance, onBack, onOpen }: { card: BoardCard; onAdvance:
 function CloseDialog({ card, onCancel, onPick }: { card: BoardCard; onCancel: () => void; onPick: (o: PipelineOutcome) => void }) {
   const { openAttachmentModal } = useAppStore();
   const outcomes: PipelineOutcome[] = ['Won', 'Lost', 'Rejected', 'Other'];
-  const hasPO = (card.quote?.attachments?.length ?? 0) > 0;
+  // 2026-11-04: COA / GC sent with the quotation email are attachments too — not a PO.
+  const hasPO = (card.quote?.attachments ?? []).some(a => a.docType !== 'COA' && a.docType !== 'GC');
 
   const handlePick = (o: PipelineOutcome) => {
     if (o === 'Won' && !hasPO) {
@@ -607,7 +608,7 @@ function CardDrawer({ card, onClose, onCreateQuote }: { card: BoardCard; onClose
               <button
                 type="button"
                 onClick={() => {
-                  const hasPO = (card.quote?.attachments?.length ?? 0) > 0;
+                  const hasPO = (card.quote?.attachments ?? []).some(a => a.docType !== 'COA' && a.docType !== 'GC');
                   if (!hasPO) {
                     openAttachmentModal('quote', card.quote!.id);
                     onClose();

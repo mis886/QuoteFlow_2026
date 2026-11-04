@@ -624,9 +624,12 @@ export function NewQuote() {
       // this, qData — and therefore props.doc passed to SendEmailModal —
       // silently carried no attachments, so the COA Attachments section
       // never rendered even when the quote genuinely had docs attached.
-      attachments: existing?.attachments ?? [],
+      // 2026-11-04: right after "Email to Client", the COA / GC just sent are
+      // added (SendEmailModal's onSent) — `existing` here can be older.
+      attachments: sentAttachmentsRef.current ?? existing?.attachments ?? [],
     };
   };
+  const sentAttachmentsRef = useRef<Quote['attachments'] | null>(null);
 
   // Persist the quote (without PDF). Returns the qData used, so callers can
   // reuse it for the PDF without rebuilding.
@@ -1610,8 +1613,10 @@ export function NewQuote() {
           settings={data.settings}
           defaultSignatory={data.signatories.find((s: any) => s.is_default)}
           onClose={() => setShowEmailModal(false)}
-          onSent={async () => {
+          onSent={async (sent) => {
             setShowEmailModal(false);
+            // Keep the COA / GC that went with the email on the quote.
+            if (sent?.attachments) sentAttachmentsRef.current = sent.attachments;
             // Emailing via the integrated module counts as "Sent" — flip Draft → Sent
             // (don't downgrade Won/Lost/Parked). Pass it explicitly so the save
             // doesn't race the state update.

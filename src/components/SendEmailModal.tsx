@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
-import { X, Send, Paperclip, Mail, Loader2 } from 'lucide-react';
-import { Quote, Order, StockMovement, OutwardDO, DispatchEntry, Customer, AppSettings, AuthorizedSignatory } from '../lib/types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { X, Send, Paperclip, Mail, Loader2, Search, Upload } from 'lucide-react';
+import { Quote, Order, StockMovement, OutwardDO, DispatchEntry, Customer, AppSettings, AuthorizedSignatory, Attachment } from '../lib/types';
 import { Button } from './ui';
-import { generateQuotePDF, generateOrderPDF, generateOutwardPDF } from '../lib/pdfGenerator';
+import { generateOrderPDF, generateOutwardPDF } from '../lib/pdfGenerator';
 import { sendViaGmailAsUser } from '../lib/gmail';
 import { resolveCoaStorageUrl } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { outwardTransporterName } from '../lib/utils';
+import { outwardTransporterName, fmtDate } from '../lib/utils';
+import { buildQuoteEmailHtml } from '../lib/quoteEmailHtml';
+import { CoaDocRow, coaDocumentsForProduct, searchCoaDocuments, uploadCoaDocument } from '../lib/coaDocuments';
 
 const SHISHIR = 'shishir@himalayaterpene.com';
 const BHIWANDI_EMAIL = 'bhiwandi@himalayaterpene.com';
@@ -97,8 +99,18 @@ interface BaseProps {
   settings: AppSettings | null;
   defaultSignatory?: AuthorizedSignatory;
   onClose: () => void;
-  onSent?: () => void;
+  // 2026-11-04: quote mode passes the quote's attachments with the COA / GC
+  // documents just sent added, for the caller's save (NewQuote) to keep.
+  onSent?: (sent?: { attachments?: Attachment[] }) => void;
 }
+
+// 2026-11-04: a COA / GC document as the quote window lists it.
+type CoaItem = { id: string; docType: string; productName: string; lotNo: string; fileName: string; storagePath: string; createdAt: string };
+const coaItem = (r: CoaDocRow): CoaItem => ({
+  id: r.id, docType: (r.doc_type || 'COA').toUpperCase(), productName: r.product_name || '', lotNo: r.lot_no || '',
+  fileName: r.file_name, storagePath: r.storage_path, createdAt: r.created_at,
+});
+const isCoaGc = (a: Attachment) => a.docType === 'COA' || a.docType === 'GC';
 interface QuoteProps extends BaseProps { mode: 'quote'; doc: Quote; }
 interface OrderProps extends BaseProps { mode: 'order'; doc: Order; relatedQuote?: Quote; }
 interface OutwardProps extends BaseProps { mode: 'outward'; doc: OutwardDO; }   // 2026-11-03: the whole DO — every product line goes into the ONE PDF
@@ -190,9 +202,6 @@ export function SendEmailModal(props: Props) {
     : props.doc.id;
   const pdfName = isQuote ? `${docId}.pdf` : isOutward ? `${docId}_DC.pdf` : isDispatch ? '' : `${docId}_PI.pdf`;
 
-  // Orders/Outward don't have a DB `attachments` column, so this is
-  // quote-only — (props.doc as any).attachments is simply undefined otherwise.
-  const coaGcDocs = isQuote ? ((props.doc as any).attachments ?? []).filter((a: any) => a.docType === 'COA') : [];
 
   // Dispatch's already-uploaded documents, passed in by NewDispatchEntry.tsx
   // — this is the whole attachment list for a dispatch email (no PDF, no
@@ -276,9 +285,100 @@ export function SendEmailModal(props: Props) {
   const [body, setBody]       = useState(bhiwandiText?.body ?? defaultBody);
   const [toError, setToError] = useState('');
 
-  // COA docs already on this quote — pre-checked by default (opt-out),
-  // matching how CC defaults already work in this file.
-  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(() => new Set(coaGcDocs.map((d: any) => d.id)));
+  // ── Quote mode (2026-11-04): the quotation goes IN the email body (HTML,
+  // quoteEmailHtml.ts) — no PDF — plus the COA / GC documents ticked below.
+  const [extraMessage, setExtraMessage] = useState('');
+  const sigPhone = docAuthPerson?.name ? docAuthPerson.phone
+    : props.settings?.signatory_name ? props.settings.signatory_phone
+    : props.defaultSignatory?.phone;
+  const quoteEmail = useMemo(() => isQuote
+    ? buildQuoteEmailHtml(props.doc as Quote, customer, { name: sigName, designation: sigDesig.trim(), phone: sigPhone || '' }, extraMessage)
+    : null,
+  [isQuote, props.doc, customer, sigName, sigDesig, sigPhone, extraMessage]);
+
+  // COA / GC (coa_document). The ones already sent with this quote (its
+  // attachments) start ticked; nothing else does.
+  const quoteAttachments: Attachment[] = isQuote ? ((props.doc as Quote).attachments ?? []) : [];
+  const [coaKnown, setCoaKnown] = useState<Record<string, CoaItem>>(() => Object.fromEntries(
+    quoteAttachments.filter(isCoaGc).map(a => [a.id, {
+      id: a.id, docType: a.docType || 'COA', productName: '', lotNo: '', fileName: a.fileName, storagePath: a.storagePath, createdAt: a.uploadedAt,
+    }])));
+  const [coaSelected, setCoaSelected] = useState<Set<string>>(() => new Set(quoteAttachments.filter(isCoaGc).map(a => a.id)));
+  const rememberCoa = (rows: CoaDocRow[]) => setCoaKnown(prev => ({ ...prev, ...Object.fromEntries(rows.map(r => [r.id, coaItem(r)])) }));
+  const toggleCoa = (id: string) => setCoaSelected(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  // Each quote product (name as the PDF prints it) → its coa_document rows.
+  const quoteProducts = isQuote
+    ? Array.from(new Set((props.doc as Quote).items.map(i => ((i as any).product_name || i.desc || '').trim()).filter(Boolean)))
+    : [];
+  const quoteProductsKey = quoteProducts.join('\n');
+  const [productMatches, setProductMatches] = useState<Record<string, string[]> | null>(null);
+  const [coaLoadError, setCoaLoadError] = useState('');
+  const [showAllFor, setShowAllFor] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isQuote) return;
+    let live = true;
+    Promise.all(quoteProducts.map(p => coaDocumentsForProduct(p).then(rows => [p, rows] as const))).then(res => {
+      if (!live) return;
+      rememberCoa(res.flatMap(([, rows]) => rows));
+      setProductMatches(Object.fromEntries(res.map(([p, rows]) => [p, rows.map(r => r.id)])));
+    }, err => { if (live) { setCoaLoadError(err?.message || 'Could not load COA / GC documents.'); setProductMatches({}); } });
+    return () => { live = false; };
+  }, [isQuote, quoteProductsKey]);
+  // Search any COA / GC by product, lot no. or file name.
+  const [coaSearch, setCoaSearch] = useState('');
+  const [coaSearchIds, setCoaSearchIds] = useState<string[] | null>(null);
+  const [coaSearching, setCoaSearching] = useState(false);
+  useEffect(() => {
+    if (!isQuote) return;
+    const term = coaSearch.trim();
+    if (!term) { setCoaSearchIds(null); setCoaSearching(false); return; }
+    const controller = new AbortController();
+    setCoaSearching(true);
+    const t = setTimeout(() => {
+      searchCoaDocuments(term, { signal: controller.signal, fileName: true }).then(({ data: rows, error }) => {
+        if (controller.signal.aborted) return;
+        setCoaSearching(false);
+        if (error) { setCoaSearchIds([]); return; }
+        rememberCoa((rows ?? []) as CoaDocRow[]);
+        setCoaSearchIds(((rows ?? []) as CoaDocRow[]).map(r => r.id));
+      });
+    }, 350);
+    return () => { clearTimeout(t); controller.abort(); };
+  }, [isQuote, coaSearch]);
+  // Upload a COA / GC PDF → coa_document (same as NewDispatchEntry), then ticked.
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadType, setUploadType] = useState<'COA' | 'GC'>('COA');
+  const [uploadProduct, setUploadProduct] = useState(quoteProducts[0] || '');
+  const [uploadLot, setUploadLot] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadedIds, setUploadedIds] = useState<string[]>([]);
+  const handleCoaUpload = async () => {
+    setUploadError('');
+    if (!uploadFile) { setUploadError('Choose a PDF file.'); return; }
+    if (!uploadProduct.trim()) { setUploadError('Enter the product.'); return; }
+    setUploading(true);
+    try {
+      const row = await uploadCoaDocument({
+        file: uploadFile, productName: uploadProduct.trim(), lotNo: uploadLot, docType: uploadType,
+        uploadedBy: user?.email ?? senderEmail ?? null, notes: `Quote ${docId}`,
+      });
+      rememberCoa([row]);
+      setUploadedIds(prev => [row.id, ...prev]);
+      setCoaSelected(prev => new Set(prev).add(row.id));
+      setUploadFile(null); setUploadLot(''); setUploadOpen(false);
+    } catch (err: any) {
+      setUploadError(err?.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  };
+  const tickedCoa = [...coaSelected].map(id => coaKnown[id]).filter((d): d is CoaItem => !!d);
 
   // Pre-select other site contacts + default CCs + customer contact email (all removable).
   const docContactEmail = (props.doc as any).email ?? '';
@@ -377,6 +477,29 @@ export function SendEmailModal(props: Props) {
     try {
       const attachments: { base64: string; fileName: string; mimeType: string }[] = [];
 
+      if (isQuote) {
+        // 2026-11-04: no quotation PDF — the quotation is the HTML body. Only
+        // the ticked COA / GC files are attached, each under its own file
+        // name (none ticked → no attachment).
+        for (const d of tickedCoa) {
+          const { base64, mimeType } = await urlToBase64(resolveCoaStorageUrl(d.storagePath));
+          attachments.push({ base64, fileName: d.fileName, mimeType });
+        }
+        await sendViaGmailAsUser({ to: toRecipients, cc: sendCc, subject, body: quoteEmail!.text, html: quoteEmail!.html, attachments }, senderEmail);
+        // Record which COA / GC went with the quote (pre-ticked next time).
+        const have = new Set(quoteAttachments.map(a => a.id));
+        const sentAttachments: Attachment[] = [
+          ...quoteAttachments,
+          ...tickedCoa.filter(d => !have.has(d.id)).map(d => ({
+            id: d.id, docType: d.docType, fileName: d.fileName,
+            storagePath: resolveCoaStorageUrl(d.storagePath), uploadedAt: d.createdAt,
+          } as Attachment)),
+        ];
+        setStatus('sent');
+        setTimeout(() => { onSent?.({ attachments: sentAttachments }); onClose(); }, 1500);
+        return;
+      }
+
       if (isDispatch) {
         // No PDF is generated for a dispatch email — every attachment is an
         // already-uploaded document living on this entry (Documents
@@ -387,9 +510,7 @@ export function SendEmailModal(props: Props) {
         }
       } else {
         let doc: any;
-        if (isQuote) {
-          doc = generateQuotePDF(props.doc as Quote, customer, props.settings, props.defaultSignatory, false);
-        } else if (isOutward) {
+        if (isOutward) {
           // Outward has no unitId/company-unit concept on the form — always
           // falls back to whichever unit is marked default, same as Quote/
           // Order's own fallback when their unitId is unset. generateOutwardPDF
@@ -409,16 +530,6 @@ export function SendEmailModal(props: Props) {
         const dataUri: string = doc.output('datauristring');
         const pdfBase64 = dataUri.split(',')[1];
         attachments.push({ base64: pdfBase64, fileName: pdfName, mimeType: 'application/pdf' });
-
-        for (const d of coaGcDocs.filter((d: any) => selectedDocs.has(d.id))) {
-          // Re-resolve at send time (not just at attach time) so a quote
-          // whose COA was attached before this fix — storing a bare
-          // bucket-relative path rather than a full URL — still gets a
-          // correct, fetchable URL here instead of one that resolves against
-          // this app's own origin. See resolveCoaStorageUrl.
-          const { base64, mimeType } = await urlToBase64(resolveCoaStorageUrl(d.storagePath));
-          attachments.push({ base64, fileName: d.fileName, mimeType });
-        }
       }
 
       await sendViaGmailAsUser({ to: toRecipients, cc: sendCc, subject, body, attachments, poLink: poSubmitLink || undefined }, senderEmail);
@@ -438,7 +549,7 @@ export function SendEmailModal(props: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-blk/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-[4px] shadow-2xl w-full max-w-[580px] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+      <div className={`bg-white rounded-[4px] shadow-2xl w-full ${isQuote ? 'max-w-[760px]' : 'max-w-[580px]'} overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]`}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-g200 bg-g50 flex-shrink-0">
@@ -449,7 +560,9 @@ export function SendEmailModal(props: Props) {
                 Email <em className="italic text-red-mrt">{isQuote ? 'Quotation' : isOutward ? 'Delivery Order' : bhiwandi ? 'Invoice to Bhiwandi' : isDispatch ? 'Dispatch Documents' : 'Proforma Invoice'}</em>
               </h2>
               <p className="text-[10.5px] text-g400 mt-[1px]">
-                {isDispatch ? 'Attaches uploaded documents · Sends via Gmail' : `Generates PDF · Sends via Gmail · ${isQuote ? 'Marks quote Sent' : isOutward ? 'Confirms dispatch' : 'Confirms delivery'}`}
+                {isDispatch ? 'Attaches uploaded documents · Sends via Gmail'
+                  : isQuote ? 'Quotation in email body · Sends via Gmail · Marks quote Sent'
+                  : `Generates PDF · Sends via Gmail · ${isOutward ? 'Confirms dispatch' : 'Confirms delivery'}`}
               </p>
             </div>
           </div>
@@ -464,7 +577,11 @@ export function SendEmailModal(props: Props) {
               <svg viewBox="0 0 24 24" width="22" height="22" stroke="#22c55e" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>
             </div>
             <div className="font-semibold text-[15px] text-blk">Email sent successfully</div>
-            <div className="text-[12px] text-g400">{isDispatch ? 'Documents' : 'PDF'} attached and delivered to {toDisplay}</div>
+            <div className="text-[12px] text-g400">
+              {isQuote
+                ? `Quotation${tickedCoa.length ? ` + ${tickedCoa.length} COA / GC document${tickedCoa.length === 1 ? '' : 's'}` : ''} delivered to ${toDisplay}`
+                : <>{isDispatch ? 'Documents' : 'PDF'} attached and delivered to {toDisplay}</>}
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSend} className="flex flex-col flex-1 min-h-0">
@@ -574,14 +691,141 @@ export function SendEmailModal(props: Props) {
             </div>
 
             {/* Body */}
-            <div>
-              <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1">Message Body</label>
-              <textarea title="Message body" placeholder="Message body" value={body} onChange={e => setBody(e.target.value)}
-                className="w-full min-h-[110px] p-3 bg-g50 border border-g300 rounded-[3px] font-sans text-[12.5px] leading-relaxed text-blk focus:border-red-mrt focus:ring-4 focus:ring-red-lt outline-none resize-none" />
-            </div>
+            {isQuote ? (
+              <>
+                {/* 2026-11-04: the quotation is the email body — read-only
+                    preview of exactly what is sent (sandboxed: no scripts). */}
+                <div>
+                  <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1">Additional message <span className="normal-case font-normal text-g400">(optional — shown after the intro)</span></label>
+                  <textarea title="Additional message" placeholder="Optional message" value={extraMessage} onChange={e => setExtraMessage(e.target.value)}
+                    className="w-full min-h-[60px] p-3 bg-g50 border border-g300 rounded-[3px] font-sans text-[12.5px] leading-relaxed text-blk focus:border-red-mrt focus:ring-4 focus:ring-red-lt outline-none resize-y" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1">Email preview</label>
+                  <iframe title="Quotation email preview" sandbox="" srcDoc={quoteEmail?.html}
+                    className="w-full h-[420px] bg-white border border-g300 rounded-[3px]" />
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1">Message Body</label>
+                <textarea title="Message body" placeholder="Message body" value={body} onChange={e => setBody(e.target.value)}
+                  className="w-full min-h-[110px] p-3 bg-g50 border border-g300 rounded-[3px] font-sans text-[12.5px] leading-relaxed text-blk focus:border-red-mrt focus:ring-4 focus:ring-red-lt outline-none resize-none" />
+              </div>
+            )}
+
+            {/* 2026-11-04: Attach COA / GC (quote only) — each quote product's
+                coa_document rows (same name, case / spaces ignored), a search
+                over every COA / GC, and an upload. Nothing ticked by default
+                except the ones already sent with this quote. */}
+            {isQuote && (() => {
+              const shown = new Set<string>();
+              const docRow = (d: CoaItem) => (
+                <label key={d.id} className="flex items-center gap-2 bg-white border border-g200 rounded-[3px] p-[6px_10px] cursor-pointer hover:border-g400 transition-colors">
+                  <input type="checkbox" checked={coaSelected.has(d.id)} onChange={() => toggleCoa(d.id)} className="w-3.5 h-3.5 accent-red-mrt shrink-0" />
+                  <span className={`text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${d.docType === 'GC' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>{d.docType}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[11.5px] font-medium text-blk truncate">{d.fileName}</span>
+                    <span className="block text-[10px] text-g500 truncate">
+                      {[d.productName || '—', d.lotNo ? `Lot ${d.lotNo}` : '', d.createdAt ? fmtDate(d.createdAt.slice(0, 10)) : ''].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                </label>
+              );
+              const list = (ids: string[], limit?: number) => ids.map(id => coaKnown[id]).filter((d): d is CoaItem => !!d)
+                .slice(0, limit).map(d => { shown.add(d.id); return docRow(d); });
+              const sentBefore = quoteAttachments.filter(isCoaGc).map(a => a.id);
+              return (
+                <div>
+                  <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1.5">Attach COA / GC</label>
+                  <div className="flex flex-col gap-2.5 bg-g50 border border-g200 rounded-[3px] p-3">
+                    {productMatches === null && <div className="text-[11px] text-g400 flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />Finding COA / GC for this quote's products…</div>}
+                    {coaLoadError && <div className="text-[11px] text-red-mrt font-medium">{coaLoadError}</div>}
+                    {productMatches && quoteProducts.map(p => {
+                      const ids = productMatches[p] ?? [];
+                      const all = showAllFor.has(p);
+                      return (
+                        <div key={p}>
+                          <div className="text-[11px] font-semibold text-g700 mb-1">{p} <span className="font-normal text-g400">· {ids.length ? `${ids.length} found` : 'none found — use the search below'}</span></div>
+                          <div className="flex flex-col gap-1">{list(ids, all ? undefined : 5)}</div>
+                          {ids.length > 5 && (
+                            <button type="button" className="mt-1 text-[10.5px] text-blue-700 hover:underline"
+                              onClick={() => setShowAllFor(prev => { const n = new Set(prev); all ? n.delete(p) : n.add(p); return n; })}>
+                              {all ? 'Show fewer' : `Show all ${ids.length}`}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {(() => {
+                      const ids = [...uploadedIds, ...sentBefore].filter((id, i, a) => a.indexOf(id) === i && !shown.has(id));
+                      return ids.length > 0 && (
+                        <div>
+                          <div className="text-[11px] font-semibold text-g700 mb-1">Uploaded now / sent before with this quote</div>
+                          <div className="flex flex-col gap-1">{list(ids)}</div>
+                        </div>
+                      );
+                    })()}
+                    <div>
+                      <div className="relative">
+                        <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-g400 pointer-events-none" />
+                        <input type="text" value={coaSearch} onChange={e => setCoaSearch(e.target.value)}
+                          placeholder="Search any COA / GC by product, lot no. or file name…"
+                          className="w-full h-8 pl-7 pr-3 bg-white border border-g300 rounded-[3px] text-[11.5px] text-blk focus:border-red-mrt focus:ring-4 focus:ring-red-lt outline-none" />
+                      </div>
+                      {coaSearching && <div className="mt-1 text-[10.5px] text-g400">Searching…</div>}
+                      {!coaSearching && coaSearchIds && (
+                        <div className="mt-1.5 flex flex-col gap-1 max-h-[180px] overflow-y-auto">
+                          {coaSearchIds.length ? list(coaSearchIds) : <div className="text-[10.5px] text-g400">Nothing found.</div>}
+                        </div>
+                      )}
+                    </div>
+                    {uploadOpen ? (
+                      <div className="flex flex-col gap-2 bg-white border border-g200 rounded-[3px] p-2.5">
+                        <div className="flex gap-2">
+                          <select title="Document type" value={uploadType} onChange={e => setUploadType(e.target.value as 'COA' | 'GC')}
+                            className="h-8 px-2 bg-white border border-g300 rounded-[3px] text-[11.5px]">
+                            <option value="COA">COA</option>
+                            <option value="GC">GC</option>
+                          </select>
+                          <input type="text" list="quote-coa-products" value={uploadProduct} onChange={e => setUploadProduct(e.target.value)} placeholder="Product"
+                            className="flex-1 h-8 px-2 bg-white border border-g300 rounded-[3px] text-[11.5px]" />
+                          <datalist id="quote-coa-products">{quoteProducts.map(p => <option key={p} value={p} />)}</datalist>
+                          <input type="text" value={uploadLot} onChange={e => setUploadLot(e.target.value)} placeholder="Lot no. (optional)"
+                            className="w-[120px] h-8 px-2 bg-white border border-g300 rounded-[3px] text-[11.5px]" />
+                        </div>
+                        <input type="file" accept="application/pdf,.pdf" title="COA / GC PDF" onChange={e => setUploadFile(e.target.files?.[0] ?? null)} className="text-[11px]" />
+                        {uploadError && <div className="text-[10.5px] text-red-mrt font-medium">{uploadError}</div>}
+                        <div className="flex gap-2 justify-end">
+                          <Button type="button" size="sm" variant="secondary" onClick={() => { setUploadOpen(false); setUploadError(''); }} disabled={uploading}>Cancel</Button>
+                          <Button type="button" size="sm" variant="dark" onClick={handleCoaUpload} disabled={uploading}>
+                            {uploading ? <><Loader2 size={11} className="animate-spin" />Uploading…</> : 'Upload & attach'}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <Button type="button" size="sm" variant="secondary" onClick={() => setUploadOpen(true)}><Upload size={11} />Upload COA / GC</Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Attachment */}
-            {!isDispatch && (
+            {isQuote && (
+              <div className="bg-blue-50 border border-blue-100 rounded-[3px] p-[9px_13px] flex items-start gap-2.5">
+                <Paperclip size={13} className="text-blue-500 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <div className="text-[11.5px] font-semibold text-blue-900">
+                    {tickedCoa.length ? `${tickedCoa.length} document${tickedCoa.length === 1 ? '' : 's'} will be attached` : 'No attachment — the quotation is in the email body'}
+                  </div>
+                  {tickedCoa.map(d => <div key={d.id} className="text-[10.5px] text-blue-700 truncate">{d.docType} · {d.fileName}</div>)}
+                </div>
+              </div>
+            )}
+            {!isDispatch && !isQuote && (
               <div className="bg-blue-50 border border-blue-100 rounded-[3px] p-[9px_13px] flex items-center gap-2.5">
                 <Paperclip size={13} className="text-blue-500 shrink-0" />
                 <div>
@@ -615,30 +859,6 @@ export function SendEmailModal(props: Props) {
                       : 'No documents are attached to this entry yet. Upload and Save the Documents Attachment fields above, then reopen Email to Client.'}
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* COA attachments already on this quote — togglable, pre-checked */}
-            {coaGcDocs.length > 0 && (
-              <div>
-                <label className="block text-[10px] font-bold text-g500 tracking-[0.5px] uppercase mb-1.5">COA Attachments</label>
-                <div className="flex flex-col gap-1.5">
-                  {coaGcDocs.map((d: any) => (
-                    <label key={d.id} className="flex items-center gap-2.5 bg-g50 border border-g200 rounded-[3px] p-[8px_12px] cursor-pointer hover:border-g400 transition-colors">
-                      <input
-                        type="checkbox" checked={selectedDocs.has(d.id)}
-                        onChange={() => setSelectedDocs(prev => {
-                          const next = new Set(prev);
-                          next.has(d.id) ? next.delete(d.id) : next.add(d.id);
-                          return next;
-                        })}
-                        className="w-3.5 h-3.5 accent-red-mrt shrink-0"
-                      />
-                      <span className={`text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${d.docType === 'COA' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>{d.docType}</span>
-                      <span className="text-[11.5px] font-medium text-blk truncate">{d.fileName}</span>
-                    </label>
-                  ))}
-                </div>
               </div>
             )}
 

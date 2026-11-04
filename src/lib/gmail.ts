@@ -220,6 +220,76 @@ function buildHtmlBody(plainBody: string, poLink?: string): string {
 </body></html>`;
 }
 
+// 2026-11-04: a ready-made HTML body (the quotation email — `html` on the
+// payload): multipart/alternative (text/plain = `body`, text/html = `html`,
+// both UTF-8), inside multipart/mixed only when there are attachments.
+// Payloads without `html` still go through buildMimeMessage below, unchanged.
+export function buildHtmlMimeMessage(opts: {
+  to: string; cc: string; subject: string; body: string; html: string; attachments: Attachment[];
+}): string {
+  const { to, cc, subject, body, html, attachments } = opts;
+  const outerBoundary = `mrt_${Date.now()}`;
+  const altBoundary = `alt_${Date.now() + 1}`;
+  const nl = '\r\n';
+  const mixed = attachments.length > 0;
+
+  const headers = [
+    `To: ${to}`,
+    cc ? `Cc: ${cc}` : '',
+    `Subject: =?UTF-8?B?${utf8ToBase64(subject)}?=`,
+    'MIME-Version: 1.0',
+    mixed
+      ? `Content-Type: multipart/mixed; boundary="${outerBoundary}"`
+      : `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+  ].filter(Boolean).join(nl);
+
+  const alternatives = [
+    `--${altBoundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    utf8ToBase64(body),
+    '',
+    `--${altBoundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    utf8ToBase64(html),
+    '',
+    `--${altBoundary}--`,
+  ].join(nl);
+
+  let raw: string;
+  if (!mixed) {
+    raw = `${headers}${nl}${nl}${alternatives}`;
+  } else {
+    const attachParts = attachments.map(a => {
+      // RFC 2231 name for non-ASCII / quoted file names; plain ASCII as before.
+      const ascii = /^[\x20-\x7e]*$/.test(a.fileName) && !a.fileName.includes('"');
+      const nameParam = ascii ? `name="${a.fileName}"` : `name*=UTF-8''${encodeURIComponent(a.fileName)}`;
+      const fileParam = ascii ? `filename="${a.fileName}"` : `filename*=UTF-8''${encodeURIComponent(a.fileName)}`;
+      return [
+        `--${outerBoundary}`,
+        `Content-Type: ${a.mimeType}; ${nameParam}`,
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; ${fileParam}`,
+        '',
+        a.base64,
+      ].join(nl);
+    }).join(nl);
+    raw = [
+      headers, '',
+      `--${outerBoundary}`,
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+      '',
+      alternatives,
+      attachParts,
+      `--${outerBoundary}--`,
+    ].join(nl);
+  }
+  return utf8ToBase64(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 function buildMimeMessage(opts: {
   to: string; cc: string; subject: string; body: string;
   attachments: Attachment[]; poLink?: string;
@@ -276,6 +346,9 @@ export interface GmailSendPayload {
   body: string;
   attachments: Attachment[];
   poLink?: string;
+  // 2026-11-04: a complete HTML body (quotation email). `body` is then its
+  // plain-text version. Without it the email is built exactly as before.
+  html?: string;
 }
 
 export async function sendViaGmail(payload: GmailSendPayload): Promise<void> {
@@ -299,7 +372,9 @@ export async function sendViaGmail(payload: GmailSendPayload): Promise<void> {
 export async function sendViaGmailAsUser(payload: GmailSendPayload, senderEmail: string): Promise<void> {
   if (!senderEmail) throw new Error('Sender email is required to send email.');
   const accessToken = await getAccessTokenForUser(senderEmail);
-  const raw = buildMimeMessage(payload);
+  const raw = payload.html
+    ? buildHtmlMimeMessage({ ...payload, html: payload.html })
+    : buildMimeMessage(payload);
 
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',

@@ -10,12 +10,12 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { Upload, ExternalLink, Loader2, Search, X, Mail, MessageCircle } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
-import { fetchAllRows } from '../lib/fetchAll';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
 import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry, needsBhiwandiEmail, orderFulfillmentFor, readyForNewEntry, STEP11_WHATSAPP_LABEL, showStep11WhatsApp, step11WhatsAppBlock } from '../lib/dispatchFlow';
 import { autoCompleteEntrySteps, loadEntryStepRecords, loadOrderStepRecords, markEntryDocsSentWhatsApp } from '../lib/dispatchEntrySteps';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { searchCoaDocuments, uploadCoaDocument } from '../lib/coaDocuments';
 import { STEP_BUTTONS_LOCKED_TIP } from '../components/DispatchBoard';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
@@ -331,11 +331,8 @@ export function NewDispatchEntry() {
   useEffect(() => {
     const controller = new AbortController();
     setCoaSearchLoading(true);
-    const query = () => supabase.from('coa_document').select('*').order('created_at', { ascending: false }).order('id').abortSignal(controller.signal);
-    const load: PromiseLike<{ data: any[] | null; error: any }> = coaSearchDebounced
-      ? fetchAllRows(() => query().or(`product_name.ilike.%${coaSearchDebounced}%,lot_no.ilike.%${coaSearchDebounced}%`))
-      : query().limit(20);
-    load.then(({ data: rows, error }) => {
+    // 2026-11-04: the shared helper (lib/coaDocuments.ts) — same query as before.
+    searchCoaDocuments(coaSearchDebounced, { signal: controller.signal, limit: 20 }).then(({ data: rows, error }) => {
       if (controller.signal.aborted) return;
       if (error) { console.error(error); setCoaResults([]); setCoaSearchLoading(false); return; }
       setCoaResults(rows ?? []);
@@ -361,28 +358,16 @@ export function NewDispatchEntry() {
     if (!newCoaFile) { setCoaUploadError('Choose a file to upload.'); return; }
     setCoaUploading(true);
     try {
-      const ext = newCoaFile.name.split('.').pop() || 'bin';
       // No single "product name" field applies to a dispatch (an order can
       // carry several line items) — fall back through the first line item's
       // product, then the customer name, so the shared library still gets a
       // meaningful, searchable label instead of a blank one.
       const coaProductName = (items[0]?.desc || selectedOrder?.cust || existingEntryId || selectedOrderId || 'Dispatch').trim();
-      const safeProductName = coaProductName.replace(/[^a-zA-Z0-9]/g, '_');
-      const path = `COA/${safeProductName}_${Date.now()}.${ext}`;
-      const { data: url, error: uploadError } = await uploadPublicFile('coa-gc-documents', path, newCoaFile);
-      if (uploadError || !url) throw uploadError || new Error('Upload failed');
-
-      const { data: row, error: insertError } = await supabase.from('coa_document').insert({
-        product_name: coaProductName,
-        lot_no: null,
-        doc_type: 'COA',
-        file_name: newCoaFile.name,
-        storage_path: url,
-        file_size: newCoaFile.size,
-        uploaded_by: user?.email ?? null,
-        notes: `Dispatch ${existingEntryId || selectedOrderId || ''}`.trim(),
-      }).select().single();
-      if (insertError || !row) throw insertError || new Error('Could not save document reference');
+      // 2026-11-04: the shared helper (lib/coaDocuments.ts) — same upload + row as before.
+      const row = await uploadCoaDocument({
+        file: newCoaFile, productName: coaProductName, lotNo: null, docType: 'COA',
+        uploadedBy: user?.email ?? null, notes: `Dispatch ${existingEntryId || selectedOrderId || ''}`.trim(),
+      });
 
       selectCoaDoc(row);
       setCoaResults(prev => [row, ...prev]);

@@ -63,122 +63,57 @@ const HEAD_BORDER: [number, number, number] = [60, 100, 150];
 
 type SigPerson = { name: string; designation: string; phone?: string };
 
-export function generateQuotePDF(
-  quote: Quote,
-  customer: Customer | undefined,
-  settings: AppSettings | null = null,
-  defaultSignatory?: SigPerson,
-  download = true,
-  unit?: CompanyUnit,
-) {
-  const doc = new jsPDF('p', 'mm', 'a4');
-  const pw = 210, ph = 297;
-  // Body content matches header image width (header bleeds 10mm beyond original 25.4 margin)
-  const mx = 15.4;
-  const rx = pw - 15.4;
-  const cw = rx - mx;
-  const sym = getCurrencySymbol(quote.curr);
-  const sigImg = unit?.sig_url || settings?.sig_url || localStorage.getItem('mrt_sig_img');
+// ── Quotation values ─────────────────────────────────────────────────────────
+// 2026-11-04: the values generateQuotePDF prints, as plain data, so the
+// quotation email (quoteEmailHtml.ts) always shows exactly what the PDF does.
+// generateQuotePDF itself reads them from here.
 
-  // ── Header (hardcoded text — no letterhead image) ─────────────────────
-  let y = 9;
-  doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
-  doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, y, { align: 'center' }); y += 6;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(40, 40, 40);
-  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', pw / 2, y, { align: 'center' }); y += 5;
-  doc.setFontSize(7);
-  doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, y, { align: 'center' }); y += 4;
-  doc.text('GSTIN: 27AAACH6788H1Z6', pw / 2, y, { align: 'center' }); y += 4;
-  doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, y, { align: 'center' }); y += 5;
-  doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.4);
-  doc.line(mx, y, rx, y); y += 2;
-
-  // ── Ref | Date ───────────────────────────────────────────────────────────
-  y += 6;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
-  doc.text('Ref: ' + quote.id, mx, y);
-  const dateStr = quote.date
+/** "Friday, October 23, 2026" from quote.date ('' if none). */
+export function quoteDateLabel(quote: Quote): string {
+  return quote.date
     ? new Date(quote.date + 'T00:00:00').toLocaleDateString('en-US', {
         weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
       })
     : '';
-  doc.text(dateStr, rx, y, { align: 'right' });
+}
 
-
-
-  // ── QUOTATION heading ────────────────────────────────────────────────────
-  y += 9;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
-  doc.text('QUOTATION', pw / 2, y, { align: 'center' });
-  const qw = doc.getTextWidth('QUOTATION');
-  doc.setLineWidth(0.4);
-  doc.line(pw / 2 - qw / 2, y + 0.8, pw / 2 + qw / 2, y + 0.8);
-
-  // ── K.A. contact ─────────────────────────────────────────────────────────
+/** The customer's Main Office and its primary contact (else the first contact). */
+export function quoteMainContact(customer: Customer | undefined) {
   const primarySite = mainOffice(customer);   // always the Main Office
   const primaryContact =
     (primarySite?.contacts ?? []).find((c) => c.isPrimary) || (primarySite?.contacts ?? [])[0];
-  if (primaryContact?.name) {
-    y += 7;
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-    doc.text('K.A.: ' + primaryContact.name, pw / 2, y, { align: 'center' });
-  }
+  return { primarySite, primaryContact };
+}
 
-  // ── Customer address ─────────────────────────────────────────────────────
-  y += 8;
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-  doc.text(quote.cust + ',', mx, y);
-
-  if (primarySite) {
-    const addrParts: string[] = [];
-    if (primarySite.name) addrParts.push(primarySite.name);
-    if (primarySite.fullAddress || primarySite.address)
-      addrParts.push(primarySite.fullAddress || primarySite.address || '');
-    if (primarySite.city)
-      addrParts.push(primarySite.city + (primarySite.state ? ', ' + primarySite.state : ''));
-    addrParts.filter(p => p.trim()).forEach((part) => {
-      const lines = (doc.splitTextToSize(part, cw - 30) as string[]).filter(l => l.trim());
-      lines.forEach((l) => { y += 5; doc.text(l, mx, y); });
-    });
-    // const quoteGstin = primarySite?.gstin || customer?.gstin;
-    // if (quoteGstin) { y += 5; doc.text('GSTIN: ' + quoteGstin, mx, y); }
-  }
-
-  // ── Customer Reference (their doc no.) ──────────────────────────────────
-  if (quote.custEnquiryDocNo) {
-    y += 8;
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-    doc.text('Reference No.: ' + quote.custEnquiryDocNo, mx, y);
-  }
-
-  // ── Dear [Name] + intro ──────────────────────────────────────────────────
-  y += 8;
+/** "Dear <first name> ji," — quote.contact, else the Main Office primary contact; "Dear Sir/Madam," if none. */
+export function quoteSalutation(quote: Quote, customer: Customer | undefined): string {
+  const { primaryContact } = quoteMainContact(customer);
   const contactFullName = (quote as any).contact || primaryContact?.name || '';
-  const salutation = (() => {
-    const n = contactFullName.trim().replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
-    const first = n.split(/\s+/)[0] || '';
-    return first ? `Dear ${first} ji,` : 'Dear Sir/Madam,';
-  })();
-  doc.text(salutation, mx, y);
-  y += 6;
-  const intro =
-    'Thank you for your enquiry, we are pleased to submit our offer for the same as under. ' +
-    'We hope this is in line with your requirement and your valued order follows soon.';
-  (doc.splitTextToSize(intro, cw) as string[]).forEach((l) => {
-    doc.text(l, mx, y);
-    y += 5;
-  });
+  const n = contactFullName.trim().replace(/^(mr\.?|mrs\.?|ms\.?|dr\.?)\s+/i, '').trim();
+  const first = n.split(/\s+/)[0] || '';
+  return first ? `Dear ${first} ji,` : 'Dear Sir/Madam,';
+}
 
-  // ── Items table ──────────────────────────────────────────────────────────
-  // Widths chosen so every header AND 8-digit HSN data fit on one line at 8pt.
-  // Verified minimums: HSN "38061090" needs ~19mm body, "No of Barrels" header needs ~22mm header.
-  const wSnoP = 9, wHsnP = 22, wBarrelsP = 22, wPackingP = 14, wTotalQtyP = 16, wPackTypeP = 23, wRateP = 25, wPerP = 15;
-  const wProdNameP = cw - wSnoP - wHsnP - wBarrelsP - wPackingP - wTotalQtyP - wPackTypeP - wRateP - wPerP;
-  y += 4;
+/** Address lines under "<customer>,": site name, full address (else address), "city, state". */
+export function quoteAddressLines(customer: Customer | undefined): string[] {
+  const { primarySite } = quoteMainContact(customer);
+  if (!primarySite) return [];
+  const addrParts: string[] = [];
+  if (primarySite.name) addrParts.push(primarySite.name);
+  if (primarySite.fullAddress || primarySite.address)
+    addrParts.push(primarySite.fullAddress || primarySite.address || '');
+  if (primarySite.city)
+    addrParts.push(primarySite.city + (primarySite.state ? ', ' + primarySite.state : ''));
+  return addrParts.filter(p => p.trim());
+}
 
-  const tableHead = [['Sr No', 'Product Name', 'HSN Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'Rates (' + quote.curr + ')', 'Per']];
+export const quoteTableHead = (quote: Quote) =>
+  ['Sr No', 'Product Name', 'HSN Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'Rates (' + quote.curr + ')', 'Per'];
 
-  const tableBody = quote.items.map((i, idx) => {
+/** The item table's rows, one cell per column of quoteTableHead. */
+export function quoteItemRows(quote: Quote): (string | number)[][] {
+  const sym = getCurrencySymbol(quote.curr);
+  return quote.items.map((i, idx) => {
     const rateCell = (i as any).rateOverride
       ? ((i as any).rateText?.trim() || 'Regret')
       : fmtRate(i.unitPrice, sym);
@@ -198,6 +133,154 @@ export function generateQuotePDF(
     const perUnit = !_pb ? 'kg' : _pb.startsWith('Per ') ? _pb.slice(4) : _pb;
     return [idx + 1, productName, hsnCode, noOfBarrels, packing, totalQty, packingType, rateCell, perUnit];
   });
+}
+
+/** The numbered notes printed under the item table (empty ones skipped). */
+export const quoteNotes = (quote: Quote): string[] => ((quote as any).notes ?? []).filter((n: string) => n.trim());
+
+/** One table per negotiation round: its title and rows (same columns as the item table). */
+export function quoteNegotiationTables(quote: Quote) {
+  const sym = getCurrencySymbol(quote.curr);
+  return getNegotiationExportTables(quote).map(round => ({
+    title: `Negotiation ${round.round} — Revised Pricing (${fmtDate(round.date)})`,
+    rows: round.items.map((i, idx) => [
+      idx + 1, i.desc, i.hsn, String(i.qty), i.packing, i.totalQty, i.packingType, fmtRate(i.rate, sym), i.perUnit,
+    ] as (string | number)[]),
+  }));
+}
+
+/** Terms & Conditions rows, in print order; a JSON term with no value is left out. */
+export function quoteTermsRows(quote: Quote): { label: string; value: string }[] {
+  type TncRow = { label: string; value: string };
+  let tncRows: TncRow[];
+  try {
+    const parsed = JSON.parse(quote.terms || '{}');
+    tncRows = [
+      { label: 'Delivery point',       value: parsed.delivery || '' },
+      { label: 'Lead time',            value: parsed.leadTime || '' },
+      { label: 'Packing & forwarding', value: parsed.pnf      || '' },
+      { label: 'Freight',              value: parsed.freight  || '' },
+      { label: 'Payment',              value: parsed.payment  || '' },
+      { label: 'Validity',             value: parsed.validity || '' },
+      { label: 'Taxes',                value: parsed.taxes    || '' },
+    ].filter((r) => r.value);
+  } catch {
+    tncRows = (quote.terms || '').split('\n').filter(Boolean).map((line, i) => {
+      const stripped = line.replace(/^[•\d]+[.)]\s*/, '');
+      const colon = stripped.indexOf(':');
+      return colon > 0
+        ? { label: stripped.slice(0, colon).trim(), value: stripped.slice(colon + 1).trim() }
+        : { label: String(i + 1), value: stripped };
+    });
+  }
+  // Incoterms/delivery term — quote.inco is the single source of truth
+  // (the "Incoterms" field on the Quotation form, editable there and
+  // pre-filled from the customer master's own Incoterms on Attach to
+  // Enquiry). This used to be hardcoded to "Ex Godown Bhiwandi" regardless
+  // of quote.inco, which is why the printed/emailed "Delivery" line never
+  // matched what the form actually showed.
+  if (quote.inco) tncRows.push({ label: 'Delivery', value: quote.inco });
+  return tncRows;
+}
+
+export function generateQuotePDF(
+  quote: Quote,
+  customer: Customer | undefined,
+  settings: AppSettings | null = null,
+  defaultSignatory?: SigPerson,
+  download = true,
+  unit?: CompanyUnit,
+) {
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pw = 210, ph = 297;
+  // Body content matches header image width (header bleeds 10mm beyond original 25.4 margin)
+  const mx = 15.4;
+  const rx = pw - 15.4;
+  const cw = rx - mx;
+  const sigImg = unit?.sig_url || settings?.sig_url || localStorage.getItem('mrt_sig_img');
+
+  // ── Header (hardcoded text — no letterhead image) ─────────────────────
+  let y = 9;
+  doc.setFont('times', 'bold'); doc.setFontSize(16); doc.setTextColor(0, 0, 0);
+  doc.text('HIMALAYA TERPENES PVT. LTD.', pw / 2, y, { align: 'center' }); y += 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(40, 40, 40);
+  doc.text('GUM ROSIN, GUM TURPENTINE, DIPENTENE, PINEOIL, TERPINEOL, CAMPHOR POWDER, ISOBORNEOL FLAKES ETC.', pw / 2, y, { align: 'center' }); y += 5;
+  doc.setFontSize(7);
+  doc.text('201/5, Jogani Industrial Complex, V.N. Purav Marg, Sion-Chunabhatti (E), Mumbai - 400 022. CIN: U24100MH1999PTC121377', pw / 2, y, { align: 'center' }); y += 4;
+  doc.text('GSTIN: 27AAACH6788H1Z6', pw / 2, y, { align: 'center' }); y += 4;
+  doc.text('Tel.: 91-22-35397800/01  |  E Mail: mum@himalayaterpene.com  |  Web.: www.himalayaterpene.com', pw / 2, y, { align: 'center' }); y += 5;
+  doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.4);
+  doc.line(mx, y, rx, y); y += 2;
+
+  // ── Ref | Date ───────────────────────────────────────────────────────────
+  y += 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
+  doc.text('Ref: ' + quote.id, mx, y);
+  const dateStr = quoteDateLabel(quote);
+  doc.text(dateStr, rx, y, { align: 'right' });
+
+
+
+  // ── QUOTATION heading ────────────────────────────────────────────────────
+  y += 9;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
+  doc.text('QUOTATION', pw / 2, y, { align: 'center' });
+  const qw = doc.getTextWidth('QUOTATION');
+  doc.setLineWidth(0.4);
+  doc.line(pw / 2 - qw / 2, y + 0.8, pw / 2 + qw / 2, y + 0.8);
+
+  // ── K.A. contact ─────────────────────────────────────────────────────────
+  const { primarySite, primaryContact } = quoteMainContact(customer);
+  if (primaryContact?.name) {
+    y += 7;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.text('K.A.: ' + primaryContact.name, pw / 2, y, { align: 'center' });
+  }
+
+  // ── Customer address ─────────────────────────────────────────────────────
+  y += 8;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
+  doc.text(quote.cust + ',', mx, y);
+
+  if (primarySite) {
+    quoteAddressLines(customer).forEach((part) => {
+      const lines = (doc.splitTextToSize(part, cw - 30) as string[]).filter(l => l.trim());
+      lines.forEach((l) => { y += 5; doc.text(l, mx, y); });
+    });
+    // const quoteGstin = primarySite?.gstin || customer?.gstin;
+    // if (quoteGstin) { y += 5; doc.text('GSTIN: ' + quoteGstin, mx, y); }
+  }
+
+  // ── Customer Reference (their doc no.) ──────────────────────────────────
+  if (quote.custEnquiryDocNo) {
+    y += 8;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    doc.text('Reference No.: ' + quote.custEnquiryDocNo, mx, y);
+  }
+
+  // ── Dear [Name] + intro ──────────────────────────────────────────────────
+  y += 8;
+  const salutation = quoteSalutation(quote, customer);
+  doc.text(salutation, mx, y);
+  y += 6;
+  const intro =
+    'Thank you for your enquiry, we are pleased to submit our offer for the same as under. ' +
+    'We hope this is in line with your requirement and your valued order follows soon.';
+  (doc.splitTextToSize(intro, cw) as string[]).forEach((l) => {
+    doc.text(l, mx, y);
+    y += 5;
+  });
+
+  // ── Items table ──────────────────────────────────────────────────────────
+  // Widths chosen so every header AND 8-digit HSN data fit on one line at 8pt.
+  // Verified minimums: HSN "38061090" needs ~19mm body, "No of Barrels" header needs ~22mm header.
+  const wSnoP = 9, wHsnP = 22, wBarrelsP = 22, wPackingP = 14, wTotalQtyP = 16, wPackTypeP = 23, wRateP = 25, wPerP = 15;
+  const wProdNameP = cw - wSnoP - wHsnP - wBarrelsP - wPackingP - wTotalQtyP - wPackTypeP - wRateP - wPerP;
+  y += 4;
+
+  const tableHead = [quoteTableHead(quote)];
+
+  const tableBody = quoteItemRows(quote);
 
   const ratesColIdx = 7;
 
@@ -251,7 +334,7 @@ export function generateQuotePDF(
   y = (doc as any).lastAutoTable.finalY + 4;
 
   // ── Notes below item table ───────────────────────────────────────────────
-  const pdfNotes = ((quote as any).notes ?? []).filter((n: string) => n.trim());
+  const pdfNotes = quoteNotes(quote);
   if (pdfNotes.length > 0) {
     y += 2;
     doc.setFont('helvetica', 'bold');
@@ -286,16 +369,14 @@ export function generateQuotePDF(
   // quoted values). No totals block — the table itself is the record; the
   // exported document intentionally does not repeat Sub-Total/Insurance/
   // GST Total/Grand Total under it. No-op when the quote has no rounds.
-  for (const round of getNegotiationExportTables(quote)) {
+  for (const round of quoteNegotiationTables(quote)) {
     if (y > ph - 70) { doc.addPage(); y = 20; }
 
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(0, 0, 0);
-    doc.text(`Negotiation ${round.round} — Revised Pricing (${fmtDate(round.date)})`, mx, y);
+    doc.text(round.title, mx, y);
     y += 4;
 
-    const negBody = round.items.map((i, idx) => [
-      idx + 1, i.desc, i.hsn, String(i.qty), i.packing, i.totalQty, i.packingType, fmtRate(i.rate, sym), i.perUnit,
-    ]);
+    const negBody = round.rows;
 
     autoTable(doc, {
       startY: y,
@@ -327,35 +408,7 @@ export function generateQuotePDF(
   }
 
   // ── Terms & Conditions table ─────────────────────────────────────────────
-  type TncRow = { label: string; value: string };
-  let tncRows: TncRow[];
-  try {
-    const parsed = JSON.parse(quote.terms || '{}');
-    tncRows = [
-      { label: 'Delivery point',       value: parsed.delivery || '' },
-      { label: 'Lead time',            value: parsed.leadTime || '' },
-      { label: 'Packing & forwarding', value: parsed.pnf      || '' },
-      { label: 'Freight',              value: parsed.freight  || '' },
-      { label: 'Payment',              value: parsed.payment  || '' },
-      { label: 'Validity',             value: parsed.validity || '' },
-      { label: 'Taxes',                value: parsed.taxes    || '' },
-    ].filter((r) => r.value);
-  } catch {
-    tncRows = (quote.terms || '').split('\n').filter(Boolean).map((line, i) => {
-      const stripped = line.replace(/^[•\d]+[.)]\s*/, '');
-      const colon = stripped.indexOf(':');
-      return colon > 0
-        ? { label: stripped.slice(0, colon).trim(), value: stripped.slice(colon + 1).trim() }
-        : { label: String(i + 1), value: stripped };
-    });
-  }
-  // Incoterms/delivery term — quote.inco is the single source of truth
-  // (the "Incoterms" field on the Quotation form, editable there and
-  // pre-filled from the customer master's own Incoterms on Attach to
-  // Enquiry). This used to be hardcoded to "Ex Godown Bhiwandi" regardless
-  // of quote.inco, which is why the printed/emailed "Delivery" line never
-  // matched what the form actually showed.
-  if (quote.inco) tncRows.push({ label: 'Delivery', value: quote.inco });
+  const tncRows = quoteTermsRows(quote);
 
   if (y > ph - 60) { doc.addPage(); y = 20; }
 
