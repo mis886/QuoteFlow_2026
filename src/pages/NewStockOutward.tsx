@@ -1725,6 +1725,7 @@ function OutwardForm() {
         <SendEmailModal
           mode="outward"
           doc={buildOutwardData()}
+          orderCustomer={rowsOrder?.cust}
           customer={customer}
           settings={data.settings}
           defaultSignatory={data.signatories.find(s => s.is_default)}

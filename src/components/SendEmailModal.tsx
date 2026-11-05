@@ -113,7 +113,11 @@ const coaItem = (r: CoaDocRow): CoaItem => ({
 const isCoaGc = (a: Attachment) => a.docType === 'COA' || a.docType === 'GC';
 interface QuoteProps extends BaseProps { mode: 'quote'; doc: Quote; }
 interface OrderProps extends BaseProps { mode: 'order'; doc: Order; relatedQuote?: Quote; }
-interface OutwardProps extends BaseProps { mode: 'outward'; doc: OutwardDO; }   // 2026-11-03: the whole DO — every product line goes into the ONE PDF
+interface OutwardProps extends BaseProps {
+  mode: 'outward';
+  doc: OutwardDO;   // 2026-11-03: the whole DO — every product line goes into the ONE PDF
+  orderCustomer?: string;   // 2026-11-05: linked order's customer (dispatchOrderView) — subject fallback when Party Name is blank
+}
 // Attachments here are already-uploaded documents living on the dispatch
 // entry (the 4 Documents Attachment fields + COA — see NewDispatchEntry.tsx)
 // — this modal fetches and attaches each one as-is, rather than generating a
@@ -222,10 +226,21 @@ export function SendEmailModal(props: Props) {
     ? dispatchDocLabels.map(label => `◽ ${label}`).join('\n')
     : '◽ (no documents uploaded yet)';
 
+  // 2026-11-05: DO subject = "Delivery Order <DO No> — <Party Name>" (as on
+  // the DO PDF: "Other" → the typed party), else the linked order's customer,
+  // else just "Delivery Order <DO No>". Built live, never saved.
+  const outwardParty = isOutward
+    ? (() => {
+        const m = props.doc as StockMovement;
+        return ((m.partyName === 'Other' ? m.otherParty : m.partyName) || '').trim()
+          || ((props as OutwardProps).orderCustomer || '').trim();
+      })()
+    : '';
+
   const defaultSubject = isQuote
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : isOutward
-    ? `Delivery Order ${docId} — HIMALAYA TERPENES PVT. LTD.`
+    ? `Delivery Order ${docId}${outwardParty ? ` — ${outwardParty}` : ''}`
     : isDispatch
     // Matches how these are actually written by hand — "INV NO. -<invoice
     // number> <CUSTOMER NAME>" (see the reference "Fwd: INV NO. -W1494

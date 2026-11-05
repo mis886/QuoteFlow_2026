@@ -109,6 +109,13 @@ Lot No / Lot Date columns (the separate "Lot No.: | Dated:" line is left out)
 and a Total row. Email to Client sends ONE email with that ONE PDF and sets
 `email_sent_at` on every line, logged once in the History Log.
 
+DO email subject = Delivery Order <DO No> — <Party Name>, for every DO
+emailed from 2026-11-05 onwards. Party Name as on the DO form, trimmed
+("Other" → the typed party, as on the PDF); blank → the linked order's
+customer (`dispatchOrderView`); both blank → just "Delivery Order <DO No>".
+Built when the modal opens (still editable there), never saved
+(`SendEmailModal.tsx`, `outwardParty`).
+
 ### Stock Movements list
 
 Outward tab: one row per DO number. Products as a short list ("Beta Pinene
