@@ -29,6 +29,7 @@ export default defineConfig(({mode}) => {
       // so users only re-download what changed. Heavy PDF deps load
       // only on pages that import them (Print Job Card, Quote PDF).
       rollupOptions: {
+        maxParallelFileOps: 20,
         output: {
           manualChunks(id) {
             if (!id.includes('node_modules')) return;
