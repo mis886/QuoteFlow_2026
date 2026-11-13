@@ -146,7 +146,7 @@ export function EntryStepButtons({ card, busy, canAct, onAction, link }: {
   if (card.column === DONE_COLUMN) return null;
   const action = (STEP_ACTIONS[card.column] || [])[0];
   if (!action) return null;
-  const blocked = entryStepBlock(card.entry, card.column);
+  const blocked = entryStepBlock(card.entry, card.column, { lrOptional: card.directDelivery });
   const off = busy || !canAct || !!blocked;
   const tip = !canAct ? STEP_BUTTONS_LOCKED_TIP : blocked;
   return (

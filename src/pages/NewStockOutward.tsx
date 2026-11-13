@@ -214,7 +214,7 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
-import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY } from '../lib/dispatchFlow';
+import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
 import { Loader2, Plus, X } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
 import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse } from '../lib/utils';
@@ -778,8 +778,21 @@ function OutwardForm() {
   // 2026-11-03: DOs are counted by DO number (a DO with 3 lines is one DO);
   // this DO's own lines don't count.
   type StepResult = { kind: 'done' } | { kind: 'waiting'; notEmailed: number } | { kind: 'error'; msg: string };
-  // 2026-11-13: `opts` = Direct Delivery's own remark + History text.
+  // 2026-11-13: `opts` = Direct Delivery: its own remark + History text, and
+  // Step 7 Pickup is completed in the SAME insert (remark "Direct Delivery –
+  // no pickup"), so the order goes straight to Step 8 and one Undo takes
+  // both rows back (the board groups a click's rows by created_at).
   const markDispatchStepDone = async (link: { orderId: string; round: number }, doneAt: string, opts?: { remark: string; logWhat: string }): Promise<StepResult> => {
+    const step7Row = {
+      order_id: link.orderId, round: link.round, step_no: 7, status: 'done',
+      planned_at: null, done_at: doneAt, done_by: user?.email ?? null, remark: DIRECT_DELIVERY_STEP7_REMARK,
+    };
+    const so = data.orders.find(o => o.id === link.orderId)?.soNumber;
+    const logStep7 = (row: any) => logActivity({
+      module: 'dispatch_steps', recordId: link.orderId,
+      recordLabel: `${so || link.orderId} · Step 7 Pickup · Done (${DIRECT_DELIVERY_STEP7_REMARK})`,
+      action: 'insert', after: row,
+    });
     if (!canActOnDispatchBoard(user?.email) || isReadOnlyUser) return { kind: 'error', msg: 'you do not have permission to act on the Dispatch board' };
     try {
       const { data: others, error: othersErr } = await supabase.from('stock_movements').select('id, do_number')
@@ -791,11 +804,25 @@ function OutwardForm() {
       const notEmailed = notEmailedDos.size;
       if (notEmailed > 0) return { kind: 'waiting', notEmailed };
       // Already marked (page opened twice / email sent again)? Don't add a second row.
-      const { data: already, error: checkErr } = await supabase.from('dispatch_steps').select('id')
+      const { data: already, error: checkErr } = await supabase.from('dispatch_steps').select('id, remark')
         .eq('order_id', link.orderId).eq('round', link.round).eq('step_no', 6).eq('status', 'done').limit(1);
       if (checkErr) throw checkErr;
-      if (already && already.length > 0) return { kind: 'done' };
-      const { data: inserted, error: stepErr } = await supabase.from('dispatch_steps').insert({
+      if (already && already.length > 0) {
+        // Step 6 already issued as Direct Delivery (e.g. before Step 7 was
+        // added to it) but Step 7 not done yet → finish Step 7 now.
+        if (opts && isDirectDeliveryRemark(already[0].remark)) {
+          const { data: s7, error: s7Err } = await supabase.from('dispatch_steps').select('id')
+            .eq('order_id', link.orderId).eq('round', link.round).eq('step_no', 7).in('status', ['done', 'skipped']).limit(1);
+          if (s7Err) throw s7Err;
+          if (!s7?.length) {
+            const { data: ins7, error: ins7Err } = await supabase.from('dispatch_steps').insert(step7Row).select('*');
+            if (ins7Err) throw ins7Err;
+            logStep7(ins7?.[0]);
+          }
+        }
+        return { kind: 'done' };
+      }
+      const step6Row = {
         order_id: link.orderId,
         round: link.round,
         step_no: 6,
@@ -804,14 +831,16 @@ function OutwardForm() {
         done_at: doneAt,
         done_by: user?.email ?? null,
         remark: opts ? opts.remark : (dispatchRemark.trim() || null),
-      }).select('*');
+      };
+      const { data: inserted, error: stepErr } = await supabase.from('dispatch_steps')
+        .insert(opts ? [step6Row, step7Row] : [step6Row]).select('*');
       if (stepErr) throw stepErr;
-      const so = data.orders.find(o => o.id === link.orderId)?.soNumber;
       logActivity({
         module: 'dispatch_steps', recordId: link.orderId,
         recordLabel: `${so || link.orderId} · Step 6 Transporter & DO · ${opts ? opts.logWhat : `Done (DO ${header.doNumber || '—'} emailed)`}`,
-        action: 'insert', after: inserted?.[0],
+        action: 'insert', after: inserted?.find(r => r.step_no === 6) ?? inserted?.[0],
       });
+      if (opts) logStep7(inserted?.find(r => r.step_no === 7));
       return { kind: 'done' };
     } catch (err: any) {
       return { kind: 'error', msg: err?.message || JSON.stringify(err) };
@@ -1500,7 +1529,7 @@ function OutwardForm() {
               {isDirectDelivery && (
                 <div className="col-span-3 self-end text-[12px] text-g600 leading-snug">
                   Bought from another company's warehouse and delivered by them straight to the customer.
-                  No DO form is made and no stock leaves our warehouses. <strong className="text-blk">Issue DO</strong> completes Step 6.
+                  No DO form is made and no stock leaves our warehouses. <strong className="text-blk">Issue DO</strong> completes Step 6 and Step 7 (no pickup); the LR at Step 10 is optional.
                 </div>
               )}
               {isOtherWarehouse && (

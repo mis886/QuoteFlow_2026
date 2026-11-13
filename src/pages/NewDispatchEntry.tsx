@@ -12,8 +12,8 @@ import { Upload, ExternalLink, Loader2, Search, X, Mail, MessageCircle } from 'l
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
-import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry, needsBhiwandiEmail, orderFulfillmentFor, readyForNewEntry, STEP11_WHATSAPP_LABEL, showStep11WhatsApp, step11WhatsAppBlock } from '../lib/dispatchFlow';
-import { autoCompleteEntrySteps, loadEntryStepRecords, loadOrderStepRecords, markEntryDocsSentWhatsApp } from '../lib/dispatchEntrySteps';
+import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry, needsBhiwandiEmail, orderFulfillmentFor, readyForNewEntry, STEP11_WHATSAPP_LABEL, showStep11WhatsApp, step11WhatsAppBlock, entryIsDirectDelivery, entryRoundOf } from '../lib/dispatchFlow';
+import { autoCompleteEntrySteps, loadEntryStepRecords, loadOrderStepRecords, markEntryDocsSentWhatsApp, roundIsDirectDeliveryInDb } from '../lib/dispatchEntrySteps';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { searchCoaDocuments, uploadCoaDocument } from '../lib/coaDocuments';
 import { coaNotRequiredForItems } from '../lib/coaAge';
@@ -620,7 +620,20 @@ export function NewDispatchEntry() {
     ? entryPosition({ ...currentEntry, fulfillmentType: type || currentEntry.fulfillmentType }, entrySteps).column
     : undefined;
   const invoiceRequired = !!currentEntry && invoiceRuleApplies(currentEntry) && currentStep === 8;
-  const lrRequired = !!currentEntry && lrRuleApplies(currentEntry) && currentStep === 10;
+  // 2026-11-13: Direct Delivery entry (its round's Step 6 was issued as Direct
+  // Delivery) — the LR is optional at Step 10. null = not known yet.
+  const [entryDirectDelivery, setEntryDirectDelivery] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!currentEntry || isImportedEntry(currentEntry)) { setEntryDirectDelivery(null); return; }
+    let live = true;
+    loadOrderStepRecords(currentEntry.orderId).then(
+      recs => { if (live) setEntryDirectDelivery(entryIsDirectDelivery(currentEntry, data.dispatchEntries, recs)); },
+      () => { if (live) setEntryDirectDelivery(null); },
+    );
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentEntry?.id, currentEntry?.orderId]);
+  const lrRequired = !!currentEntry && lrRuleApplies(currentEntry) && currentStep === 10 && !entryDirectDelivery;
 
   // 2026-10-31: Bhiwandi mode of Email to Client attaches only these.
   const bhiwandiAttachments = dispatchEmailAttachments.filter(a => a.label === 'Invoice / Eway Bill');
@@ -655,7 +668,7 @@ export function NewDispatchEntry() {
   // After a save (or an email): completes Steps 8 → 9 → 10 → 11 whose
   // proof now exists, with the same row the board buttons write. Returns a
   // warning if a step couldn't be saved ('' = fine); the save itself stands.
-  const completeEntrySteps = async (saved: DispatchEntry, what = 'Saved'): Promise<string> => {
+  const completeEntrySteps = async (saved: DispatchEntry, what = 'Saved', step10WithoutLr = false): Promise<string> => {
     try {
       await autoCompleteEntrySteps({
         entry: saved, entries: data.dispatchEntries,
@@ -663,6 +676,8 @@ export function NewDispatchEntry() {
         orderLabel: selectedOrder?.soNumber || saved.orderId,
         // The Bhiwandi login never completes Step 8 (see invoiceRuleApplies).
         skipSteps: isReadOnlyUser ? [8] : [],
+        // 2026-11-13: Direct Delivery entry saved AT Step 10 without an LR.
+        step10WithoutLr,
       });
       return '';
     } catch (err: any) {
@@ -778,6 +793,9 @@ export function NewDispatchEntry() {
     const noInvoice = !invoiceNumber.trim();
     const noLr = multiDocSlots.lr.length === 0;
     const docsWithoutFile = existingEntry ? enforcedDocs.filter(k => !hasDoc(k)) : [];
+    // 2026-11-13: a Direct Delivery entry saved at Step 10 with no LR —
+    // not blocked, and Step 10 completes without the LR.
+    let step10WithoutLr = false;
     if (existingEntry && (docsWithoutFile.length || (noInvoice && invoiceRuleApplies(existingEntry)) || (noLr && lrRuleApplies(existingEntry)))) {
       let records: DispatchStepRecord[];
       try {
@@ -796,10 +814,15 @@ export function NewDispatchEntry() {
         return;
       }
       if (step === 10 && noLr && lrRuleApplies(existingEntry)) {
-        setLrError('Attach LR to complete Step 10');
-        setSaving(false);
-        scrollToField(lrFieldRef.current);
-        return;
+        // Direct Delivery? Checked in the database now; if the check fails, the LR is required as usual.
+        const round = entryRoundOf(existingEntry, data.dispatchEntries.filter(x => x.orderId === existingEntry.orderId));
+        step10WithoutLr = await roundIsDirectDeliveryInDb(existingEntry.orderId, round).catch(() => false);
+        if (!step10WithoutLr) {
+          setLrError('Attach LR to complete Step 10');
+          setSaving(false);
+          scrollToField(lrFieldRef.current);
+          return;
+        }
       }
       const missingDocs = docsWithoutFile.filter(k => step >= REQUIRED_DOC_STEP[k]);
       if (missingDocs.length) {
@@ -957,7 +980,7 @@ export function NewDispatchEntry() {
       }
       // 2026-10-23: saved with an invoice no. + file / LR → complete Step 8 / 10 (edit
       // or new entry).
-      const warning = await completeEntrySteps(saved);
+      const warning = await completeEntrySteps(saved, 'Saved', step10WithoutLr);
       if (warning) {
         // Stay on the saved entry so the warning can be read; a new entry
         // switches to edit mode so a second Save never creates another one.

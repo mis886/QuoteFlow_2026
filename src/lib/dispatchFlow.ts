@@ -384,10 +384,12 @@ export function openStepWrites<W extends { stepNo: number }>(writes: W[], saved:
  * (enforce_dispatch_entry_step_prereqs).
  */
 export const entryHasInvoice = (e: Pick<DispatchEntry, 'invoiceNumber'>) => !!e.invoiceNumber?.trim();
-export function entryStepBlock(e: DispatchEntry, stepNo: number): string | undefined {
+// 2026-11-13: opts.lrOptional = a Direct Delivery entry — Step 10 may be
+// completed without an LR (the trigger allows it for such rounds too).
+export function entryStepBlock(e: DispatchEntry, stepNo: number, opts?: { lrOptional?: boolean }): string | undefined {
   if (stepNo === 8 && (!entryHasInvoice(e) || !entryHasInvoiceFile(e))) return 'Add invoice no. and attach Invoice / Eway Bill first';
   if (stepNo === 9 && !e.bhiwandiEmailSentAt) return 'Send email to Bhiwandi first';
-  if (stepNo === 10 && !entryHasLr(e)) return 'Upload LR first';
+  if (stepNo === 10 && !entryHasLr(e) && !opts?.lrOptional) return 'Upload LR first';
   // 2026-10-23: Step 11 needs Email to Client actually sent (email_sent_at).
   // Checked in the app only — the database trigger covers 8, 9 and 10.
   if (stepNo === 11 && !e.emailSentAt) return 'Send Email to Client first';
@@ -758,16 +760,25 @@ export function fmtDuration(durationMs: number): string {
 // straight to the customer. No DO, no stock_movements row, no stock change.
 // It is stored as the round's Step 6 dispatch_steps row (done, done_at,
 // done_by) with remark "Direct Delivery" (· the drawer remark, if any) — at
-// Step 6 the round has no dispatch entry yet. Cards of that round (the order
-// card at Step 7, then its entry's card) show a "Direct Delivery" tag.
+// Step 6 the round has no dispatch entry yet. Cards of that round show a
+// "Direct Delivery" tag.
+// 2026-11-13 (later, user decision): Issue DO also completes Step 7 Pickup
+// in the same insert (remark DIRECT_DELIVERY_STEP7_REMARK), so the order goes
+// straight to Step 8, and Step 10's LR is optional for the round's entry
+// (entryStepBlock lrOptional; enforce_dispatch_entry_step_prereqs agrees).
 export const DIRECT_DELIVERY = 'Direct Delivery';
+export const DIRECT_DELIVERY_STEP7_REMARK = 'Direct Delivery – no pickup';
+export const DIRECT_DELIVERY_NO_LR_REMARK = 'Direct Delivery – no LR';
 export const isDirectDeliveryRemark = (remark?: string | null) =>
   (remark || '').trim().toLowerCase().startsWith(DIRECT_DELIVERY.toLowerCase());
 export const roundIsDirectDelivery = (records: DispatchStepRecord[], orderId: string, round: number) =>
   records.some(r => r.orderId === orderId && r.round === round && r.stepNo === 6 && r.status === 'done' && isDirectDeliveryRemark(r.remark));
 /** The round a real (non-imported) entry closed: 1 + its order's earlier real entries. */
-const entryRoundOf = (e: DispatchEntry, orderEntries: DispatchEntry[]) =>
-  realEntriesOf(orderEntries).findIndex(x => x.id === e.id) + 1;
+export const entryRoundOf = (e: DispatchEntry, orderEntries: DispatchEntry[]) =>
+  realEntriesOf(orderEntries.some(x => x.id === e.id) ? orderEntries : [...orderEntries, e]).findIndex(x => x.id === e.id) + 1;
+/** Is this entry's round a Direct Delivery? `entries` = any entries (filtered to its order). */
+export const entryIsDirectDelivery = (e: DispatchEntry, entries: DispatchEntry[], orderRecords: DispatchStepRecord[]) =>
+  roundIsDirectDelivery(orderRecords, e.orderId, entryRoundOf(e, entries.filter(x => x.orderId === e.orderId)));
 
 // ── Board ─────────────────────────────────────────────────────────────────
 export interface BoardOrderCard {

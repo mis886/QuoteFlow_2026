@@ -7,7 +7,7 @@
 import { supabase } from './supabase';
 import { logActivity } from './activityLog';
 import type { DispatchEntry } from './types';
-import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef } from './dispatchFlow';
+import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef, entryHasLr, roundIsDirectDelivery, DIRECT_DELIVERY_NO_LR_REMARK } from './dispatchFlow';
 
 /** The entry as saved in the database right now — the fields the Step 8–11 rules read. */
 async function freshEntry(entry: DispatchEntry): Promise<DispatchEntry> {
@@ -33,6 +33,14 @@ export async function loadEntryStepRecords(entryId: string): Promise<DispatchSte
   const { data: rows, error } = await supabase.from('dispatch_steps').select('*').eq('entry_id', entryId);
   if (error) throw error;
   return (rows || []).map(mapStepFromDB);
+}
+
+/** 2026-11-13: was this order + round's Step 6 issued as Direct Delivery (database now)? */
+export async function roundIsDirectDeliveryInDb(orderId: string, round: number): Promise<boolean> {
+  const { data: rows, error } = await supabase.from('dispatch_steps').select('*')
+    .eq('order_id', orderId).eq('round', round).eq('step_no', 6).eq('status', 'done');
+  if (error) throw error;
+  return roundIsDirectDelivery((rows || []).map(mapStepFromDB), orderId, round);
 }
 
 /** One order's saved step rows, for the new-entry check (readyForNewEntry). */
@@ -72,9 +80,6 @@ export async function saveEntryStepRows({ entry, entries, action, remark, doneBy
   const records = await loadEntryStepRecords(e.id);
   const { open, alreadyDone } = openStepWrites(action.writes, records);
   if (!open.length) return { inserted: [], alreadyDone };
-  const blocked = open.map(w => manualStep9 && w.stepNo === 9 ? undefined : entryStepBlock(e, w.stepNo)).find(Boolean);
-  if (blocked) throw new Error(blocked);
-  if (manualStep9) remark = STEP9_MANUAL_REMARK;
   // Which shipment of the order this entry closed (1, 2, …) — same as the
   // drawer's rounds. An entry with no created_at yet counts as the newest.
   const created = (x: DispatchEntry) => (x.created_at ? new Date(x.created_at).getTime() : Infinity);
@@ -82,6 +87,13 @@ export async function saveEntryStepRows({ entry, entries, action, remark, doneBy
     .filter(x => x.orderId === e.orderId && !isImportedEntry(x))
     .sort((a, b) => created(a) - created(b))
     .findIndex(x => x.id === e.id) + 1 || 1;
+  // 2026-11-13: a Direct Delivery round — Step 10 may be saved without an LR.
+  const noLrStep10 = open.some(w => w.stepNo === 10) && !entryHasLr(e)
+    && await roundIsDirectDeliveryInDb(e.orderId, round);
+  const blocked = open.map(w => manualStep9 && w.stepNo === 9 ? undefined : entryStepBlock(e, w.stepNo, { lrOptional: noLrStep10 })).find(Boolean);
+  if (blocked) throw new Error(blocked);
+  if (manualStep9) remark = STEP9_MANUAL_REMARK;
+  if (noLrStep10 && !remark?.trim() && open[0]?.stepNo === 10) remark = DIRECT_DELIVERY_NO_LR_REMARK;
   const pos = entryPosition(e, records);
   const nowIso = new Date().toISOString();
   const rows = open.map((w, i) => ({
@@ -194,12 +206,17 @@ const AUTO_NOTE: Record<8 | 9 | 10 | 11, string> = { 8: 'invoice no. saved', 9: 
  * Returns the steps written; throws "Step N was not marked done (…)" if a
  * write fails.
  */
-export async function autoCompleteEntrySteps({ entry, entries, doneBy, orderLabel, skipSteps = [] }: {
+// 2026-11-13: `step10WithoutLr` — the user saved a Direct Delivery entry AT
+// Step 10 with no LR: complete Step 10 anyway (saveEntryStepRows re-checks
+// that the round really is Direct Delivery). Otherwise Step 10 still waits
+// for an LR here, so one can be uploaded before it completes.
+export async function autoCompleteEntrySteps({ entry, entries, doneBy, orderLabel, skipSteps = [], step10WithoutLr = false }: {
   entry: DispatchEntry;
   entries: DispatchEntry[];
   doneBy?: string | null;
   orderLabel: string;
   skipSteps?: number[];
+  step10WithoutLr?: boolean;
 }): Promise<number[]> {
   if (isImportedEntry(entry)) return [];
   const written: number[] = [];
@@ -209,7 +226,7 @@ export async function autoCompleteEntrySteps({ entry, entries, doneBy, orderLabe
     let records = await loadEntryStepRecords(entry.id);
     for (let guard = 0; guard < 4; guard++) {
       step = entryPosition(e, records).column;
-      if (step > 11 || skipSteps.includes(step) || entryStepBlock(e, step)) break;
+      if (step > 11 || skipSteps.includes(step) || entryStepBlock(e, step, { lrOptional: step10WithoutLr })) break;
       const { inserted } = await saveEntryStepRows({
         entry: e, entries, action: STEP_ACTIONS[step as StepNo]![0], doneBy, orderLabel, logNote: AUTO_NOTE[step as 8 | 9 | 10 | 11],
       });
