@@ -70,7 +70,7 @@ import { Search, Plus, RefreshCw, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { useAppStore } from '../store';
-import { fmtDate, fmtIST, normalizeSearchText, doerLabel, canDeleteRecords, friendlyStockError } from '../lib/utils';
+import { fmtDate, normalizeSearchText, doerLabel, canDeleteRecords, friendlyStockError, dispatchOrderView } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { StockMovement } from '../lib/types';
 import { Button } from '../components/ui';
@@ -392,16 +392,29 @@ export function StockMovements() {
     return movements.filter(m => m.type === tab && (!q || matchesSearch(m, q)));
   }, [movements, search, tab]);
 
-  // Outward DOs — a DO is found by ANY of its lines' lot / product.
+  // 2026-11-13: Outward "Billing Name" column = the DO's Party Name ("Other"
+  // → the typed party); blank → the linked order's customer (Dispatch's copy,
+  // dispatchOrderView), same as the DO email subject; '' = both blank.
+  const doPartyName = (m: StockMovement) => {
+    const party = ((m.partyName === 'Other' ? m.otherParty : m.partyName) || '').trim();
+    if (party) return party;
+    const order = m.orderId ? data.orders.find(o => o.id === m.orderId) : undefined;
+    return ((order && dispatchOrderView(order).cust) || '').trim();
+  };
+
+  // Outward DOs — a DO is found by ANY of its lines' lot / product, or by
+  // the name in its Billing Name column.
   const filteredDos = useMemo(() => {
     const q = normalizeSearchText(search.trim());
-    const rows = activeOutward.filter(g => outwardTypeOf(g.head) === outwardType && (!q || g.lines.some(l => matchesSearch(l, q))));
+    const rows = activeOutward.filter(g => outwardTypeOf(g.head) === outwardType
+      && (!q || g.lines.some(l => matchesSearch(l, q)) || normalizeSearchText(doPartyName(g.head)).includes(q)));
     // Email Sent: newest email first. Everything else keeps load() order
     // (newest entry first).
     return outwardSub === 'emailSent'
       ? rows.sort((a, b) => (b.head.emailSentAt || '').localeCompare(a.head.emailSentAt || ''))
       : rows;
-  }, [activeOutward, search, outwardSub, outwardType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOutward, search, outwardSub, outwardType, data.orders]);
   const shownCount = tab === 'outward' ? filteredDos.length : filtered.length;
 
   return (
@@ -558,10 +571,10 @@ export function StockMovements() {
                       </td>
                       <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600">{doField(g, l => l.whLotNo)}</td>
                       <td className="px-[13px] py-[9px] align-top text-center font-semibold text-blk min-w-[180px]">{doProducts(g)}</td>
-                      {/* 2026-11-13: "Billing Name" shows the DO's Party Name (the
-                          customer; "Other" → the typed party), not line billing_name. */}
-                      <td className="px-[13px] py-[9px] align-top text-center text-g600 min-w-[140px]" title={m.partyName === 'Other' ? m.otherParty : m.partyName}>
-                        {m.partyName === 'Other' ? (m.otherParty || 'Other') : (m.partyName || '—')}
+                      {/* 2026-11-13: "Billing Name" shows the DO's Party Name, else
+                          the linked order's customer (doPartyName), else "—". */}
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 min-w-[140px]" title={doPartyName(m) || undefined}>
+                        {doPartyName(m) || '—'}
                       </td>
                       <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.warehouse}</td>
                       <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{multi ? doBarrels(g) : (m.numArticles || '—')}</td>
