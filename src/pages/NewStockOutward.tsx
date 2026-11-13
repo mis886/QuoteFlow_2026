@@ -1526,12 +1526,6 @@ function OutwardForm() {
                 </select>
                 {isWada && <p className="text-[11px] text-g500 mt-1">Wada: not linked to stock — type every product field.</p>}
               </div>
-              {isDirectDelivery && (
-                <div className="col-span-3 self-end text-[12px] text-g600 leading-snug">
-                  Bought from another company's warehouse and delivered by them straight to the customer.
-                  No DO form is made and no stock leaves our warehouses. <strong className="text-blk">Issue DO</strong> completes Step 6 and Step 7 (no pickup); the LR at Step 10 is optional.
-                </div>
-              )}
               {isOtherWarehouse && (
                 <div>
                   <label className={labelCls}>Other Warehouse <span className="text-red-mrt">*</span></label>
