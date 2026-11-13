@@ -92,7 +92,7 @@ import { fetchAllRows } from '../lib/fetchAll';
 import { useAppStore } from '../store';
 import { fmtDate, normalizeSearchText } from '../lib/utils';
 import { StockLot } from '../lib/types';
-import { COA_BUCKETS, CoaBucket, coaAgeBucket, coaAgeDays, isCoaMissing } from '../lib/coaAge';
+import { COA_BUCKETS, CoaBucket, coaAgeBucket, coaAgeDays, isCoaMissing, isCoaNotRequired } from '../lib/coaAge';
 import { CoaAttachModal } from '../components/CoaAttachModal';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import FloatingVerticalScrollbar from '../components/FloatingVerticalScrollbar';
@@ -473,7 +473,10 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
                         : <span className="text-[10px] text-g400">No</span>}
                     </td>
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] whitespace-nowrap max-w-[160px] truncate">
-                      {isCoaMissing(l) ? (() => {
+                      {isCoaNotRequired(l.productName) ? (
+                        // Tops / Residue products: no COA needed — plain, not clickable.
+                        <span className="text-g400" title="COA not required for this product">N/A</span>
+                      ) : isCoaMissing(l) ? (() => {
                         const days = coaAgeDays(l);
                         const bucket = COA_BUCKETS.find(b => b.key === coaAgeBucket(l))!;
                         return (

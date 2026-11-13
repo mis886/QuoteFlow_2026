@@ -18,8 +18,17 @@ const dayNumber = (ymd: string) => {
   return y && m && d ? Date.UTC(y, m - 1, d) / 86400000 : NaN;
 };
 
-export const isCoaMissing = (lot: Pick<StockLot, 'coaFile' | 'coaUrl'>): boolean =>
-  !lot.coaFile?.trim() && !lot.coaUrl?.trim();
+// 2026-11-13: products whose name has the whole word "tops" or "residue"
+// (any case, anywhere — "Anthamber Tops (W)", "ILK Residue") need no COA.
+// Stock Summary shows "N/A" for them, they are left out of every COA-missing
+// count, and the Inward form hides its COA field. Their stored coa_file /
+// coa_url are left as they are, just not shown. "laptops" does not match.
+export const isCoaNotRequired = (productName?: string | null): boolean =>
+  /\b(tops|residue)\b/i.test(productName || '');
+
+/** No COA on file AND one is required for this product. */
+export const isCoaMissing = (lot: Pick<StockLot, 'coaFile' | 'coaUrl'> & { productName?: string }): boolean =>
+  !isCoaNotRequired(lot.productName) && !lot.coaFile?.trim() && !lot.coaUrl?.trim();
 
 /** Whole days since the inward date, null if the lot has no usable one. */
 export function coaAgeDays(lot: Pick<StockLot, 'inwardDate'>, today = fmtIST(new Date(), 'yyyy-MM-dd')): number | null {

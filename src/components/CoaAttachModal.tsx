@@ -5,7 +5,7 @@ import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabas
 import { fetchAllRows } from '../lib/fetchAll';
 import { logActivity } from '../lib/activityLog';
 import { fmtDate } from '../lib/utils';
-import { isCoaMissing } from '../lib/coaAge';
+import { isCoaMissing, isCoaNotRequired } from '../lib/coaAge';
 import type { StockLot } from '../lib/types';
 import { ConfirmDialog } from './ConfirmDialog';
 
@@ -25,7 +25,9 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const hasCoa = !isCoaMissing(lot);
+  // Tops / Residue products need no COA: no upload, no search, no remove.
+  const notRequired = isCoaNotRequired(lot.productName);
+  const hasCoa = !notRequired && !isCoaMissing(lot);
 
   useEffect(() => {
     const t = setTimeout(() => setCoaSearchDebounced(coaSearch.trim()), 350);
@@ -33,7 +35,7 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
   }, [coaSearch]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin || notRequired) return;
     const controller = new AbortController();
     setCoaSearchLoading(true);
     const query = () => supabase.from('coa_document').select('*').order('created_at', { ascending: false }).order('id').abortSignal(controller.signal);
@@ -47,7 +49,7 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
       setCoaSearchLoading(false);
     });
     return () => controller.abort();
-  }, [isAdmin, coaSearchDebounced]);
+  }, [isAdmin, coaSearchDebounced, notRequired]);
 
   const selectCoaDoc = (doc: any) => setPicked({ url: resolveCoaStorageUrl(doc.storage_path), name: doc.file_name });
 
@@ -84,7 +86,7 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
   };
 
   const writeCoa = async (after: { coa_file: string | null; coa_url: string | null }, verb: string) => {
-    if (!isAdmin) return;
+    if (!isAdmin || notRequired) return;
     setSaving(true);
     setError('');
     const { data: saved, error: saveError } = await supabase.from('stock_lots').update({
@@ -120,7 +122,7 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] border border-g300">
         <div className="p-4 border-b border-g200 flex items-center justify-between">
           <div>
-            <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-1">{hasCoa ? 'Change COA' : 'COA missing'}</div>
+            <div className="font-mono text-[8px] font-bold tracking-[2px] uppercase text-red-mrt mb-1">{notRequired ? 'COA' : hasCoa ? 'Change COA' : 'COA missing'}</div>
             <div className="text-base font-semibold text-blk">Lot {lot.whLotNo || '—'}</div>
           </div>
           <button type="button" title="Close" onClick={onClose} className="p-2 text-g400 hover:text-blk bg-g100 hover:bg-g200 rounded-md transition-colors"><X size={14} strokeWidth={2.5} /></button>
@@ -155,7 +157,9 @@ export function CoaAttachModal({ lot, onClose, onSaved }: { lot: StockLot; onClo
             </div>
           )}
 
-          {!isAdmin ? (
+          {notRequired ? (
+            <div className="mt-5 text-[12.5px] text-g500">COA not required for this product</div>
+          ) : !isAdmin ? (
             <div className="mt-5 text-[12.5px] text-g500">Only admins can add COA.</div>
           ) : (
             <div className="mt-5 pt-4 border-t border-g200">

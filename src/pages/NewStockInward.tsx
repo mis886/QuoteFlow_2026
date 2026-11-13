@@ -79,6 +79,7 @@ import { usePackingTypes } from '../hooks/usePackingTypes';
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { Loader2, Search, X } from 'lucide-react';
 import { friendlyStockError } from '../lib/utils';
+import { isCoaNotRequired } from '../lib/coaAge';
 
 const inputCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt transition-shadow";
 const selectCls = "w-full font-sans text-[13px] text-blk bg-white border border-g300 rounded-[3px] p-[8px_10px] outline-none appearance-none bg-[url('data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'10\\' height=\\'6\\'%3E%3Cpath d=\\'M1 1l4 4 4-4\\' stroke=\\'%23888\\' stroke-width=\\'1.5\\' fill=\\'none\\' stroke-linecap=\\'round\\'/%3E%3C/svg%3E')] bg-no-repeat bg-[right_9px_center] pr-[26px] cursor-pointer focus:border-red-mrt focus:ring-[3px] focus:ring-red-lt";
@@ -114,6 +115,11 @@ export function NewStockInward() {
   const isEditing = !!movementId;
 
   const [form, setForm] = useState(emptyForm);
+  // 2026-11-13: Tops / Residue products need no COA — the COA field is
+  // hidden and no coa_file / coa_url is sent (an existing COA on the lot or
+  // on this entry is left as it is, never cleared).
+  const coaNotRequired = isCoaNotRequired(form.productName);
+  const coaFields = () => (coaNotRequired ? {} : { coa_file: form.coaFile.trim() || null, coa_url: form.coaUrl.trim() || null });
   const packingTypes = usePackingTypes();
   // Keep a legacy saved value (pre-2026-10-17 list) visible when editing,
   // since a native <select> shows blank for a value with no matching <option>.
@@ -372,7 +378,7 @@ export function NewStockInward() {
         const coaFile = form.coaFile.trim();
         const coaUrl = form.coaUrl.trim();
         const coaChanged = coaFile !== original.coaFile || coaUrl !== original.coaUrl;
-        if (coaChanged && (coaFile || coaUrl)) {
+        if (!coaNotRequired && coaChanged && (coaFile || coaUrl)) {
           patch.coa_file = coaFile || null;
           patch.coa_url = coaUrl || null;
         }
@@ -414,8 +420,7 @@ export function NewStockInward() {
               make: form.make.trim() || null,
               remark: form.remark.trim() || null,
               sample_off: form.sampleOff,
-              coa_file: form.coaFile.trim() || null,
-              coa_url: form.coaUrl.trim() || null,
+              ...coaFields(),
               created_by: activeDoer?.email ?? user?.email ?? null,
             })).error;
 
@@ -437,8 +442,7 @@ export function NewStockInward() {
         make: form.make.trim() || null,
         remark: form.remark.trim() || null,
         sample_off: form.sampleOff,
-        coa_file: form.coaFile.trim() || null,
-        coa_url: form.coaUrl.trim() || null,
+        ...coaFields(),
         // 2026-09-19: at the user's request — who last edited this Inward
         // entry (stock_movements had no updated_by/updated_at at all before
         // this; see the migration that added them alongside dispatch_entries.updated_by).
@@ -472,8 +476,7 @@ export function NewStockInward() {
       make: form.make.trim() || null,
       remark: form.remark.trim() || null,
       sample_off: form.sampleOff,
-      coa_file: form.coaFile.trim() || null,
-      coa_url: form.coaUrl.trim() || null,
+      ...coaFields(),
       created_by: activeDoer?.email ?? user?.email ?? null,
     };
 
@@ -514,8 +517,7 @@ export function NewStockInward() {
           make: form.make.trim() || null,
           remark: form.remark.trim() || null,
           sample_off: form.sampleOff,
-          coa_file: form.coaFile.trim() || null,
-          coa_url: form.coaUrl.trim() || null,
+          ...coaFields(),
           created_by: activeDoer?.email ?? user?.email ?? null,
         })).error;
 
@@ -650,7 +652,9 @@ export function NewStockInward() {
 
           <div className={cardCls}>
             <div className={sectionHeaderCls}>COA</div>
-            {form.coaFile ? (
+            {coaNotRequired ? (
+              <div className="text-[12px] text-g500">COA not required for this product</div>
+            ) : form.coaFile ? (
               <div className="flex items-center justify-between gap-2 bg-g100 border border-g200 rounded-[3px] px-2.5 py-2 mb-3">
                 <div className="min-w-0">
                   <div className="text-[12px] font-semibold text-blk truncate">{form.coaFile}</div>
