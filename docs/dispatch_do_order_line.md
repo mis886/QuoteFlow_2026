@@ -109,8 +109,11 @@ Lot No / Lot Date columns (the separate "Lot No.: | Dated:" line is left out)
 and a Total row. Email to Client sends ONE email with that ONE PDF and sets
 `email_sent_at` on every line, logged once in the History Log.
 
-DO email subject = Delivery Order <DO No> — <Party Name>, for every DO
-emailed from 2026-11-05 onwards. Party Name as on the DO form, trimmed
+DO email subject = `Delivery Order <DO No>   <Party Name>` — exactly THREE
+spaces between DO No and party, no dash (from 2026-11-13; 2026-11-05 to
+11-12 it was "Delivery Order <DO No> — <Party Name>"), for every DO and every
+warehouse incl. Wada. The three spaces are never trimmed or collapsed (subject
+build, `gmail.ts`, MIME base64 encoding). Party Name as on the DO form, trimmed
 ("Other" → the typed party, as on the PDF); blank → the linked order's
 customer (`dispatchOrderView`); both blank → just "Delivery Order <DO No>".
 Built when the modal opens (still editable there), never saved

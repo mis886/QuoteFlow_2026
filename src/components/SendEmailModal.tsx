@@ -226,9 +226,10 @@ export function SendEmailModal(props: Props) {
     ? dispatchDocLabels.map(label => `◽ ${label}`).join('\n')
     : '◽ (no documents uploaded yet)';
 
-  // 2026-11-05: DO subject = "Delivery Order <DO No> — <Party Name>" (as on
-  // the DO PDF: "Other" → the typed party), else the linked order's customer,
-  // else just "Delivery Order <DO No>". Built live, never saved.
+  // 2026-11-13: DO subject = "Delivery Order <DO No>   <Party Name>" (THREE
+  // spaces, no dash — never trim/collapse them). Party as on the DO PDF:
+  // "Other" → the typed party, else the linked order's customer, else just
+  // "Delivery Order <DO No>". Built live, never saved.
   const outwardParty = isOutward
     ? (() => {
         const m = props.doc as StockMovement;
@@ -240,16 +241,20 @@ export function SendEmailModal(props: Props) {
   const defaultSubject = isQuote
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : isOutward
-    ? `Delivery Order ${docId}${outwardParty ? ` — ${outwardParty}` : ''}`
+    ? `Delivery Order ${docId}${outwardParty ? `   ${outwardParty}` : ''}`
     : isDispatch
-    // Matches how these are actually written by hand — "INV NO. -<invoice
-    // number> <CUSTOMER NAME>" (see the reference "Fwd: INV NO. -W1494
-    // PEDDINGTON LUBRICANTS" email) — but only once an Invoice Number has
+    // 2026-11-13: "INV NO : <invoice no> <CUSTOMER NAME>" — leading
+    // "-", ".", ":" or spaces on the saved invoice no. are stripped here
+    // only (the saved value is untouched). Only once an Invoice Number has
     // actually been entered on the entry. docId never falls back to the
     // entry's own id (see above), so when Invoice Number is blank the
     // subject is left blank too, rather than guessing or leaking the
     // dispatch entry's internal reference as if it were an invoice number.
-    ? (docId ? `INV NO. -${docId}${customer?.name ? ` ${customer.name.toUpperCase()}` : ''}` : '')
+    // (Bhiwandi mode has its own "INV NO:  " subject — bhiwandiDraft.)
+    ? (() => {
+        const invNo = (docId || '').replace(/^[-.:\s]+/, '');
+        return invNo ? `INV NO : ${invNo}${customer?.name ? ` ${customer.name.toUpperCase()}` : ''}` : '';
+      })()
     : `Proforma Invoice ${docId} — HIMALAYA TERPENES PVT. LTD.`;
 
   // Signatory: prefer doc's saved authorizedPerson → app_settings → passed defaultSignatory

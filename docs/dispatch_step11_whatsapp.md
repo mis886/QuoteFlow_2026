@@ -83,6 +83,19 @@ of Delivered, tag gone. Logged in the History Log.
 Undo of an EMAILED Step 11 is unchanged: only the step row goes, the email
 stays recorded (it really was sent).
 
+## Email to Client subject
+
+From 2026-11-13 the client email (normal client mode, Delivery and Self
+Pickup, every entry new or old) has the subject
+`INV NO : <invoice no> <CUSTOMER NAME>`, e.g. "INV NO : 0789 ASIAN
+INDUSTRIES" (before: "INV NO. -0789 ASIAN INDUSTRIES"). A leading "-", ".",
+":" or spaces on the saved invoice no. are stripped in the subject only; the
+saved value is not changed. Customer name source/case unchanged (uppercased
+customer name). Blank invoice no. → blank subject. Built when the modal opens
+(still editable there), never saved (`SendEmailModal.tsx`, `defaultSubject`).
+Bhiwandi mode keeps its own subject `INV NO:  <no> <customer>` (two spaces,
+`bhiwandiDraft`).
+
 ## Database
 
 `supabase/migrations/20261103210000_dispatch_entries_docs_sent_via.sql`:
