@@ -379,7 +379,7 @@ export function StockMovements() {
   const deliveryCount = activeOutward.filter(g => outwardTypeOf(g.head) === 'delivery').length;
   const selfPickupCount = activeOutward.filter(g => outwardTypeOf(g.head) === 'self_pickup').length;
   const notSetCount = activeOutward.length - deliveryCount - selfPickupCount;
-  const outwardColCount = isEmailSentSub ? 17 : 16;
+  const outwardColCount = 12;
 
   const matchesSearch = (m: StockMovement, q: string) => normalizeSearchText([
     m.whLotNo, m.stockCategory, m.productName, m.billingName, m.warehouse, m.make, m.remark,
@@ -523,20 +523,19 @@ export function StockMovements() {
                 <tr>
                   <Th label="DO Date" />
                   <Th label="DO Number" />
-                  {isEmailSentSub && <Th label="Email Sent On" />}
+                  {/* 2026-11-13: only these 12 columns, every Outward sub-tab.
+                      Email Sent On / Party Name / Transporter / Fulfilment
+                      Type / Note are hidden here only — still on the form and
+                      in the DB, and still found by the search box. */}
                   <Th label="Lot No" />
                   <Th label="Product Name" />
                   <Th label="Billing Name" />
                   <Th label="Warehouse" />
-                  <Th label="Party Name" />
-                  <Th label="Transporter" />
-                  <Th label="Fulfilment Type" />
                   <Th label="No of Barrels" />
                   <Th label="Packing" />
                   <Th label="MOU" />
                   <Th label="Packing Type" />
                   <Th label="Total Qty" />
-                  <Th label="Note" />
                   <Th label="Actions" />
                 </tr>
               </thead>
@@ -557,26 +556,15 @@ export function StockMovements() {
                         {m.doNumber || '—'}
                         {multi && <div className="font-sans text-[10px] font-normal text-g500">{g.lines.length} products</div>}
                       </td>
-                      {isEmailSentSub && (
-                        <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.emailSentAt ? fmtIST(new Date(m.emailSentAt), 'dd-MMM-yyyy hh:mm a') : '—'}</td>
-                      )}
                       <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600">{doField(g, l => l.whLotNo)}</td>
                       <td className="px-[13px] py-[9px] align-top text-center font-semibold text-blk min-w-[180px]">{doProducts(g)}</td>
                       <td className="px-[13px] py-[9px] align-top text-center text-g600 min-w-[140px]">{doField(g, l => l.billingName)}</td>
                       <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.warehouse}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap max-w-[180px] truncate" title={m.partyName === 'Other' ? m.otherParty : m.partyName}>
-                        {m.partyName === 'Other' ? (m.otherParty || 'Other') : (m.partyName || '—')}
-                      </td>
-                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap max-w-[160px] truncate" title={m.transporter === 'Other' ? m.otherTransporter : m.transporter}>
-                        {m.transporter === 'Other' ? (m.otherTransporter || 'Other') : (m.transporter || '—')}
-                      </td>
-                      <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.fulfilmentType || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{multi ? doBarrels(g) : (m.numArticles || '—')}</td>
                       <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{multi ? doField(g, l => num(l.packing)) : num(m.packing)}</td>
                       <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{multi ? doField(g, l => l.weightType) : (m.weightType || '—')}</td>
                       <td className="px-[13px] py-[9px] align-top text-center text-g600">{multi ? doField(g, l => l.packagingType) : (m.packagingType || '—')}</td>
                       <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(multi ? doQty(g) : m.totalQty)}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center text-g500 max-w-[220px] truncate" title={m.note}>{m.note || '—'}</td>
                       <td className="px-[13px] py-[9px] align-top text-center">
                         <div className="flex flex-col items-center gap-[3px]">
                           <div className="flex items-center justify-center gap-1.5">
