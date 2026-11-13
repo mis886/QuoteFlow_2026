@@ -752,6 +752,23 @@ export function fmtDuration(durationMs: number): string {
   return rh ? `${d}d ${rh}h` : `${d}d`;
 }
 
+// ── Direct Delivery (2026-11-13) ──────────────────────────────────────────
+// Step 6 "Issue DO" with Warehouse = Direct Delivery (NewStockOutward, from
+// the Board only): bought from another company's warehouse, delivered by them
+// straight to the customer. No DO, no stock_movements row, no stock change.
+// It is stored as the round's Step 6 dispatch_steps row (done, done_at,
+// done_by) with remark "Direct Delivery" (· the drawer remark, if any) — at
+// Step 6 the round has no dispatch entry yet. Cards of that round (the order
+// card at Step 7, then its entry's card) show a "Direct Delivery" tag.
+export const DIRECT_DELIVERY = 'Direct Delivery';
+export const isDirectDeliveryRemark = (remark?: string | null) =>
+  (remark || '').trim().toLowerCase().startsWith(DIRECT_DELIVERY.toLowerCase());
+export const roundIsDirectDelivery = (records: DispatchStepRecord[], orderId: string, round: number) =>
+  records.some(r => r.orderId === orderId && r.round === round && r.stepNo === 6 && r.status === 'done' && isDirectDeliveryRemark(r.remark));
+/** The round a real (non-imported) entry closed: 1 + its order's earlier real entries. */
+const entryRoundOf = (e: DispatchEntry, orderEntries: DispatchEntry[]) =>
+  realEntriesOf(orderEntries).findIndex(x => x.id === e.id) + 1;
+
 // ── Board ─────────────────────────────────────────────────────────────────
 export interface BoardOrderCard {
   kind: 'order';
@@ -765,6 +782,7 @@ export interface BoardOrderCard {
   // At Step 6 with a DO already saved for this round (see doPendingFor) —
   // the card shows "DO saved · email not sent" and "Open DO → Email to Client".
   doPending?: DoPending;
+  directDelivery?: boolean;   // this round's Step 6 was issued as Direct Delivery
 }
 export interface BoardEntryCard {
   kind: 'entry';
@@ -775,6 +793,7 @@ export interface BoardEntryCard {
   column: EntryColumn;
   fulfillment: DispatchFulfillmentType;
   state: TimeState;
+  directDelivery?: boolean;   // its round's Step 6 was issued as Direct Delivery
 }
 export type BoardCard = BoardOrderCard | BoardEntryCard;
 
@@ -847,6 +866,7 @@ export function buildBoard(
       remaining: o.items.filter(i => (rem.get(i.seq) || 0) > 0).map(i => ({ desc: i.desc, qty: rem.get(i.seq) || 0 })),
       state: timeState(position.plannedAt, now, !!position.hold),
       doPending: position.step === 6 ? doPendingFor(linkedDOs, o.id, position.round) : undefined,
+      directDelivery: roundIsDirectDelivery(recordsByOrder.get(o.id) || [], o.id, position.round),
     });
   }
 
@@ -862,6 +882,7 @@ export function buildBoard(
       kind: 'entry', key: `e:${e.id}`, entry: e, order: ordersById.get(e.orderId), position,
       column: position.column, fulfillment: e.fulfillmentType,
       state: position.column === DONE_COLUMN ? 'done' : timeState(position.plannedAt, now, false),
+      directDelivery: roundIsDirectDelivery(recordsByOrder.get(e.orderId) || [], e.orderId, entryRoundOf(e, entriesByOrder.get(e.orderId) || [])),
     });
   }
   return cards;

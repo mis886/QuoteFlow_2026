@@ -214,7 +214,7 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
-import { isImportedEntry, orderLinesWithoutDo } from '../lib/dispatchFlow';
+import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY } from '../lib/dispatchFlow';
 import { Loader2, Plus, X } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
 import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse } from '../lib/utils';
@@ -778,7 +778,8 @@ function OutwardForm() {
   // 2026-11-03: DOs are counted by DO number (a DO with 3 lines is one DO);
   // this DO's own lines don't count.
   type StepResult = { kind: 'done' } | { kind: 'waiting'; notEmailed: number } | { kind: 'error'; msg: string };
-  const markDispatchStepDone = async (link: { orderId: string; round: number }, doneAt: string): Promise<StepResult> => {
+  // 2026-11-13: `opts` = Direct Delivery's own remark + History text.
+  const markDispatchStepDone = async (link: { orderId: string; round: number }, doneAt: string, opts?: { remark: string; logWhat: string }): Promise<StepResult> => {
     if (!canActOnDispatchBoard(user?.email) || isReadOnlyUser) return { kind: 'error', msg: 'you do not have permission to act on the Dispatch board' };
     try {
       const { data: others, error: othersErr } = await supabase.from('stock_movements').select('id, do_number')
@@ -802,19 +803,40 @@ function OutwardForm() {
         planned_at: dispatchPlannedAt || null,
         done_at: doneAt,
         done_by: user?.email ?? null,
-        remark: dispatchRemark.trim() || null,
+        remark: opts ? opts.remark : (dispatchRemark.trim() || null),
       }).select('*');
       if (stepErr) throw stepErr;
       const so = data.orders.find(o => o.id === link.orderId)?.soNumber;
       logActivity({
         module: 'dispatch_steps', recordId: link.orderId,
-        recordLabel: `${so || link.orderId} · Step 6 Transporter & DO · Done (DO ${header.doNumber || '—'} emailed)`,
+        recordLabel: `${so || link.orderId} · Step 6 Transporter & DO · ${opts ? opts.logWhat : `Done (DO ${header.doNumber || '—'} emailed)`}`,
         action: 'insert', after: inserted?.[0],
       });
       return { kind: 'done' };
     } catch (err: any) {
       return { kind: 'error', msg: err?.message || JSON.stringify(err) };
     }
+  };
+
+  // 2026-11-13: Direct Delivery "Issue DO" — writes the round's Step 6 row
+  // (remark "Direct Delivery", plus the drawer remark if one was typed), logs
+  // "DO issued · Direct Delivery" and goes back to the Board. Nothing is
+  // written to stock_movements / stock_lots. Same checks as a DO email: every
+  // other DO of this round must be emailed first, and never a second row.
+  const issueDirectDelivery = async () => {
+    if (!isDirectDelivery || saving) return;
+    setSaving(true);
+    setError('');
+    const remark = [DIRECT_DELIVERY, dispatchRemark.trim()].filter(Boolean).join(' · ');
+    const res = await markDispatchStepDone({ orderId: orderRef, round: dispatchRound }, new Date().toISOString(),
+      { remark, logWhat: 'DO issued · Direct Delivery' });
+    setSaving(false);
+    if (res.kind === 'done') { navigate(DISPATCH_BOARD_PATH); return; }
+    const msg = res.kind === 'waiting'
+      ? `${res.notEmailed} DO${res.notEmailed === 1 ? '' : 's'} of this dispatch ${res.notEmailed === 1 ? 'is' : 'are'} not emailed yet — email ${res.notEmailed === 1 ? 'it' : 'them'} first, then Issue DO.`
+      : `Could not issue DO: ${res.msg}`;
+    setError(msg);
+    showToast('err', msg);
   };
 
   // The Board URL for this DO in edit mode — where a Board save lands, and
@@ -857,6 +879,11 @@ function OutwardForm() {
   const updateLine = (key: string, patch: Partial<Line>) => setLines(ls => ls.map(l => l.key === key ? { ...l, ...patch } : l));
 
   const isOtherWarehouse = header.warehouse === 'Other';
+  // 2026-11-13: Direct Delivery — only on a new DO from the Board (Step 6).
+  // The product is bought from another company's warehouse and they deliver
+  // it straight to the customer: no DO form, no stock_movements row, no stock
+  // change. "Issue DO" only completes Step 6 (see issueDirectDelivery).
+  const isDirectDelivery = fromDispatch && header.warehouse === DIRECT_DELIVERY;
   const isOtherParty = header.partyName === 'Other';
   const isOtherTransporter = header.transporter === 'Other';
 
@@ -1464,16 +1491,25 @@ function OutwardForm() {
                 <select className={selectCls} value={header.warehouse} onChange={e => onWarehouseChange(e.target.value)}>
                   <option value="">Select...</option>
                   {WAREHOUSES.map(w => <option key={w} value={w}>{w}</option>)}
-                  {header.warehouse && !WAREHOUSES.includes(header.warehouse) && <option value={header.warehouse}>{header.warehouse}</option>}
+                  {/* 2026-11-13: Direct Delivery — Board (Step 6) only, always last. */}
+                  {fromDispatch && <option value={DIRECT_DELIVERY}>{DIRECT_DELIVERY}</option>}
+                  {header.warehouse && !WAREHOUSES.includes(header.warehouse) && !isDirectDelivery && <option value={header.warehouse}>{header.warehouse}</option>}
                 </select>
                 {isWada && <p className="text-[11px] text-g500 mt-1">Wada: not linked to stock — type every product field.</p>}
               </div>
+              {isDirectDelivery && (
+                <div className="col-span-3 self-end text-[12px] text-g600 leading-snug">
+                  Bought from another company's warehouse and delivered by them straight to the customer.
+                  No DO form is made and no stock leaves our warehouses. <strong className="text-blk">Issue DO</strong> completes Step 6.
+                </div>
+              )}
               {isOtherWarehouse && (
                 <div>
                   <label className={labelCls}>Other Warehouse <span className="text-red-mrt">*</span></label>
                   <input className={inputCls} value={header.otherWarehouse} onChange={setH('otherWarehouse')} />
                 </div>
               )}
+              {!isDirectDelivery && (<>
               <div>
                 <label className={labelCls}>DO Number <span className="text-red-mrt">*</span></label>
                 {/* 2026-09-09: auto-generated from the Warehouse, never typed;
@@ -1484,9 +1520,11 @@ function OutwardForm() {
                 <label className={labelCls}>DO Date</label>
                 <input type="date" className={inputCls} value={header.doDate} onChange={setH('doDate')} />
               </div>
+              </>)}
             </div>
           </div>
 
+          {!isDirectDelivery && (<>
           <div className={cardCls}>
             <div className={sectionHeaderCls}>Products</div>
             <div className="overflow-x-auto">
@@ -1685,9 +1723,19 @@ function OutwardForm() {
               <textarea className={`${inputCls} min-h-[68px]`} value={header.note} onChange={setH('note')} />
             </div>
           </div>
+          </>)}
         </div>
       </div>
 
+      {isDirectDelivery ? (
+      // 2026-11-13: Direct Delivery — the one button.
+      <div className="flex items-center gap-2 p-[14px_20px] bg-g100 border-t border-g200 sticky bottom-0">
+        <Button variant="primary" onClick={issueDirectDelivery} disabled={saving}>
+          {saving ? 'Issuing…' : 'Issue DO'}
+        </Button>
+        {error && <div className="ml-4 text-red-mrt text-[11px] font-bold max-w-[520px]">{error}</div>}
+      </div>
+      ) : (
       <div className="flex items-center gap-2 p-[14px_20px] bg-g100 border-t border-g200 sticky bottom-0">
         {/* 2026-11-03 (UI cleanup): clickable even with a problem — save()
             then shows the first problem as a toast and saves nothing. */}
@@ -1714,6 +1762,7 @@ function OutwardForm() {
         <div className="ml-auto text-[11px] text-g500">Fields marked <span className="text-red-mrt">*</span> required</div>
         {error && <div className="ml-4 text-red-mrt text-[11px] font-bold max-w-[420px]">{error}</div>}
       </div>
+      )}
 
       {toast && (
         <div className={`fixed bottom-5 right-5 z-50 max-w-[560px] flex items-start gap-2 px-4 py-2.5 rounded-[4px] shadow-lg text-[12.5px] font-medium text-white animate-in slide-in-from-bottom-2 ${toast.type === 'ok' ? 'bg-sW' : 'bg-red-mrt'}`}>

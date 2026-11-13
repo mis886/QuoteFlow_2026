@@ -330,6 +330,9 @@ function Row({ card, now, onOpen, qty, deliveredEntryIds, punchedAt }: { card: B
         {card.kind === 'order' && card.doPending && (
           <span className="text-[10.5px] font-semibold text-amber-700 leading-snug truncate max-w-full" title={doPendingText(card.doPending)}>{doPendingText(card.doPending)}</span>
         )}
+        {card.directDelivery && (
+          <span className="text-[10.5px] font-semibold text-blue-700" title="Step 6 issued as Direct Delivery — no DO, no stock out of our warehouses">Direct Delivery</span>
+        )}
         {card.kind === 'entry' && card.position.invoiceMissing && (
           <span className="text-[10.5px] font-semibold text-[#9A0000]">Invoice no. missing</span>
         )}
