@@ -623,12 +623,17 @@ export function NewDispatchEntry() {
   // 2026-11-13: Direct Delivery entry (its round's Step 6 was issued as Direct
   // Delivery) — the LR is optional at Step 10. null = not known yet.
   const [entryDirectDelivery, setEntryDirectDelivery] = useState<boolean | null>(null);
+  // True while that check runs — Save waits for it (shows "Loading…"), so it
+  // never asks for an LR a Direct Delivery entry doesn't need. A failed check
+  // ends the wait and the LR rules apply as for a normal entry.
+  const [ddChecking, setDdChecking] = useState(false);
   useEffect(() => {
-    if (!currentEntry || isImportedEntry(currentEntry)) { setEntryDirectDelivery(null); return; }
+    if (!currentEntry || isImportedEntry(currentEntry)) { setEntryDirectDelivery(null); setDdChecking(false); return; }
     let live = true;
+    setDdChecking(true);
     loadOrderStepRecords(currentEntry.orderId).then(
-      recs => { if (live) setEntryDirectDelivery(entryIsDirectDelivery(currentEntry, data.dispatchEntries, recs)); },
-      () => { if (live) setEntryDirectDelivery(null); },
+      recs => { if (live) { setEntryDirectDelivery(entryIsDirectDelivery(currentEntry, data.dispatchEntries, recs)); setDdChecking(false); } },
+      () => { if (live) { setEntryDirectDelivery(null); setDdChecking(false); } },
     );
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -758,7 +763,8 @@ export function NewDispatchEntry() {
   });
 
   const handleSubmit = async () => {
-    if (!selectedOrderId || !selectedOrder || saving) return;
+    // 2026-11-13: not while the Direct Delivery check is still running.
+    if (!selectedOrderId || !selectedOrder || saving || ddChecking) return;
     setStepWarning('');
     // Re-check at Save time, in case the order's status / sent-to-Dispatch
     // flag / remaining qty changed while this page was open.
@@ -1664,7 +1670,7 @@ export function NewDispatchEntry() {
                 </Button>
               </span>
             )}
-            <Button variant="dark" disabled={!selectedOrderId || saving} onClick={handleSubmit}>{saving ? 'Saving…' : 'Save'}</Button>
+            <Button variant="dark" disabled={!selectedOrderId || saving || ddChecking} onClick={handleSubmit}>{saving ? 'Saving…' : ddChecking ? 'Loading…' : 'Save'}</Button>
             {currentEntry?.bhiwandiEmailSentAt && (
               <span className="text-[11px] text-g500 whitespace-nowrap">
                 Sent to Bhiwandi on {fmtIST(new Date(currentEntry.bhiwandiEmailSentAt), 'dd MMM yyyy, hh:mm a')}
