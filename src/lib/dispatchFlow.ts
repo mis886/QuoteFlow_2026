@@ -411,11 +411,13 @@ export const STEP11_WHATSAPP_LABEL = 'Send through WhatsApp';
 export const STEP11_WHATSAPP_REMARK = 'sent via WhatsApp';
 export const showStep11WhatsApp = (e: DispatchEntry, column: number) =>
   column === 11 && !e.emailSentAt && !isImportedEntry(e);
-export function step11WhatsAppBlock(e: DispatchEntry, customer?: Pick<Customer, 'reqDocInvoice' | 'reqDocEwayBill' | 'reqDocLr' | 'reqDocCoa' | 'reqDocSupplierPortal'>): string | undefined {
+// 2026-11-13: opts.directDelivery — the customer's "LR required" does not
+// apply to a Direct Delivery entry (every other required document still does).
+export function step11WhatsAppBlock(e: DispatchEntry, customer?: Pick<Customer, 'reqDocInvoice' | 'reqDocEwayBill' | 'reqDocLr' | 'reqDocCoa' | 'reqDocSupplierPortal'>, opts?: { directDelivery?: boolean }): string | undefined {
   if (!customer) return undefined;
   const missing: string[] = [];
   if ((customer.reqDocInvoice || customer.reqDocEwayBill) && !entryHasInvoiceFile(e)) missing.push('Invoice / Eway Bill');
-  if (customer.reqDocLr && e.fulfillmentType !== 'self_pickup' && !entryHasLr(e)) missing.push('LR');
+  if (customer.reqDocLr && !opts?.directDelivery && e.fulfillmentType !== 'self_pickup' && !entryHasLr(e)) missing.push('LR');
   // 2026-11-13: not for Tops / Residue entries (coaNotRequiredForItems).
   if (customer.reqDocCoa && !coaNotRequiredForItems(e.items) && !((e.coaFiles?.length ?? 0) > 0 || !!e.coaUrl)) missing.push('COA');
   if (customer.reqDocSupplierPortal && !e.supplierPortalUrl) missing.push('Supplier Portal');

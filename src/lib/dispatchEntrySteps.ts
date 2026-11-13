@@ -7,7 +7,7 @@
 import { supabase } from './supabase';
 import { logActivity } from './activityLog';
 import type { DispatchEntry } from './types';
-import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef, entryHasLr, roundIsDirectDelivery, DIRECT_DELIVERY_NO_LR_REMARK } from './dispatchFlow';
+import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef, entryHasLr, roundIsDirectDelivery, DIRECT_DELIVERY_NO_LR_REMARK, entryRoundOf } from './dispatchFlow';
 
 /** The entry as saved in the database right now — the fields the Step 8–11 rules read. */
 async function freshEntry(entry: DispatchEntry): Promise<DispatchEntry> {
@@ -170,7 +170,11 @@ export async function markEntryDocsSentWhatsApp({ entry, entries, customer, done
   const stale = 'The documents for this entry were already sent.';
   if (now.emailSentAt) throw new Error(stale);
   if (!showStep11WhatsApp(now, entryPosition(now, records).column)) throw new Error('This entry is not at Step 11 (Steps 8–10 must be done first).');
-  const blocked = step11WhatsAppBlock(now, customer);
+  // 2026-11-13: a Direct Delivery entry is exempt from the customer's "LR required".
+  const directDelivery = customer?.reqDocLr && !entryHasLr(now)
+    ? await roundIsDirectDeliveryInDb(e.orderId, entryRoundOf(e, entries.filter(x => x.orderId === e.orderId)))
+    : false;
+  const blocked = step11WhatsAppBlock(now, customer, { directDelivery });
   if (blocked) throw new Error(blocked);
   const sentAt = await markSent(e.id);
   if (!sentAt) throw new Error(stale);

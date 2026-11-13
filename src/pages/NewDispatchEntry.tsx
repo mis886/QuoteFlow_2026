@@ -650,7 +650,8 @@ export function NewDispatchEntry() {
   if (selectedCustomer && !(currentEntry && isImportedEntry(currentEntry))) {
     const c = selectedCustomer;
     if (c.reqDocInvoice || c.reqDocEwayBill) requiredDocs.push('invoiceEwayBill');
-    if (c.reqDocLr && type !== 'self_pickup') requiredDocs.push('lr');
+    // 2026-11-13: not for a Direct Delivery entry (entryDirectDelivery).
+    if (c.reqDocLr && type !== 'self_pickup' && !entryDirectDelivery) requiredDocs.push('lr');
     // 2026-11-13: Tops / Residue products need no COA — skipped when every
     // product line on this entry is one (coaNotRequiredForItems).
     if (c.reqDocCoa && !coaNotRequiredForItems(items)) requiredDocs.push('coa');
@@ -724,7 +725,7 @@ export function NewDispatchEntry() {
     if (entrySteps === null) return 'Checking the Dispatch steps…';
     const col = entryPosition(currentEntry, entrySteps).column;
     if (!showStep11WhatsApp(currentEntry, col)) return `Finish Step ${col} first — Steps 8–10 must be done (Step 9 Bhiwandi, LR or Self Pickup) before Step 11`;
-    return step11WhatsAppBlock(currentEntry, selectedCustomer);
+    return step11WhatsAppBlock(currentEntry, selectedCustomer, { directDelivery: !!entryDirectDelivery });
   })();
   const requestWhatsApp = () => {
     if (whatsAppReason || whatsAppBusy) return;
