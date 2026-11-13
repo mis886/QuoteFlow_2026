@@ -34,28 +34,16 @@ import { NewStockOutward } from './pages/NewStockOutward';
 import { useAppStore } from './store';
 import { Loader2 } from 'lucide-react';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
-import { ProductionLayout } from './production/components/ProductionLayout';
-import { ProductionDashboard } from './production/pages/ProductionDashboard';
-import { NewProductionJob } from './production/pages/NewProductionJob';
-import { Sequencer } from './production/pages/Sequencer';
-import { JobsList } from './production/pages/JobsList';
-import { ProductionOrders } from './production/pages/ProductionOrders';
-import { JobDetail } from './production/pages/JobDetail';
-import { NCRLog } from './production/pages/NCRLog';
-import { ShopFloorSettingsPage } from './production/pages/ShopFloorSettings';
-import { PressBoardPage } from './production/pages/PressBoardPage';
-import { ProductsList } from './production/pages/ProductsList';
-import { ProductDetail } from './production/pages/ProductDetail';
-import { NewProduct } from './production/pages/NewProduct';
-import { CompoundsList } from './production/pages/CompoundsList';
-import { JobCardBoard } from './production/pages/JobCardBoard';
-import { LogMolding } from './production/pages/LogMolding';
-import { LogFinishing } from './production/pages/LogFinishing';
-import { LogInspection } from './production/pages/LogInspection';
-import { LogPDI } from './production/pages/LogPDI';
-import { DispatchBoard } from './production/pages/DispatchBoard';
-import { CreateDispatch } from './production/pages/CreateDispatch';
-import { DocsGallery } from './production/pages/DocsGallery';
+// 2026-11-02: the Production workspace (unused, 0 jobs) was replaced by the FMS workspace.
+import { FmsLayout } from './fms/components/FmsLayout';
+import { DashboardPage as FmsDashboard } from './fms/pages/Dashboard';
+import { ScorePage as FmsScore, PersonPage as FmsPerson } from './fms/pages/Score';
+import { TaskPage as FmsTask, NewTaskPage as FmsNewTask } from './fms/pages/Task';
+import { WorkflowsPage as FmsWorkflows, WorkflowPage as FmsWorkflow, WorkflowFormPage as FmsWorkflowForm } from './fms/pages/Workflows';
+import { RunsPage as FmsRuns, RunPage as FmsRun } from './fms/pages/Runs';
+import { TeamPage as FmsTeam, RecurringPage as FmsRecurring } from './fms/pages/Team';
+import { CoordinatorPage as FmsCoordinator } from './fms/pages/Coordinator';
+import { AdminUsersPage as FmsAdminUsers, AdminUserPage as FmsAdminUser, AdminSettingsPage as FmsAdminSettings } from './fms/pages/Admin';
 
 function AuthWrapper({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAppStore();
@@ -123,34 +111,30 @@ export default function App() {
                   <Route path="intelligence" element={<IntelligenceBoard />} />
                   <Route path="*" element={<div className="p-8 text-[13px] font-mono">Module not found...</div>} />
                 </Route>
-                {/* Production workspace (BETA) — own layout, own sidebar */}
-                <Route path="/production" element={<ProductionLayout />}>
-                  <Route index element={<ProductionDashboard />} />
-                  <Route path="sequencer" element={<Sequencer />} />
-                  <Route path="sequencer/:tab" element={<Sequencer />} />
-                  <Route path="presses" element={<PressBoardPage />} />
-                  <Route path="orders" element={<ProductionOrders />} />
-                  <Route path="jobs" element={<JobsList />} />
-                  <Route path="jobs/new" element={<NewProductionJob />} />
-                  <Route path="jobs/:id" element={<JobDetail />} />
-                  <Route path="ncr" element={<NCRLog />} />
-                  <Route path="settings" element={<ShopFloorSettingsPage />} />
-                  <Route path="products" element={<ProductsList />} />
-                  <Route path="products/new" element={<NewProduct />} />
-                  <Route path="products/:id" element={<ProductDetail />} />
-                  <Route path="products/:id/edit" element={<NewProduct />} />
-                  <Route path="compounds" element={<CompoundsList />} />
-                  {/* Beta modules */}
-                  <Route path="board" element={<JobCardBoard />} />
-                  <Route path="log-molding" element={<LogMolding />} />
-                  <Route path="log-finishing" element={<LogFinishing />} />
-                  <Route path="log-inspection" element={<LogInspection />} />
-                  <Route path="log-pdi" element={<LogPDI />} />
-                  <Route path="dispatch" element={<DispatchBoard />} />
-                  <Route path="dispatch/new" element={<CreateDispatch />} />
-                  <Route path="docs" element={<DocsGallery />} />
-                  <Route path="*" element={<div className="p-8 text-[13px] font-mono">Production module not found...</div>} />
+                {/* FMS workspace — workflows, tasks and weekly MIS (replaced Production, 2026-11-02). Own layout and sidebar. */}
+                <Route path="/fms" element={<FmsLayout />}>
+                  <Route index element={<FmsDashboard />} />
+                  <Route path="dashboard" element={<FmsDashboard />} />
+                  <Route path="score" element={<FmsScore />} />
+                  <Route path="tasks/new" element={<FmsNewTask />} />
+                  <Route path="tasks/:id" element={<FmsTask />} />
+                  <Route path="workflows" element={<FmsWorkflows />} />
+                  <Route path="workflows/new" element={<FmsWorkflowForm key="new" mode="new" />} />
+                  <Route path="workflows/:id" element={<FmsWorkflow />} />
+                  <Route path="workflows/:id/edit" element={<FmsWorkflowForm key="edit" mode="edit" />} />
+                  <Route path="runs" element={<FmsRuns />} />
+                  <Route path="runs/:id" element={<FmsRun />} />
+                  <Route path="recurring" element={<FmsRecurring />} />
+                  <Route path="team" element={<FmsTeam />} />
+                  <Route path="team/:id" element={<FmsPerson />} />
+                  <Route path="coordinator" element={<FmsCoordinator />} />
+                  <Route path="admin/users" element={<FmsAdminUsers />} />
+                  <Route path="admin/users/:id" element={<FmsAdminUser />} />
+                  <Route path="admin/settings" element={<FmsAdminSettings />} />
+                  <Route path="*" element={<Navigate to="/fms" replace />} />
                 </Route>
+                {/* Old Production links go to FMS. */}
+                <Route path="/production/*" element={<Navigate to="/fms" replace />} />
               </Routes>
             </AuthWrapper>
           } />

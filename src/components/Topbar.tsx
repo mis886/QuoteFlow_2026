@@ -6,7 +6,7 @@ import { GlobalSearchResults } from './GlobalSearchResults';
 import { useLocation } from 'react-router-dom';
 import { useAppStore, SALES_EMAIL } from '../store';
 import { hasActiveToken } from '../lib/gmail';
-import { WorkspaceSwitcher } from '../production/components/WorkspaceSwitcher';
+import { WorkspaceSwitcher } from '../fms/components/WorkspaceSwitcher';
 
 const PATH_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -17,6 +17,7 @@ const PATH_TITLES: Record<string, string> = {
   '/analytics': 'Analytics',
   '/blueprint': 'System Plan',
   '/settings': 'Settings',
+  '/fms': 'FMS',
 };
 
 export function Topbar() {
