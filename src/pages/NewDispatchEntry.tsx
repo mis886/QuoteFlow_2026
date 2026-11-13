@@ -16,6 +16,7 @@ import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry,
 import { autoCompleteEntrySteps, loadEntryStepRecords, loadOrderStepRecords, markEntryDocsSentWhatsApp } from '../lib/dispatchEntrySteps';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { searchCoaDocuments, uploadCoaDocument } from '../lib/coaDocuments';
+import { coaNotRequiredForItems } from '../lib/coaAge';
 import { STEP_BUTTONS_LOCKED_TIP } from '../components/DispatchBoard';
 
 // "Documents Attachment" fields shown in this form once an existing dispatch
@@ -637,7 +638,9 @@ export function NewDispatchEntry() {
     const c = selectedCustomer;
     if (c.reqDocInvoice || c.reqDocEwayBill) requiredDocs.push('invoiceEwayBill');
     if (c.reqDocLr && type !== 'self_pickup') requiredDocs.push('lr');
-    if (c.reqDocCoa) requiredDocs.push('coa');
+    // 2026-11-13: Tops / Residue products need no COA — skipped when every
+    // product line on this entry is one (coaNotRequiredForItems).
+    if (c.reqDocCoa && !coaNotRequiredForItems(items)) requiredDocs.push('coa');
     if (c.reqDocSupplierPortal) requiredDocs.push('supplierPortal');
   }
   const enforcedDocs = requiredDocs.filter(canEditDoc);

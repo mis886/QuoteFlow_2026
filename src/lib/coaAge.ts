@@ -26,6 +26,17 @@ const dayNumber = (ymd: string) => {
 export const isCoaNotRequired = (productName?: string | null): boolean =>
   /\b(tops|residue)\b/i.test(productName || '');
 
+/**
+ * Dispatch: a customer's "COA required" (customers.req_doc_coa) is skipped
+ * when EVERY product line on the entry is Tops / Residue. One COA field
+ * serves the whole entry, so a single other product keeps the check.
+ * No product lines → still required.
+ */
+export const coaNotRequiredForItems = (items?: { desc?: string | null }[] | null): boolean => {
+  const names = (items ?? []).map(i => (i.desc || '').trim()).filter(Boolean);
+  return names.length > 0 && names.every(isCoaNotRequired);
+};
+
 /** No COA on file AND one is required for this product. */
 export const isCoaMissing = (lot: Pick<StockLot, 'coaFile' | 'coaUrl'> & { productName?: string }): boolean =>
   !isCoaNotRequired(lot.productName) && !lot.coaFile?.trim() && !lot.coaUrl?.trim();

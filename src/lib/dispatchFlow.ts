@@ -13,6 +13,7 @@
 // Nothing here ever changes an order's status.
 import type { Customer, DispatchEntry, DispatchFulfillmentType, Order } from './types';
 import { remainingByLine, totalRemaining, BOARD_GO_LIVE_AT, dispatchOrderView } from './utils';
+import { coaNotRequiredForItems } from './coaAge';
 
 export type StepNo = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
 /** Board column: steps 1–11, or 12 = Done. */
@@ -413,7 +414,8 @@ export function step11WhatsAppBlock(e: DispatchEntry, customer?: Pick<Customer, 
   const missing: string[] = [];
   if ((customer.reqDocInvoice || customer.reqDocEwayBill) && !entryHasInvoiceFile(e)) missing.push('Invoice / Eway Bill');
   if (customer.reqDocLr && e.fulfillmentType !== 'self_pickup' && !entryHasLr(e)) missing.push('LR');
-  if (customer.reqDocCoa && !((e.coaFiles?.length ?? 0) > 0 || !!e.coaUrl)) missing.push('COA');
+  // 2026-11-13: not for Tops / Residue entries (coaNotRequiredForItems).
+  if (customer.reqDocCoa && !coaNotRequiredForItems(e.items) && !((e.coaFiles?.length ?? 0) > 0 || !!e.coaUrl)) missing.push('COA');
   if (customer.reqDocSupplierPortal && !e.supplierPortalUrl) missing.push('Supplier Portal');
   return missing.length ? `This customer needs ${missing.join(', ')} with every dispatch — attach ${missing.length > 1 ? 'them' : 'it'} on the entry first` : undefined;
 }
