@@ -70,8 +70,22 @@
 // ledger only via the Finished Lot flow (see `isDepleted`/handleFinish
 // above) or by getting corrected through Stock Movements.
 
+//
+// 2026-11-13: warehouse pills (All | Hariom | Reliable | Swastik | BALAJI,
+// kept in the URL as ?wh=BALAJI) + a sticky totals row. A picked warehouse
+// shows only lots with barrels > 0 THERE, and Total Quantity becomes that
+// warehouse's barrels × packing (sorted by it too). Works together with
+// search and the COA-missing filter; the COA cards still count all lots.
+// Totals = the rows on screen: lots, barrels (all 4 warehouses, or the picked
+// one), each warehouse column's own barrel sum, and quantity per unit (Kg /
+// Ltr / other, never added across units). Quantity total = the sum of the
+// Total Quantity cells, except lots with no numeric `packing` (null / 0),
+// which are left out and listed in an amber note. Wada is not a button (no
+// stock in EnqBoss).
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, PackageCheck, Pencil, X } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, PackageCheck, Pencil, X, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { useAppStore } from '../store';
@@ -123,6 +137,32 @@ export function mapRow(r: any): StockLot {
 // showing a bare "0" instead of "—" was confusing/looked like a bug.
 const num = (v?: number) => (v === undefined || v === null || v === 0 ? '—' : v.toLocaleString('en-IN'));
 
+// 2026-11-13: warehouse pills. `key` is what goes in ?wh=.
+type WhKey = 'Hariom' | 'Reliable' | 'Swastik' | 'BALAJI';
+const WAREHOUSES: { key: WhKey; field: 'qtyHariom' | 'qtyReliable' | 'qtySwastik' | 'qtyBalaji' }[] = [
+  { key: 'Hariom', field: 'qtyHariom' },
+  { key: 'Reliable', field: 'qtyReliable' },
+  { key: 'Swastik', field: 'qtySwastik' },
+  { key: 'BALAJI', field: 'qtyBalaji' },
+];
+const parseWh = (v: string | null): WhKey | null =>
+  WAREHOUSES.find(w => w.key.toLowerCase() === (v || '').trim().toLowerCase())?.key ?? null;
+const whField = (wh: WhKey) => WAREHOUSES.find(w => w.key === wh)!.field;
+const allBarrels = (l: StockLot) => WAREHOUSES.reduce((s, w) => s + (Number(l[w.field]) || 0), 0);
+const hasPacking = (l: StockLot) => !!Number(l.packing);
+// Same pill look as Stock Register's [Stock Summary] [Stock Book] toggle.
+const pillCls = (active: boolean) => `px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${active ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`;
+// Indian commas, up to 1 decimal.
+const fmt1 = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 1 });
+// MOU groups: Kg and Ltr spellings merge; anything else stays as written.
+const unitOf = (mou?: string) => {
+  const m = (mou || '').trim();
+  const k = m.toLowerCase();
+  if (['kg', 'kgs', 'kilo', 'kilos', 'kilogram', 'kilograms'].includes(k)) return 'Kg';
+  if (['ltr', 'ltrs', 'litre', 'litres', 'liter', 'liters', 'l'].includes(k)) return 'Ltr';
+  return m || '(no MOU)';
+};
+
 // 2026-10-06: this is now the "Stock Summary" TAB of the Stock Register page
 // (src/pages/StockRegister.tsx), which owns the page header, the stat boxes
 // and the tab toggle. Table, columns, data and search are unchanged.
@@ -143,6 +183,20 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
   // A "COA missing" card picked: only those lots, oldest inward date first.
   const [coaFilter, setCoaFilter] = useState<'all' | CoaBucket | null>(null);
   const [coaLot, setCoaLot] = useState<StockLot | null>(null);
+  // Picked warehouse lives in the URL (?wh=BALAJI) next to Stock Register's ?tab=.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const wh = parseWh(searchParams.get('wh'));
+  const pickWh = (next: WhKey | null) => setSearchParams(prev => {
+    const p = new URLSearchParams(prev);
+    if (next) p.set('wh', next); else p.delete('wh');
+    return p;
+  });
+  // Barrels shown for a row: the picked warehouse's, else all 4.
+  const rowBarrels = (l: StockLot) => (wh ? Number(l[whField(wh)]) || 0 : allBarrels(l));
+  // Total Quantity cell: the picked warehouse's barrels × packing, else the
+  // stored all-warehouse quantity (unchanged).
+  const rowQty = (l: StockLot): number | undefined =>
+    wh ? (hasPacking(l) ? rowBarrels(l) * Number(l.packing) : undefined) : l.quantity;
 
   // Single scroll container for both axes — sticky headers below need to
   // stick to the SAME element that scrolls vertically, and nesting a
@@ -208,6 +262,7 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
     const q = normalizeSearchText(search.trim());
     let list = lots.filter(l => {
       if (coaFilter && (!isCoaMissing(l) || (coaFilter !== 'all' && coaAgeBucket(l) !== coaFilter))) return false;
+      if (wh && !(rowBarrels(l) > 0)) return false;
       if (!q) return true;
       const hay = normalizeSearchText([
         l.whLotNo, l.factLotNo, l.productCode, l.productName, l.make, l.remark,
@@ -219,7 +274,7 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
       if (sortCol === 'serialNo') { av = a.serialNo ?? Infinity; bv = b.serialNo ?? Infinity; }
       else if (sortCol === 'productName') { av = a.productName?.toLowerCase() || ''; bv = b.productName?.toLowerCase() || ''; }
       else if (sortCol === 'whLotNo') { av = a.whLotNo || ''; bv = b.whLotNo || ''; }
-      else if (sortCol === 'quantity') { av = a.quantity ?? -Infinity; bv = b.quantity ?? -Infinity; }
+      else if (sortCol === 'quantity') { av = rowQty(a) ?? -Infinity; bv = rowQty(b) ?? -Infinity; }
       else if (sortCol === 'make') { av = a.make?.toLowerCase() || ''; bv = b.make?.toLowerCase() || ''; }
       else { av = a.inwardDate || ''; bv = b.inwardDate || ''; }
       if (av < bv) return sortDir === 'asc' ? -1 : 1;
@@ -227,7 +282,29 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
       return 0;
     });
     return list;
-  }, [lots, search, sortCol, sortDir, coaFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lots, search, sortCol, sortDir, coaFilter, wh]);
+
+  // Totals for the rows on screen.
+  const totals = useMemo(() => {
+    const perWh = WAREHOUSES.map(w => filtered.reduce((s, l) => s + (Number(l[w.field]) || 0), 0));
+    const barrels = filtered.reduce((s, l) => s + rowBarrels(l), 0);
+    const byUnit = new Map<string, number>();
+    const noPacking: StockLot[] = [];
+    for (const l of filtered) {
+      if (!hasPacking(l)) { noPacking.push(l); continue; }
+      const q = Number(rowQty(l)) || 0;
+      const u = unitOf(l.mou);
+      byUnit.set(u, (byUnit.get(u) ?? 0) + q);
+    }
+    const order = (u: string) => (u === 'Kg' ? 0 : u === 'Ltr' ? 1 : 2);
+    const qtyText = [...byUnit.entries()]
+      .sort((a, b) => order(a[0]) - order(b[0]) || a[0].localeCompare(b[0]))
+      .map(([u, q]) => `${fmt1(q)} ${u}`)
+      .join(' · ');
+    return { perWh, barrels, qtyText, noPacking };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, wh]);
 
   // sticky top-0 + z-10 + an explicit (non-transparent) background pins
   // these header cells to the top of the table's own scroll container as
@@ -251,8 +328,8 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
     </th>
   );
 
-  const Th = ({ label }: { label: string }) => (
-    <th className="sticky top-0 z-10 bg-g100 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-center text-g500">
+  const Th = ({ label, active }: { label: string; active?: boolean }) => (
+    <th className={`sticky top-0 z-10 font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase px-[13px] py-[9px] whitespace-nowrap border-b border-g200 text-center ${active ? 'text-red-mrt bg-red-lt-solid' : 'bg-g100 text-g500'}`}>
       {label}
     </th>
   );
@@ -295,6 +372,13 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
           />
         </div>
 
+        <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]" role="group" aria-label="Warehouse">
+          <div role="button" aria-pressed={!wh} onClick={() => pickWh(null)} className={pillCls(!wh)}>All</div>
+          {WAREHOUSES.map(w => (
+            <div key={w.key} role="button" aria-pressed={wh === w.key} onClick={() => pickWh(w.key)} className={pillCls(wh === w.key)}>{w.key}</div>
+          ))}
+        </div>
+
         {coaFilterLabel && (
           <span className="inline-flex items-center gap-1 h-7 pl-2.5 pr-1 rounded-full bg-red-lt border border-red-mrt/30 text-[11px] font-semibold text-red-mrt whitespace-nowrap">
             COA missing · {coaFilter === 'all' ? 'All' : coaFilterLabel}
@@ -328,14 +412,11 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
                 <Th label="Sample Off" />
                 <Th label="COA" />
                 <Th label="Opening Stock" />
-                <Th label="Hariom" />
-                <Th label="Reliable" />
-                <Th label="Swastik" />
-                <Th label="BALAJI" />
+                {WAREHOUSES.map(w => <Th key={w.key} label={w.key} active={wh === w.key} />)}
                 <Th label="Packing" />
                 <Th label="MOU" />
                 <Th label="Packing Type" />
-                <SortTh col="quantity" label="Total Quantity" />
+                <SortTh col="quantity" label={wh ? `Total Quantity (${wh})` : 'Total Quantity'} />
                 <SortTh col="make" label="Make" />
                 <Th label="Remark" />
                 {/* 2026-09-21: the "Created / Updated By" column was removed
@@ -437,7 +518,7 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
                     <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{l.packing != null ? num(l.packing) : (l.packingDetail || '—')}</td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.mou || '—'}</td>
                     <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{l.packingType || '—'}</td>
-                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(l.quantity)}</td>
+                    <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap">{num(rowQty(l))}</td>
                     <td className="px-[13px] py-[9px] align-top text-center whitespace-nowrap">
                       {l.make
                         ? <span className="inline-flex items-center text-[10.5px] text-g600 bg-g100 px-2 py-0.5 rounded-[3px] font-medium">{l.make}</span>
@@ -463,6 +544,36 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
                 })
               )}
             </tbody>
+            {!loading && filtered.length > 0 && (() => {
+              const ft = 'sticky bottom-0 z-10 bg-g100 border-t-2 border-g300 px-[13px] py-[9px] align-top';
+              return (
+                <tfoot>
+                  <tr>
+                    <td colSpan={9} className={`${ft} text-[11px] text-blk whitespace-nowrap`}>
+                      <span className="font-mono text-[8.5px] font-bold tracking-[1.5px] uppercase text-g500 mr-2">Total{wh ? ` · ${wh}` : ''}</span>
+                      <span className="font-semibold">{filtered.length.toLocaleString('en-IN')} lots</span>
+                      <span className="text-g400 mx-1.5">·</span>
+                      <span className="font-semibold">{fmt1(totals.barrels)} barrels</span>
+                      {totals.noPacking.length > 0 && (
+                        <span
+                          className="ml-3 inline-flex items-center gap-1 text-[10.5px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 cursor-help"
+                          title={`No Packing — quantity not counted:\n${totals.noPacking.map(l => `${l.whLotNo || l.factLotNo || '(no lot no.)'} · ${l.productName} · ${fmt1(rowBarrels(l))} brl`).join('\n')}`}
+                        >
+                          <AlertTriangle size={11} />
+                          {totals.noPacking.length} lot{totals.noPacking.length === 1 ? ' has' : 's have'} no Packing — quantity not counted
+                        </span>
+                      )}
+                    </td>
+                    {WAREHOUSES.map((w, i) => (
+                      <td key={w.key} className={`${ft} text-center font-mono text-[11px] font-bold whitespace-nowrap ${wh === w.key ? 'text-red-mrt' : 'text-blk'}`}>{num(totals.perWh[i])}</td>
+                    ))}
+                    <td colSpan={3} className={ft} />
+                    <td className={`${ft} text-center font-mono text-[11px] font-bold text-blk whitespace-nowrap`}>{totals.qtyText || '—'}</td>
+                    <td colSpan={3} className={ft} />
+                  </tr>
+                </tfoot>
+              );
+            })()}
           </table>
         </div>
       </div>
