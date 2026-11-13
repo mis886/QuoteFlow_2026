@@ -79,9 +79,10 @@
 // Totals = the rows on screen: lots, barrels (all 4 warehouses, or the picked
 // one), each warehouse column's own barrel sum, and quantity per unit (Kg /
 // Ltr / other, never added across units). Quantity total = the sum of the
-// Total Quantity cells, except lots with no numeric `packing` (null / 0),
-// which are left out and listed in an amber note. Wada is not a button (no
-// stock in EnqBoss).
+// Total Quantity cells, except lots with no Packing, which are left out and
+// listed in an amber note. Packing = what the Packing column shows: numeric
+// `packing`, else `packing_detail` when it is a plain number (packingOf).
+// Wada is not a button (no stock in EnqBoss).
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -149,7 +150,16 @@ const parseWh = (v: string | null): WhKey | null =>
   WAREHOUSES.find(w => w.key.toLowerCase() === (v || '').trim().toLowerCase())?.key ?? null;
 const whField = (wh: WhKey) => WAREHOUSES.find(w => w.key === wh)!.field;
 const allBarrels = (l: StockLot) => WAREHOUSES.reduce((s, w) => s + (Number(l[w.field]) || 0), 0);
-const hasPacking = (l: StockLot) => !!Number(l.packing);
+// Packing as the Packing column shows it: numeric `packing`, else
+// `packing_detail` when it is a plain number ("175"). null = no Packing.
+const packingOf = (l: StockLot): number | null => {
+  const p = Number(l.packing);
+  if (l.packing != null && Number.isFinite(p) && p !== 0) return p;
+  const d = String(l.packingDetail ?? '').trim();
+  if (/^\d+(\.\d+)?$/.test(d) && Number(d) !== 0) return Number(d);
+  return null;
+};
+const hasPacking = (l: StockLot) => packingOf(l) !== null;
 // Same pill look as Stock Register's [Stock Summary] [Stock Book] toggle.
 const pillCls = (active: boolean) => `px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${active ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`;
 // Indian commas, up to 1 decimal.
@@ -196,7 +206,7 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
   // Total Quantity cell: the picked warehouse's barrels × packing, else the
   // stored all-warehouse quantity (unchanged).
   const rowQty = (l: StockLot): number | undefined =>
-    wh ? (hasPacking(l) ? rowBarrels(l) * Number(l.packing) : undefined) : l.quantity;
+    wh ? (hasPacking(l) ? rowBarrels(l) * packingOf(l)! : undefined) : l.quantity;
 
   // Single scroll container for both axes — sticky headers below need to
   // stick to the SAME element that scrolls vertically, and nesting a
