@@ -558,7 +558,11 @@ export function StockMovements() {
                       </td>
                       <td className="px-[13px] py-[9px] align-top text-center font-mono text-[10.5px] text-g600">{doField(g, l => l.whLotNo)}</td>
                       <td className="px-[13px] py-[9px] align-top text-center font-semibold text-blk min-w-[180px]">{doProducts(g)}</td>
-                      <td className="px-[13px] py-[9px] align-top text-center text-g600 min-w-[140px]">{doField(g, l => l.billingName)}</td>
+                      {/* 2026-11-13: "Billing Name" shows the DO's Party Name (the
+                          customer; "Other" → the typed party), not line billing_name. */}
+                      <td className="px-[13px] py-[9px] align-top text-center text-g600 min-w-[140px]" title={m.partyName === 'Other' ? m.otherParty : m.partyName}>
+                        {m.partyName === 'Other' ? (m.otherParty || 'Other') : (m.partyName || '—')}
+                      </td>
                       <td className="px-[13px] py-[9px] align-top text-center text-g600 whitespace-nowrap">{m.warehouse}</td>
                       <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{multi ? doBarrels(g) : (m.numArticles || '—')}</td>
                       <td className="px-[13px] py-[9px] align-top text-center font-mono text-[11px] text-g600">{multi ? doField(g, l => num(l.packing)) : num(m.packing)}</td>
