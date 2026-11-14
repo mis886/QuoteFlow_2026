@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { X, Send, Paperclip, Mail, Loader2, Search, Upload } from 'lucide-react';
 import { Quote, Order, StockMovement, OutwardDO, DispatchEntry, Customer, AppSettings, AuthorizedSignatory, Attachment } from '../lib/types';
 import { Button } from './ui';
-import { generateOrderPDF, generateOutwardPDF } from '../lib/pdfGenerator';
+import { generateOrderPDF } from '../lib/pdfGenerator';
 import { buildOutwardJPEG, outwardJpegFileName, blobToBase64 } from '../lib/outwardJpeg';
 import { sendViaGmailAsUser } from '../lib/gmail';
 import { resolveCoaStorageUrl } from '../lib/supabase';
@@ -530,34 +530,24 @@ export function SendEmailModal(props: Props) {
           attachments.push({ base64, fileName: a.fileName, mimeType });
         }
       } else {
-        let doc: any;
         if (isOutward) {
-          // Outward has no unitId/company-unit concept on the form — always
-          // falls back to whichever unit is marked default, same as Quote/
-          // Order's own fallback when their unitId is unset. generateOutwardPDF
-          // is async (it looks up the product's HSN code from product_catalog),
-          // not because Outward carries any bank data — it carries none.
+          // 2026-11-14 (user decision): the DO email attaches ONLY the JPEG —
+          // no PDF. It's the same image the form's JPEG button downloads
+          // (buildOutwardJPEG renders the DO PDF and saves it as an image).
+          // Outward has no unitId on the form — always the default unit.
           const unit = data.units.find(u => u.is_default);
-          doc = await generateOutwardPDF(props.doc as OutwardDO, customer, props.settings, props.defaultSignatory, unit, false);
+          const jpeg = await buildOutwardJPEG(props.doc as OutwardDO, customer, props.settings, props.defaultSignatory, unit);
+          attachments.push({ base64: await blobToBase64(jpeg.blob), fileName: jpeg.fileName, mimeType: 'image/jpeg' });
         } else {
           const op = props as OrderProps;
           const orderDoc = props.doc as Order;
           const orderUnit = orderDoc.unitId
             ? data.units.find(u => u.id === orderDoc.unitId)
             : data.units.find(u => u.is_default);
-          doc = await generateOrderPDF(orderDoc, op.relatedQuote, customer, props.settings, props.defaultSignatory, orderUnit, false);
-        }
-
-        const dataUri: string = doc.output('datauristring');
-        const pdfBase64 = dataUri.split(',')[1];
-        attachments.push({ base64: pdfBase64, fileName: pdfName, mimeType: 'application/pdf' });
-
-        // 2026-11-14: the DO also goes as a JPEG — the same image the form's
-        // JPEG button downloads (buildOutwardJPEG renders this same PDF).
-        if (isOutward) {
-          const unit = data.units.find(u => u.is_default);
-          const jpeg = await buildOutwardJPEG(props.doc as OutwardDO, customer, props.settings, props.defaultSignatory, unit);
-          attachments.push({ base64: await blobToBase64(jpeg.blob), fileName: jpeg.fileName, mimeType: 'image/jpeg' });
+          const doc = await generateOrderPDF(orderDoc, op.relatedQuote, customer, props.settings, props.defaultSignatory, orderUnit, false);
+          const dataUri: string = doc.output('datauristring');
+          const pdfBase64 = dataUri.split(',')[1];
+          attachments.push({ base64: pdfBase64, fileName: pdfName, mimeType: 'application/pdf' });
         }
       }
 
@@ -591,7 +581,7 @@ export function SendEmailModal(props: Props) {
               <p className="text-[10.5px] text-g400 mt-[1px]">
                 {isDispatch ? 'Attaches uploaded documents · Sends via Gmail'
                   : isQuote ? 'Quotation in email body · Sends via Gmail · Marks quote Sent'
-                  : `Generates ${isOutward ? 'PDF + JPEG' : 'PDF'} · Sends via Gmail · ${isOutward ? 'Confirms dispatch' : 'Confirms delivery'}`}
+                  : `Generates ${isOutward ? 'JPEG' : 'PDF'} · Sends via Gmail · ${isOutward ? 'Confirms dispatch' : 'Confirms delivery'}`}
               </p>
             </div>
           </div>
@@ -858,9 +848,9 @@ export function SendEmailModal(props: Props) {
               <div className="bg-blue-50 border border-blue-100 rounded-[3px] p-[9px_13px] flex items-center gap-2.5">
                 <Paperclip size={13} className="text-blue-500 shrink-0" />
                 <div>
-                  <div className="text-[11.5px] font-semibold text-blue-900">{pdfName}</div>
+                  {!isOutward && <div className="text-[11.5px] font-semibold text-blue-900">{pdfName}</div>}
                   {isOutward && <div className="text-[11.5px] font-semibold text-blue-900">{outwardJpegFileName(props.doc as OutwardDO)}</div>}
-                  <div className="text-[10px] text-blue-500">{isOutward ? 'PDF + JPEG generated and attached automatically' : 'PDF generated and attached automatically'}</div>
+                  <div className="text-[10px] text-blue-500">{isOutward ? 'JPEG generated and attached automatically' : 'PDF generated and attached automatically'}</div>
                 </div>
               </div>
             )}
