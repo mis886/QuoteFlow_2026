@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
-import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier } from '../lib/types';
+import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
 import { ProductSearch } from '../components/ProductSearch';
@@ -125,7 +125,8 @@ export function NewOrder() {
   // Dispatch-related fields — capturable here so they're already on the order
   // by the time a dispatch entry gets created for it (NewDispatchEntry.tsx
   // carries these forward as defaults, overridden by the entry's own values).
-  const [fulfillmentType, setFulfillmentType] = useState<'' | 'delivery' | 'self_pickup'>('');
+  // 2026-11-14: + 'direct_transporter' (behaves like delivery).
+  const [fulfillmentType, setFulfillmentType] = useState<'' | DispatchFulfillmentType>('');
   const [transporter, setTransporter] = useState('');
   // Tracks the value we last auto-filled from the customer master, so switching
   // to a different customer can safely re-derive these two fields — but only
@@ -990,10 +991,11 @@ export function NewOrder() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-[10px]">
                     <div>
                       <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Fulfillment Type</label>
-                      <select value={fulfillmentType} onChange={e => setFulfillmentType(e.target.value as '' | 'delivery' | 'self_pickup')} className={selectCls}>
+                      <select value={fulfillmentType} onChange={e => setFulfillmentType(e.target.value as '' | DispatchFulfillmentType)} className={selectCls}>
                         <option value="">— Select —</option>
                         <option value="delivery">Delivery</option>
                         <option value="self_pickup">Self Pickup</option>
+                        <option value="direct_transporter">Direct Transporter</option>
                       </select>
                     </div>
                     <div>

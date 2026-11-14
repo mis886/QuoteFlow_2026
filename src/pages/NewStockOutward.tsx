@@ -217,7 +217,7 @@ import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine,
 import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
 import { Loader2, Plus, X, ImageIcon } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
-import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse, DIRECT_TRANSPORTER, isOutwardDeliveryType } from '../lib/utils';
+import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse, DIRECT_TRANSPORTER, isOutwardDeliveryType, fulfillmentLabel } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
 import { downloadOutwardJPEG } from '../lib/outwardJpeg';
@@ -764,8 +764,9 @@ function OutwardForm() {
     if (!fromDispatch || !rowsOrder || dispatchPrefilled.current) return;
     dispatchPrefilled.current = true;
     const party = rowsOrder.cust || '';
-    const orderFulfilment = rowsOrder.fulfillmentType === 'delivery' ? 'Delivery'
-      : rowsOrder.fulfillmentType === 'self_pickup' ? 'Self Pickup' : '';
+    // 'delivery' → 'Delivery', 'self_pickup' → 'Self Pickup',
+    // 'direct_transporter' → 'Direct Transporter' (2026-11-14).
+    const orderFulfilment = fulfillmentLabel(rowsOrder.fulfillmentType);
     setLines(dispatchRowsFor(rowsOrder, orderEntries, prefillSeqs));
     setHeader(h => ({
       ...h,
@@ -776,7 +777,7 @@ function OutwardForm() {
       // 2026-10-16: the ORDER's own Fulfilment Type wins, then the Board URL,
       // then whatever is already in. Still editable.
       // 2026-11-14: except Direct Transporter from the URL, which beats the
-      // order (an order only knows delivery / self_pickup).
+      // order ("Open new DO for the rest" on a Direct Transporter DO).
       fulfilmentType: (dispatchFulfilment === DIRECT_TRANSPORTER ? DIRECT_TRANSPORTER : '')
         || orderFulfilment || dispatchFulfilment || h.fulfilmentType || fulfilmentTypeByParty[party] || '',
     }));

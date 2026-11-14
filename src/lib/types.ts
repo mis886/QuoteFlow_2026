@@ -545,7 +545,10 @@ export interface DataStore {
 // real-world manual Google Form fill for the HTPL Self Pickup FMS / HTPL
 // Delivery FMS). See src/pages/Dispatch.tsx and src/pages/NewDispatchEntry.tsx
 // for the UI.
-export type DispatchFulfillmentType = 'self_pickup' | 'delivery';
+// 2026-11-14: + 'direct_transporter' — behaves exactly like 'delivery'
+// (isDeliveryLike in utils.ts). DB CHECK widened in
+// 20261114120000_fulfillment_type_direct_transporter.sql.
+export type DispatchFulfillmentType = 'self_pickup' | 'delivery' | 'direct_transporter';
 
 export interface DispatchEntry {
   id: string;

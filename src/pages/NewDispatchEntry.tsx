@@ -772,7 +772,7 @@ export function NewDispatchEntry() {
       const reason = newDispatchBlockReason(dispatchOrders.find(o => o.id === selectedOrderId), selectedOrderId, data.dispatchEntries);
       if (reason) { setError(reason); return; }
     }
-    if (!type) { setError('Please select Delivery or Self Pickup'); return; }
+    if (!type) { setError('Please select Delivery, Self Pickup or Direct Transporter'); return; }
     const existingEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : null;
     // Each line's No of Barrels can't exceed what's still left to dispatch
     // for that order line across ALL of the order's entries — plus, when
@@ -1164,6 +1164,7 @@ export function NewDispatchEntry() {
                         <option value="">Select...</option>
                         <option value="delivery">Delivery</option>
                         <option value="self_pickup">Self Pickup</option>
+                        <option value="direct_transporter">Direct Transporter</option>
                       </select>
                     </div>
                     <div>

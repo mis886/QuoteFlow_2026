@@ -67,7 +67,9 @@ export const TypeDot = ({ type }: { type: string }) => type === 'self_pickup'
   ? <span className="inline-flex items-center gap-1 whitespace-nowrap"><span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED]" />Self Pickup</span>
   : type === 'delivery'
     ? <span className="inline-flex items-center gap-1 whitespace-nowrap"><span className="w-[7px] h-[7px] rounded-full bg-[#2563EB]" />Delivery</span>
-    : <span className="text-g400 whitespace-nowrap">Not set</span>;
+    : type === 'direct_transporter'
+      ? <span className="inline-flex items-center gap-1 whitespace-nowrap"><span className="w-[7px] h-[7px] rounded-full bg-[#0E7490]" />Direct Transporter</span>
+      : <span className="text-g400 whitespace-nowrap">Not set</span>;
 
 /**
  * Step 1–7 buttons for an order card (black = manual Done, white = second

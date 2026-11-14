@@ -49,6 +49,18 @@ export const DIRECT_TRANSPORTER = 'Direct Transporter';
 export const isOutwardDeliveryType = (t?: string | null): boolean =>
   t === 'Delivery' || t === DIRECT_TRANSPORTER;
 
+// 2026-11-14: the same for Order / Dispatch entry fulfillment_type
+// ('self_pickup' | 'delivery' | 'direct_transporter'). direct_transporter
+// behaves EXACTLY like delivery (Step 10 LR, TATs, required docs, emails).
+// Checks written as `!== 'self_pickup'` already treat it as delivery.
+export const isDeliveryLike = (t?: string | null): boolean =>
+  t === 'delivery' || t === 'direct_transporter';
+export const fulfillmentLabel = (t?: string | null): string =>
+  t === 'delivery' ? 'Delivery'
+    : t === 'self_pickup' ? 'Self Pickup'
+    : t === 'direct_transporter' ? DIRECT_TRANSPORTER
+    : '';  // also the DO form's text value for the same type
+
 export const outwardTransporterName =(m: { transporter?: string | null; otherTransporter?: string | null }): string =>
   ((m.transporter === 'Other' ? m.otherTransporter : m.transporter) || '').trim();
 
