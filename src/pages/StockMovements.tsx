@@ -70,7 +70,7 @@ import { Search, Plus, RefreshCw, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { useAppStore } from '../store';
-import { fmtDate, normalizeSearchText, doerLabel, canDeleteRecords, friendlyStockError, dispatchOrderView } from '../lib/utils';
+import { fmtDate, normalizeSearchText, doerLabel, canDeleteRecords, friendlyStockError, dispatchOrderView, DIRECT_TRANSPORTER } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { StockMovement } from '../lib/types';
 import { Button } from '../components/ui';
@@ -133,10 +133,15 @@ export function mapRow(r: any): StockMovement {
 // so they never drop out of sight.
 type MovementTab = 'inward' | 'outward' | 'finished';
 type OutwardSub = 'saved' | 'emailSent';
-type OutwardType = 'delivery' | 'self_pickup' | 'not_set';
+// 2026-11-14: + 'direct_transporter' (Fulfilment Type "Direct Transporter")
+// — its own pill and label.
+type OutwardType = 'delivery' | 'self_pickup' | 'direct_transporter' | 'not_set';
 const outwardTypeOf = (m: StockMovement): OutwardType =>
-  m.fulfilmentType === 'Delivery' ? 'delivery' : m.fulfilmentType === 'Self Pickup' ? 'self_pickup' : 'not_set';
-const OUTWARD_TYPE_LABEL: Record<OutwardType, string> = { delivery: 'Delivery', self_pickup: 'Self Pickup', not_set: 'Not Set' };
+  m.fulfilmentType === 'Delivery' ? 'delivery'
+    : m.fulfilmentType === 'Self Pickup' ? 'self_pickup'
+    : m.fulfilmentType === DIRECT_TRANSPORTER ? 'direct_transporter'
+    : 'not_set';
+const OUTWARD_TYPE_LABEL: Record<OutwardType, string> = { delivery: 'Delivery', self_pickup: 'Self Pickup', direct_transporter: 'Direct Transporter', not_set: 'Not Set' };
 
 const pillCls = (active: boolean) => `px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${active ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`;
 
@@ -227,7 +232,7 @@ export function StockMovements() {
     searchParams.get('sub') === 'emailSent' ? 'emailSent' : 'saved');
   const [outwardType, setOutwardType] = useState<OutwardType>(() => {
     const t = searchParams.get('type');
-    return t === 'self_pickup' || t === 'not_set' ? t : 'delivery';
+    return t === 'self_pickup' || t === 'direct_transporter' || t === 'not_set' ? t : 'delivery';
   });
   const syncUrl = (t: MovementTab, sub: OutwardSub, type: OutwardType) => {
     setSearchParams(t === 'outward' ? { tab: t, sub, type } : t === 'finished' ? { tab: t } : {}, { replace: true });
@@ -378,7 +383,8 @@ export function StockMovements() {
   const activeOutward = outwardDos.filter(g => !!g.head.emailSentAt === (outwardSub === 'emailSent'));
   const deliveryCount = activeOutward.filter(g => outwardTypeOf(g.head) === 'delivery').length;
   const selfPickupCount = activeOutward.filter(g => outwardTypeOf(g.head) === 'self_pickup').length;
-  const notSetCount = activeOutward.length - deliveryCount - selfPickupCount;
+  const directTransporterCount = activeOutward.filter(g => outwardTypeOf(g.head) === 'direct_transporter').length;
+  const notSetCount = activeOutward.length - deliveryCount - selfPickupCount - directTransporterCount;
   const outwardColCount = 12;
 
   const matchesSearch = (m: StockMovement, q: string) => normalizeSearchText([
@@ -516,6 +522,9 @@ export function StockMovements() {
             </div>
             <div onClick={() => switchOutwardType('self_pickup')} className={`flex items-center gap-1.5 ${pillCls(outwardType === 'self_pickup')}`}>
               <span className="w-[7px] h-[7px] rounded-full bg-[#7C3AED] shrink-0" /> Self Pickup ({selfPickupCount})
+            </div>
+            <div onClick={() => switchOutwardType('direct_transporter')} className={`flex items-center gap-1.5 ${pillCls(outwardType === 'direct_transporter')}`}>
+              <span className="w-[7px] h-[7px] rounded-full bg-[#0E7490] shrink-0" /> Direct Transporter ({directTransporterCount})
             </div>
             {(notSetCount > 0 || outwardType === 'not_set') && (
               <div onClick={() => switchOutwardType('not_set')} className={`flex items-center gap-1.5 ${pillCls(outwardType === 'not_set')}`}>

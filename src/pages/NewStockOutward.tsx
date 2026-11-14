@@ -217,7 +217,7 @@ import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine,
 import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
 import { Loader2, Plus, X, ImageIcon } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
-import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse } from '../lib/utils';
+import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse, DIRECT_TRANSPORTER, isOutwardDeliveryType } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
 import { downloadOutwardJPEG } from '../lib/outwardJpeg';
@@ -410,13 +410,18 @@ const sameLot = (a: string, b: string) => !!a.trim() && a.trim().toLowerCase() =
 
 // 2026-10-12: Fulfilment Type is now required and must be one of these two
 // ("Both" is a customer-level value, not something one Outward entry can be).
-const FULFILMENT_TYPES = ['Delivery', 'Self Pickup'];
+// 2026-11-14: + "Direct Transporter" — works exactly like Delivery (see
+// isOutwardDeliveryType in utils.ts).
+const FULFILMENT_TYPES = ['Delivery', 'Self Pickup', DIRECT_TRANSPORTER];
 
 // The Outward list view (StockMovements.tsx) an entry belongs in — Saved or
-// Email Sent sub-tab, Delivery / Self Pickup pill. Same URL params that page
-// reads on load.
+// Email Sent sub-tab, Delivery / Self Pickup / Direct Transporter pill. Same
+// URL params that page reads on load.
 const outwardListPath = (emailSent: boolean, fulfilmentType?: string | null) => {
-  const type = fulfilmentType === 'Self Pickup' ? 'self_pickup' : fulfilmentType === 'Delivery' ? 'delivery' : 'not_set';
+  const type = fulfilmentType === 'Self Pickup' ? 'self_pickup'
+    : fulfilmentType === 'Delivery' ? 'delivery'
+    : fulfilmentType === DIRECT_TRANSPORTER ? 'direct_transporter'
+    : 'not_set';
   return `/stock-movements?tab=outward&sub=${emailSent ? 'emailSent' : 'saved'}&type=${type}`;
 };
 
@@ -725,7 +730,7 @@ function OutwardForm() {
         const fulfilmentType = (row.fulfilment_type || '').trim();
         // 2026-10-12: only Delivery / Self Pickup are auto-filled — a "Both"
         // customer leaves the (now required) field empty for the user to pick.
-        if (name && FULFILMENT_TYPES.includes(fulfilmentType)) fulfilmentMap[name] = fulfilmentType;
+        if (name && (fulfilmentType === 'Delivery' || fulfilmentType === 'Self Pickup')) fulfilmentMap[name] = fulfilmentType;
         if (!name || !transporter) continue;
         if (!(name in map)) { map[name] = transporter; names.push(name); }
         transporterSet.add(transporter);
@@ -1312,11 +1317,11 @@ function OutwardForm() {
     if (loadErr || !saved) { setError(`Could not check this DO: ${loadErr?.message || 'entry not found'}`); return; }
     const savedTransporter = outwardTransporterName({ transporter: saved.transporter, otherTransporter: saved.other_transporter });
     const formTransporter = outwardTransporterName({ transporter: header.transporter, otherTransporter: isOtherTransporter ? header.otherTransporter : '' });
-    if ((saved.fulfilment_type || '') !== header.fulfilmentType || (header.fulfilmentType === 'Delivery' && savedTransporter !== formTransporter)) {
+    if ((saved.fulfilment_type || '') !== header.fulfilmentType || (isOutwardDeliveryType(header.fulfilmentType) && savedTransporter !== formTransporter)) {
       setError('Please save your changes first.');
       return;
     }
-    if (saved.fulfilment_type === 'Delivery' && !savedTransporter) {
+    if (isOutwardDeliveryType(saved.fulfilment_type) && !savedTransporter) {
       setTransporterError(true);
       setError('Please select a transporter and save first.');
       return;
@@ -1376,13 +1381,13 @@ function OutwardForm() {
     if (saveBlock) { setError(''); showToast('err', saveBlock); return; }
     if (!FULFILMENT_TYPES.includes(header.fulfilmentType)) {
       setFulfilmentError(true);
-      setError('Please select Fulfilment Type (Delivery or Self Pickup).');
+      setError('Please select Fulfilment Type (Delivery, Self Pickup or Direct Transporter).');
       return;
     }
-    if (header.fulfilmentType === 'Delivery'
+    if (isOutwardDeliveryType(header.fulfilmentType)
       && !outwardTransporterName({ transporter: header.transporter, otherTransporter: isOtherTransporter ? header.otherTransporter : '' })) {
       setTransporterError(true);
-      setError('Please select a transporter for Delivery.');
+      setError(`Please select a transporter for ${header.fulfilmentType}.`);
       return;
     }
     setSaving(true);
@@ -1721,14 +1726,14 @@ function OutwardForm() {
                 </div>
               )}
               <div>
-                <label className={labelCls}>Transporter{header.fulfilmentType === 'Delivery' && <> <span className="text-red-mrt">*</span></>}</label>
+                <label className={labelCls}>Transporter{isOutwardDeliveryType(header.fulfilmentType) && <> <span className="text-red-mrt">*</span></>}</label>
                 <SearchableCombobox className={`${inputCls} ${transporterError && !isOtherTransporter ? 'border-red-mrt' : ''}`} options={transporterOptions} value={header.transporter}
                   onChange={v => { setTransporterError(false); setHeader(h => ({ ...h, transporter: v })); }} />
                 {transporterError && <p className="text-red-mrt text-[11px] mt-1">Please select a transporter for Delivery.</p>}
               </div>
               {isOtherTransporter && (
                 <div>
-                  <label className={labelCls}>Other Transporter{header.fulfilmentType === 'Delivery' && <> <span className="text-red-mrt">*</span></>}</label>
+                  <label className={labelCls}>Other Transporter{isOutwardDeliveryType(header.fulfilmentType) && <> <span className="text-red-mrt">*</span></>}</label>
                   <input className={`${inputCls} ${transporterError ? 'border-red-mrt' : ''}`} value={header.otherTransporter}
                     onChange={e => { setTransporterError(false); setH('otherTransporter')(e); }} />
                 </div>
@@ -1749,7 +1754,7 @@ function OutwardForm() {
                     <option value={header.fulfilmentType}>{header.fulfilmentType}</option>
                   )}
                 </select>
-                {fulfilmentError && <p className="text-red-mrt text-[11px] mt-1">Please select Delivery or Self Pickup.</p>}
+                {fulfilmentError && <p className="text-red-mrt text-[11px] mt-1">Please select Delivery, Self Pickup or Direct Transporter.</p>}
               </div>
             </div>
             <div className="mt-3">

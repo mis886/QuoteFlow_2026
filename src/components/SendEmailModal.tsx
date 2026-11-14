@@ -7,7 +7,7 @@ import { buildOutwardJPEG, outwardJpegFileName, blobToBase64 } from '../lib/outw
 import { sendViaGmailAsUser } from '../lib/gmail';
 import { resolveCoaStorageUrl } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { outwardTransporterName, fmtDate } from '../lib/utils';
+import { outwardTransporterName, fmtDate, isOutwardDeliveryType } from '../lib/utils';
 import { buildQuoteEmailHtml } from '../lib/quoteEmailHtml';
 import { CoaDocRow, coaDocumentsForProduct, searchCoaDocuments, uploadCoaDocument } from '../lib/coaDocuments';
 
@@ -163,8 +163,9 @@ export function SendEmailModal(props: Props) {
   // 'Both' or an unset Fulfilment Type falls through to no forced defaults
   // beyond whatever site contacts/extra CCs the user adds themselves, since
   // only 'Delivery' and 'Self Pickup' have defined behavior.
+  // 2026-11-14: 'Direct Transporter' gets Delivery's To/CC/body exactly.
   const outwardFulfilmentType = isOutward ? ((props.doc as StockMovement).fulfilmentType || '') : '';
-  const isOutwardDelivery = isOutward && outwardFulfilmentType === 'Delivery';
+  const isOutwardDelivery = isOutward && isOutwardDeliveryType(outwardFulfilmentType);
   const isOutwardSelfPickup = isOutward && outwardFulfilmentType === 'Self Pickup';
   // 2026-09-19: which warehouse this Self Pickup is lifting from, and that
   // warehouse's contact block (see OUTWARD_PICKUP_CONTACTS above) — undefined

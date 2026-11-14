@@ -41,6 +41,14 @@ export function friendlyStockError(err: any): string {
   return msg || 'Stock could not be updated.';
 }
 
+// 2026-11-14: DO / Outward Fulfilment Type (stock_movements.fulfilment_type).
+// "Direct Transporter" behaves EXACTLY like "Delivery" everywhere (user
+// decision) — transporter required, Bhiwandi email — until told otherwise.
+// Not the Order / Dispatch 'delivery' | 'self_pickup' type, nor the customer's.
+export const DIRECT_TRANSPORTER = 'Direct Transporter';
+export const isOutwardDeliveryType = (t?: string | null): boolean =>
+  t === 'Delivery' || t === DIRECT_TRANSPORTER;
+
 export const outwardTransporterName =(m: { transporter?: string | null; otherTransporter?: string | null }): string =>
   ((m.transporter === 'Other' ? m.otherTransporter : m.transporter) || '').trim();
 
