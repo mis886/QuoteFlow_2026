@@ -6,7 +6,7 @@ import { normalizeIndianPhone } from '../lib/phone';
 import { Enquiry, LineItem, Urgency, CustomerTier, Customer } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
-import { ProductSelect, productListProblem } from '../components/ProductSelect';
+import { ProductSelect, lineItemProblem } from '../components/ProductSelect';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
@@ -236,20 +236,12 @@ export function NewEnquiry() {
     if (!src) newErrors.src = 'Source is required';
     if (!custName) newErrors.custName = 'Customer is required';
     
-    // Validate line items
-    let itemHasError = false;
-    const validatedItems = items.map(item => {
-      if (!item.desc || Number(item.qty) <= 0) {
-        itemHasError = true;
-      }
-      return item;
-    });
-
-    if (itemHasError) {
-      newErrors.items = 'All items must have a description and valid quantity > 0';
-    } else {
-      const productProblem = productListProblem(items, productNames);
-      if (productProblem) newErrors.items = productProblem;
+    // Validate line items — first problem row: no / off-list product, or qty ≤ 0.
+    const itemProblem = lineItemProblem(items, productNames, { checkQty: true });
+    if (itemProblem) {
+      newErrors.items = itemProblem.message;
+      newErrors.itemsRow = String(itemProblem.row);
+      newErrors.itemsField = itemProblem.field;
     }
 
     setErrors(newErrors);
@@ -543,16 +535,17 @@ export function NewEnquiry() {
                                   const ni = [...items];
                                   ni[idx] = { ...ni[idx], desc, hsn };
                                   setItems(ni);
-                                  setErrors({ ...errors, items: '' });
+                                  setErrors({ ...errors, items: '', itemsRow: '', itemsField: '' });
                                 }}
-                                error={!!(errors.items && !item.desc)}
+                                error={errors.itemsField === 'product' && errors.itemsRow === String(idx)}
                               />
                             </td>
                             <td className="px-3 py-[5px] border border-g400 align-middle bg-g100">
                               <input type="text" title="HSN Code (from the product list)" value={item.hsn || ''} readOnly tabIndex={-1} className="w-full bg-transparent outline-none font-mono text-[11px] text-g500 cursor-default" />
                             </td>
                             <td className="px-3 py-[5px] border border-g400 align-middle">
-                              <input type="number" min="0" value={item.qty || ''} onChange={e => updateItem(idx, 'qty', Number(e.target.value))} className="w-full bg-transparent outline-none font-mono text-[12px] text-center text-blk" placeholder="0" />
+                              <input type="number" min="0" value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); if (errors.itemsField === 'qty') setErrors({ ...errors, items: '', itemsRow: '', itemsField: '' }); }}
+                                className={`w-full bg-transparent outline-none font-mono text-[12px] text-center ${errors.itemsField === 'qty' && errors.itemsRow === String(idx) ? 'text-red-mrt ring-1 ring-red-mrt rounded-[2px]' : 'text-blk'}`} placeholder="0" />
                             </td>
                             <td className="px-3 py-[5px] border border-g400 align-middle">
                               <input type="text" value={item.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk text-center" />

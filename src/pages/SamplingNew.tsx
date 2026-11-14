@@ -7,7 +7,7 @@ import { useAppStore } from '../store';
 import { localDateStr, customerIdForSave, leadForUnknownCompany, LEAD_SOURCES_AUTO } from '../lib/utils';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
-import { ProductSelect, productListProblem } from '../components/ProductSelect';
+import { ProductSelect, lineItemProblem } from '../components/ProductSelect';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { SampleEmailModal } from '../components/SampleEmailModal';
 import { OptionSearch } from '../components/OptionSearch';
@@ -184,11 +184,10 @@ export function SamplingNew() {
   } | null> => {
     const errs: Record<string, string> = {};
     if (!cust.trim())              errs.cust        = 'Customer is required.';
-    if (!products[0]?.name.trim()) errs.productName = 'Product name is required.';
-    else {
-      const productProblem = productListProblem(products.map(p => ({ desc: p.name })), productNames);
-      if (productProblem) errs.productName = productProblem;
-    }
+    // Every product row needs a product from the list (sample quantity is
+    // not required here, as before).
+    const itemProblem = lineItemProblem(products.map(p => ({ desc: p.name })), productNames);
+    if (itemProblem) { errs.productName = itemProblem.message; errs.productRow = String(Math.max(itemProblem.row, 0)); }
     if (Object.keys(errs).length) { setErrors(errs); return null; }
 
     setSaving(true);
@@ -558,15 +557,14 @@ export function SamplingNew() {
                         <label className={labelCls}>
                           Product Name{idx === 0 && <span className="text-red-mrt"> *</span>}
                         </label>
-                        <div className={`bg-white border ${(errors.productName && idx === 0) ? 'border-red-mrt' : 'border-g300 focus-within:border-red-mrt'} rounded-[3px] p-[8px_10px] focus-within:ring-[3px] focus-within:ring-red-lt transition-all`}>
+                        <div className={`bg-white border ${(errors.productName && errors.productRow === String(idx)) ? 'border-red-mrt ring-[3px] ring-red-lt' : 'border-g300 focus-within:border-red-mrt'} rounded-[3px] p-[8px_10px] focus-within:ring-[3px] focus-within:ring-red-lt transition-all`}>
                           <ProductSelect
                             value={prod.name}
                             names={productNames}
                             hsnMap={productHsnMap}
-                            error={!!(errors.productName && idx === 0)}
                             onChange={desc => {
                               updateProduct(idx, { name: desc });
-                              setErrors(er => ({ ...er, productName: '' }));
+                              setErrors(er => ({ ...er, productName: '', productRow: '' }));
                             }}
                           />
                         </div>
@@ -575,7 +573,7 @@ export function SamplingNew() {
                         {prod.name && productHsnMap[prod.name] !== undefined && (
                           <div className="text-[10px] text-g500 mt-1">HSN: <span className="font-mono">{productHsnMap[prod.name] || ''}</span></div>
                         )}
-                        {errors.productName && (errors.productName.startsWith('Row ') ? errors.productName.startsWith(`Row ${idx + 1}:`) : idx === 0) && (
+                        {errors.productName && errors.productRow === String(idx) && (
                           <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.productName}</div>
                         )}
                       </div>

@@ -6,7 +6,7 @@ import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
-import { ProductSelect, productListProblem } from '../components/ProductSelect';
+import { ProductSelect, lineItemProblem } from '../components/ProductSelect';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
@@ -472,8 +472,8 @@ export function NewOrder() {
     if (!poTrimmed) e.poNo = 'PO Number is required';
     else if (poTrimmed.length < 3) e.poNo = 'PO Number looks too short — enter the customer PO reference';
     if (!custName) e.custName = 'Customer is required';
-    if (items.some(i => !i.desc || Number(i.qty) <= 0)) e.items = 'All items need a description and quantity > 0';
-    else if (productListProblem(items, productNames)) e.items = productListProblem(items, productNames);
+    const itemProblem = lineItemProblem(items, productNames, { checkQty: true });
+    if (itemProblem) { e.items = itemProblem.message; e.itemsRow = String(itemProblem.row); e.itemsField = itemProblem.field; }
     else {
       const below = items.find(i => Number(i.qty) < (dispatchedForLine.get(i.seq) || 0));
       if (below) e.items = `${below.desc || `Line ${below.seq}`}: already dispatched ${dispatchedForLine.get(below.seq)} — No of Barrels can't go below this`;
@@ -1101,9 +1101,9 @@ export function NewOrder() {
                                 const ni = [...items];
                                 ni[idx] = { ...ni[idx], desc, hsn };
                                 setItems(ni);
-                                setErrors({ ...errors, items: '' });
+                                setErrors({ ...errors, items: '', itemsRow: '', itemsField: '' });
                               }}
-                              error={!!(errors.items && !item.desc)}
+                              error={errors.itemsField === 'product' && errors.itemsRow === String(idx)}
                             />
                           </td>
                           {/* 2026-11-14: HSN always comes from the product list — read-only, blank when the product has none. */}
@@ -1112,8 +1112,8 @@ export function NewOrder() {
                               className="w-full bg-transparent outline-none font-mono text-[11px] text-g500 cursor-default" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="number" min={Math.max(1, dispatchedForLine.get(item.seq) || 0)} value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '' }); }}
-                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center ${(errors.items && Number(item.qty) <= 0) || Number(item.qty) < (dispatchedForLine.get(item.seq) || 0) ? 'text-red-mrt' : 'text-blk'}`} />
+                            <input type="number" min={Math.max(1, dispatchedForLine.get(item.seq) || 0)} value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '', itemsRow: '', itemsField: '' }); }}
+                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center ${errors.itemsField === 'qty' && errors.itemsRow === String(idx) ? 'text-red-mrt ring-1 ring-red-mrt rounded-[2px]' : Number(item.qty) < (dispatchedForLine.get(item.seq) || 0) ? 'text-red-mrt' : 'text-blk'}`} />
                             {(dispatchedForLine.get(item.seq) || 0) > 0 && (
                               <div className={`text-[10px] leading-tight mt-0.5 text-center ${Number(item.qty) < (dispatchedForLine.get(item.seq) || 0) ? 'text-red-mrt font-semibold' : 'text-g500'}`}>
                                 Already dispatched: {dispatchedForLine.get(item.seq)} — can't go below this

@@ -27,16 +27,34 @@ interface Props {
 
 export const productHsn = (hsnMap: Record<string, string>, name: string) => hsnMap[name] ?? '';
 
-/** Save check shared by the 5 forms: '' when every row's product is an
- *  active master-list product, else the message to show. A blank HSN is
- *  never a problem. An old record's off-list name must be re-picked. */
-export function productListProblem(rows: { desc?: string | null }[], names: string[]): string {
-  if (!names.length) return 'The product list is still loading — try Save again in a moment.';
+export interface LineItemProblem {
+  row: number;                 // 0-based row index (-1 = not about one row)
+  field: 'product' | 'qty';
+  message: string;
+}
+
+/** Save check shared by the 5 forms — the FIRST problem, or null.
+ *  Per row, in order: no product → "Row X: Select a product from the list";
+ *  a product not on the active master list (an old record's name) → re-pick;
+ *  with checkQty, quantity empty / 0 → "Row X: Enter a quantity greater than 0".
+ *  A blank HSN is never a problem. `include` limits the check to some rows
+ *  (row numbers stay the on-screen ones). */
+export function lineItemProblem(
+  rows: { desc?: string | null; qty?: number | string | null }[],
+  names: string[],
+  opts: { checkQty?: boolean; include?: (row: { desc?: string | null; qty?: number | string | null }) => boolean } = {},
+): LineItemProblem | null {
+  if (!names.length) return { row: -1, field: 'product', message: 'The product list is still loading — try Save again in a moment.' };
   const valid = new Set(names);
-  const bad = rows.map((r, i) => ({ i, d: (r.desc || '').trim() })).filter(r => r.d && !valid.has(r.d));
-  if (!bad.length) return '';
-  const first = bad[0];
-  return `Row ${first.i + 1}: "${first.d}" is not in the product list — select a product from the list${bad.length > 1 ? ` (${bad.length} rows)` : ''}.`;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (opts.include && !opts.include(r)) continue;
+    const d = (r.desc || '').trim();
+    if (!d) return { row: i, field: 'product', message: `Row ${i + 1}: Select a product from the list` };
+    if (!valid.has(d)) return { row: i, field: 'product', message: `Row ${i + 1}: "${d}" is not in the product list — select a product from the list` };
+    if (opts.checkQty && !(Number(r.qty) > 0)) return { row: i, field: 'qty', message: `Row ${i + 1}: Enter a quantity greater than 0` };
+  }
+  return null;
 }
 
 export function ProductSelect({ value, onChange, names, hsnMap, error, placeholder = 'Search product…', className }: Props) {
@@ -121,7 +139,7 @@ export function ProductSelect({ value, onChange, names, hsnMap, error, placehold
   const notOnList = !!value && !typing && !names.includes(value);
 
   return (
-    <div ref={containerRef} className={className}>
+    <div ref={containerRef} className={`${className || ''} ${error ? 'rounded-[2px] ring-1 ring-red-mrt bg-red-lt/40 px-1 -mx-1' : ''}`}>
       <input
         type="text"
         value={query}

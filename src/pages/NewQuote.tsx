@@ -6,7 +6,7 @@ import { normalizeIndianPhone } from '../lib/phone';
 import { QuoteItem, Quote, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
-import { ProductSelect, productListProblem } from '../components/ProductSelect';
+import { ProductSelect, lineItemProblem } from '../components/ProductSelect';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
@@ -568,8 +568,8 @@ export function NewQuote() {
   const validateStep1 = () => {
     const e: Record<string, string> = {};
     if (!custName) e.custName = 'Customer is required';
-    if (items.some(i => !i.desc || Number(i.qty) <= 0)) e.items = 'All items need a description and quantity > 0';
-    else { const productProblem = productListProblem(items, productNames); if (productProblem) e.items = productProblem; }
+    const itemProblem = lineItemProblem(items, productNames, { checkQty: true });
+    if (itemProblem) { e.items = itemProblem.message; e.itemsRow = String(itemProblem.row); e.itemsField = itemProblem.field; }
     // ENQ ref is compulsory when this quote was converted from an enquiry.
     // Without it the attachment chain (ENQ → Quote → Order) is broken.
     if (enqRef && !linkedEnqRef) e.enqRef = 'Enquiry reference is missing — cannot save without it';
@@ -1154,9 +1154,9 @@ export function NewQuote() {
                                 const ni = [...items];
                                 ni[idx] = { ...ni[idx], desc, hsn };
                                 setItems(ni);
-                                setErrors({ ...errors, items: '' });
+                                setErrors({ ...errors, items: '', itemsRow: '', itemsField: '' });
                               }}
-                              error={!!(errors.items && !item.desc)}
+                              error={errors.itemsField === 'product' && errors.itemsRow === String(idx)}
                             />
                           </td>
                           {/* 2026-11-14: HSN always comes from the product list — read-only, blank when the product has none. */}
@@ -1165,8 +1165,8 @@ export function NewQuote() {
                               className="w-full bg-transparent outline-none font-mono text-[11px] text-g500 cursor-default" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="number" min="1" value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '' }); }}
-                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center ${errors.items && Number(item.qty) <= 0 ? 'text-red-mrt' : 'text-blk'}`} />
+                            <input type="number" min="1" value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '', itemsRow: '', itemsField: '' }); }}
+                              className={`w-full bg-transparent outline-none font-mono text-[12px] text-center ${errors.itemsField === 'qty' && errors.itemsRow === String(idx) ? 'text-red-mrt ring-1 ring-red-mrt rounded-[2px]' : 'text-blk'}`} />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="text" value={item.packing || ''} onChange={e => updateItem(idx, 'packing', e.target.value)} className="w-full bg-transparent outline-none text-[12px] font-sans text-blk" />

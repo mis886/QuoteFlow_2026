@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { customerOfDoc, dispatchOrderView, DispatchFormDetails, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
-import { ProductSelect, productListProblem } from '../components/ProductSelect';
+import { ProductSelect, lineItemProblem } from '../components/ProductSelect';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
@@ -382,6 +382,7 @@ export function NewDispatchEntry() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [productErrorRow, setProductErrorRow] = useState<number | null>(null);  // row whose Product Name box is red
   const [emailMode, setEmailMode] = useState<'client' | 'bhiwandi' | null>(null);
 
   // Email to Client needs a saved entry — its attachments come from saved
@@ -773,9 +774,12 @@ export function NewDispatchEntry() {
       if (reason) { setError(reason); return; }
     }
     if (!type) { setError('Please select Delivery, Self Pickup or Direct Transporter'); return; }
-    // 2026-11-14: every row's Product Name must be a master-list product.
-    const productProblem = productListProblem(items, productNames);
-    if (productProblem) { setError(productProblem); return; }
+    // 2026-11-14: every row being dispatched (No of Barrels > 0 — rows with 0
+    // aren't saved) needs a master-list product. Quantity per row isn't
+    // required here: 0 = that line isn't in this dispatch.
+    const itemProblem = lineItemProblem(items, productNames, { include: r => (Number(r.qty) || 0) > 0 });
+    if (itemProblem) { setError(itemProblem.message); setProductErrorRow(itemProblem.row); return; }
+    setProductErrorRow(null);
     const existingEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : null;
     // Each line's No of Barrels can't exceed what's still left to dispatch
     // for that order line across ALL of the order's entries — plus, when
@@ -1504,7 +1508,9 @@ export function NewDispatchEntry() {
                                 const ni = [...items];
                                 ni[idx] = { ...ni[idx], desc, hsn };
                                 setItems(ni);
+                                if (productErrorRow === idx) { setProductErrorRow(null); setError(''); }
                               }}
+                              error={productErrorRow === idx}
                             />
                           </td>
                           {/* 2026-11-14: HSN always comes from the product list — read-only, blank when the product has none. */}
