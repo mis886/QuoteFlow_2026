@@ -563,7 +563,11 @@ function OutwardForm() {
   const prefillSeqs = linesParam ? linesParam.split(',').map(Number).filter(n => Number.isFinite(n)) : null;
   // 2026-10-12: a Self Pickup card's Step 6 opens this form with Fulfilment
   // Type prefilled as Self Pickup (still editable).
-  const dispatchFulfilment = fromDispatch && searchParams.get('fulfilment') === 'self_pickup' ? 'Self Pickup' : '';
+  // 2026-11-14: 'direct_transporter' comes from "Open new DO for the rest" on a
+  // Direct Transporter DO (that link always sets fromDispatch=1 + orderRef).
+  const fulfilmentParam = fromDispatch ? searchParams.get('fulfilment') : null;
+  const dispatchFulfilment = fulfilmentParam === 'self_pickup' ? 'Self Pickup'
+    : fulfilmentParam === 'direct_transporter' ? DIRECT_TRANSPORTER : '';
 
   const [header, setHeader] = useState<Header>(emptyHeader);
   const [lines, setLines] = useState<Line[]>(() => [newLine()]);
@@ -771,7 +775,10 @@ function OutwardForm() {
       transporter: h.transporter || transporterByParty[party] || '',
       // 2026-10-16: the ORDER's own Fulfilment Type wins, then the Board URL,
       // then whatever is already in. Still editable.
-      fulfilmentType: orderFulfilment || dispatchFulfilment || h.fulfilmentType || fulfilmentTypeByParty[party] || '',
+      // 2026-11-14: except Direct Transporter from the URL, which beats the
+      // order (an order only knows delivery / self_pickup).
+      fulfilmentType: (dispatchFulfilment === DIRECT_TRANSPORTER ? DIRECT_TRANSPORTER : '')
+        || orderFulfilment || dispatchFulfilment || h.fulfilmentType || fulfilmentTypeByParty[party] || '',
     }));
   }, [rowsOrder]);
 
@@ -1239,6 +1246,7 @@ function OutwardForm() {
     if (dispatchPlannedAt) p.set('plannedAt', dispatchPlannedAt);
     if (dispatchRemark.trim()) p.set('remark', dispatchRemark.trim());
     if (header.fulfilmentType === 'Self Pickup') p.set('fulfilment', 'self_pickup');
+    else if (header.fulfilmentType === DIRECT_TRANSPORTER) p.set('fulfilment', 'direct_transporter');
     p.set('lines', linesWithoutDo.map(l => l.seq).join(','));
     navigate(`/stock-movements/new-outward?${p.toString()}`);
   };
