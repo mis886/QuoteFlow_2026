@@ -44,14 +44,16 @@ export function friendlyStockError(err: any): string {
 // DO email subject — the ONE place it's built (SendEmailModal, outward mode:
 // first send, re-send, and after an edit all use it).
 // "Delivery Order <DO No>   <Party>" — THREE spaces, no dash (2026-11-13) —
-// plus, since 2026-11-14, " (<Fulfilment Type>)" right after the party, the
-// same text the DO form shows (stock_movements.fulfilment_type is saved as
-// that readable label). No type → no brackets. No party → the type follows
-// the DO number.
+// plus, since 2026-11-14, "(<Fulfilment Type>)" after the party, the same
+// text the DO form shows (stock_movements.fulfilment_type is saved as that
+// readable label). Both gaps use DO_SUBJECT_SEP so they always match.
+// No type → no brackets, no trailing spaces. No party → the type follows the
+// DO number.
+const DO_SUBJECT_SEP = '   ';
 export function doEmailSubject(doNumber: string, party: string, fulfilmentType?: string | null): string {
   const p = (party || '').trim();
   const t = (fulfilmentType || '').trim();
-  return `Delivery Order ${doNumber}${p ? `   ${p}` : ''}${t ? ` (${t})` : ''}`;
+  return [`Delivery Order ${doNumber}`, p, t ? `(${t})` : ''].filter(Boolean).join(DO_SUBJECT_SEP);
 }
 
 // 2026-11-14: DO / Outward Fulfilment Type (stock_movements.fulfilment_type).
