@@ -150,8 +150,8 @@
 // 2026-09-12: added PDF/DOCX/Email to Client buttons, matching how
 // NewQuote.tsx/NewOrder.tsx already do this. Outward entries carry no
 // price/GST/bank data, so the generated document is a plain "Delivery
-// Order" (see generateOutwardPDF/downloadOutwardDOCX in
-// src/lib/pdfGenerator.ts / src/lib/outwardDocx.ts), not a Proforma
+// Order" (see generateOutwardPDF in src/lib/pdfGenerator.ts; 2026-11-14 the
+// DOCX button became JPEG — src/lib/outwardJpeg.ts), not a Proforma
 // Invoice — no pricing table anywhere. buildOutwardData() assembles a
 // StockMovement straight from current form state (mirroring
 // movementPayload's own field mapping below) so all three work even
@@ -160,7 +160,7 @@
 // just leaves the To field blank, an expected fallback.
 //
 // 2026-11-03 (user decision): ONE DO, MANY PRODUCTS. One DO = ONE warehouse +
-// ONE DO number + ONE OR MORE product lines, saved, printed (PDF / DOCX) and
+// ONE DO number + ONE OR MORE product lines, saved, printed (PDF / JPEG) and
 // emailed as ONE document. Products in another warehouse need another DO (the
 // DO number's prefix comes from the warehouse). The form is now:
 //   1. Header, filled once — Warehouse → DO Number (generated as before,
@@ -215,12 +215,12 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
 import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
-import { Loader2, Plus, X } from 'lucide-react';
+import { Loader2, Plus, X, ImageIcon } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
 import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
-import { downloadOutwardDOCX } from '../lib/outwardDocx';
+import { downloadOutwardJPEG } from '../lib/outwardJpeg';
 import { SendEmailModal } from '../components/SendEmailModal';
 
 // Combobox options — derived from PRODUCTS, the single source of truth also
@@ -1238,9 +1238,9 @@ function OutwardForm() {
     navigate(`/stock-movements/new-outward?${p.toString()}`);
   };
 
-  // The whole DO for PDF / DOCX / Email — from the form as it is now, even
+  // The whole DO for PDF / JPEG / Email — from the form as it is now, even
   // before Save. Line 1's fields are also on the top level for older readers;
-  // generateOutwardPDF / downloadOutwardDOCX print every line in `lines`.
+  // generateOutwardPDF (and the JPEG built from it) print every line in `lines`.
   // In Edit mode the rows hold the SAVED billing_name (see the load effect).
   const num = (v: string) => (v.trim() === '' ? null : Number(v));
   const buildOutwardData = (): OutwardDO => {
@@ -1284,9 +1284,20 @@ function OutwardForm() {
     await generateOutwardPDF(buildOutwardData(), customer, data.settings, data.signatories.find(s => s.is_default), unit, true);
   };
 
-  const handleGenerateDOCX = async () => {
-    const unit = data.units.find(u => u.is_default);
-    await downloadOutwardDOCX(buildOutwardData(), customer, data.settings, data.signatories.find(s => s.is_default), unit);
+  // 2026-11-14: JPEG replaces DOCX — the DO PDF rendered as one image
+  // (src/lib/outwardJpeg.ts); the Email to Client attachment uses the same.
+  const [jpegBusy, setJpegBusy] = useState(false);
+  const handleGenerateJPEG = async () => {
+    if (jpegBusy) return;
+    setJpegBusy(true);
+    try {
+      const unit = data.units.find(u => u.is_default);
+      await downloadOutwardJPEG(buildOutwardData(), customer, data.settings, data.signatories.find(s => s.is_default), unit);
+    } catch (err: any) {
+      showToast('err', `Could not create the JPEG: ${err?.message || err}`);
+    } finally {
+      setJpegBusy(false);
+    }
   };
 
   // 2026-10-12: "Email to Client" only works on a saved DO.
@@ -1771,10 +1782,10 @@ function OutwardForm() {
           <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M4 2v12h8V6l-4-4H4zm1 1h2v3h2V3h1.172L11 3.828V13H5V3zm2 6v3h2v-3H7z" /></svg>
           PDF
         </button>
-        <button type="button" onClick={handleGenerateDOCX} disabled={saving}
+        <button type="button" onClick={handleGenerateJPEG} disabled={saving || jpegBusy}
           className="bg-blue-600 text-white font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
-          <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M4 2v12h8V6l-4-4H4zm1 1h2v3h2V3h1.172L11 3.828V13H5V3zm2 6v3h2v-3H7z" /></svg>
-          DOCX
+          {jpegBusy ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />}
+          {jpegBusy ? 'JPEG…' : 'JPEG'}
         </button>
         <button type="button" onClick={openEmailModal} disabled={saving}
           className="bg-blk text-white font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-g700 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 flex items-center gap-2">

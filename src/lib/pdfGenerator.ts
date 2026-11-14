@@ -884,8 +884,7 @@ export async function generateOrderPDF(
 
 // Godown addresses this Delivery Order can be issued against, keyed off
 // movement.warehouse (see WAREHOUSES in NewStockOutward.tsx — these four
-// strings, case-sensitive, are the only values that occur). Must be kept in
-// sync with the identical table in src/lib/outwardDocx.ts.
+// strings, case-sensitive, are the only values that occur).
 const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: string }> = {
   Hariom: {
     name: 'HARIOM LOGISTICS',
@@ -938,8 +937,10 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
  * every product line in movement.lines (see outwardDoLines). A 1-line DO
  * prints exactly as before. A DO with 2+ lines prints the header once, then
  * one table row per product with its own Lot No / Lot Date columns (the
- * separate "Lot No.: | Dated:" line is left out) and a Total row. Keep in
- * sync with downloadOutwardDOCX (outwardDocx.ts).
+ * separate "Lot No.: | Dated:" line is left out) and a Total row.
+ *
+ * 2026-11-14: the DO's JPEG (src/lib/outwardJpeg.ts) is this PDF rendered
+ * as an image, so it always matches. The old DOCX version was removed.
  */
 export async function generateOutwardPDF(
   movement: OutwardDO,
