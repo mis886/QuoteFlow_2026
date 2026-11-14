@@ -519,7 +519,6 @@ export function NewEnquiry() {
                       <tr>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400">Product Name *</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-36 whitespace-nowrap">Grade / Spec</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-28 whitespace-nowrap">No of Barrels</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
@@ -548,9 +547,6 @@ export function NewEnquiry() {
                                 }}
                                 error={!!(errors.items && !item.desc)}
                               />
-                            </td>
-                            <td className="px-3 py-[5px] border border-g400 align-middle">
-                              <input type="text" value={item.grade || ''} onChange={e => updateItem(idx, 'grade', e.target.value)} placeholder="e.g. Small, 95%" className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" />
                             </td>
                             <td className="px-3 py-[5px] border border-g400 align-middle bg-g100">
                               <input type="text" title="HSN Code (from the product list)" value={item.hsn || ''} readOnly tabIndex={-1} className="w-full bg-transparent outline-none font-mono text-[11px] text-g500 cursor-default" />

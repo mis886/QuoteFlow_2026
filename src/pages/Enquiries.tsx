@@ -13,7 +13,7 @@ import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import { Search, Plus, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { customerOfDoc, calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText, productWithGrade } from '../lib/utils';
+import { customerOfDoc, calculateAgeHours, fmtIST, isInDateRange, siteLabel, canDeleteRecords, nameTier, normalizeSearchText } from '../lib/utils';
 import { EnqStatus } from '../lib/types';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
@@ -356,7 +356,7 @@ export function Enquiries() {
                                       return (
                                       <tr key={i.seq}>
                                         <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px] text-g400 w-6">{i.seq}</td>
-                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{productWithGrade(i.desc, i.grade)}</td>
+                                        <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
                                         <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
                                         <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11px] text-right">{i.packing || '—'}</td>
                                         <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{totalQty ?? '—'}</td>

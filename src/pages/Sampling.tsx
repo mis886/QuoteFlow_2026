@@ -260,16 +260,16 @@ function FeedbackModal({ sample, onClose, onSaved }: {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-type ProductRow = { name: string; grade: string; lot_no: string | null; coa_url: string | null; quantity: number; unit: string };
+type ProductRow = { name: string; lot_no: string | null; coa_url: string | null; quantity: number; unit: string };
 
 function getSampleProducts(s: Sample): ProductRow[] {
   if (s.sample_products && s.sample_products.length > 0) {
     return [...s.sample_products]
       .sort((a, b) => a.sort_order - b.sort_order)
-      .map(p => ({ name: p.product_name ?? '', grade: p.grade ?? '', lot_no: p.lot_no ?? null, coa_url: p.coa_url ?? null, quantity: p.quantity ?? 0, unit: p.unit ?? 'g' }));
+      .map(p => ({ name: p.product_name ?? '', lot_no: p.lot_no ?? null, coa_url: p.coa_url ?? null, quantity: p.quantity ?? 0, unit: p.unit ?? 'g' }));
   }
   // Fallback to legacy single-product columns on the samples row
-  return [{ name: s.product_name ?? '', grade: s.product_grade ?? '', lot_no: s.lot_no ?? null, coa_url: s.coa_file ?? null, quantity: s.quantity ?? 0, unit: s.unit ?? 'g' }];
+  return [{ name: s.product_name ?? '', lot_no: s.lot_no ?? null, coa_url: s.coa_file ?? null, quantity: s.quantity ?? 0, unit: s.unit ?? 'g' }];
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -480,7 +480,6 @@ export function Sampling() {
                       {getSampleProducts(s).map((p, i) => (
                         <div key={i} className="text-[11px] text-blk whitespace-nowrap" style={{ lineHeight: '1.6rem', minHeight: '1.6rem' }}>
                           <span className="font-medium">{p.name || '—'}</span>
-                          {p.grade && <span className="text-g500"> · {p.grade}</span>}
                         </div>
                       ))}
                     </td>

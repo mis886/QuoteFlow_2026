@@ -13,7 +13,6 @@ export interface SampleEmailModalProps {
   sampleId: string;
   customerName: string;
   productName: string;
-  productGrade: string;
   quantity: string;
   unit: string;
   lotNo: string;
@@ -43,8 +42,8 @@ async function urlToBase64(url: string): Promise<{ base64: string; mimeType: str
 }
 
 function buildBody(p: SampleEmailModalProps): string {
-  const grade = p.productGrade ? ` (${p.productGrade})` : '';
-  const product = `${p.productName}${grade}`;
+  // 2026-11-14: product name only — Grade / Spec is no longer printed anywhere.
+  const product = p.productName;
   const dispatchDate = p.sentDate
     ? new Date(p.sentDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : '—';

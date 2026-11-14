@@ -41,7 +41,6 @@ function roundSummary(items: NegotiationRoundItem[], total: number): string {
 interface ItemRow {
   seq: number;
   desc: string;
-  grade?: string;
   hsn: string;
   qty: number;
   packing?: string;
@@ -232,7 +231,6 @@ export function NegotiationRoundForm({
   const [itemRows, setItemRows] = useState<ItemRow[]>(() => getCurrentQuoteItems(quote.items, quote.negotiations).map(it => ({
     seq: it.seq,
     desc: it.desc,
-    grade: it.grade,
     hsn: it.hsn,
     qty: it.qty,
     packing: it.packing,
@@ -289,7 +287,6 @@ export function NegotiationRoundForm({
       const items: NegotiationRoundItem[] = checkedRows.map(r => ({
         seq: r.seq,
         desc: r.desc,
-        grade: r.grade,
         hsn: r.hsn,
         qty: r.qty,
         packing: r.packing,

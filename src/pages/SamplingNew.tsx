@@ -221,7 +221,7 @@ export function SamplingNew() {
       return {
         sample_id:    sampleId,
         product_name: prod.name.trim() || null,
-        grade:        prod.grade.trim() || null,
+        grade:        prod.grade.trim() || null,  // hidden — the saved value is written back unchanged
         lot_no:       prod.lotNo.trim() || null,
         coa_url:      coaUrl,
         quantity:     parseFloat(prod.quantity) || 0,
@@ -580,13 +580,9 @@ export function SamplingNew() {
                         )}
                       </div>
 
-                      {/* GRADE / SPEC (saved in sample_products.grade) */}
-                      <div>
-                        <label className={labelCls}>Grade / Spec</label>
-                        <input type="text" value={prod.grade}
-                          onChange={e => updateProduct(idx, { grade: e.target.value })}
-                          placeholder="e.g. 98% GC" className={inputCls} />
-                      </div>
+                      {/* 2026-11-14: Grade / Spec field removed (user decision).
+                          A sample's saved grade is kept: loaded into prod.grade and
+                          written back unchanged on Save, never shown. */}
 
                       {/* LOT NO */}
                       <div>
@@ -774,7 +770,6 @@ export function SamplingNew() {
           sampleId={emailModal.sampleId}
           customerName={cust}
           productName={products[0]?.name ?? ''}
-          productGrade={products[0]?.grade ?? ''}
           quantity={products[0]?.quantity ?? ''}
           unit={products[0]?.unit ?? 'g'}
           lotNo={products[0]?.lotNo ?? ''}

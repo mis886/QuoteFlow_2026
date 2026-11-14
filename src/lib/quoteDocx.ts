@@ -4,7 +4,7 @@ import {
   convertInchesToTwip, HeadingLevel, UnderlineType,
 } from 'docx';
 import type { Quote, Order, Customer, AppSettings, CompanyUnit, BankAccount } from './types';
-import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate as utilFmtDate, getNegotiationExportTables, productWithGrade } from './utils';
+import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate as utilFmtDate, getNegotiationExportTables } from './utils';
 
 // ── colour palette (mirrors PDF)
 const C_DARK    = '1E1E1E';
@@ -198,7 +198,8 @@ export async function downloadQuoteDOCX(
     const isRegret = (i as any).rateOverride;
     const _pb = ((i as any).priceBasis as string | undefined)?.trim();
     const perUnit = !_pb ? 'kg' : _pb.startsWith('Per ') ? _pb.slice(4) : _pb;
-    const productName = productWithGrade((i as any).product_name || i.desc, i.grade);  // "Product – Grade"
+    const productName = (i as any).product_name || i.desc || '';
+
     const hsnCode = i.hsn || (i as any).hsn_code || '';  // blank stays blank
     const noOfBarrels = i.qty != null ? String(i.qty) : '';
     const packing = i.packing || '';
@@ -430,7 +431,7 @@ export async function downloadPIDOCX(
     return new TableRow({
       children: [
         tdCell(String(idx + 1), wSno, AlignmentType.CENTER),
-        tdCell(productWithGrade(i.desc, i.grade), wProdName),
+        tdCell(i.desc || '', wProdName),
         // 2026-11-14: no Order "Default HSN" fallback — blank prints blank.
         tdCell(i.hsn || '', wHsn, AlignmentType.CENTER),
         tdCell(i.qty != null ? String(i.qty) : '', wBarrels, AlignmentType.CENTER),

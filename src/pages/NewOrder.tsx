@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName, productWithGrade } from '../lib/utils';
+import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
@@ -1076,7 +1076,6 @@ export function NewOrder() {
                       <tr>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400">Product Name *</th>
-                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-36 whitespace-nowrap">Grade / Spec</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-32 whitespace-nowrap">No of Barrels *</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
@@ -1106,9 +1105,6 @@ export function NewOrder() {
                               }}
                               error={!!(errors.items && !item.desc)}
                             />
-                          </td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <input type="text" value={item.grade || ''} onChange={e => updateItem(idx, 'grade', e.target.value)} placeholder="e.g. Small, 95%" className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" />
                           </td>
                           {/* 2026-11-14: HSN always comes from the product list — read-only, blank when the product has none. */}
                           <td className="px-3 py-[5px] border border-g400 align-middle bg-g100">
@@ -1539,7 +1535,7 @@ export function NewOrder() {
                     <tr key={item.seq} className="border-b border-g200 last:border-0">
                       <td className="px-4 py-2 font-mono text-g400 text-[10px] w-8">{item.seq}</td>
                       <td className="px-4 py-2 text-blk">
-                        {productWithGrade(item.desc, item.grade) || <span className="text-g300 italic">No description</span>}
+                        {item.desc || <span className="text-g300 italic">No description</span>}
                         {item.packingType && <span className="block text-[10px] text-g400 mt-0.5">{item.packingType}</span>}
                       </td>
                       <td className="px-4 py-2 text-g500 text-right w-24">

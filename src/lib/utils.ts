@@ -41,14 +41,6 @@ export function friendlyStockError(err: any): string {
   return msg || 'Stock could not be updated.';
 }
 
-// 2026-11-14: how a line item's product prints on PDF / DOCX / email / lists —
-// "Product Name – Grade", or just the name when there's no grade.
-export const productWithGrade = (desc?: string | null, grade?: string | null): string => {
-  const d = (desc || '').trim();
-  const g = (grade || '').trim();
-  return g ? (d ? `${d} – ${g}` : g) : d;
-};
-
 // 2026-11-14: DO / Outward Fulfilment Type (stock_movements.fulfilment_type).
 // "Direct Transporter" behaves EXACTLY like "Delivery" everywhere (user
 // decision) — transporter required, Bhiwandi email — until told otherwise.
@@ -883,7 +875,7 @@ export function getNegotiationExportTables(quote: Pick<Quote, 'negotiations' | '
       const perUnit = !pb ? 'kg' : pb.startsWith('Per ') ? pb.slice(4) : pb;
       return {
         seq: it.seq,
-        desc: productWithGrade(it.desc, it.grade),  // printed as "Product – Grade"
+        desc: it.desc,
         hsn: it.hsn || '',
         qty: it.qty,
         packing: it.packing || '',
