@@ -13,7 +13,10 @@ export type OrderStatus = 'Order Confirmed' | 'Processing' | 'Delivered' | 'Orde
 
 export interface LineItem {
   seq: number;
-  desc: string;
+  desc: string;   // Product Name — a master-list name (product_catalog) since 2026-11-14
+  // 2026-11-14: optional "Grade / Spec" (e.g. "Small", "WW Indo", "95%"),
+  // saved as its own field on the item. Printed as "Product – Grade".
+  grade?: string;
   mat: string;
   qty: number;
   uom: string;
@@ -191,6 +194,7 @@ export interface NegotiationRound {
 export interface NegotiationRoundItem {
   seq: number;
   desc: string;
+  grade?: string;  // 2026-11-14: the quote item's Grade / Spec
   hsn: string;
   qty: number;
   packing?: string;

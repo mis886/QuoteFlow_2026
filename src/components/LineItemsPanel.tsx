@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatINR } from '../lib/utils';
+import { formatINR, productWithGrade } from '../lib/utils';
 import type { OrderItem } from '../lib/types';
 
 const thCls = 'font-mono text-[8px] tracking-[1px] uppercase text-g400 px-2.5 py-1.5 border-b border-g200';
@@ -44,7 +44,7 @@ export function LineItemsPanel({ title, items, grand, remaining, scroll = false 
           return (
             <tr key={i.seq}>
               <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px] text-g400 w-6">{i.seq}</td>
-              <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
+              <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{productWithGrade(i.desc, i.grade)}</td>
               <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px]">{i.hsn || '—'}</td>
               <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
               {remaining && (

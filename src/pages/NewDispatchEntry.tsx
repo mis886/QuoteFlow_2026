@@ -4,7 +4,7 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { customerOfDoc, dispatchOrderView, DispatchFormDetails, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
-import { ProductSearch } from '../components/ProductSearch';
+import { ProductSelect, productListProblem } from '../components/ProductSelect';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
@@ -773,6 +773,9 @@ export function NewDispatchEntry() {
       if (reason) { setError(reason); return; }
     }
     if (!type) { setError('Please select Delivery, Self Pickup or Direct Transporter'); return; }
+    // 2026-11-14: every row's Product Name must be a master-list product.
+    const productProblem = productListProblem(items, productNames);
+    if (productProblem) { setError(productProblem); return; }
     const existingEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : null;
     // Each line's No of Barrels can't exceed what's still left to dispatch
     // for that order line across ALL of the order's entries — plus, when
@@ -1473,6 +1476,7 @@ export function NewDispatchEntry() {
                     <tr>
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400">Product Name</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-36 whitespace-nowrap">Grade / Spec</th>
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-32 whitespace-nowrap">No of Barrels</th>
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
@@ -1493,27 +1497,24 @@ export function NewDispatchEntry() {
                         <tr key={i.seq} className="hover:bg-g50/50">
                           <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{i.seq}</td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <ProductSearch
+                            <ProductSelect
                               value={i.desc}
                               names={productNames}
                               hsnMap={productHsnMap}
                               onChange={(desc, hsn) => {
                                 const ni = [...items];
-                                const resolvedHsn = !desc ? '' : (hsn !== undefined ? hsn : (desc in productHsnMap ? productHsnMap[desc] : undefined));
-                                ni[idx] = { ...ni[idx], desc, ...(resolvedHsn !== undefined ? { hsn: resolvedHsn } : {}) };
+                                ni[idx] = { ...ni[idx], desc, hsn };
                                 setItems(ni);
                               }}
                             />
                           </td>
-                          <td className={`px-3 py-[5px] border border-g400 align-middle${i.desc in productHsnMap ? ' bg-g100' : ''}`}>
-                            <input
-                              type="text"
-                              title="HSN Code"
-                              value={i.hsn || ''}
-                              readOnly={i.desc in productHsnMap}
-                              onChange={e => updateItem(idx, 'hsn', e.target.value)}
-                              className={`w-full bg-transparent outline-none font-mono text-[11px] ${i.desc in productHsnMap ? 'text-g500 cursor-default select-none' : 'text-blk'}`}
-                            />
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <input type="text" value={i.grade || ''} onChange={e => updateItem(idx, 'grade', e.target.value)} placeholder="e.g. Small, 95%" className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" />
+                          </td>
+                          {/* 2026-11-14: HSN always comes from the product list — read-only, blank when the product has none. */}
+                          <td className="px-3 py-[5px] border border-g400 align-middle bg-g100">
+                            <input type="text" title="HSN Code (from the product list)" value={i.hsn || ''} readOnly tabIndex={-1}
+                              className="w-full bg-transparent outline-none font-mono text-[11px] text-g500 cursor-default" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="number" min="1" value={i.qty || ''} onChange={e => updateItem(idx, 'qty', Number(e.target.value))}

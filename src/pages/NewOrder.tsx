@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName, productWithGrade } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
-import { ProductSearch } from '../components/ProductSearch';
+import { ProductSelect, productListProblem } from '../components/ProductSelect';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useProductCatalog } from '../hooks/useProductCatalog';
@@ -473,6 +473,7 @@ export function NewOrder() {
     else if (poTrimmed.length < 3) e.poNo = 'PO Number looks too short — enter the customer PO reference';
     if (!custName) e.custName = 'Customer is required';
     if (items.some(i => !i.desc || Number(i.qty) <= 0)) e.items = 'All items need a description and quantity > 0';
+    else if (productListProblem(items, productNames)) e.items = productListProblem(items, productNames);
     else {
       const below = items.find(i => Number(i.qty) < (dispatchedForLine.get(i.seq) || 0));
       if (below) e.items = `${below.desc || `Line ${below.seq}`}: already dispatched ${dispatchedForLine.get(below.seq)} — No of Barrels can't go below this`;
@@ -1075,6 +1076,7 @@ export function NewOrder() {
                       <tr>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400">Product Name *</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-36 whitespace-nowrap">Grade / Spec</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-32 whitespace-nowrap">No of Barrels *</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
@@ -1092,29 +1094,26 @@ export function NewOrder() {
                         <tr key={item.seq} className="hover:bg-g50/50">
                           <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{item.seq}</td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <ProductSearch
+                            <ProductSelect
                               value={item.desc}
                               names={productNames}
                               hsnMap={productHsnMap}
                               onChange={(desc, hsn) => {
                                 const ni = [...items];
-                                const resolvedHsn = !desc ? '' : (hsn !== undefined ? hsn : (desc in productHsnMap ? productHsnMap[desc] : undefined));
-                                ni[idx] = { ...ni[idx], desc, ...(resolvedHsn !== undefined ? { hsn: resolvedHsn } : {}) };
+                                ni[idx] = { ...ni[idx], desc, hsn };
                                 setItems(ni);
                                 setErrors({ ...errors, items: '' });
                               }}
                               error={!!(errors.items && !item.desc)}
                             />
                           </td>
-                          <td className={`px-3 py-[5px] border border-g400 align-middle${item.desc in productHsnMap ? ' bg-g100' : ''}`}>
-                            <input
-                              type="text"
-                              title="HSN Code"
-                              value={item.hsn || ''}
-                              readOnly={item.desc in productHsnMap}
-                              onChange={e => updateItem(idx, 'hsn', e.target.value)}
-                              className={`w-full bg-transparent outline-none font-mono text-[11px] ${item.desc in productHsnMap ? 'text-g500 cursor-default select-none' : 'text-blk'}`}
-                            />
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <input type="text" value={item.grade || ''} onChange={e => updateItem(idx, 'grade', e.target.value)} placeholder="e.g. Small, 95%" className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300" />
+                          </td>
+                          {/* 2026-11-14: HSN always comes from the product list — read-only, blank when the product has none. */}
+                          <td className="px-3 py-[5px] border border-g400 align-middle bg-g100">
+                            <input type="text" title="HSN Code (from the product list)" value={item.hsn || ''} readOnly tabIndex={-1}
+                              className="w-full bg-transparent outline-none font-mono text-[11px] text-g500 cursor-default" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
                             <input type="number" min={Math.max(1, dispatchedForLine.get(item.seq) || 0)} value={item.qty || ''} onChange={e => { updateItem(idx, 'qty', Number(e.target.value)); setErrors({ ...errors, items: '' }); }}
@@ -1365,7 +1364,7 @@ export function NewOrder() {
                     className="accent-red-mrt w-3.5 h-3.5 cursor-pointer"
                   />
                   <span className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-g600">Export / Tax Details (for Proforma Invoice)</span>
-                  {!showExim && (priceBasis || eximCode || customPoint || pan || defaultHsn) && (
+                  {!showExim && (priceBasis || eximCode || customPoint || pan) && (
                     <span className="text-[9px] text-amber-600 font-bold">● has data</span>
                   )}
                 </div>
@@ -1395,12 +1394,9 @@ export function NewOrder() {
                     <input type="text" value={pan} onChange={e => setPan(e.target.value.toUpperCase())} placeholder="ABMFM1195K"
                       className="w-full font-mono text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt uppercase" />
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-g500 uppercase tracking-[0.5px] mb-[4px]">Default HSN Code</label>
-                    <input type="text" value={defaultHsn} onChange={e => setDefaultHsn(e.target.value)} placeholder="40169390"
-                      className="w-full font-mono text-[13px] text-blk border border-g300 rounded-[3px] p-[7px_10px] outline-none focus:border-red-mrt" />
-                    <div className="text-[9px] text-g400 mt-1">Used when an item row has no HSN. Override per-item in the items table.</div>
-                  </div>
+                  {/* 2026-11-14: "Default HSN Code" removed (user decision) — a row's
+                      HSN comes only from its product; blank prints blank. An old
+                      order's saved value is kept but never printed. */}
                 </div>
               )}
             </div>
@@ -1543,7 +1539,7 @@ export function NewOrder() {
                     <tr key={item.seq} className="border-b border-g200 last:border-0">
                       <td className="px-4 py-2 font-mono text-g400 text-[10px] w-8">{item.seq}</td>
                       <td className="px-4 py-2 text-blk">
-                        {item.desc || <span className="text-g300 italic">No description</span>}
+                        {productWithGrade(item.desc, item.grade) || <span className="text-g300 italic">No description</span>}
                         {item.packingType && <span className="block text-[10px] text-g400 mt-0.5">{item.packingType}</span>}
                       </td>
                       <td className="px-4 py-2 text-g500 text-right w-24">

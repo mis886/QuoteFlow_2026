@@ -27,7 +27,7 @@ export function ProductCatalogManager() {
     setLoading(true);
     const { data, error } = await supabase
       .from('product_catalog')
-      .select('id, product_name, hsn_code, created_by, updated_by')
+      .select('id, product_name, hsn_code, active, created_by, updated_by')
       .order('product_name');
     if (!error && data) setEntries(data as ProductCatalogEntry[]);
     setLoading(false);
@@ -78,8 +78,25 @@ export function ProductCatalogManager() {
     setEditSaving(false);
   };
 
+  // 2026-11-14: Active on/off — only active products show in the Product
+  // Name dropdowns. Turning one off keeps it (old records still show it).
+  const [toggleError, setToggleError] = useState('');
+  const handleToggleActive = async (entry: ProductCatalogEntry) => {
+    const active = entry.active === false;
+    setToggleError('');
+    setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, active } : e));
+    const { error } = await supabase
+      .from('product_catalog')
+      .update({ active, updated_at: new Date().toISOString(), updated_by: user?.email ?? null })
+      .eq('id', entry.id);
+    if (error) {
+      setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, active: !active } : e));
+      setToggleError(`Could not change "${entry.product_name}": ${error.message}`);
+    }
+  };
+
   const handleDelete = async (entry: ProductCatalogEntry) => {
-    if (!window.confirm(`Delete "${entry.product_name}" from the product catalog?`)) return;
+    if (!window.confirm(`Delete "${entry.product_name}" from the product catalog?\n\nTip: switching it to Inactive hides it from the dropdowns but keeps it.`)) return;
     await supabase.from('product_catalog').delete().eq('id', entry.id);
     setEntries(prev => prev.filter(e => e.id !== entry.id));
   };
@@ -87,9 +104,10 @@ export function ProductCatalogManager() {
   return (
     <div className="max-w-3xl space-y-6">
       <p className="text-[12px] text-g500">
-        Manage the list of products shown in the line-item dropdown across Enquiries, Quotes, and Orders.
-        HSN codes are auto-filled when a product is selected from this catalog.
+        The master product list. Product Name in Enquiries, Quotations, Orders, Dispatch and Sampling can only be
+        picked from the <strong>Active</strong> products here, and the HSN Code fills in from this list (blank when none is set).
       </p>
+      {toggleError && <p className="text-[11px] text-red-mrt font-medium">{toggleError}</p>}
 
       <div className="bg-white border border-g200 rounded-[4px] overflow-hidden">
         <div className="px-5 py-3 border-b border-g200 bg-g50 flex items-center justify-between">
@@ -97,7 +115,7 @@ export function ProductCatalogManager() {
             <Package size={12} className="text-g400" />
             <span className="text-[11px] font-bold tracking-[1.5px] uppercase text-g600">Product Catalog</span>
             {!loading && (
-              <span className="text-[10px] text-g400 font-mono">({entries.length})</span>
+              <span className="text-[10px] text-g400 font-mono">({entries.filter(e => e.active !== false).length} active / {entries.length})</span>
             )}
           </div>
           <button
@@ -152,16 +170,16 @@ export function ProductCatalogManager() {
         <table className="w-full text-left">
           <thead className="bg-g50 border-b border-g200">
             <tr>
-              {['Product Name', 'HSN Code', ''].map(h => (
+              {['Product Name', 'HSN Code', 'Active', ''].map(h => (
                 <th key={h} className="px-4 py-2.5 text-[10px] font-bold uppercase text-g400 tracking-wider">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-g100">
             {loading ? (
-              <tr><td colSpan={3} className="px-4 py-8 text-center text-[12px] text-g400">Loading…</td></tr>
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-[12px] text-g400">Loading…</td></tr>
             ) : entries.length === 0 ? (
-              <tr><td colSpan={3} className="px-4 py-8 text-center text-[12px] text-g400 italic">No products yet — add one above.</td></tr>
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-[12px] text-g400 italic">No products yet — add one above.</td></tr>
             ) : entries.map(entry => (
               editId === entry.id ? (
                 <tr key={entry.id} className="bg-blue-50/40">
@@ -183,6 +201,7 @@ export function ProductCatalogManager() {
                       className={`${inputCls} py-[5px] text-[12px] font-mono`}
                     />
                   </td>
+                  <td className="px-4 py-2 w-24 text-[11px] text-g400">{entry.active === false ? 'Inactive' : 'Active'}</td>
                   <td className="px-4 py-2 w-20">
                     <div className="flex items-center gap-1.5">
                       <button
@@ -201,7 +220,7 @@ export function ProductCatalogManager() {
                   </td>
                 </tr>
               ) : (
-                <tr key={entry.id} className="hover:bg-g50/50">
+                <tr key={entry.id} className={`hover:bg-g50/50 ${entry.active === false ? 'opacity-60' : ''}`}>
                   <td className="px-4 py-2.5">
                     <div className="text-[13px] text-blk">{entry.product_name}</div>
                     {(entry.created_by || entry.updated_by) && (
@@ -212,7 +231,22 @@ export function ProductCatalogManager() {
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-[12px] text-g500">{entry.hsn_code || '—'}</td>
+                  <td className="px-4 py-2.5 font-mono text-[12px] text-g500">{entry.hsn_code || <span className="text-g300 font-sans text-[11px]">blank</span>}</td>
+                  <td className="px-4 py-2.5 w-24">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={entry.active !== false}
+                      onClick={() => handleToggleActive(entry)}
+                      title={entry.active === false ? 'Inactive — hidden from the Product Name dropdowns. Click to activate.' : 'Active — shown in the Product Name dropdowns. Click to deactivate.'}
+                      className="inline-flex items-center gap-1.5 text-[11px] text-g600"
+                    >
+                      <span className={`relative inline-block w-7 h-4 rounded-full transition-colors ${entry.active === false ? 'bg-g300' : 'bg-green-600'}`}>
+                        <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${entry.active === false ? 'left-0.5' : 'left-3.5'}`} />
+                      </span>
+                      {entry.active === false ? 'Off' : 'On'}
+                    </button>
+                  </td>
                   <td className="px-4 py-2.5 w-20">
                     <div className="flex items-center gap-1">
                       <button

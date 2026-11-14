@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Customer, Quote, Order, AppSettings, CompanyUnit, BankAccount, OutwardDO } from './types';
-import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate, getNegotiationExportTables, outwardDoLines, type ResolvedAdjustment } from './utils';
+import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate, getNegotiationExportTables, outwardDoLines, productWithGrade, type ResolvedAdjustment } from './utils';
 import { supabase } from './supabase';
 
 export function getQuoteTotals(q: Quote) {
@@ -120,8 +120,9 @@ export function quoteItemRows(quote: Quote): (string | number)[][] {
     // Use TypeScript-typed fields (i.hsn, i.packing, i.packingType) — these are the actual
     // field names in QuoteItem. Fallback to snake_case variants in case items were stored via
     // older code paths.
-    const productName = (i as any).product_name || i.desc || '';
-    const hsnCode = i.hsn || (i as any).hsn_code || '';
+    // 2026-11-14: "Product – Grade" (just the product when there's no grade).
+    const productName = productWithGrade((i as any).product_name || i.desc, i.grade);
+    const hsnCode = i.hsn || (i as any).hsn_code || '';  // blank stays blank
     const noOfBarrels = i.qty != null ? String(i.qty) : '';
     const packing = i.packing || '';
     const packingNum = parseFloat(packing) || 0;
@@ -644,8 +645,9 @@ export function generatePIPDF(
       const perUnit = !_pb ? 'kg' : _pb.startsWith('Per ') ? _pb.slice(4) : _pb;
       return [
         idx + 1,
-        i.desc || '',
-        i.hsn || order.hsn || '',
+        productWithGrade(i.desc, i.grade),
+        // 2026-11-14: no Order "Default HSN" fallback — blank prints blank.
+        i.hsn || '',
         i.qty != null ? String(i.qty) : '',
         packing,
         totalQty,

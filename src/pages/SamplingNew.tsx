@@ -7,7 +7,7 @@ import { useAppStore } from '../store';
 import { localDateStr, customerIdForSave, leadForUnknownCompany, LEAD_SOURCES_AUTO } from '../lib/utils';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
-import { ProductSearch } from '../components/ProductSearch';
+import { ProductSelect, productListProblem } from '../components/ProductSelect';
 import { useProductCatalog } from '../hooks/useProductCatalog';
 import { SampleEmailModal } from '../components/SampleEmailModal';
 import { OptionSearch } from '../components/OptionSearch';
@@ -185,6 +185,10 @@ export function SamplingNew() {
     const errs: Record<string, string> = {};
     if (!cust.trim())              errs.cust        = 'Customer is required.';
     if (!products[0]?.name.trim()) errs.productName = 'Product name is required.';
+    else {
+      const productProblem = productListProblem(products.map(p => ({ desc: p.name })), productNames);
+      if (productProblem) errs.productName = productProblem;
+    }
     if (Object.keys(errs).length) { setErrors(errs); return null; }
 
     setSaving(true);
@@ -555,25 +559,30 @@ export function SamplingNew() {
                           Product Name{idx === 0 && <span className="text-red-mrt"> *</span>}
                         </label>
                         <div className={`bg-white border ${(errors.productName && idx === 0) ? 'border-red-mrt' : 'border-g300 focus-within:border-red-mrt'} rounded-[3px] p-[8px_10px] focus-within:ring-[3px] focus-within:ring-red-lt transition-all`}>
-                          <ProductSearch
+                          <ProductSelect
                             value={prod.name}
                             names={productNames}
                             hsnMap={productHsnMap}
                             error={!!(errors.productName && idx === 0)}
                             onChange={desc => {
                               updateProduct(idx, { name: desc });
-                              if (idx === 0) setErrors(er => ({ ...er, productName: '' }));
+                              setErrors(er => ({ ...er, productName: '' }));
                             }}
                           />
                         </div>
-                        {idx === 0 && errors.productName && (
+                        {/* 2026-11-14: HSN from the product list, shown only —
+                            samples have no HSN column. Blank when it has none. */}
+                        {prod.name && productHsnMap[prod.name] !== undefined && (
+                          <div className="text-[10px] text-g500 mt-1">HSN: <span className="font-mono">{productHsnMap[prod.name] || ''}</span></div>
+                        )}
+                        {errors.productName && (errors.productName.startsWith('Row ') ? errors.productName.startsWith(`Row ${idx + 1}:`) : idx === 0) && (
                           <div className="text-red-mrt text-[10px] mt-1 font-medium">{errors.productName}</div>
                         )}
                       </div>
 
-                      {/* GRADE / PURITY */}
+                      {/* GRADE / SPEC (saved in sample_products.grade) */}
                       <div>
-                        <label className={labelCls}>Grade / Purity</label>
+                        <label className={labelCls}>Grade / Spec</label>
                         <input type="text" value={prod.grade}
                           onChange={e => updateProduct(idx, { grade: e.target.value })}
                           placeholder="e.g. 98% GC" className={inputCls} />

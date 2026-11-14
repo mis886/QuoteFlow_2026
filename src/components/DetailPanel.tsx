@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../store';
-import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
+import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, productWithGrade } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -189,7 +189,7 @@ export function DetailPanel() {
                     {enq.items.map((it, idx) => (
                       <tr key={idx} className="border-b border-g200/50 last:border-0 hover:bg-white transition-colors">
                         <td className="py-2 text-g500 font-mono">{it.seq}</td>
-                        <td className="py-2 font-medium">{it.desc}</td>
+                        <td className="py-2 font-medium">{productWithGrade(it.desc, it.grade)}</td>
                         <td className="py-2 text-g600">{it.mat || '—'}</td>
                         <td className="py-2 font-bold">{it.qty}</td>
                         <td className="py-2 text-g500">{it.uom}</td>
@@ -494,7 +494,7 @@ export function DetailPanel() {
                 {q.items.map((it, i) => (
                   <div key={i} className="p-3 bg-g50 flex justify-between gap-4">
                     <div>
-                      <div className="font-sans font-medium text-blk">{it.desc}</div>
+                      <div className="font-sans font-medium text-blk">{productWithGrade(it.desc, it.grade)}</div>
                       <div className="text-g500 mt-1">Material: {it.mat}</div>
                     </div>
                     <div className="text-right shrink-0">
@@ -661,7 +661,7 @@ export function DetailPanel() {
                 {o.items.map((it, i) => (
                   <div key={i} className="p-3 bg-g50 flex justify-between gap-4">
                     <div>
-                      <div className="font-sans font-medium text-blk">{it.desc}</div>
+                      <div className="font-sans font-medium text-blk">{productWithGrade(it.desc, it.grade)}</div>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="font-mono font-bold text-blk">{it.qty} {it.uom}</div>
