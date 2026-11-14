@@ -7,7 +7,7 @@ import { buildOutwardJPEG, outwardJpegFileName, blobToBase64 } from '../lib/outw
 import { sendViaGmailAsUser } from '../lib/gmail';
 import { resolveCoaStorageUrl } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { outwardTransporterName, fmtDate, isOutwardDeliveryType } from '../lib/utils';
+import { outwardTransporterName, fmtDate, isOutwardDeliveryType, doEmailSubject } from '../lib/utils';
 import { buildQuoteEmailHtml } from '../lib/quoteEmailHtml';
 import { CoaDocRow, coaDocumentsForProduct, searchCoaDocuments, uploadCoaDocument } from '../lib/coaDocuments';
 
@@ -243,7 +243,8 @@ export function SendEmailModal(props: Props) {
   const defaultSubject = isQuote
     ? `Quotation ${docId} — HIMALAYA TERPENES PVT. LTD.`
     : isOutward
-    ? `Delivery Order ${docId}${outwardParty ? `   ${outwardParty}` : ''}`
+    // 2026-11-14: + " (<Fulfilment Type>)" after the party — see doEmailSubject.
+    ? doEmailSubject(docId, outwardParty, outwardFulfilmentType)
     : isDispatch
     // 2026-11-13: "INV NO : <invoice no> <CUSTOMER NAME>" — leading
     // "-", ".", ":" or spaces on the saved invoice no. are stripped here
