@@ -9,7 +9,12 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LeadMatchDialog, MergeConfirmDialog, mergeSummary, mergeErrorText } from '../components/LeadMerge';
 import type { SimilarCustomer } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
+import { emailProblem, emailKey } from '../lib/emailValidation';
 import { Plus, Trash2, MapPin, User, Mail, Phone, Wand2 } from 'lucide-react';
+
+// Identifies one email box on the form: a contact's main email (extra = -1)
+// or one of its "+ Add Email" boxes (extra = 0, 1, ...).
+const emailBoxKey = (sIdx: number, cIdx: number, extra: number) => `${sIdx}-${cIdx}-${extra}`;
 
 const INCO_OPTIONS_CUST = [
   'EXW', 'FOB', 'CIF', 'CFR', 'DAP', 'DDP', 'FCA',
@@ -236,6 +241,10 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   const [crossSellOpportunities, setCrossSellOpportunities] = useState('');
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Email boxes the user has left (blur) — their problems show from then on.
+  // After a Save attempt (saveTried) every email problem shows.
+  const [emailTouched, setEmailTouched] = useState<Set<string>>(new Set());
+  const [saveTried, setSaveTried] = useState(false);
   const [parsePreview, setParsePreview] = useState<Record<number, ReturnType<typeof parseMixedAddress> | null>>({});
   const [existingAudit, setExistingAudit] = useState<{ createdBy: string; createdDate: string; modifiedBy: string; modifiedDate: string } | null>(null);
   // Name as loaded — orders/enquiries/quotes link by company NAME, so renaming
@@ -401,6 +410,28 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
   // Office's primary contact — the same data the Main Office card shows.
   const primaryContactIdx = Math.max(0, sites[0]?.contacts.findIndex(c => c.isPrimary) ?? 0);
   const primaryContact = sites[0]?.contacts[primaryContactIdx];
+  // 2026-11-16: every contact email + every "+ Add Email" box must hold exactly
+  // ONE valid address, and the same address may not appear twice on this
+  // customer. Key = emailBoxKey(site, contact, extra index or -1 for the main
+  // box) → message. Any entry blocks Save Record (see validate()).
+  const emailIssues = useMemo(() => {
+    const issues: Record<string, string> = {};
+    const seen = new Set<string>();
+    sites.forEach((site, sIdx) => site.contacts.forEach((ct, cIdx) => {
+      [ct.email, ...(ct.extraEmails ?? [])].forEach((value, i) => {
+        const key = emailBoxKey(sIdx, cIdx, i - 1);
+        const problem = emailProblem(value);
+        if (problem) { issues[key] = problem; return; }
+        if (!(value ?? '').trim()) return;
+        if (seen.has(emailKey(value))) issues[key] = 'Duplicate — this email is already on this customer.';
+        seen.add(emailKey(value));
+      });
+    }));
+    return issues;
+  }, [sites]);
+  const emailError = (key: string) => (saveTried || emailTouched.has(key) ? emailIssues[key] : undefined);
+  const touchEmail = (key: string) => setEmailTouched(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
+
   const setPrimaryContactField = (field: 'name' | 'phone' | 'email', value: string) => {
     if (!sites[0]) {
       setSites([{ id: 'S1', name: 'Main Office', city: '', contacts: [{ id: 'C1', name: '', role: 'Purchase', email: '', isPrimary: true, [field]: value }] }]);
@@ -534,6 +565,9 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
     if (gstinProblem(gstin).kind !== 'ok') e.save = `Company GSTIN: ${gstinProblem(gstin).message}`;
     // PAN comes from a valid GSTIN; typed by hand only when there is none.
     if (!derivedPan && pan.trim() && !isValidPan(pan)) e.save = 'PAN is not valid — 5 letters, 4 digits, 1 letter (e.g. AABCM1234A).';
+    // 2026-11-16: an invalid or duplicate contact email blocks the save.
+    setSaveTried(true);
+    if (Object.keys(emailIssues).length > 0) e.save = e.save || 'Fix the email address(es) marked in red before saving.';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -800,7 +834,9 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                 <div>
                   <label className={labelCls}>Email</label>
                   <input type="email" value={primaryContact?.email || ''} onChange={e => setPrimaryContactField('email', e.target.value)}
-                    className={inputCls} placeholder="buyer@company.com" />
+                    onBlur={() => touchEmail(emailBoxKey(0, primaryContactIdx, -1))}
+                    className={inputCls + (emailError(emailBoxKey(0, primaryContactIdx, -1)) ? ' border-red-mrt' : '')} placeholder="buyer@company.com" />
+                  {emailError(emailBoxKey(0, primaryContactIdx, -1)) && <p className="text-red-mrt text-[10px] mt-1">{emailError(emailBoxKey(0, primaryContactIdx, -1))}</p>}
                 </div>
               </div>
             )}
@@ -1132,19 +1168,24 @@ export function NewCustomer({ mode = 'customer' }: { mode?: 'customer' | 'lead' 
                               <input
                                 type="email" value={ct.email}
                                 onChange={e => updateContact(sIdx, cIdx, 'email', e.target.value)}
-                                onBlur={e => splitPastedEmails(sIdx, cIdx, e.target.value)}
+                                onBlur={e => { splitPastedEmails(sIdx, cIdx, e.target.value); touchEmail(emailBoxKey(sIdx, cIdx, -1)); }}
                                 placeholder="email@company.com"
-                                className="w-full bg-white border border-g300 rounded pl-7 pr-2 py-1 text-xs outline-none focus:border-red-mrt"
+                                className={`w-full bg-white border rounded pl-7 pr-2 py-1 text-xs outline-none focus:border-red-mrt ${emailError(emailBoxKey(sIdx, cIdx, -1)) ? 'border-red-mrt' : 'border-g300'}`}
                               />
+                              {emailError(emailBoxKey(sIdx, cIdx, -1)) && <p className="text-red-mrt text-[10px] mt-0.5">{emailError(emailBoxKey(sIdx, cIdx, -1))}</p>}
                               {(ct.extraEmails ?? []).map((extra, eIdx) => (
-                                <div key={eIdx} className="flex items-center gap-1 mt-1">
-                                  <input
-                                    type="email" value={extra}
-                                    onChange={e => updateExtraEmail(sIdx, cIdx, eIdx, e.target.value)}
-                                    placeholder="another email"
-                                    className="flex-1 bg-white border border-g300 rounded pl-2 pr-2 py-1 text-xs outline-none focus:border-red-mrt"
-                                  />
-                                  <button type="button" onClick={() => removeExtraEmail(sIdx, cIdx, eIdx)} className="text-g300 hover:text-red-mrt" title="Remove"><Trash2 size={12} /></button>
+                                <div key={eIdx} className="mt-1">
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="email" value={extra}
+                                      onChange={e => updateExtraEmail(sIdx, cIdx, eIdx, e.target.value)}
+                                      onBlur={() => touchEmail(emailBoxKey(sIdx, cIdx, eIdx))}
+                                      placeholder="another email"
+                                      className={`flex-1 bg-white border rounded pl-2 pr-2 py-1 text-xs outline-none focus:border-red-mrt ${emailError(emailBoxKey(sIdx, cIdx, eIdx)) ? 'border-red-mrt' : 'border-g300'}`}
+                                    />
+                                    <button type="button" onClick={() => removeExtraEmail(sIdx, cIdx, eIdx)} className="text-g300 hover:text-red-mrt" title="Remove"><Trash2 size={12} /></button>
+                                  </div>
+                                  {emailError(emailBoxKey(sIdx, cIdx, eIdx)) && <p className="text-red-mrt text-[10px] mt-0.5">{emailError(emailBoxKey(sIdx, cIdx, eIdx))}</p>}
                                 </div>
                               ))}
                               <button type="button" onClick={() => addExtraEmail(sIdx, cIdx)} className="text-[10px] font-bold text-red-mrt hover:underline mt-1">+ Add Email</button>

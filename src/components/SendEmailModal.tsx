@@ -9,6 +9,7 @@ import { resolveCoaStorageUrl } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { outwardTransporterName, fmtDate, isOutwardDeliveryType, doEmailSubject } from '../lib/utils';
 import { buildQuoteEmailHtml } from '../lib/quoteEmailHtml';
+import { isValidEmail } from '../lib/emailValidation';
 import { CoaDocRow, coaDocumentsForProduct, searchCoaDocuments, uploadCoaDocument } from '../lib/coaDocuments';
 
 const SHISHIR = 'shishir@himalayaterpene.com';
@@ -409,10 +410,13 @@ export function SendEmailModal(props: Props) {
     ...defaultCCs,
     ...(docContactEmail && !defaultCCs.includes(docContactEmail) && docContactEmail !== primaryEmail ? [docContactEmail] : []),
   ];
+  // 2026-11-16: same pre-select rules as before, but an invalid address from
+  // the customer record (e.g. two emails stuck together) is never pre-ticked —
+  // its chip still shows, marked "invalid", so it can be seen and fixed.
   const [selectedCC, setSelectedCC] = useState<Set<string>>(() => new Set([
     ...(isOutward ? [] : siteContacts.filter(c => c.email && c.email !== primaryEmail).map(c => c.email)),
     ...initialExtraCCs,
-  ]));
+  ].filter(isValidEmail)));
   const [customCC, setCustomCC] = useState('');
   // Dispatch only: set when Send finds an invalid address left in the CC box.
   const [ccError, setCcError] = useState('');
@@ -429,7 +433,7 @@ export function SendEmailModal(props: Props) {
 
   const addCustomCC = () => {
     const email = customCC.trim();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    if (!email || !isValidEmail(email)) return;
     if (!extraCCs.includes(email) && !siteContacts.some(c => c.email === email)) {
       setExtraCCs(prev => [...prev, email]);
       setSelectedCC(prev => new Set([...prev, email]));
@@ -449,7 +453,7 @@ export function SendEmailModal(props: Props) {
   const addCustomTo = () => {
     const email = customTo.trim();
     if (!email) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setToError('Enter a valid email address.'); return; }
+    if (!isValidEmail(email)) { setToError('Enter a valid email address.'); return; }
     setToError('');
     if (!toListLower.has(email.toLowerCase())) {
       setToList(prev => [...prev, email]);
@@ -464,7 +468,6 @@ export function SendEmailModal(props: Props) {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     let sendCc = ccString;
     let toRecipients: string;
     if (isDispatch) {
@@ -474,8 +477,8 @@ export function SendEmailModal(props: Props) {
       // won't land before this send goes out.
       const pendingTo = customTo.trim();
       const pendingCc = customCC.trim();
-      if (pendingTo && !EMAIL_RE.test(pendingTo)) { setToError('Enter a valid email address.'); return; }
-      if (pendingCc && !EMAIL_RE.test(pendingCc)) { setCcError('Enter a valid email address.'); return; }
+      if (pendingTo && !isValidEmail(pendingTo)) { setToError('Enter a valid email address.'); return; }
+      if (pendingCc && !isValidEmail(pendingCc)) { setCcError('Enter a valid email address.'); return; }
       const finalTo = [...toList];
       if (pendingTo && !finalTo.some(t => t.toLowerCase() === pendingTo.toLowerCase())) finalTo.push(pendingTo);
       if (finalTo.length === 0) { setToError('Recipient email is required.'); return; }
@@ -489,8 +492,21 @@ export function SendEmailModal(props: Props) {
       toRecipients = finalTo.join(', ');
     } else {
       if (!to.trim()) { setToError('Recipient email is required.'); return; }
-      if (!EMAIL_RE.test(to.trim())) { setToError('Enter a valid email address.'); return; }
+      if (!isValidEmail(to)) { setToError(`Can't send — "${to.trim()}" is not a valid email address. Use exactly one address here.`); return; }
       toRecipients = to.trim();
+    }
+    // 2026-11-16: check EVERY To and CC address before Gmail sees it (Gmail
+    // rejects the whole email with "Invalid Cc header" otherwise), and name
+    // the bad one.
+    const badTo = toRecipients.split(',').map(s => s.trim()).filter(s => s && !isValidEmail(s));
+    if (badTo.length) {
+      setToError(`Can't send — invalid To address: ${badTo.map(s => `"${s}"`).join(', ')}. Remove it, or fix it in the customer record.`);
+      return;
+    }
+    const badCc = sendCc.split(',').map(s => s.trim()).filter(s => s && !isValidEmail(s));
+    if (badCc.length) {
+      setCcError(`Can't send — invalid CC address: ${badCc.map(s => `"${s}"`).join(', ')}. Untick it, or fix it in the customer record.`);
+      return;
     }
     setToError('');
     setCcError('');
@@ -675,6 +691,7 @@ export function SendEmailModal(props: Props) {
                         distinguishable, not just when name is missing. */}
                     {c.name && <span className="opacity-60 text-[9px]">{c.email}</span>}
                     {c.role && !c.name && <span className="opacity-60">· {c.role}</span>}
+                    {!isValidEmail(c.email) && <span className="text-red-mrt text-[9px] font-bold">invalid</span>}
                   </button>
                 ))}
 
@@ -683,6 +700,7 @@ export function SendEmailModal(props: Props) {
                   <button key={email} type="button" onClick={() => toggleCC(email)} className={chipCls(selectedCC.has(email))}>
                     {selectedCC.has(email) && <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" strokeWidth="2.5" fill="none"><polyline points="20 6 9 17 4 12" /></svg>}
                     {email}
+                    {!isValidEmail(email) && <span className="text-red-mrt text-[9px] font-bold">invalid</span>}
                   </button>
                 ))}
               </div>
