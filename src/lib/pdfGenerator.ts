@@ -932,8 +932,9 @@ const GODOWN_ADDRESSES: Record<string, { name: string; address: string; mobile: 
  * document's own content (single item, fixed-height footer) instead of a
  * fixed A4 height — see drawOutwardContent's two-pass measure-then-draw
  * comment below for why. 180mm wide (narrower than standard A4's 210mm) —
- * the line-items table is 7 columns with Party Name/Transporter/Fulfilment
- * Type on their own line below it, so it doesn't need full A4 width.
+ * the line-items table is 7 columns with Transporter/Fulfilment Type on
+ * their own line below it, so it doesn't need full A4 width. (Party Name is
+ * not printed on the DO since 2026-11-16.)
  *
  * 2026-11-03 (one DO, many products): `movement` is the whole DO — header +
  * every product line in movement.lines (see outwardDoLines). A 1-line DO
@@ -955,7 +956,6 @@ export async function generateOutwardPDF(
   const doLines = outwardDoLines(movement);
   const multi = doLines.length > 1;
   const productCode = doLines[0].productCode || '—';
-  const partyNameDisplay = (movement.partyName === 'Other' ? movement.otherParty : movement.partyName) || '—';
   const transporterDisplay = (movement.transporter === 'Other' ? movement.otherTransporter : movement.transporter) || '—';
   const fulfilmentTypeDisplay = movement.fulfilmentType || '—';
 
@@ -1134,14 +1134,15 @@ export async function generateOutwardPDF(
 
     y = (doc as any).lastAutoTable.finalY + 8;
 
-    // ── Party Name | Transporter | Fulfilment Type — moved out of the
-    // line-items table (used to be 3 of its columns), stacked one per line
-    // below it. Party Name/Transporter are free-text fields
-    // (otherParty/otherTransporter) that can be long, so each field gets
+    // ── Transporter | Fulfilment Type — moved out of the line-items table
+    // (used to be columns), stacked one per line below it. Transporter is a
+    // free-text field (otherTransporter) that can be long, so each field gets
     // its own line rather than trying to fit them side by side.
+    // 2026-11-16 (user decision): the "Party Name:" line is no longer printed
+    // on the DO (PDF, JPEG, emailed JPEG). It is still saved on the DO and
+    // shown in the app, and the DO email subject still includes it.
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(30, 30, 30);
     const infoFields: [string, string][] = [
-      ['Party Name: ', partyNameDisplay],
       ['Transporter: ', transporterDisplay],
       ['Fulfilment Type: ', fulfilmentTypeDisplay],
     ];
@@ -1232,7 +1233,7 @@ export async function generateOutwardPDF(
   // 'p' is safe here — 400 > 180 already satisfies portrait, so jsPDF's
   // orientation swap (see below) never triggers on this doc. 180mm wide
   // (narrower than standard A4's 210mm) since the table is back to 7
-  // columns with Party Name/Transporter/Fulfilment Type on their own line
+  // columns with Transporter/Fulfilment Type on their own line
   // below it instead of extra table columns.
   const measureDoc = new jsPDF('p', 'mm', [180, 400]);
   const finalY = drawOutwardContent(measureDoc);
@@ -1264,6 +1265,15 @@ export async function generateOutwardPDF(
     doc.text(`Page ${p} of ${pageCount}`, rx, ph - 8, { align: 'right' });
   }
 
-  if (download) doc.save((movement.doNumber || 'delivery_challan') + '_DC.pdf');
+  if (download) doc.save(outwardFileBaseName(movement) + '.pdf');
   return doc;
+}
+
+// 2026-11-16: DO file name = "DO-<DO number>" only (no party name), e.g.
+// "DO-B-0843" → DO-B-0843.pdf / DO-B-0843.jpg (see outwardJpegFileName).
+// Spaces → _, anything other than letters/digits/_/- dropped; "draft" if the
+// DO number is still blank.
+export function outwardFileBaseName(movement: OutwardDO): string {
+  const doNo = (movement.doNumber || '').trim().replace(/\s+/g, '_').replace(/[^A-Za-z0-9_-]/g, '').replace(/_+/g, '_');
+  return `DO-${doNo || 'draft'}`;
 }

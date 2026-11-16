@@ -4,18 +4,16 @@
 // at 2x and every page is stacked into one tall JPEG. The JPEG button and the
 // "Email to Client" attachment both call buildOutwardJPEG, so they're identical.
 
-import { generateOutwardPDF } from './pdfGenerator';
+import { generateOutwardPDF, outwardFileBaseName } from './pdfGenerator';
 import type { OutwardDO, Customer, AppSettings, CompanyUnit } from './types';
 
 const SCALE = 2;
 const QUALITY = 0.92;
 
-// DO-<DO number>-<party name>.jpg — spaces → _, anything else odd dropped.
+// DO-<DO number>.jpg, e.g. DO-B-0843.jpg — 2026-11-16: no party name in the
+// file name any more; same base name as the DO PDF (outwardFileBaseName).
 export function outwardJpegFileName(movement: OutwardDO): string {
-  const clean = (s: string) => s.trim().replace(/\s+/g, '_').replace(/[^A-Za-z0-9_-]/g, '').replace(/_+/g, '_');
-  const party = (movement.partyName === 'Other' ? movement.otherParty : movement.partyName) || '';
-  const parts = ['DO', clean(movement.doNumber || '') || 'draft', clean(party)].filter(Boolean);
-  return parts.join('-') + '.jpg';
+  return outwardFileBaseName(movement) + '.jpg';
 }
 
 export async function buildOutwardJPEG(
