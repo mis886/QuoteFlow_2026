@@ -9,3 +9,6 @@ manual Cloudflare deploy. Cloudflare builds and deploys automatically from main.
   "Manually deployed · Wrangler · by mis".
 - Do not add a `deploy` script to `package.json`, or a git hook, that runs wrangler.
 - Keep `wrangler.toml` — Cloudflare's own build uses it.
+
+## Admins
+Ticket admins are listed in two places — ADMIN_EMAILS in src/store/index.tsx and public.is_ticket_admin() in Supabase. Change both together.
