@@ -124,7 +124,7 @@ interface AppContextType {
   deleteLead: (id: string) => Promise<void>;
   promoteLead: (id: string, fields: Partial<Customer>) => Promise<Customer>;
   mergeLeadIntoCustomer: (leadId: string, targetId: string) => Promise<MergeResult>;
-  removeOrderFromDispatch: (orderId: string) => Promise<any[]>;
+  removeOrderFromDispatch: (orderId: string) => Promise<{ deletedSteps: any[]; deletedDoIds: string[] }>;
   addFollowUpLog: (quoteId: string, log: FollowUpLog, nextDate?: string | null, nextTime?: string | null, owner?: string, stageOverride?: string | null) => Promise<void>;
   addFollowUpLogBulk: (quoteIds: string[], log: FollowUpLog, nextDate?: string | null, nextTime?: string | null) => Promise<void>;
   closeFollowUp: (quoteId: string, outcome?: PipelineOutcome) => Promise<void>;
@@ -1728,32 +1728,43 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   // Dispatch Board "Delete" on an ORDER card (admins): takes the order OFF
-  // the board — never deletes it. Clears sent_to_dispatch_at and
-  // dispatch_snapshot (so the Orders "Order Pending for Dispatch" button is
-  // clickable again and freezes the order afresh; status untouched) and
-  // deletes its dispatch_steps rows. Refused if the order has any
-  // dispatch entries. If the steps delete fails, sent_to_dispatch_at is put
-  // back so nothing is left half-changed. Returns the deleted step rows.
-  const removeOrderFromDispatch = async (orderId: string): Promise<any[]> => {
+  // the board — never deletes it. 2026-11-17: one DB transaction,
+  // remove_order_from_dispatch (supabase/migrations/
+  // 20261117120000_remove_order_from_dispatch.sql): deletes the order's
+  // DO(s) and puts their stock back (same delete_outward_do as Stock
+  // Movements → Outward → Delete), deletes its dispatch_steps rows, and
+  // clears sent_to_dispatch_at + dispatch_snapshot (so the Orders "Order
+  // Pending for Dispatch" button is clickable again; SO No. and status kept).
+  // Refused if the order has any dispatch entries. Returns the deleted step
+  // rows and the deleted DO line ids.
+  const removeOrderFromDispatch = async (orderId: string): Promise<{ deletedSteps: any[]; deletedDoIds: string[] }> => {
     if (!canDeleteRecords(user?.email)) throw new Error('Only MIS / Shishir can remove orders from the Dispatch board');
     const before = data.orders.find(o => o.id === orderId);
     const entryCount = data.dispatchEntries.filter(e => e.orderId === orderId).length;
     if (entryCount > 0) throw new Error(`This order has ${entryCount} dispatch entr${entryCount === 1 ? 'y' : 'ies'}. Delete those entries first.`);
-    const { data: updated, error } = await supabase.from('orders').update({ sent_to_dispatch_at: null, dispatch_snapshot: null }).eq('id', orderId).select('id');
+    const actor = activeDoer?.email ?? user?.email ?? null;
+    const { data: res, error } = await supabase.rpc('remove_order_from_dispatch', { p_order_id: orderId, p_actor: actor });
     if (error) throw error;
-    if (!updated || updated.length === 0) throw new Error("Nothing was changed — the order wasn't found or you don't have permission.");
-    const { data: deletedSteps, error: stepsError } = await supabase.from('dispatch_steps').delete().eq('order_id', orderId).select('*');
-    if (stepsError) {
-      await supabase.from('orders').update({ sent_to_dispatch_at: before?.sentToDispatchAt ?? null, dispatch_snapshot: before?.dispatchSnapshot ?? null }).eq('id', orderId);
-      throw stepsError;
-    }
+    const deletedSteps: any[] = res?.deleted_steps ?? [];
+    const dos: any[] = res?.dos ?? [];
     setData(prev => ({ ...prev, orders: prev.orders.map(o => o.id === orderId ? { ...o, sentToDispatchAt: undefined, dispatchSnapshot: undefined } : o) }));
+    for (const d of dos) {
+      logActivity({
+        module: 'stock_movements', recordId: d.id,
+        recordLabel: `DO ${d.do_number || '—'} · ${d.product_name} · Lot ${d.wh_lot_no || '—'}`,
+        action: 'delete', before: d.movement,
+      });
+    }
     logActivity({
       module: 'dispatch_steps', recordId: orderId,
       recordLabel: `${before?.soNumber || orderId} · Removed from Dispatch board`,
-      action: 'delete', before: { sent_to_dispatch_at: before?.sentToDispatchAt ?? null, steps: deletedSteps ?? [] },
+      action: 'delete',
+      before: {
+        sent_to_dispatch_at: res?.sent_to_dispatch_at ?? before?.sentToDispatchAt ?? null, steps: deletedSteps,
+        dos: dos.map(d => ({ do_number: d.do_number, lot_no: d.wh_lot_no, warehouse: d.warehouse, barrels_added_back: d.articles_added, qty_added_back: d.qty_added })),
+      },
     });
-    return deletedSteps ?? [];
+    return { deletedSteps, deletedDoIds: dos.map(d => d.id) };
   };
 
   // Map real follow-up log count → pipeline stage (excludes quote-sent entries).

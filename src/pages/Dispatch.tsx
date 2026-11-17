@@ -543,9 +543,10 @@ export function Dispatch() {
     try {
       if (deleteCard.kind === 'order') {
         const o = deleteCard.order;
-        await removeOrderFromDispatch(o.id);
+        const { deletedDoIds } = await removeOrderFromDispatch(o.id);
         setStepRecords(prev => prev.filter(r => r.orderId !== o.id));
-        showToast('ok', `${o.soNumber || o.id} removed from the Dispatch board. It stays in Orders.`);
+        setLinkedDOs(prev => prev.filter(d => d.orderId !== o.id));
+        showToast('ok', `${o.soNumber || o.id} removed from the Dispatch board. It stays in Orders.${deletedDoIds.length ? ' DO deleted and stock added back.' : ''}`);
       } else {
         const e = deleteCard.entry;
         const { deletedSteps, restartStep, deletedDoIds } = await deleteDispatchEntry(e.id);
@@ -898,6 +899,13 @@ export function Dispatch() {
             onConfirm={confirmDelete}
             onCancel={() => setDeleteCard(null)}
           >
+            {(() => {
+              const dos = linkedDOs.filter(d => d.orderId === deleteCard.order.id);
+              const barrels = dos.reduce((sum, d) => sum + (d.articles || 0), 0);
+              return dos.length
+                ? `Its DO${dos.length > 1 ? 's' : ''} (${dos.map(d => d.doNumber || '—').join(', ')}) will be deleted and ${barrels} barrel${barrels === 1 ? '' : 's'} will be added back to stock.${dos.some(d => d.emailSentAt) ? ` ${dos.length > 1 ? 'A DO' : 'This DO'} was already emailed.` : ''} `
+                : '';
+            })()}
             The order stays in Orders and can be sent to Dispatch again.
           </ConfirmDialog>
         ) : (
