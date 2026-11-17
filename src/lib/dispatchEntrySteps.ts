@@ -7,7 +7,7 @@
 import { supabase } from './supabase';
 import { logActivity } from './activityLog';
 import type { DispatchEntry } from './types';
-import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef, entryHasLr, roundIsDirectDelivery, DIRECT_DELIVERY_NO_LR_REMARK, entryRoundOf } from './dispatchFlow';
+import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef, entryHasLr, roundIsDirectDelivery, DIRECT_DELIVERY_NO_LR_REMARK, entryRoundOf, isWadaDispatch } from './dispatchFlow';
 
 /** The entry as saved in the database right now — the fields the Step 8–11 rules read. */
 async function freshEntry(entry: DispatchEntry): Promise<DispatchEntry> {
@@ -42,6 +42,18 @@ export async function roundIsDirectDeliveryInDb(orderId: string, round: number):
   if (error) throw error;
   return roundIsDirectDelivery((rows || []).map(mapStepFromDB), orderId, round);
 }
+
+/** 2026-11-17: are this order + round's linked DO(s) all from Wada (database now)? → Step 9 skipped. */
+export async function roundIsWadaInDb(orderId: string, round: number): Promise<boolean> {
+  const { data: rows, error } = await supabase.from('stock_movements').select('id, warehouse')
+    .eq('type', 'outward').eq('order_id', orderId).eq('dispatch_round', round);
+  if (error) throw error;
+  return isWadaDispatch([{ orderId, round, lines: (rows || []).map(r => ({ warehouse: r.warehouse ?? undefined })) }], orderId, round);
+}
+
+/** One entry's round (1, 2, …) from every entry of the app — same as the board. */
+const roundOfEntry = (e: DispatchEntry, entries: DispatchEntry[]) =>
+  entryRoundOf(e, entries.filter(x => x.orderId === e.orderId)) || 1;
 
 /** One order's saved step rows, for the new-entry check (readyForNewEntry). */
 export async function loadOrderStepRecords(orderId: string): Promise<DispatchStepRecord[]> {
@@ -94,7 +106,8 @@ export async function saveEntryStepRows({ entry, entries, action, remark, doneBy
   if (blocked) throw new Error(blocked);
   if (manualStep9) remark = STEP9_MANUAL_REMARK;
   if (noLrStep10 && !remark?.trim() && open[0]?.stepNo === 10) remark = DIRECT_DELIVERY_NO_LR_REMARK;
-  const pos = entryPosition(e, records);
+  // 2026-11-17: a Wada DO round skips Step 9 — planned_at of 10 / 11 from Step 8.
+  const pos = entryPosition(e, records, { skipStep9: await roundIsWadaInDb(e.orderId, round) });
   const nowIso = new Date().toISOString();
   const rows = open.map((w, i) => ({
     order_id: e.orderId,
@@ -169,7 +182,8 @@ export async function markEntryDocsSentWhatsApp({ entry, entries, customer, done
   };
   const stale = 'The documents for this entry were already sent.';
   if (now.emailSentAt) throw new Error(stale);
-  if (!showStep11WhatsApp(now, entryPosition(now, records).column)) throw new Error('This entry is not at Step 11 (Steps 8–10 must be done first).');
+  const skipStep9 = await roundIsWadaInDb(e.orderId, roundOfEntry(e, entries));
+  if (!showStep11WhatsApp(now, entryPosition(now, records, { skipStep9 }).column)) throw new Error('This entry is not at Step 11 (Steps 8–10 must be done first).');
   // 2026-11-13: a Direct Delivery entry is exempt from the customer's "LR required".
   const directDelivery = customer?.reqDocLr && !entryHasLr(now)
     ? await roundIsDirectDeliveryInDb(e.orderId, entryRoundOf(e, entries.filter(x => x.orderId === e.orderId)))
@@ -228,8 +242,10 @@ export async function autoCompleteEntrySteps({ entry, entries, doneBy, orderLabe
   try {
     const e = await freshEntry(entry);
     let records = await loadEntryStepRecords(entry.id);
+    // 2026-11-17: a Wada DO round goes 8 → 10 / 11 (no Step 9).
+    const skipStep9 = await roundIsWadaInDb(e.orderId, roundOfEntry(e, entries));
     for (let guard = 0; guard < 4; guard++) {
-      step = entryPosition(e, records).column;
+      step = entryPosition(e, records, { skipStep9 }).column;
       if (step > 11 || skipSteps.includes(step) || entryStepBlock(e, step, { lrOptional: step10WithoutLr })) break;
       const { inserted } = await saveEntryStepRows({
         entry: e, entries, action: STEP_ACTIONS[step as StepNo]![0], doneBy, orderLabel, logNote: AUTO_NOTE[step as 8 | 9 | 10 | 11],

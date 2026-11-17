@@ -235,7 +235,7 @@ export function DispatchDrawer({
   useEffect(() => { setRemark(''); }, [order.id]);
 
   const openedEntryId = openedFrom.kind === 'entry' ? openedFrom.entry.id : undefined;
-  const steps = drawerSteps(order, entries, records, fulfillment, orderCard?.position, openedEntryId);
+  const steps = drawerSteps(order, entries, records, fulfillment, orderCard?.position, openedEntryId, linkedDOs);
   const lastClick = openedFrom.kind === 'entry' ? lastEntryStepClick(records, openedFrom.entry.id) : lastOpenRoundClick(records, entries);
   const realEntries = entries.filter(e => !isImportedEntry(e))
     .sort((a, b) => (ms(a.created_at) || 0) - (ms(b.created_at) || 0));
@@ -375,7 +375,7 @@ export function DispatchDrawer({
               ) : (
                 <div className="flex flex-col gap-1.5">
                   {shownEntries.map(e => {
-                    const pos = entryPosition(e, records);
+                    const pos = entryPosition(e, records, { skipStep9: openedFrom.kind === 'entry' && !!openedFrom.wadaDo });
                     const where = pos.column === DONE_COLUMN ? 'Done' : `Step ${pos.column} · ${stepDef(pos.column).title}`;
                     return (
                       <div key={e.id} className="flex items-center gap-2 border border-g200 rounded-[4px] px-2.5 py-2">

@@ -4,7 +4,7 @@ import { Search, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { customerOfDoc, dispatchOrderView, canDeleteRecords, fmtIST, doerLabel, siteLabel, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, entryIsWadaDispatch, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
@@ -68,7 +68,7 @@ export function Dispatch() {
     if (error) { console.error('Error loading dispatch steps:', error); return; }
     setStepRecords(rows.map(mapStepFromDB));
   });
-  const reloadLinkedDOs = () => fetchAllRows(() => supabase.from('stock_movements').select('id, do_number, do_line_no, order_id, dispatch_round, email_sent_at, num_articles, order_line_seq, billing_name, wh_lot_no').eq('type', 'outward').not('order_id', 'is', null).order('id'))
+  const reloadLinkedDOs = () => fetchAllRows(() => supabase.from('stock_movements').select('id, do_number, do_line_no, order_id, dispatch_round, email_sent_at, num_articles, order_line_seq, billing_name, wh_lot_no, warehouse').eq('type', 'outward').not('order_id', 'is', null).order('id'))
     .then(({ data: rows, error }) => {
       if (error) { console.error('Error loading linked DOs:', error); return; }
       // 2026-11-03: one LinkedDO per DO number, however many product lines it has.
@@ -676,13 +676,14 @@ export function Dispatch() {
     for (const e of data.dispatchEntries) {
       const order = ordersById.get(e.orderId);
       if (!e.emailSentAt && order?.status !== 'Delivered') continue;
+      const wadaDo = entryIsWadaDispatch(e, data.dispatchEntries, linkedDOs);
       out.push({
-        kind: 'entry', key: `d:${e.id}`, entry: e, order, position: entryPosition(e, stepRecords),
-        column: DONE_COLUMN, fulfillment: e.fulfillmentType, state: 'done',
+        kind: 'entry', key: `d:${e.id}`, entry: e, order, position: entryPosition(e, stepRecords, { skipStep9: wadaDo }),
+        column: DONE_COLUMN, fulfillment: e.fulfillmentType, state: 'done', wadaDo,
       });
     }
     return out;
-  }, [dispatchOrders, data.dispatchEntries, stepRecords]);
+  }, [dispatchOrders, data.dispatchEntries, stepRecords, linkedDOs]);
   // Entry ids in the Delivered list (all of it, before type/search) — a Done
   // row in any other List tab whose entry is here reads "Delivered".
   const deliveredEntryIds = useMemo(() => new Set(deliveredCards.map(c => c.entry.id)), [deliveredCards]);

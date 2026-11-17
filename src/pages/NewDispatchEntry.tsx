@@ -13,7 +13,7 @@ import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabas
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
 import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry, needsBhiwandiEmail, orderFulfillmentFor, readyForNewEntry, STEP11_WHATSAPP_LABEL, showStep11WhatsApp, step11WhatsAppBlock, entryIsDirectDelivery, entryRoundOf } from '../lib/dispatchFlow';
-import { autoCompleteEntrySteps, loadEntryStepRecords, loadOrderStepRecords, markEntryDocsSentWhatsApp, roundIsDirectDeliveryInDb } from '../lib/dispatchEntrySteps';
+import { autoCompleteEntrySteps, loadEntryStepRecords, loadOrderStepRecords, markEntryDocsSentWhatsApp, roundIsDirectDeliveryInDb, roundIsWadaInDb } from '../lib/dispatchEntrySteps';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { searchCoaDocuments, uploadCoaDocument } from '../lib/coaDocuments';
 import { coaNotRequiredForItems } from '../lib/coaAge';
@@ -384,6 +384,9 @@ export function NewDispatchEntry() {
   const [error, setError] = useState('');
   const [productErrorRow, setProductErrorRow] = useState<number | null>(null);  // row whose Product Name box is red
   const [emailMode, setEmailMode] = useState<'client' | 'bhiwandi' | null>(null);
+  // 2026-11-17: this entry's round has only Wada DO(s) → Step 9 skipped
+  // (roundIsWadaInDb). Loaded with the entry; false until known.
+  const [entryWada, setEntryWada] = useState(false);
 
   // Email to Client needs a saved entry — its attachments come from saved
   // documents, and onSent stamps email_sent_at on that entry's id.
@@ -394,16 +397,22 @@ export function NewDispatchEntry() {
   const openEmailModal = async () => {
     if (!existingEntryId) { setError('Please save the dispatch entry first'); return; }
     setError('');
+    const entry = data.dispatchEntries.find(e => e.id === existingEntryId);
     let records: DispatchStepRecord[];
+    // 2026-11-17: a Wada DO round has no Step 9 → always the client email.
+    let skipStep9 = false;
     try {
-      records = await loadEntryStepRecords(existingEntryId);
+      [records, skipStep9] = await Promise.all([
+        loadEntryStepRecords(existingEntryId),
+        entry ? roundIsWadaInDb(entry.orderId, entryRoundOf(entry, data.dispatchEntries.filter(x => x.orderId === entry.orderId)) || 1) : Promise.resolve(false),
+      ]);
     } catch (err: any) {
       setError(`Could not check the Dispatch step: ${err?.message || 'check your connection'}.`);
       return;
     }
     setEntrySteps(records);
-    const entry = data.dispatchEntries.find(e => e.id === existingEntryId);
-    setEmailMode(entry && needsBhiwandiEmail(entry, records) ? 'bhiwandi' : 'client');
+    setEntryWada(skipStep9);
+    setEmailMode(entry && needsBhiwandiEmail(entry, records, { skipStep9 }) ? 'bhiwandi' : 'client');
   };
 
   const hydrateFromOrder = (order: Order) => {
@@ -618,7 +627,7 @@ export function NewDispatchEntry() {
   const currentEntry = existingEntryId ? data.dispatchEntries.find(e => e.id === existingEntryId) : undefined;
   // Position as the form stands (Delivery / Self Pickup decides Step 10).
   const currentStep = currentEntry && entrySteps !== null
-    ? entryPosition({ ...currentEntry, fulfillmentType: type || currentEntry.fulfillmentType }, entrySteps).column
+    ? entryPosition({ ...currentEntry, fulfillmentType: type || currentEntry.fulfillmentType }, entrySteps, { skipStep9: entryWada }).column
     : undefined;
   const invoiceRequired = !!currentEntry && invoiceRuleApplies(currentEntry) && currentStep === 8;
   // 2026-11-13: Direct Delivery entry (its round's Step 6 was issued as Direct
@@ -635,6 +644,18 @@ export function NewDispatchEntry() {
     loadOrderStepRecords(currentEntry.orderId).then(
       recs => { if (live) { setEntryDirectDelivery(entryIsDirectDelivery(currentEntry, data.dispatchEntries, recs)); setDdChecking(false); } },
       () => { if (live) { setEntryDirectDelivery(null); setDdChecking(false); } },
+    );
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentEntry?.id, currentEntry?.orderId]);
+  // 2026-11-17: Wada DO round? (Step 9 skipped). A failed check keeps Step 9.
+  useEffect(() => {
+    if (!currentEntry || isImportedEntry(currentEntry)) { setEntryWada(false); return; }
+    let live = true;
+    const round = entryRoundOf(currentEntry, data.dispatchEntries.filter(x => x.orderId === currentEntry.orderId)) || 1;
+    roundIsWadaInDb(currentEntry.orderId, round).then(
+      wada => { if (live) setEntryWada(wada); },
+      () => { if (live) setEntryWada(false); },
     );
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -729,7 +750,7 @@ export function NewDispatchEntry() {
     if (!canActOnDispatchBoard(user?.email) || isReadOnlyUser) return STEP_BUTTONS_LOCKED_TIP;
     if (isImportedEntry(currentEntry)) return 'Imported entries are not tracked through the Dispatch steps';
     if (entrySteps === null) return 'Checking the Dispatch steps…';
-    const col = entryPosition(currentEntry, entrySteps).column;
+    const col = entryPosition(currentEntry, entrySteps, { skipStep9: entryWada }).column;
     if (!showStep11WhatsApp(currentEntry, col)) return `Finish Step ${col} first — Steps 8–10 must be done (Step 9 Bhiwandi, LR or Self Pickup) before Step 11`;
     return step11WhatsAppBlock(currentEntry, selectedCustomer, { directDelivery: !!entryDirectDelivery });
   })();
@@ -820,7 +841,7 @@ export function NewDispatchEntry() {
         return;
       }
       setEntrySteps(records);
-      const step = entryPosition({ ...existingEntry, fulfillmentType: type as DispatchFulfillmentType }, records).column;
+      const step = entryPosition({ ...existingEntry, fulfillmentType: type as DispatchFulfillmentType }, records, { skipStep9: entryWada }).column;
       if (step === 8 && noInvoice && invoiceRuleApplies(existingEntry)) {
         setInvoiceError('Enter invoice no. to complete Step 8');
         setSaving(false);

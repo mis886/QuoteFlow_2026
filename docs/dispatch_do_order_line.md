@@ -270,6 +270,22 @@ so its DOs are made, emailed and listed here like any other.
 - **Dispatch board:** a Wada DO counts like any other DO (grouped by
   `do_number`); emailing it completes Step 6; "+ New DO (another warehouse)"
   offers Wada.
+- **No Step 9 for Wada (2026-11-17):** when EVERY DO linked to an order +
+  dispatch round (`stock_movements.order_id` + `dispatch_round`) is Wada,
+  Step 9 "Send Invoice to Bhiwandi" is skipped: the entry goes from Step 8
+  to Step 10 (Delivery) or 11 (Self Pickup); the next step's TAT runs from
+  Step 8's done time; Step 9 shows "Skipped · Wada DO – not needed" (dashed
+  dot, drawer note) and is not counted in the Step 9 tile; Email to Client
+  opens the normal client email, never Bhiwandi mode. Mixed DOs (Wada + any
+  other warehouse) or no linked DO → Step 9 as usual. It is worked out every
+  time from the DOs (`isWadaDispatch` in `dispatchFlow.ts`; the step writers
+  and entry page use `roundIsWadaInDb`) — no `dispatch_steps` row is written
+  for the skip, so entries already waiting at Step 9 move on by themselves.
+  A Step 9 row already saved on a Wada round still shows as saved. Database:
+  no change — `enforce_dispatch_entry_step_prereqs` only checks a Step 8 / 9
+  / 10 row being saved as done and never requires Step 9 before 10 or 11
+  (checked live 2026-11-17). If a round's DOs are later changed away from
+  Wada, Step 9 comes back for an entry that hasn't passed it.
 - **PDF / DOCX / email:** godown block "M/s. WADA FACTORY", GUT N 227, 228 &
   Jamghar, Post Nehroli, Wada, Dist. Palghar, MUMBAI SUBURBAN, Pin 421303,
   Mobile +91 86570 00602 (`GODOWN_ADDRESSES` in pdfGenerator.ts +

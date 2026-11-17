@@ -4,7 +4,7 @@ import { fmtIST } from '../lib/utils';
 import type { Order } from '../lib/types';
 import { DispatchEntryCells, DispatchEntryHeadCells, thCenterClsCompact } from './DispatchEntryCells';
 import {
-  DISPATCH_STEPS, DONE_COLUMN, STEP_ACTIONS, BoardCard, BoardOrderCard, BoardEntryCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck, entryStepBlock,
+  DISPATCH_STEPS, DONE_COLUMN, STEP_ACTIONS, BoardCard, BoardOrderCard, BoardEntryCard, ColumnNo, StepAction, StepNo, fmtDuration, TimeState, doPendingText, step6AlreadyEmailed, needsPaymentCheck, entryStepBlock, WADA_STEP9_NOTE,
 } from '../lib/dispatchFlow';
 
 // "Board" view of the Dispatch module — since 2026-10-19 a LIST: step tiles
@@ -200,7 +200,8 @@ const stepLabel = (no: ColumnNo) => no === DONE_COLUMN ? 'DONE' : `STEP ${String
 type DotState = 'done' | 'current' | 'hold' | 'skipped' | 'upcoming';
 
 /** One dot per step 1–11, worked out from the card's position. Step 9
- * (Bhiwandi) is a normal dot for every entry; LR (10) is dashed for Self Pickup. */
+ * (Bhiwandi) is a normal dot, except dashed for a Wada DO round (2026-11-17,
+ * isWadaDispatch); LR (10) is dashed for Self Pickup. */
 function progressDots(card: BoardCard): DotState[] {
   const out: DotState[] = [];
   const selfPickup = card.fulfillment === 'self_pickup';
@@ -210,13 +211,13 @@ function progressDots(card: BoardCard): DotState[] {
       if (card.position.skipped.includes(n as StepNo)) out.push('skipped');
       else if (n < cur) out.push('done');
       else if (n === cur) out.push(card.position.hold ? 'hold' : 'current');
-      else if (n === 10 && selfPickup) out.push('skipped');
+      else if ((n === 10 && selfPickup) || (n === 9 && card.wadaDo)) out.push('skipped');
       else out.push('upcoming');
     } else {
       // Entry cards: steps 1–7 are already behind them.
       const col = card.column;
       if (n <= 7) out.push(n === 1 && card.order && !needsPaymentCheck(card.order.pay) ? 'skipped' : 'done');
-      else if (n === 10 && selfPickup) out.push('skipped');
+      else if ((n === 10 && selfPickup) || (n === 9 && card.wadaDo)) out.push('skipped');
       else if (col === DONE_COLUMN || n < col) out.push('done');
       else if (n === col) out.push('current');
       else out.push('upcoming');
@@ -343,7 +344,7 @@ function Row({ card, now, onOpen, qty, deliveredEntryIds, punchedAt }: { card: B
       {/* 11 dots (2px apart so the group fits its 120px column) */}
       <div className="flex items-center justify-center gap-[2px]">
         {dots.map((d, i) => (
-          <span key={i} title={`Step ${String(i + 1).padStart(2, '0')} · ${DISPATCH_STEPS[i].title} · ${DOT_WORD[d]}`}
+          <span key={i} title={`Step ${String(i + 1).padStart(2, '0')} · ${DISPATCH_STEPS[i].title} · ${DOT_WORD[d]}${i === 8 && card.wadaDo ? ` · ${WADA_STEP9_NOTE}` : ''}`}
             className={`w-[9px] h-[9px] rounded-full shrink-0 box-border ${DOT_CLS[d]}`} />
         ))}
       </div>

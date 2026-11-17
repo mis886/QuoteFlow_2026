@@ -159,6 +159,7 @@ export interface LinkedDOLine {
   billingName?: string;
   whLotNo?: string;         // 2026-11-03: for the Step 6 Undo confirm ("101010 ×15")
   articles?: number;
+  warehouse?: string;       // 2026-11-17: stock_movements.warehouse — isWadaDispatch
 }
 export interface LinkedDO {
   id: string;               // line 1's id — what "Open DO" opens (the form loads every line)
@@ -179,8 +180,26 @@ export const mapLinkedDOFromDB = (r: any): LinkedDO => ({
   lines: [{
     id: r.id, orderLineSeq: r.order_line_seq ?? undefined, billingName: r.billing_name ?? undefined,
     whLotNo: r.wh_lot_no ?? undefined, articles: Number(r.num_articles) || 0,
+    warehouse: r.warehouse ?? undefined,
   }],
 });
+
+// ── Wada DO → no Step 9 (2026-11-17) ──────────────────────────────────────
+// A dispatch whose DO(s) were ALL issued from the Wada warehouse never goes
+// to Bhiwandi, so Step 9 "Send Invoice to Bhiwandi" is skipped: the entry
+// goes from Step 8 to Step 10 (Delivery) or 11 (Self Pickup). Worked out from
+// the round's linked DOs every time — no dispatch_steps row is written, so
+// open entries already waiting at Step 9 move on by themselves. Mixed DOs
+// (Wada + any other warehouse), or no linked DO, keep Step 9.
+export const WADA_STEP9_NOTE = 'Wada DO – not needed';
+export const isWadaWarehouse = (w?: string | null) => (w || '').trim().toLowerCase() === 'wada';
+/** The DO(s) linked to this order + round are all from Wada (and there is at least one). */
+export function isWadaDispatch(linked: { orderId: string; round: number; lines: { warehouse?: string }[] }[], orderId: string, round: number): boolean {
+  const lines = linked.filter(d => d.orderId === orderId && d.round === round).flatMap(d => d.lines);
+  return lines.length > 0 && lines.every(l => isWadaWarehouse(l.warehouse));
+}
+/** Options for the Step 8–11 rules of one entry. skipStep9 = isWadaDispatch for its round. */
+export interface EntryFlowOpts { skipStep9?: boolean }
 
 /** "S-0012 (2 products: 101010 ×15, 202020 ×25)" — the Step 6 Undo confirm / log. */
 export const linkedDoSummary = (d: LinkedDO) =>
@@ -634,34 +653,40 @@ function entryStepRows(e: DispatchEntry, records: DispatchStepRecord[]) {
  * `records` may hold other rows too; only this entry's are used.
  * Entries saved before the board went live start their timer at go-live.
  */
-export function entryPosition(e: DispatchEntry, records: DispatchStepRecord[]): EntryPosition {
+// 2026-11-17: opts.skipStep9 (a Wada DO round — isWadaDispatch) → never at
+// Step 9: after Step 8 straight to 10 (Delivery) or 11 (Self Pickup).
+export function entryPosition(e: DispatchEntry, records: DispatchStepRecord[], opts?: EntryFlowOpts): EntryPosition {
   const invoiceMissing = !entryHasInvoice(e);
   const { s8, s9, s10, s11 } = entryStepRows(e, records);
   if (s11) return { column: 12, invoiceMissing, doneAt: s11.doneAt };
-  if (!s8) return { column: 8, plannedAt: entryStepPlanned(e, 8, records), invoiceMissing };
-  if (!s9) return { column: 9, plannedAt: entryStepPlanned(e, 9, records), invoiceMissing };
-  if (e.fulfillmentType !== 'self_pickup' && s10?.status !== 'done') return { column: 10, plannedAt: entryStepPlanned(e, 10, records), invoiceMissing };
-  return { column: 11, plannedAt: entryStepPlanned(e, 11, records), invoiceMissing };
+  if (!s8) return { column: 8, plannedAt: entryStepPlanned(e, 8, records, opts), invoiceMissing };
+  if (!s9 && !opts?.skipStep9) return { column: 9, plannedAt: entryStepPlanned(e, 9, records, opts), invoiceMissing };
+  if (e.fulfillmentType !== 'self_pickup' && s10?.status !== 'done') return { column: 10, plannedAt: entryStepPlanned(e, 10, records, opts), invoiceMissing };
+  return { column: 11, plannedAt: entryStepPlanned(e, 11, records, opts), invoiceMissing };
 }
 
 /**
  * 2026-10-31: Email to Client sends the Bhiwandi email (Step 9) instead while
  * this is true: invoice no. and Invoice / Eway Bill file saved, no Bhiwandi
  * email yet, and Step 9 not finished (done, 'marked manually', or 'skipped' on
- * entries from before Step 9). Never for imported entries.
+ * entries from before Step 9). Never for imported entries, and never for a
+ * Wada DO round (opts.skipStep9, 2026-11-17) — those get the client email.
  */
-export const needsBhiwandiEmail = (e: DispatchEntry, records: DispatchStepRecord[]): boolean =>
-  !isImportedEntry(e) && entryHasInvoice(e) && entryHasInvoiceFile(e)
+export const needsBhiwandiEmail = (e: DispatchEntry, records: DispatchStepRecord[], opts?: EntryFlowOpts): boolean =>
+  !isImportedEntry(e) && !opts?.skipStep9 && entryHasInvoice(e) && entryHasInvoiceFile(e)
   && !e.bhiwandiEmailSentAt && !entryStepRows(e, records).s9;
 
 /**
  * Planned time of an entry's step 8–11: step 8 from when the entry was saved,
  * 9 from Step 8's click, 10 from Step 9's, 11 from Step 10's (Self Pickup:
- * Step 9's — it skips 10).
+ * Step 9's — it skips 10). A Wada DO round (opts.skipStep9): 10 / 11 from
+ * Step 8's click, as Step 9 never happens.
  */
-export function entryStepPlanned(e: DispatchEntry, stepNo: 8 | 9 | 10 | 11, records: DispatchStepRecord[]): string | undefined {
+export function entryStepPlanned(e: DispatchEntry, stepNo: 8 | 9 | 10 | 11, records: DispatchStepRecord[], opts?: EntryFlowOpts): string | undefined {
   const legacy = isBeforeGoLive(e.created_at);
-  const { s8, s9, s10 } = entryStepRows(e, records);
+  const rows = entryStepRows(e, records);
+  const { s8, s10 } = rows;
+  const s9 = opts?.skipStep9 ? undefined : rows.s9;
   const start = stepNo === 8 ? e.created_at
     : stepNo === 9 ? (s8?.doneAt || e.created_at)
     : stepNo === 10 ? (s9?.doneAt || s8?.doneAt || e.created_at)
@@ -683,11 +708,15 @@ export function drawerSteps(
   fulfillment: DispatchFulfillmentType | 'not_set',
   openPosition: OrderPosition | undefined,
   entryId?: string,
+  linkedDOs: LinkedDO[] = [],
 ): OrderStepHistory[] {
   const rounds = orderRounds(order, orderEntries, records, fulfillment, !!openPosition);
   if (!rounds.length) return [];
   const first = rounds[0];
   const focus = rounds.find(r => entryId && r.entry?.id === entryId) || rounds[rounds.length - 1];
+  // 2026-11-17: the focused round's DO(s) all from Wada → Step 9 skipped.
+  const flow: EntryFlowOpts = { skipStep9: isWadaDispatch(linkedDOs, order.id, focus.round) };
+  const wadaStep9: OrderStepHistory = { stepNo: 9, state: 'skipped', remark: WADA_STEP9_NOTE };
   const steps: OrderStepHistory[] = [
     ...first.history.filter(h => h.stepNo <= 4),
     ...focus.history.filter(h => h.stepNo >= 5),
@@ -699,14 +728,14 @@ export function drawerSteps(
     steps.push(openPosition?.step === 8
       ? { stepNo: 8, state: 'current', plannedAt: openPosition.plannedAt }
       : { stepNo: 8, state: 'upcoming' });
-    steps.push({ stepNo: 9, state: 'upcoming' });
+    steps.push(flow.skipStep9 ? wadaStep9 : { stepNo: 9, state: 'upcoming' });
     steps.push({ stepNo: 10, state: selfPickup ? 'skipped' : 'upcoming' });
     steps.push({ stepNo: 11, state: 'upcoming' });
     return steps;
   }
   // Steps 8–11 — the entry's own saved clicks (2026-10-22: manual steps).
   const legacy = isBeforeGoLive(order.sentToDispatchAt);
-  const pos = entryPosition(e, records);
+  const pos = entryPosition(e, records, flow);
   const { s8, s9, s10, s11 } = entryStepRows(e, records);
   const selfPickup = e.fulfillmentType === 'self_pickup';
   const invoiceNote = pos.invoiceMissing ? 'Invoice no. missing' : undefined;
@@ -716,20 +745,22 @@ export function drawerSteps(
     ? doneRow(8, s8, plannedAtFor(goLiveFloor(lastDone, legacy), 8), invoiceNote)
     : pos.column === 8 ? { stepNo: 8, state: 'current', plannedAt: pos.plannedAt, remark: invoiceNote }
     : { stepNo: 8, state: 'not_recorded', remark: invoiceNote });
-  // Step 9 — every entry; 'skipped' only on entries from before it existed.
-  steps.push(s9?.status === 'done' ? doneRow(9, s9, entryStepPlanned(e, 9, records))
+  // Step 9 — every entry; 'skipped' on entries from before it existed, and
+  // (no row) on a Wada DO round — unless a row was already saved for it.
+  steps.push(s9?.status === 'done' ? doneRow(9, s9, entryStepPlanned(e, 9, records, flow))
     : s9 ? { stepNo: 9, state: 'skipped', remark: s9.remark, record: s9 }
+    : flow.skipStep9 ? wadaStep9
     : pos.column === 9 ? { stepNo: 9, state: 'current', plannedAt: pos.plannedAt }
     : pos.column === DONE_COLUMN ? { stepNo: 9, state: 'not_recorded' }
     : { stepNo: 9, state: 'upcoming' });
   steps.push(selfPickup
     ? { stepNo: 10, state: 'skipped', record: s10 }
-    : s10?.status === 'done' ? doneRow(10, s10, entryStepPlanned(e, 10, records))
+    : s10?.status === 'done' ? doneRow(10, s10, entryStepPlanned(e, 10, records, flow))
     : pos.column === 10 ? { stepNo: 10, state: 'current', plannedAt: pos.plannedAt }
     : pos.column === DONE_COLUMN ? { stepNo: 10, state: 'not_recorded' }
     : { stepNo: 10, state: 'upcoming' });
   steps.push(s11
-    ? doneRow(11, s11, entryStepPlanned(e, 11, records))
+    ? doneRow(11, s11, entryStepPlanned(e, 11, records, flow))
     : pos.column === 11 ? { stepNo: 11, state: 'current', plannedAt: pos.plannedAt }
     : { stepNo: 11, state: 'upcoming' });
   return steps;
@@ -782,6 +813,9 @@ export const entryRoundOf = (e: DispatchEntry, orderEntries: DispatchEntry[]) =>
 /** Is this entry's round a Direct Delivery? `entries` = any entries (filtered to its order). */
 export const entryIsDirectDelivery = (e: DispatchEntry, entries: DispatchEntry[], orderRecords: DispatchStepRecord[]) =>
   roundIsDirectDelivery(orderRecords, e.orderId, entryRoundOf(e, entries.filter(x => x.orderId === e.orderId)));
+/** 2026-11-17: is this entry's round a Wada DO dispatch (Step 9 skipped)? `entries` = any entries. */
+export const entryIsWadaDispatch = (e: DispatchEntry, entries: DispatchEntry[], linkedDOs: LinkedDO[]) =>
+  isWadaDispatch(linkedDOs, e.orderId, entryRoundOf(e, entries.filter(x => x.orderId === e.orderId)));
 
 // ── Board ─────────────────────────────────────────────────────────────────
 export interface BoardOrderCard {
@@ -797,6 +831,7 @@ export interface BoardOrderCard {
   // the card shows "DO saved · email not sent" and "Open DO → Email to Client".
   doPending?: DoPending;
   directDelivery?: boolean;   // this round's Step 6 was issued as Direct Delivery
+  wadaDo?: boolean;           // this round's DO(s) all from Wada → Step 9 skipped
 }
 export interface BoardEntryCard {
   kind: 'entry';
@@ -808,6 +843,7 @@ export interface BoardEntryCard {
   fulfillment: DispatchFulfillmentType;
   state: TimeState;
   directDelivery?: boolean;   // its round's Step 6 was issued as Direct Delivery
+  wadaDo?: boolean;           // its round's DO(s) all from Wada → Step 9 skipped
 }
 export type BoardCard = BoardOrderCard | BoardEntryCard;
 
@@ -881,13 +917,16 @@ export function buildBoard(
       state: timeState(position.plannedAt, now, !!position.hold),
       doPending: position.step === 6 ? doPendingFor(linkedDOs, o.id, position.round) : undefined,
       directDelivery: roundIsDirectDelivery(recordsByOrder.get(o.id) || [], o.id, position.round),
+      wadaDo: isWadaDispatch(linkedDOs, o.id, position.round),
     });
   }
 
   const doneCutoff = now - DONE_WINDOW_DAYS * 86400000;
   for (const e of entries) {
     if (isImportedEntry(e)) continue;
-    const position = entryPosition(e, recordsByOrder.get(e.orderId) || []);
+    const round = entryRoundOf(e, entriesByOrder.get(e.orderId) || []);
+    const wadaDo = isWadaDispatch(linkedDOs, e.orderId, round);
+    const position = entryPosition(e, recordsByOrder.get(e.orderId) || [], { skipStep9: wadaDo });
     // Done shows for DONE_WINDOW_DAYS after Step 11 was clicked.
     if (position.column === DONE_COLUMN) {
       if (!position.doneAt || new Date(position.doneAt).getTime() < doneCutoff) continue;
@@ -896,7 +935,8 @@ export function buildBoard(
       kind: 'entry', key: `e:${e.id}`, entry: e, order: ordersById.get(e.orderId), position,
       column: position.column, fulfillment: e.fulfillmentType,
       state: position.column === DONE_COLUMN ? 'done' : timeState(position.plannedAt, now, false),
-      directDelivery: roundIsDirectDelivery(recordsByOrder.get(e.orderId) || [], e.orderId, entryRoundOf(e, entriesByOrder.get(e.orderId) || [])),
+      directDelivery: roundIsDirectDelivery(recordsByOrder.get(e.orderId) || [], e.orderId, round),
+      wadaDo,
     });
   }
   return cards;
