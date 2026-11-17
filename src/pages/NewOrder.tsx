@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
-import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, ORDER_LOCKED_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
@@ -59,11 +59,14 @@ export function NewOrder() {
   const ordersHome = searchParams.get('from') === 'board' ? '/dispatch' : '/orders';
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
-  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, isAdmin, canSeeEnqQuote } = useAppStore();
+  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, canSeeEnqQuote } = useAppStore();
   // Status lock — see isOrderStatusLocked in utils.ts.
   const editingOrder = editOrderId ? data.orders.find(o => o.id === editOrderId) : undefined;
-  const editingOrderFullyDispatched = !!editingOrder && isFullyDispatched(editingOrder, data.dispatchEntries);
   const statusLocked = !!editingOrder && isOrderStatusLocked(editingOrder, data.dispatchEntries);
+  // Detail lock (2026-11-17): the same check makes the whole form read-only
+  // for everyone, admins included. No Save; PDF / DOCX / Email use the saved
+  // order. The store's updateOrder refuses the write too.
+  const orderLocked = statusLocked;
   const canComplete = canCompleteOrder(user?.email);
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
@@ -533,6 +536,8 @@ export function NewOrder() {
   // Persist the order (with PO upload if any). Returns the orderPayload used,
   // so callers like Generate-PI can pass the same object straight to the PDF.
   const persistOrder = async (): Promise<Order | null> => {
+    // Detail lock: never write — PDF / DOCX get the order exactly as saved.
+    if (orderLocked) return editingOrder ?? null;
     if (!validateStep1()) { setStep(1); return null; }
     setErrors({});
     let finalPoFileName = poFile ? poFile.name : existingPoFileName || undefined;
@@ -563,20 +568,10 @@ export function NewOrder() {
       if (lead) orderPayload.customerId = (await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() })).id;
     }
     if (editOrderId) {
-      // Status lock (order sent to Dispatch): non-admins can't change it (the
-      // dropdown is disabled; keep the saved status just in case). Admins
-      // confirm first, then save with the override.
-      let adminOverride = false;
-      if (editingOrder && statusLocked && orderPayload.status !== editingOrder.status
-          && !isLockedStatusChangeAllowed(editingOrder.status, orderPayload.status, editingOrderFullyDispatched)) {
-        if (!isAdmin) {
-          orderPayload.status = editingOrder.status;
-        } else {
-          if (!confirm(`This order is in Dispatch${editingOrder.soNumber ? ` (${editingOrder.soNumber})` : ''}. Change status anyway?`)) return null;
-          adminOverride = true;
-        }
-      }
-      await updateOrder(editOrderId, orderPayload, adminOverride ? { adminOverride: true } : undefined);
+      // Only reached for an unlocked order (persistOrder returns early for a
+      // locked one), so the status lock never applies here — a locked order's
+      // status is changed from the Orders list / detail panel.
+      await updateOrder(editOrderId, orderPayload);
     } else {
       await addOrder(orderPayload);
       if (quoteRef) {
@@ -590,6 +585,7 @@ export function NewOrder() {
 
   // Run contact sync after save — silently for cases 1/2, brief toast for case 3.
   const doContactSync = async (): Promise<boolean> => {
+    if (orderLocked) return false;
     try {
       const fullMsg = await contactSync.run(custName, contact, phone, email, `Order ${editOrderId || orderId}`, { customerId: pickedCustomer?.id });
       if (fullMsg) { setContactSyncMsg(fullMsg); return true; }
@@ -651,7 +647,8 @@ export function NewOrder() {
     } finally { setIsSaving(false); }
   };
 
-  const goPreview = () => { if (validateStep1()) setStep(2); };
+  // A locked order is read-only, so nothing to validate — just show it.
+  const goPreview = () => { if (orderLocked || validateStep1()) setStep(2); };
 
   const Stepper = () => (
     <div className="flex items-center flex-1 px-6">
@@ -727,8 +724,8 @@ export function NewOrder() {
             {editOrderId && (
               <div className="flex items-center gap-2">
                 <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
-                <select title="Order status" value={orderStatus}
-                  disabled={statusLocked && !isAdmin}
+                <select title={orderLocked ? ORDER_LOCKED_MSG : 'Order status'} value={orderStatus}
+                  disabled={orderLocked}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                     if (e.target.value === 'Delivered' && !canComplete) return;
                     setOrderStatus(e.target.value as OrderStatus);
@@ -741,13 +738,6 @@ export function NewOrder() {
                   <option value="Won">Won</option>
                   <option value="Lost">Lost</option>
                 </select>
-                {statusLocked && (
-                  <span className="text-[10px] text-g500 max-w-[260px] leading-snug">
-                    {isAdmin
-                      ? `In Dispatch${editingOrder?.soNumber ? ` (${editingOrder.soNumber})` : ''} — admin: changing status asks for confirmation.`
-                      : `Locked — this order was sent to Dispatch${editingOrder?.soNumber ? ` (${editingOrder.soNumber})` : ''}. Status can't be changed.`}
-                  </span>
-                )}
               </div>
             )}
             <Button variant="secondary" onClick={() => { if (confirmLeave()) navigate(ordersHome); }}>Back</Button>
@@ -760,11 +750,13 @@ export function NewOrder() {
 
         {/* ══ STEP 1: Form ══ */}
         {step === 1 && (
-          <div className="flex flex-col gap-[12px]">
+          // Detail lock: a disabled fieldset disables every input, select,
+          // date, file upload and button inside it.
+          <fieldset disabled={orderLocked} className="flex flex-col gap-[12px] min-w-0 border-0 p-0 m-0">
 
-            {(!!editingOrder?.sentToDispatchAt || orderHasDispatch) && (
+            {orderLocked && (
               <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_14px] text-[12px] font-semibold text-amber-700">
-                This order is already in Dispatch. Changes here will NOT update Dispatch.
+                This order has been sent to Dispatch. It can no longer be edited.
               </div>
             )}
 
@@ -1278,7 +1270,7 @@ export function NewOrder() {
                   </table>
               </div>
               <div className="p-[8px_12px] flex items-start gap-3 flex-wrap">
-                <div className="inline-flex items-center gap-[6px] p-[7px_9px] text-red-mrt cursor-pointer text-[12px] font-semibold border border-dashed border-red-mrt/25 rounded-[3px] transition-colors hover:bg-red-lt" onClick={addItem}>
+                <div className="inline-flex items-center gap-[6px] p-[7px_9px] text-red-mrt cursor-pointer text-[12px] font-semibold border border-dashed border-red-mrt/25 rounded-[3px] transition-colors hover:bg-red-lt" onClick={() => { if (!orderLocked) addItem(); }}>
                   <svg viewBox="0 0 16 16" className="w-[13px] h-[13px] stroke-red-mrt fill-none stroke-2"><path d="M8 3v10M3 8h10"/></svg>
                   Add Another Line Item
                 </div>
@@ -1486,7 +1478,7 @@ export function NewOrder() {
                 </div>
               </div>
             </div>
-          </div>
+          </fieldset>
         )}
 
         {/* ══ STEP 2: Preview ══ */}
@@ -1606,11 +1598,13 @@ export function NewOrder() {
             </button>
           ) : (
             <>
+              {!orderLocked && (
               <button type="button" onClick={handleSave} disabled={isSaving}
                 className="bg-white border border-g300 text-blk font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-g50 hover:border-blk disabled:opacity-50 flex items-center gap-2">
                 <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M4 2v12h8V6l-4-4H4zm1 1h2v3h2V3h1.172L11 3.828V13H5V3zm2 6v3h2v-3H7z" /></svg>
                 {isSaving ? 'Saving...' : (editOrderId ? 'Save Amendments' : 'Save Order')}
               </button>
+              )}
               <button type="button" onClick={handleGeneratePI} disabled={isSaving}
                 className="bg-g700 text-white font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-blk disabled:opacity-50 flex items-center gap-2">
                 <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M4 2v12h8V6l-4-4H4zm1 1h2v3h2V3h1.172L11 3.828V13H5V3zm2 6v3h2v-3H7z" /></svg>
@@ -1648,7 +1642,7 @@ export function NewOrder() {
           onClose={() => setShowEmailModal(false)}
           onSent={async () => {
             setShowEmailModal(false);
-            await handleSave();
+            if (!orderLocked) await handleSave();
           }}
         />
       )}

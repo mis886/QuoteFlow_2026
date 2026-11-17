@@ -4,7 +4,19 @@ import { supabase, signOut, getSettings } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS } from '../lib/utils';
+import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS, ORDER_LOCKED_MSG, lockedOrderBlockedFields } from '../lib/utils';
+
+// Minimal self-contained error toast for store-level refusals, so a blocked
+// write is visible even from a caller that doesn't surface the error.
+function flashErrorToast(msg: string) {
+  if (typeof document === 'undefined') return;
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.setAttribute('role', 'alert');
+  el.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;background:#dc2626;color:#fff;padding:12px 16px;border-radius:4px;font-size:12.5px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.15);max-width:360px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+}
 import { logActivity } from '../lib/activityLog';
 import { User } from '@supabase/supabase-js';
 
@@ -1019,6 +1031,13 @@ const mapEnquiryToDB = (e: any) => {
 
   const updateOrder = async (id: string, updatesIn: Partial<Order>, opts?: { adminOverride?: boolean }) => {
     const before = data.orders.find(o => o.id === id);
+    // Detail lock (everyone, admins too): an order in Dispatch can't have its
+    // details changed from the Orders module. Only status (status lock below)
+    // and the Dispatch / Sheets stamps may still be written.
+    if (before && isOrderStatusLocked(before, data.dispatchEntries) && lockedOrderBlockedFields(updatesIn).length > 0) {
+      flashErrorToast(ORDER_LOCKED_MSG);
+      throw new Error(ORDER_LOCKED_MSG);
+    }
     const updates = updatesWithCustomerId(before, updatesIn);
     // Status lock: once an order is sent to Dispatch (or has a dispatch
     // entry) its status can't change — except the moves in

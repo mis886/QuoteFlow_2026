@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../store';
-import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched } from '../lib/utils';
+import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, ORDER_LOCKED_MSG } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -704,10 +704,23 @@ export function DetailPanel() {
             })()}
           </div>
           <div className="flex gap-2">
-            <Button variant="primary" onClick={() => {
-              closeDetailPanel();
-              navigate(`/orders/new?orderId=${o.id}`);
-            }}>Edit</Button>
+            {(() => {
+              // Detail lock: an order in Dispatch can't be edited by anyone.
+              const detailLocked = isOrderStatusLocked(o, data.dispatchEntries);
+              return (
+                <Button
+                  variant="primary"
+                  disabled={detailLocked}
+                  title={detailLocked ? ORDER_LOCKED_MSG : undefined}
+                  className={detailLocked ? 'cursor-not-allowed disabled:pointer-events-auto' : ''}
+                  onClick={() => {
+                    if (detailLocked) return;
+                    closeDetailPanel();
+                    navigate(`/orders/new?orderId=${o.id}`);
+                  }}
+                >Edit</Button>
+              );
+            })()}
             <Button variant="secondary" onClick={() => {
               const qt = data.quotes.find(q => q.id === o.quoteRef);
               const cust = customerOfDoc(o, data.customers);

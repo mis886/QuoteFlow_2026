@@ -538,6 +538,18 @@ export const isOrderStatusLocked = (
   dispatchEntries: { orderId: string }[],
 ): boolean => !!o.sentToDispatchAt || dispatchEntries.some(e => e.orderId === o.id);
 
+// 2026-11-17: the same check also locks every order DETAIL in the Orders
+// module (edit form, Edit buttons, Docs upload) — for everyone, admins too.
+// A locked order may only be written with the fields below: status (still
+// governed by the status lock) and what Dispatch / the Sheets export stamp.
+// Leaving Dispatch (sent_to_dispatch_at cleared, no entries) unlocks it.
+export const ORDER_LOCKED_MSG = "Order is in Dispatch — it can't be edited";
+const LOCKED_ORDER_WRITABLE_FIELDS: ReadonlySet<string> = new Set([
+  'status', 'soNumber', 'sentToDispatchAt', 'dispatchSnapshot', 'dispatchFinalized', 'sheetsExportedAt',
+]);
+export const lockedOrderBlockedFields = (updates: object): string[] =>
+  Object.keys(updates).filter(k => !LOCKED_ORDER_WRITABLE_FIELDS.has(k));
+
 // Status moves still allowed on a locked order without an admin override:
 // → 'Delivered' once every line has been dispatched (totalRemaining = 0),
 // and the legacy 'Order Pending for Dispatch' → 'Order Confirmed' flip.

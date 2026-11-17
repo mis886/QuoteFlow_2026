@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, CircleDashed, Pencil, Undo2, X } from 'lucide-react';
-import { fmtIST, doerLabel, formatINR, resolveAdjustments, maxItemGstRate, remainingByLine, punchedAtClass } from '../lib/utils';
+import { fmtIST, doerLabel, formatINR, resolveAdjustments, maxItemGstRate, remainingByLine, punchedAtClass, ORDER_LOCKED_MSG } from '../lib/utils';
 import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
   BoardCard, BoardEntryCard, BoardOrderCard, DispatchStepRecord, EntryColumn, LastStepClick, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
@@ -218,7 +218,8 @@ export function DispatchDrawer({
     }
   };
 
-  // EDIT (all users): the order card opens Edit Order, an entry card opens
+  // EDIT (all users): the order card opens the order (read-only — an order in
+  // Dispatch can't be edited, see ORDER_LOCKED_MSG), an entry card opens
   // that dispatch entry — both come back to the board afterwards.
   const openEdit = () => {
     if (openedFrom.kind === 'entry') navigate(`/dispatch/new?entryId=${encodeURIComponent(openedFrom.entry.id)}`);
@@ -345,8 +346,8 @@ export function DispatchDrawer({
                   </button>
                 )}
                 <Button size="sm" variant="secondary" className="h-[24px]" onClick={openEdit}
-                  title={openedFrom.kind === 'entry' ? 'Edit this dispatch entry' : 'Edit this order'}>
-                  Edit
+                  title={openedFrom.kind === 'entry' ? 'Edit this dispatch entry' : `View this order — ${ORDER_LOCKED_MSG}`}>
+                  {openedFrom.kind === 'entry' ? 'Edit' : 'View'}
                 </Button>
                 {canDelete && (
                   <Button size="sm" variant="ghost" className="h-[24px] text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => onDelete(openedFrom)}

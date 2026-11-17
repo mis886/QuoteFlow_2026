@@ -5,7 +5,7 @@ import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { customerOfDoc, formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
+import { customerOfDoc, formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, isOrderStatusLocked, ORDER_LOCKED_MSG, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -410,7 +410,15 @@ export function Orders() {
                                 Complete
                               </Button>
                             )}
-                            <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); navigate(`/orders/new?orderId=${o.id}`); }}>Edit</Button>
+                            {/* Detail lock: an order in Dispatch can't be edited by anyone. */}
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={statusLocked}
+                              title={statusLocked ? ORDER_LOCKED_MSG : undefined}
+                              className={statusLocked ? 'bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
+                              onClick={(e) => { e.stopPropagation(); if (statusLocked) return; navigate(`/orders/new?orderId=${o.id}`); }}
+                            >Edit</Button>
                             {(() => {
                               // Orders only reach Dispatch → Order Pending for Dispatch
                               // once sent from here (sentToDispatchAt). From there on,
