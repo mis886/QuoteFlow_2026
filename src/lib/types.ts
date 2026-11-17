@@ -658,14 +658,7 @@ export interface Ticket {
   resolutionNote?: string;
   created_at?: string;
   updated_at?: string;
-  // When the person who raised it last edited it (Edit on "My Tickets").
-  // updated_at also moves on admin status/note changes, so it can't be used
-  // for the "Edited" label. See 20261117140000_tickets_owner_edit.sql.
-  editedAt?: string;
 }
-
-// The fields the person who raised a ticket may change (editTicket).
-export type TicketEditFields = Pick<Ticket, 'module' | 'subject' | 'priority' | 'description' | 'attachmentPath' | 'attachmentName'>;
 
 // Stock Summary module — lot-wise raw-material stock ledger, migrated from the
 // "Stock Lot Godown Wise" tab of the HIMALAYA STOCK SUMMARY Google Sheet.
