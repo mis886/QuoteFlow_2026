@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { MergeResult, Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, Ticket } from '../lib/types';
+import type { MergeResult, Customer, Site, Contact, DataStore, Enquiry, Order, OrderItem, Quote, FollowUp, FollowUpLog, AuthorizedSignatory, CompanyUnit, BankAccount, PipelineStage, PipelineOutcome, TeamMember, DoerRole, EnqStatus, DispatchEntry, DispatchFulfillmentType, Ticket, TicketEditFields } from '../lib/types';
 import { supabase, signOut, getSettings } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { uploadToS3 } from '../lib/s3';
@@ -145,6 +145,7 @@ interface AppContextType {
   // Tickets (internal issue-tracking) — see src/pages/Tickets.tsx.
   addTicket: (t: Ticket) => Promise<void>;
   updateTicket: (id: string, updates: Partial<Ticket>) => Promise<void>;
+  editTicket: (id: string, fields: TicketEditFields) => Promise<void>;
   // Whether the logged-in Supabase Auth email is one of ADMIN_EMAILS.
   isAdmin: boolean;
   // Whole-app view-only mode: true only for BHIWANDI_EMAIL. Layout.tsx and
@@ -801,6 +802,7 @@ const mapEnquiryToDB = (e: any) => {
     resolutionNote: t.resolution_note || undefined,
     created_at: t.created_at,
     updated_at: t.updated_at,
+    editedAt: t.edited_at || undefined,
   });
 
   const mapTicketToDB = (t: any) => {
@@ -817,6 +819,7 @@ const mapEnquiryToDB = (e: any) => {
     if ('attachmentName' in t) obj.attachment_name = t.attachmentName || null;
     if ('resolvedBy' in t) obj.resolved_by = t.resolvedBy || null;
     if ('resolutionNote' in t) obj.resolution_note = t.resolutionNote || null;
+    if ('editedAt' in t) obj.edited_at = t.editedAt || null;
     obj.updated_at = new Date().toISOString();
     return obj;
   };
@@ -1412,6 +1415,25 @@ const mapEnquiryToDB = (e: any) => {
       console.error('Error updating ticket:', error);
       throw error;
     }
+  };
+
+  // "Edit" on My Tickets (src/pages/TicketRaise.tsx): the person who raised
+  // the ticket changes its own fields while it's Open / In Progress. The DB
+  // enforces the same (tickets_update_own policy + tickets_guard_owner_edit
+  // trigger, 20261117140000_tickets_owner_edit.sql). Sets editedAt for the
+  // "Edited" label.
+  const editTicket = async (id: string, fields: TicketEditFields) => {
+    const before = data.tickets.find(t => t.id === id);
+    if (!before) throw new Error('Ticket not found.');
+    if ((before.raisedByEmail || '').toLowerCase() !== (user?.email || '').toLowerCase()) throw new Error('You can only edit tickets you raised.');
+    if (before.status === 'Resolved' || before.status === 'Closed') throw new Error("Resolved tickets can't be edited.");
+    const updates: Partial<Ticket> = { ...fields, editedAt: new Date().toISOString() };
+    const { data: changed, error } = await supabase.from('tickets').update(mapTicketToDB(updates)).eq('id', id).select('id');
+    if (error) { console.error('Error editing ticket:', error); throw error; }
+    if (!changed || changed.length === 0) throw new Error("Nothing was saved — the ticket may have just been resolved. Refresh and try again.");
+    const after = { ...before, ...updates };
+    setData(prev => ({ ...prev, tickets: prev.tickets.map(t => t.id === id ? after : t) }));
+    logActivity({ module: 'tickets', recordId: id, recordLabel: after.subject || id, action: 'update', before, after });
   };
 
   const fixPhone = (v: any): string => {
@@ -2394,6 +2416,7 @@ const mapEnquiryToDB = (e: any) => {
         deleteTeamMember,
         addTicket,
         updateTicket,
+        editTicket,
         isAdmin,
         isReadOnlyUser,
         canSeeEnqQuote,
