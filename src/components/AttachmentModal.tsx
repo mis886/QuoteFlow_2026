@@ -4,7 +4,7 @@ import { uploadToS3, getS3SignedUrl } from '../lib/s3';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { useProductCatalog } from '../hooks/useProductCatalog';
-import { fmtIST, isOrderEditLocked, ORDER_LOCKED_MSG } from '../lib/utils';
+import { fmtIST, orderEditBlockedMsg } from '../lib/utils';
 import { Paperclip, Download, X, Loader2, Search } from 'lucide-react';
 
 interface AttachmentModalProps {
@@ -138,7 +138,9 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
   // 2026-11-18: except ORDER_EDIT_IN_DISPATCH_EMAILS (mis@) — isOrderEditLocked.
   // An upload writes only orders.attachments (updateOrder → mapOrderToDB);
   // Dispatch reads its own frozen copy (dispatchOrderView), so it can't change.
-  const orderLocked = !!relatedOrder && isOrderEditLocked(relatedOrder, data.dispatchEntries, user?.email);
+  // 2026-11-18: and never for the view-only logins (mum@ / accounts@).
+  const orderLockedMsg = relatedOrder ? orderEditBlockedMsg(relatedOrder, data.dispatchEntries, user?.email) : null;
+  const orderLocked = !!orderLockedMsg;
 
   // Merge po_submissions (customer-uploaded POs via public link) — dedupe by storage_path
   const seenPaths = new Set(allAttachments.map((a: any) => a.storagePath));
@@ -355,7 +357,7 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
         <div className="p-5 overflow-y-auto">
           {orderLocked && (
             <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_14px] text-[12px] font-semibold text-amber-700">
-              {ORDER_LOCKED_MSG}. Files can be downloaded, not added.
+              {orderLockedMsg}. Files can be downloaded, not added.
             </div>
           )}
           {entityType !== 'quote' && !orderLocked && (

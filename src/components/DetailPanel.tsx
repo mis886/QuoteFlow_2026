@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useAppStore, manualDeliveredLogNote } from '../store';
 import { showDeliveredOption, canPickDelivered, confirmManualDelivered, canMarkDeliveredManually } from '../lib/manualDelivered';
-import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, ORDER_LOCKED_MSG, isOrderEditLocked } from '../lib/utils';
+import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, orderEditBlockedMsg } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -721,13 +721,15 @@ export function DetailPanel() {
           <div className="flex gap-2">
             {(() => {
               // Detail lock: an order in Dispatch can't be edited — except by
-              // ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), 2026-11-18.
-              const detailLocked = isOrderEditLocked(o, data.dispatchEntries, user?.email);
+              // ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), 2026-11-18. Never for the
+              // view-only logins (mum@ / accounts@, ORDER_VIEW_ONLY_EMAILS).
+              const editBlockedMsg = orderEditBlockedMsg(o, data.dispatchEntries, user?.email);
+              const detailLocked = !!editBlockedMsg;
               return (
                 <Button
                   variant="primary"
                   disabled={detailLocked}
-                  title={detailLocked ? ORDER_LOCKED_MSG : undefined}
+                  title={editBlockedMsg ?? undefined}
                   className={detailLocked ? 'cursor-not-allowed disabled:pointer-events-auto' : ''}
                   onClick={() => {
                     if (detailLocked) return;

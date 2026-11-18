@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore, manualDeliveredLogNote } from '../store';
 import { showDeliveredOption, canPickDelivered, confirmManualDelivered, canMarkDeliveredManually } from '../lib/manualDelivered';
-import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, isOrderEditLocked, ORDER_LOCKED_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, isOrderEditLocked, ORDER_LOCKED_MSG, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
@@ -70,7 +70,11 @@ export function NewOrder() {
   // 2026-11-18: except ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), who can edit and
   // save it. That never changes Dispatch (no dispatch_snapshot write), and the
   // status dropdown stays locked by the status lock (statusLocked).
-  const orderLocked = !!editingOrder && isOrderEditLocked(editingOrder, data.dispatchEntries, user?.email);
+  // 2026-11-18: the view-only logins (mum@ / accounts@, ORDER_VIEW_ONLY_EMAILS)
+  // get the same read-only form for every order, and can't create one.
+  const viewOnly = isOrderViewOnly(user?.email);
+  const orderLocked = viewOnly || (!!editingOrder && isOrderEditLocked(editingOrder, data.dispatchEntries, user?.email));
+  const blockNewOrder = viewOnly && !editOrderId;
   // 2026-11-18: the order's status as saved (not the form's pick) — decides
   // whether "Delivered" shows in the dropdown and if a pick is a manual mark.
   const savedOrderStatus = editOrderId ? data.orders.find(o => o.id === editOrderId)?.status : undefined;
@@ -735,8 +739,8 @@ export function NewOrder() {
             {editOrderId && (
               <div className="flex items-center gap-2">
                 <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
-                <select title={orderLocked ? ORDER_LOCKED_MSG : statusLocked ? "This order is in Dispatch — change its status from the Orders list or the order's detail panel" : 'Order status'} value={orderStatus}
-                  disabled={statusLocked}
+                <select title={viewOnly ? `${ORDER_VIEW_ONLY_MSG} — change its status from the Orders list or the order's detail panel` : orderLocked ? ORDER_LOCKED_MSG : statusLocked ? "This order is in Dispatch — change its status from the Orders list or the order's detail panel" : 'Order status'} value={orderStatus}
+                  disabled={statusLocked || viewOnly}
                   onChange={async (e: React.ChangeEvent<HTMLSelectElement>) => {
                     const next = e.target.value as OrderStatus;
                     // 2026-11-18: Delivered by hand — mis@ / shishir@ only, after a
@@ -774,7 +778,11 @@ export function NewOrder() {
           // date, file upload and button inside it.
           <fieldset disabled={orderLocked} className="flex flex-col gap-[12px] min-w-0 border-0 p-0 m-0">
 
-            {statusLocked && (
+            {viewOnly ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_14px] text-[12px] font-semibold text-amber-700">
+                {blockNewOrder ? "View only — you can't create orders." : `${ORDER_VIEW_ONLY_MSG}. This form is read-only.`}
+              </div>
+            ) : statusLocked && (
               <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_14px] text-[12px] font-semibold text-amber-700">
                 {orderLocked
                   ? 'This order has been sent to Dispatch. It can no longer be edited.'
@@ -1614,7 +1622,7 @@ export function NewOrder() {
           )}
         </div>
         <div className="flex items-center gap-[10px]">
-          {step === 1 ? (
+          {step === 1 ? (blockNewOrder ? null :
             <button type="button" onClick={goPreview} className="bg-red-mrt text-white font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-red-h hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2">
               Preview →
             </button>

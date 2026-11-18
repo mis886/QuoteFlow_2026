@@ -4,7 +4,7 @@ import { supabase, signOut, getSettings } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS, ORDER_LOCKED_MSG, lockedOrderBlockedFields, isOrderEditLocked, orderLeavesDispatch } from '../lib/utils';
+import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS, ORDER_LOCKED_MSG, lockedOrderBlockedFields, isOrderEditLocked, orderLeavesDispatch, isOrderViewOnly, ORDER_VIEW_ONLY_MSG } from '../lib/utils';
 
 // Minimal self-contained error toast for store-level refusals, so a blocked
 // write is visible even from a caller that doesn't surface the error.
@@ -1050,7 +1050,15 @@ const mapEnquiryToDB = (e: any) => {
     logActivity({ module: 'quotes', recordId: id, recordLabel: before?.cust || id, action: 'delete', before });
   };
 
+  // 2026-11-18: the view-only logins (mum@ / accounts@) can't create, edit or
+  // delete orders, whatever page or URL the call comes from.
+  const refuseOrderViewOnly = () => {
+    flashErrorToast(ORDER_VIEW_ONLY_MSG);
+    throw new Error(ORDER_VIEW_ONLY_MSG);
+  };
+
   const addOrder = async (orderIn: Order) => {
+    if (isOrderViewOnly(user?.email)) refuseOrderViewOnly();
     const order = withCustomerId(orderIn);
     const { error, finalRecord } = await insertWithIdRetry<Order>(
       'orders',
@@ -1070,6 +1078,11 @@ const mapEnquiryToDB = (e: any) => {
 
   const updateOrder = async (id: string, updatesIn: Partial<Order>, opts?: UpdateOrderOpts) => {
     const before = data.orders.find(o => o.id === id);
+    // 2026-11-18: view-only logins may still write only what a locked order
+    // may get (status — Payment Received / OC / status dropdown / Dispatch's
+    // auto-Delivered — and the Dispatch / Sheets stamps); never the details,
+    // the attachments or anything else from the order form.
+    if (isOrderViewOnly(user?.email) && lockedOrderBlockedFields(updatesIn).length > 0) refuseOrderViewOnly();
     // Detail lock (everyone, admins too): an order in Dispatch can't have its
     // details changed from the Orders module. Only status (status lock below)
     // and the Dispatch / Sheets stamps may still be written.
@@ -1261,6 +1274,7 @@ const mapEnquiryToDB = (e: any) => {
   };
 
   const deleteOrder = async (id: string) => {
+    if (isOrderViewOnly(user?.email)) refuseOrderViewOnly();
     const before = data.orders.find(o => o.id === id);
     const { error } = await supabase.from('orders').delete().eq('id', id);
     if (!error) {

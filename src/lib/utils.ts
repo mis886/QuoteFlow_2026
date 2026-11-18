@@ -580,6 +580,30 @@ export const isOrderEditLocked = (
   email: string | null | undefined,
 ): boolean => isOrderStatusLocked(o, dispatchEntries) && !canEditOrderInDispatch(email);
 
+// 2026-11-18 (user decision): these logins only VIEW orders in the Orders
+// module — no order form save, no new order, no Docs upload, no delete. They
+// keep their status buttons (Payment Received, OC, the status dropdown) and
+// the Sheets export: the store's updateOrder lets them write only the fields
+// a locked order may still get (lockedOrderBlockedFields). Its own list: not
+// ADMIN_EMAILS, MANUAL_DELIVERED_EMAILS, ORDER_EDIT_IN_DISPATCH_EMAILS or the
+// Delete list. Everyone else (sales@ included) edits orders as before.
+export const ORDER_VIEW_ONLY_EMAILS = ['mum@himalayaterpene.com', 'accounts@himalayaterpene.com'];
+export const ORDER_VIEW_ONLY_MSG = "View only — you can't edit orders";
+export const isOrderViewOnly = (email: string | null | undefined): boolean =>
+  ORDER_VIEW_ONLY_EMAILS.includes((email ?? '').trim().toLowerCase());
+/**
+ * Why this login can't edit this order (the Edit button's tooltip), or null
+ * if it can. View-only wins over the Dispatch lock.
+ */
+export const orderEditBlockedMsg = (
+  o: { id: string; sentToDispatchAt?: string },
+  dispatchEntries: { orderId: string }[],
+  email: string | null | undefined,
+): string | null =>
+  isOrderViewOnly(email) ? ORDER_VIEW_ONLY_MSG
+    : isOrderEditLocked(o, dispatchEntries, email) ? ORDER_LOCKED_MSG
+    : null;
+
 // Status moves still allowed on a locked order without an admin override:
 // → 'Delivered' once every line has been dispatched (totalRemaining = 0),
 // and the legacy 'Order Pending for Dispatch' → 'Order Confirmed' flip.

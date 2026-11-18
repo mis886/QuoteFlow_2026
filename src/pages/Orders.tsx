@@ -5,7 +5,7 @@ import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { customerOfDoc, formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canSendToDispatch, isOrderStatusLocked, isOrderEditLocked, ORDER_LOCKED_MSG, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
+import { customerOfDoc, formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canSendToDispatch, isOrderStatusLocked, orderEditBlockedMsg, isOrderViewOnly, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -31,6 +31,7 @@ export function Orders() {
   const canDelete = canDeleteRecords(user?.email);
   const canConfirmPmt = canConfirmPayment(user?.email);
   const canSendDispatch = canSendToDispatch(user?.email);
+  const viewOnly = isOrderViewOnly(user?.email);
   const { globalSearchQuery } = store as any;
   const navigate = useNavigate();
   const [localSearch, setLocalSearch] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '');
@@ -237,9 +238,14 @@ export function Orders() {
                 Quotations
               </Button>
             )}
-            <Button 
-              onClick={() => navigate('/orders/new')} 
-              className="gap-2 bg-[#EAF8F1] border-[1.5px] border-[#A2DEBD] text-[#229A58] hover:bg-[#D5F2E1] font-bold tracking-[2.5px] px-4"
+            {/* 2026-11-18: greyed out for the view-only logins (mum@ / accounts@). */}
+            <Button
+              onClick={() => { if (!viewOnly) navigate('/orders/new'); }}
+              disabled={viewOnly}
+              title={viewOnly ? "View only — you can't create orders" : undefined}
+              className={viewOnly
+                ? 'gap-2 bg-g100 border-[1.5px] border-g200 text-g400 font-bold tracking-[2.5px] px-4 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100'
+                : 'gap-2 bg-[#EAF8F1] border-[1.5px] border-[#A2DEBD] text-[#229A58] hover:bg-[#D5F2E1] font-bold tracking-[2.5px] px-4'}
             >
               <span className="font-mono pt-[1px] font-bold">→</span> ORDER
             </Button>
@@ -330,8 +336,10 @@ export function Orders() {
                   const isExpanded = expandedRow === o.id;
                   const hasDispatchEntry = data.dispatchEntries.some(e => e.orderId === o.id);
                   const statusLocked = isOrderStatusLocked(o, data.dispatchEntries);
-                  // 2026-11-18: the Edit button only — mis@ may still edit (canEditOrderInDispatch).
-                  const editLocked = isOrderEditLocked(o, data.dispatchEntries, user?.email);
+                  // 2026-11-18: the Edit button only — mis@ may still edit (canEditOrderInDispatch);
+                  // mum@ / accounts@ never (ORDER_VIEW_ONLY_EMAILS).
+                  const editBlockedMsg = orderEditBlockedMsg(o, data.dispatchEntries, user?.email);
+                  const editLocked = !!editBlockedMsg;
 
                   return (
                     <React.Fragment key={o.id}>
@@ -398,7 +406,7 @@ export function Orders() {
                               size="sm"
                               variant="secondary"
                               disabled={editLocked}
-                              title={editLocked ? ORDER_LOCKED_MSG : undefined}
+                              title={editBlockedMsg ?? undefined}
                               className={editLocked ? 'bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
                               onClick={(e) => { e.stopPropagation(); if (editLocked) return; navigate(`/orders/new?orderId=${o.id}`); }}
                             >Edit</Button>
@@ -511,7 +519,7 @@ export function Orders() {
                                 <button type="button" title="Export to Google Sheets" onClick={e => { e.stopPropagation(); handleExportSheets(o); }} disabled={exportingSheets === o.id} className="w-[26px] h-[26px] inline-flex items-center justify-center rounded-[3px] border border-g200 bg-white hover:border-[#0F9D58] hover:bg-green-50 disabled:opacity-40 disabled:pointer-events-none transition-all shrink-0">{exportingSheets === o.id ? <Loader2 size={12} className="animate-spin text-g400" /> : <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none"><rect x="3" y="2" width="13" height="17" rx="1.5" fill="#0F9D58"/><rect x="7" y="2" width="9" height="2.5" rx="0.8" fill="#87D8AF"/><line x1="6" y1="9.5" x2="14" y2="9.5" stroke="white" strokeWidth="1.2"/><line x1="6" y1="12.5" x2="14" y2="12.5" stroke="white" strokeWidth="1.2"/><line x1="6" y1="15.5" x2="11" y2="15.5" stroke="white" strokeWidth="1.2"/></svg>}</button>
                               )
                             )}
-                            {canDelete && (
+                            {canDelete && !viewOnly && (
                               <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={async (ev) => {
                                 ev.stopPropagation();
                                 if (!confirm(`Are you sure you want to delete ${o.id}? This action cannot be undone.`)) return;
