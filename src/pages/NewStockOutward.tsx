@@ -222,7 +222,7 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
-import { StockLotOption, productMatches, dedupeLots, byLotAge, fmtLotDate } from '../lib/doLotPicker';
+import { StockLotOption, productMatches, dedupeLots, byLotAge } from '../lib/doLotPicker';
 import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
 import { Loader2, Plus, X, ImageIcon } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
@@ -581,10 +581,10 @@ function LotPickerCell({ id, value, lots, warehouse, className, title, onType, o
         onChange={e => { onType(e.target.value); }}
         onKeyDown={e => { if (e.key === 'Escape') p.setOpen(false); }} />
       {p.open && p.pos && lots.length > 0 && ReactDOM.createPortal(
-        <div ref={p.popRef} style={{ position: 'fixed', top: p.pos.top, left: p.pos.left, minWidth: manyProducts ? 380 : 300, zIndex: 9999 }}
+        <div ref={p.popRef} style={{ position: 'fixed', top: p.pos.top, left: p.pos.left, minWidth: manyProducts ? 300 : 220, zIndex: 9999 }}
           className="bg-white border border-g200 rounded-[3px] shadow-lg">
-          <div className="grid grid-cols-[1fr_88px_74px] gap-2 px-2.5 py-1 border-b border-g200 font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g500">
-            <span>Lot No</span><span>Lot Date</span><span className="text-right">Barrels</span>
+          <div className="grid grid-cols-[1fr_90px] gap-2 px-2.5 py-1 border-b border-g200 font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g500">
+            <span>Lot No</span><span className="text-right">Barrels</span>
           </div>
           <div className="max-h-[240px] overflow-y-auto">
             {lots.map(o => {
@@ -593,12 +593,11 @@ function LotPickerCell({ id, value, lots, warehouse, className, title, onType, o
               return (
                 <div key={o.lotNo} title={blocked ? `${usedTip}. A lot can be on one row only — change that row's barrels instead.` : undefined}
                   onMouseDown={e => { e.preventDefault(); if (blocked) return; onPick(o.lotNo); p.setOpen(false); }}
-                  className={`grid grid-cols-[1fr_88px_74px] gap-2 px-2.5 py-1.5 text-[12px] ${blocked ? 'text-g400 cursor-not-allowed' : 'text-blk cursor-pointer hover:bg-g100'} ${sameLot(o.lotNo, value) ?'bg-red-lt/40' : ''}`}>
+                  className={`grid grid-cols-[1fr_90px] gap-2 px-2.5 py-1.5 text-[12px] ${blocked ? 'text-g400 cursor-not-allowed' : 'text-blk cursor-pointer hover:bg-g100'} ${sameLot(o.lotNo, value) ?'bg-red-lt/40' : ''}`}>
                   <span className="font-mono">
                     {o.lotNo}
                     {manyProducts && <span className="block font-sans text-[10.5px] text-g500">{o.productName}</span>}
                   </span>
-                  <span>{fmtLotDate(o.lotDate)}</span>
                   <span className="text-right">
                     {blocked ? <><s className="text-g400">{o.barrels}</s> {o.left} left</> : o.left}
                   </span>

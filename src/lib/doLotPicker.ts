@@ -41,7 +41,3 @@ export const byLotAge = (a: { lotDate: string; lotNo: string }, b: { lotDate: st
   (a.lotDate || '9999') < (b.lotDate || '9999') ? -1 : (a.lotDate || '9999') > (b.lotDate || '9999') ? 1
     : a.lotNo.localeCompare(b.lotNo, undefined, { numeric: true });
 
-export const fmtLotDate = (d: string) => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : (d || '—');
-};
