@@ -4,7 +4,7 @@ import { Quote, Order, StockMovement, OutwardDO, DispatchEntry, Customer, AppSet
 import { Button } from './ui';
 import { generateOrderPDF } from '../lib/pdfGenerator';
 import { buildOutwardJPEG, outwardJpegFileName, blobToBase64 } from '../lib/outwardJpeg';
-import { sendViaGmailAsUser } from '../lib/gmail';
+import { sendViaGmailAsUser, preloadGoogleSignIn } from '../lib/gmail';
 import { resolveCoaStorageUrl } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { outwardTransporterName, fmtDate, isOutwardDeliveryType, doEmailSubject } from '../lib/utils';
@@ -150,6 +150,8 @@ export function SendEmailModal(props: Props) {
   const { customer, onClose, onSent } = props;
   const { activeDoer, user, data } = useAppStore();
   const senderEmail = activeDoer?.email ?? user?.email ?? '';
+  // 2026-11-18: load Google sign-in now, not on Send (see preloadGoogleSignIn).
+  useEffect(() => { preloadGoogleSignIn(); }, []);
   const siteContacts = getSiteContacts(customer);
   const primaryContact = getPrimaryContact(customer);
   const primaryEmail = primaryContact?.email ?? '';

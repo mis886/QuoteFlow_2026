@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Send, Paperclip, Mail, Loader2 } from 'lucide-react';
 import { Button } from './ui';
-import { sendViaGmailAsUser, Attachment } from '../lib/gmail';
+import { sendViaGmailAsUser, Attachment, preloadGoogleSignIn } from '../lib/gmail';
 import { supabase } from '../lib/supabase';
 import { logActivity } from '../lib/activityLog';
 import { useAppStore } from '../store';
@@ -79,6 +79,8 @@ function buildBody(p: SampleEmailModalProps): string {
 export function SampleEmailModal(props: SampleEmailModalProps) {
   const { activeDoer, user } = useAppStore();
   const senderEmail = activeDoer?.email ?? user?.email ?? '';
+  // 2026-11-18: load Google sign-in now, not on Send (see preloadGoogleSignIn).
+  useEffect(() => { preloadGoogleSignIn(); }, []);
   const defaultCCs = (user?.email ?? '').toLowerCase() === SHISHIR
     ? ['sales@himalayaterpene.com', 'anil@himalayaterpene.com']
     : [SHISHIR, 'anil@himalayaterpene.com'];

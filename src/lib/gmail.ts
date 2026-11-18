@@ -15,15 +15,63 @@ declare global {
   interface Window { google: any; }
 }
 
-function loadScript(src: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+// 2026-11-18: Google's sign-in script (Google Identity Services). The old
+// loader resolved as soon as a <script> tag for it EXISTED — even one still
+// loading or one that had failed — so a second Send after a failed/slow load
+// crashed with "Cannot read properties of undefined (reading 'accounts')"
+// (window.google missing). Now: one shared load per page; a failed load is
+// removed so the next try loads it again; and it only resolves once
+// window.google.accounts.oauth2 is really there. Errors are plain English.
+const GIS_SRC = 'https://accounts.google.com/gsi/client';
+const GIS_LOAD_FAILED = "Couldn't load Google sign-in (accounts.google.com). Check the internet connection, or whether an ad-blocker / network filter blocks it, then click Send again.";
+let _gisLoad: Promise<void> | null = null;
+const gisReady = () => !!window.google?.accounts?.oauth2;
+
+export function loadGoogleSignIn(): Promise<void> {
+  if (gisReady()) return Promise.resolve();
+  if (_gisLoad) return _gisLoad;
+  _gisLoad = new Promise<void>((resolve, reject) => {
+    // A tag from an earlier, failed or half-finished load is replaced.
+    document.querySelectorAll(`script[src="${GIS_SRC}"]`).forEach(el => el.remove());
     const s = document.createElement('script');
-    s.src = src;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`Failed to load ${src}`));
+    s.src = GIS_SRC;
+    s.async = true;
+    const fail = () => { s.remove(); reject(new Error(GIS_LOAD_FAILED)); };
+    s.onerror = fail;
+    s.onload = () => {
+      // The library sets window.google.accounts as it runs — give it a moment.
+      const started = Date.now();
+      const check = () => {
+        if (gisReady()) resolve();
+        else if (Date.now() - started > 5000) fail();
+        else setTimeout(check, 50);
+      };
+      check();
+    };
     document.head.appendChild(s);
-  });
+  }).then(
+    () => { _gisLoad = null; },                          // loaded: gisReady() answers from now on
+    err => { _gisLoad = null; throw err; },              // failed: the next Send retries the load
+  );
+  return _gisLoad;
+}
+
+/** 2026-11-18: start loading Google sign-in as soon as an email popup opens,
+ *  so a Send that needs the sign-in window doesn't wait for the download
+ *  (a slow load can make the browser block the window). Errors are ignored
+ *  here — the Send itself reports them. */
+export function preloadGoogleSignIn(): void {
+  if (!import.meta.env.VITE_GOOGLE_CLIENT_ID) return;
+  loadGoogleSignIn().catch(() => {});
+}
+
+// 2026-11-18: GIS reports a blocked / closed sign-in popup via error_callback.
+// Without it the Send just hung. Plain-English reason for the email popup.
+function signInPopupError(err: any, who: string): Error {
+  const type = err?.type;
+  if (type === 'popup_failed_to_open') return new Error(`The Google sign-in window for ${who} was blocked by the browser. Allow pop-ups for this site, then click Send again.`);
+  if (type === 'popup_closed') return new Error(`The Google sign-in window was closed before finishing. Click Send again and sign in as ${who}.`);
+  return new Error(`Google sign-in for ${who} did not finish (${type || err?.message || 'unknown reason'}). Click Send again.`);
 }
 
 // ── Per-user in-memory access token cache ────────────────────────────────────
@@ -118,9 +166,11 @@ export async function getAccessTokenForUser(userEmail: string): Promise<string> 
   }
 
   // 3. Full OAuth code flow — shows consent popup once, then stores refresh token
-  await loadScript('https://accounts.google.com/gsi/client');
+  // (reached when this mailbox has no saved Gmail permission, or Google just
+  // rejected the saved one and it was cleared above).
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
   if (!clientId) throw new Error('VITE_GOOGLE_CLIENT_ID is not configured.');
+  await loadGoogleSignIn();
 
   const authCode = await new Promise<string>((resolve, reject) => {
     const client = window.google.accounts.oauth2.initCodeClient({
@@ -134,6 +184,7 @@ export async function getAccessTokenForUser(userEmail: string): Promise<string> 
         if (resp.error) { reject(new Error(resp.error_description ?? resp.error)); return; }
         resolve(resp.code as string);
       },
+      error_callback: (err: any) => reject(signInPopupError(err, userEmail)),
     });
     client.requestCode();
   });
@@ -157,9 +208,9 @@ let _sharedTokenExpiry = 0;
 async function getAccessToken(silent = false): Promise<string> {
   if (_sharedToken && Date.now() < _sharedTokenExpiry) return _sharedToken;
 
-  await loadScript('https://accounts.google.com/gsi/client');
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
   if (!clientId) throw new Error('Email feature requires Google OAuth configuration. Please contact your administrator (VITE_GOOGLE_CLIENT_ID must be set in Cloudflare Pages environment variables).');
+  await loadGoogleSignIn();
 
   return new Promise((resolve, reject) => {
     const client = window.google.accounts.oauth2.initTokenClient({
@@ -171,6 +222,7 @@ async function getAccessToken(silent = false): Promise<string> {
         _sharedTokenExpiry = Date.now() + (resp.expires_in ?? 3600) * 1000 - 60_000;
         resolve(_sharedToken);
       },
+      error_callback: (err: any) => reject(signInPopupError(err, 'the Gmail account')),
     });
     client.requestAccessToken({ prompt: silent ? 'none' : '' });
   });
