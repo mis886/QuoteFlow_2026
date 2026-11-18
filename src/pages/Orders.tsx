@@ -479,7 +479,9 @@ export function Orders() {
                                   changeStatus(o, 'Order Confirmed');
                                 }}
                               >Payment Received</Button>
-                            ) : (
+                            ) : viewOnly ? null : (
+                              // 2026-11-18: OC is hidden for the view-only logins
+                              // (mum@ / accounts@); the store refuses it too.
                               <Button
                                 size="sm"
                                 variant="secondary"

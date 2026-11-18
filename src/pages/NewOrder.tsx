@@ -1645,11 +1645,14 @@ export function NewOrder() {
                 <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M4 2v12h8V6l-4-4H4zm1 1h2v3h2V3h1.172L11 3.828V13H5V3zm2 6v3h2v-3H7z" /></svg>
                 {isSaving ? 'Working...' : 'DOCX'}
               </button>
+              {/* 2026-11-18: hidden for the view-only logins (mum@ / accounts@). */}
+              {!viewOnly && (
               <button type="button" onClick={() => setShowEmailModal(true)} disabled={isSaving}
                 className="bg-blk text-white font-mono text-[11px] font-bold tracking-widest uppercase px-[20px] py-[10px] rounded-[3px] shadow-sm hover:bg-g700 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 flex items-center gap-2">
                 <svg viewBox="0 0 16 16" width="12" height="12" className="fill-current"><path d="M2 4h12v8H2zM3 5l5 3.5L13 5v-.5L8 8 3 4.5V5z" /></svg>
                 Email to Client
               </button>
+              )}
               <div className="h-5 w-px bg-g200" />
               <button type="button" onClick={() => { if (confirmLeave()) navigate(ordersHome); }} disabled={isSaving} className="bg-white border border-g300 text-g600 font-mono text-[10px] font-bold tracking-widest uppercase px-[16px] py-[9px] rounded-[3px] hover:bg-g50 disabled:opacity-50">
                 Cancel
@@ -1661,7 +1664,7 @@ export function NewOrder() {
       </div>
 
       {/* Email modal */}
-      {showEmailModal && (
+      {showEmailModal && !viewOnly && (
         <SendEmailModal
           mode="order"
           doc={buildOrderData()}

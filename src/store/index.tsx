@@ -4,7 +4,7 @@ import { supabase, signOut, getSettings } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS, ORDER_LOCKED_MSG, lockedOrderBlockedFields, isOrderEditLocked, orderLeavesDispatch, isOrderViewOnly, ORDER_VIEW_ONLY_MSG } from '../lib/utils';
+import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS, ORDER_LOCKED_MSG, lockedOrderBlockedFields, isOrderEditLocked, orderLeavesDispatch, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, ADVANCE_PAY } from '../lib/utils';
 
 // Minimal self-contained error toast for store-level refusals, so a blocked
 // write is visible even from a caller that doesn't surface the error.
@@ -1079,10 +1079,17 @@ const mapEnquiryToDB = (e: any) => {
   const updateOrder = async (id: string, updatesIn: Partial<Order>, opts?: UpdateOrderOpts) => {
     const before = data.orders.find(o => o.id === id);
     // 2026-11-18: view-only logins may still write only what a locked order
-    // may get (status — Payment Received / OC / status dropdown / Dispatch's
+    // may get (status — Payment Received / status dropdown / Dispatch's
     // auto-Delivered — and the Dispatch / Sheets stamps); never the details,
     // the attachments or anything else from the order form.
     if (isOrderViewOnly(user?.email) && lockedOrderBlockedFields(updatesIn).length > 0) refuseOrderViewOnly();
+    // 2026-11-18 (later): …and no OC for them — a move to Order Confirmed is
+    // refused unless it is Payment Received (an Advance order pending for
+    // payment), Dispatch's Step 11 undo, or the legacy Order Pending for
+    // Dispatch → Order Confirmed flip.
+    if (isOrderViewOnly(user?.email) && before && updatesIn.status === 'Order Confirmed' && before.status !== 'Order Confirmed'
+        && !(ADVANCE_PAY.has(before.pay ?? '') && before.status === 'Processing')
+        && !opts?.step11Undone && before.status !== 'Order Pending for Dispatch') refuseOrderViewOnly();
     // Detail lock (everyone, admins too): an order in Dispatch can't have its
     // details changed from the Orders module. Only status (status lock below)
     // and the Dispatch / Sheets stamps may still be written.
