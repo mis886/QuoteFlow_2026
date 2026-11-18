@@ -17,6 +17,7 @@ import { fetchAllRows } from '../lib/fetchAll';
 import { logActivity } from '../lib/activityLog';
 
 type SubType = DispatchFulfillmentType | 'not_set';
+const STEP11_UNDO_ORDER_TEXT = 'The order is Delivered in Orders — it goes back to Order Confirmed.';
 
 const pillCls = (active: boolean) => `px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${active ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`;
 
@@ -27,7 +28,7 @@ type BoardPill = typeof BOARD_PILLS[number];
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, activeDoer, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp, autoMarkOrderDeliveredFromDispatch } = useAppStore();
+  const { data, user, activeDoer, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp, autoMarkOrderDeliveredFromDispatch, revertOrderDeliveredAfterStep11Undo } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canDelete = canDeleteRecords(user?.email);
@@ -360,6 +361,8 @@ export function Dispatch() {
   // un-resumes a resumed hold. Only dispatch_steps is touched; never dispatch
   // entries, the order or its status. 2026-11-03: EXCEPT Step 6 Done with
   // DOs linked — those DOs are deleted and stock put back (see step6UndoDos).
+  // 2026-11-18: and EXCEPT Step 11 of any round — a Delivered order goes back
+  // to Order Confirmed (store's revertOrderDeliveredAfterStep11Undo).
   // 2026-10-13: was ADMIN_EMAILS only — now everyone who can click the step
   // buttons (canActOnDispatchBoard, not the read-only login).
   const canUndoOnBoard = canActOnBoard;
@@ -374,6 +377,11 @@ export function Dispatch() {
       .filter(([id, recs]) => lastOpenRoundClick(recs, data.dispatchEntries.filter(e => e.orderId === id)))
       .map(([id]) => id));
   }, [stepRecords, data.dispatchEntries]);
+  // 2026-11-18: the click being undone includes a round's Step 11 → a
+  // Delivered order moves back to Order Confirmed.
+  const undoesStep11 = (click: LastStepClick) =>
+    click.kind === 'delete' && click.rows.some(r => r.stepNo === 11 && !!r.entryId);
+  const revertsDelivered = (order: Order, click: LastStepClick) => order.status === 'Delivered' && undoesStep11(click);
   // Step 6 "DO issued ✓" — the click being undone is Step 6 Done.
   const undoesStep6Do = (click: LastStepClick) =>
     click.kind === 'delete' && click.rows.some(r => r.stepNo === 6 && r.status === 'done');
@@ -489,6 +497,17 @@ export function Dispatch() {
             recordLabel: `${order.soNumber || order.id} · ${wa.invoiceNumber ? `INV ${wa.invoiceNumber} · ` : ''}Step 11 undone — WhatsApp "documents sent" cleared`,
             action: 'update', before: { email_sent_at: wa.emailSentAt ?? null, docs_sent_via: 'whatsapp' }, after: { email_sent_at: null, docs_sent_via: null },
           });
+        }
+        // 2026-11-18: Step 11 undone → the dispatch isn't finished any more:
+        // a Delivered order goes back to Order Confirmed. Conditional (only
+        // while still Delivered); logged only if it changed. Called for every
+        // Step 11 undo — the write itself decides, not this screen's copy.
+        if (undoesStep11(click)) {
+          try {
+            if (await revertOrderDeliveredAfterStep11Undo(order.id)) showToast('ok', `${order.soNumber || order.id} moved back to Order Confirmed in Orders.`);
+          } catch (err: any) {
+            showToast('err', `Step 11 was undone, but the order could not be moved back to Order Confirmed (${err?.message || 'check your connection'}).`);
+          }
         }
       } else {
         const { data: updated, error } = await supabase.from('dispatch_steps').update({ done_at: null }).eq('id', click.row.id).select('id');
@@ -937,9 +956,9 @@ export function Dispatch() {
                 ))}
               </div>
             ) : whatsAppStep11Entry(click) ? (
-              <div className="mt-2">The documents-sent-on-WhatsApp mark is cleared too — the entry goes back to Step 11, not sent, and leaves Delivered. The order's status is not changed.</div>
+              <div className="mt-2">The documents-sent-on-WhatsApp mark is cleared too — the entry goes back to Step 11, not sent, and leaves Delivered. {revertsDelivered(order, click) ? STEP11_UNDO_ORDER_TEXT : "The order's status is not changed."}</div>
             ) : (
-              <div className="mt-2">The card moves back to where it was. Dispatch entries and the order's status are not changed.</div>
+              <div className="mt-2">The card moves back to where it was. Dispatch entries are not changed. {revertsDelivered(order, click) ? STEP11_UNDO_ORDER_TEXT : "The order's status is not changed."}</div>
             )}
           </ConfirmDialog>
         );

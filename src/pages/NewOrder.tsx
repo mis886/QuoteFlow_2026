@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAppStore } from '../store';
-import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, canCompleteOrder, getCurrentQuoteItems, isOrderStatusLocked, ORDER_LOCKED_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { useAppStore, manualDeliveredLogNote } from '../store';
+import { showDeliveredOption, canPickDelivered, confirmManualDelivered } from '../lib/manualDelivered';
+import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, ORDER_LOCKED_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
@@ -59,7 +60,7 @@ export function NewOrder() {
   const ordersHome = searchParams.get('from') === 'board' ? '/dispatch' : '/orders';
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
-  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, canSeeEnqQuote } = useAppStore();
+  const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, canSeeEnqQuote, isAdmin } = useAppStore();
   // Status lock — see isOrderStatusLocked in utils.ts.
   const editingOrder = editOrderId ? data.orders.find(o => o.id === editOrderId) : undefined;
   const statusLocked = !!editingOrder && isOrderStatusLocked(editingOrder, data.dispatchEntries);
@@ -67,7 +68,9 @@ export function NewOrder() {
   // for everyone, admins included. No Save; PDF / DOCX / Email use the saved
   // order. The store's updateOrder refuses the write too.
   const orderLocked = statusLocked;
-  const canComplete = canCompleteOrder(user?.email);
+  // 2026-11-18: the order's status as saved (not the form's pick) — decides
+  // whether "Delivered" shows in the dropdown and if a pick is a manual mark.
+  const savedOrderStatus = editOrderId ? data.orders.find(o => o.id === editOrderId)?.status : undefined;
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
 
@@ -571,7 +574,9 @@ export function NewOrder() {
       // Only reached for an unlocked order (persistOrder returns early for a
       // locked one), so the status lock never applies here — a locked order's
       // status is changed from the Orders list / detail panel.
-      await updateOrder(editOrderId, orderPayload);
+      // 2026-11-18: an admin who picked Delivered here gets it logged as such.
+      const manualDelivered = orderPayload.status === 'Delivered' && savedOrderStatus !== 'Delivered';
+      await updateOrder(editOrderId, orderPayload, manualDelivered ? { logNote: manualDeliveredLogNote(stampName()) } : undefined);
     } else {
       await addOrder(orderPayload);
       if (quoteRef) {
@@ -726,14 +731,22 @@ export function NewOrder() {
                 <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
                 <select title={orderLocked ? ORDER_LOCKED_MSG : 'Order status'} value={orderStatus}
                   disabled={orderLocked}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                    if (e.target.value === 'Delivered' && !canComplete) return;
-                    setOrderStatus(e.target.value as OrderStatus);
+                  onChange={async (e: React.ChangeEvent<HTMLSelectElement>) => {
+                    const next = e.target.value as OrderStatus;
+                    // 2026-11-18: Delivered by hand — admins only, after a
+                    // confirmation (not asked again when switching back to an
+                    // already-Delivered order's own status).
+                    if (next === 'Delivered' && savedOrderStatus !== 'Delivered') {
+                      if (!canPickDelivered(isAdmin, orderStatus)) return;
+                      if (editOrderId && !(await confirmManualDelivered(editOrderId))) return;
+                    }
+                    setOrderStatus(next);
                   }}
                   className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
                   <option value="Order Confirmed">Order Confirmed</option>
                   <option value="Processing">Order Pending for Payment</option>
-                  <option value="Delivered" disabled={!canComplete} title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}>Delivered</option>
+                  {/* 2026-11-18: hidden from non-admins unless the order already is Delivered. */}
+                  {showDeliveredOption(isAdmin, savedOrderStatus) && <option value="Delivered">Delivered</option>}
                   {/* 2026-09-19: Won/Lost — user can move an order into either from here, same as the other statuses */}
                   <option value="Won">Won</option>
                   <option value="Lost">Lost</option>

@@ -98,15 +98,12 @@ export const PAY_OPTIONS = [
 /** Advance-type terms that require a PI (Proforma Invoice) rather than an OC (Order Confirmation). */
 export const ADVANCE_PAY = new Set<string>(['Advance', '100% Advance']);
 
-// Shared allowlist for order-side actions gated to Accounts/Mumbai office:
-// confirming payment received (Order Confirmed) and marking an order Complete
-// (Delivered). Both checks currently allow the same two people — one list,
-// two named predicates so call sites stay self-documenting about which
-// permission they're actually checking.
+// Allowlist for confirming payment received (Order Confirmed): Accounts /
+// Mumbai office. 2026-11-18: canCompleteOrder (Delivered by hand) was removed —
+// orders become Delivered by themselves from Dispatch, and only admins
+// (store's isAdmin) may pick Delivered by hand (lib/manualDelivered.ts).
 export const ALLOWED_ORDER_ACTION_EMAILS = ['accounts@himalayaterpene.com', 'mum@himalayaterpene.com'];
 export const canConfirmPayment = (email: string | null | undefined): boolean =>
-  ALLOWED_ORDER_ACTION_EMAILS.includes((email ?? '').toLowerCase());
-export const canCompleteOrder = (email: string | null | undefined): boolean =>
   ALLOWED_ORDER_ACTION_EMAILS.includes((email ?? '').toLowerCase());
 
 export function normalizePayTerms(raw: string | undefined): string {

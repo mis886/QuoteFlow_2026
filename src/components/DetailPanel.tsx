@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
-import { useAppStore } from '../store';
-import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, canCompleteOrder, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, ORDER_LOCKED_MSG } from '../lib/utils';
+import { useAppStore, manualDeliveredLogNote } from '../store';
+import { showDeliveredOption, canPickDelivered, confirmManualDelivered } from '../lib/manualDelivered';
+import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, ORDER_LOCKED_MSG } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -35,9 +36,8 @@ const InfoItem = ({ label, value }: { label: string, value: string }) => (
 const isImageFileName = (name?: string | null): boolean => !!name && /\.(png|jpe?g|webp|gif)$/i.test(name);
 
 export function DetailPanel() {
-  const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, deleteEnquiry, closeFollowUp, updateTicket, stampName, isAdmin, canSeeEnqQuote } = useAppStore();
+  const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, markOrderDelivered, deleteEnquiry, closeFollowUp, updateTicket, stampName, isAdmin, canSeeEnqQuote } = useAppStore();
   const navigate = useNavigate();
-  const canComplete = canCompleteOrder(user?.email);
   const [downloadingItemId, setDownloadingItemId] = React.useState<string | null>(null);
   const [showLineItems, setShowLineItems] = React.useState(false);
   const [ticketNoteDraft, setTicketNoteDraft] = React.useState<string | null>(null);
@@ -686,8 +686,20 @@ export function DetailPanel() {
               disabled={locked && !isAdmin}
               onChange={async (e) => {
                 const next = e.target.value as any;
-                if (next === 'Delivered' && !canComplete) return;
                 const needsOverride = locked && next !== o.status && !isLockedStatusChangeAllowed(o.status, next, fullyDispatched);
+                // 2026-11-18: Delivered by hand — admins only, one
+                // confirmation (it also stands for the lock override), and
+                // a "Manually marked Delivered by …" History Log line.
+                if (next === 'Delivered') {
+                  if (!canPickDelivered(isAdmin, o.status)) return;
+                  if (!(await confirmManualDelivered(o.id))) return;
+                  try {
+                    await markOrderDelivered(o.id, { adminOverride: needsOverride, logNote: manualDeliveredLogNote(stampName()) });
+                  } catch (err: any) {
+                    alert(err?.message || 'Could not change status');
+                  }
+                  return;
+                }
                 if (needsOverride && !confirm(`This order is in Dispatch${o.soNumber ? ` (${o.soNumber})` : ''}. Change status anyway?`)) return;
                 try {
                   await updateOrder(o.id, { status: next }, needsOverride ? { adminOverride: true } : undefined);
@@ -698,7 +710,8 @@ export function DetailPanel() {
               className="font-sans text-[12px] text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none hover:border-g400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <option value="Processing">Order Pending for Payment</option>
-              <option value="Delivered" disabled={!canComplete} title={!canComplete ? 'Only authorized users can mark orders complete' : undefined}>Delivered</option>
+              {/* 2026-11-18: hidden from non-admins unless the order already is Delivered. */}
+              {showDeliveredOption(isAdmin, o.status) && <option value="Delivered">Delivered</option>}
             </select>
               );
             })()}

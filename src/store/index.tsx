@@ -32,9 +32,14 @@ import { User } from '@supabase/supabase-js';
 // opts.onlyIfStatusIn (2026-11-18, auto Delivered only): write only while the
 // order's status is still one of these (writeOrderUpdate) — otherwise nothing
 // is changed or logged and updateOrder returns false.
-type UpdateOrderOpts = { adminOverride?: boolean; fullyDispatchedInDb?: boolean; logNote?: string; onlyIfStatusIn?: readonly string[] };
+// opts.step11Undone (2026-11-18, revertOrderDeliveredAfterStep11Undo only):
+// lets Delivered → Order Confirmed through the status lock.
+type UpdateOrderOpts = { adminOverride?: boolean; fullyDispatchedInDb?: boolean; logNote?: string; onlyIfStatusIn?: readonly string[]; step11Undone?: boolean };
 export const AUTO_DELIVERED_LOG_NOTE = 'Auto-marked Delivered from Dispatch (fully dispatched, Step 11 done for every round)';
 export const AUTO_DELIVERED_SAFETY_LOG_NOTE = 'Auto-marked Delivered from Dispatch (safety check)';
+export const STEP11_UNDO_LOG_NOTE = 'Moved back to Order Confirmed — Step 11 undone in Dispatch';
+// 2026-11-18: an admin picking "Delivered" by hand in a status dropdown.
+export const manualDeliveredLogNote = (who: string) => `Manually marked Delivered by ${who}`;
 
 // Separate, purpose-specific mapping for the Authorized Signatory panel
 // (NewEnquiry/NewQuote/NewOrder) — deliberately NOT reused from/merged into
@@ -137,7 +142,11 @@ interface AppContextType {
   updateOrder: (id: string, updates: Partial<Order>, opts?: UpdateOrderOpts) => Promise<boolean>;
   // 2026-11-18: status → Delivered (what the removed COMPLETE button did).
   // Used by the automatic mark from Dispatch.
-  markOrderDelivered: (id: string, opts?: { adminOverride?: boolean }) => Promise<boolean>;
+  // opts.logNote: e.g. manualDeliveredLogNote(stampName()) from a dropdown.
+  markOrderDelivered: (id: string, opts?: { adminOverride?: boolean; logNote?: string }) => Promise<boolean>;
+  // 2026-11-18: Step 11 undone → Delivered order back to Order Confirmed
+  // (conditional; true = this call moved it).
+  revertOrderDeliveredAfterStep11Undo: (orderId: string) => Promise<boolean>;
   // 2026-11-18: after a Step 11 completes, and the Dispatch page's safety
   // check — marks the order Delivered if its whole dispatch is finished
   // (orderDispatchCompleteInDb). true = this call marked it.
@@ -1071,7 +1080,8 @@ const mapEnquiryToDB = (e: any) => {
         && isOrderStatusLocked(before, data.dispatchEntries)) {
       const fullyDispatched = !!opts?.fullyDispatchedInDb || isFullyDispatched(before, data.dispatchEntries);
       const allowed = isLockedStatusChangeAllowed(before.status, updates.status, fullyDispatched)
-        || (isAdmin && !!opts?.adminOverride);
+        || (isAdmin && !!opts?.adminOverride)
+        || (!!opts?.step11Undone && before.status === 'Delivered' && updates.status === 'Order Confirmed');
       if (!allowed) throw new Error("This order was sent to Dispatch — status can't be changed.");
     }
     const dbUpdates = mapOrderToDB(updates);
@@ -1131,6 +1141,14 @@ const mapEnquiryToDB = (e: any) => {
     if (!(await orderDispatchCompleteInDb(orderId))) return false;
     return markOrderDelivered(orderId, { fullyDispatchedInDb: true, logNote, onlyIfStatusIn: AUTO_DELIVERED_FROM_STATUSES });
   };
+
+  // 2026-11-18: a round's Step 11 was undone on the board — an order that is
+  // Delivered goes back to Order Confirmed (its dispatch is no longer
+  // finished). Conditional: written only while the status is STILL Delivered,
+  // and the History Log line only if that changed the row. Returns true if
+  // this call moved it back.
+  const revertOrderDeliveredAfterStep11Undo = (orderId: string): Promise<boolean> =>
+    updateOrder(orderId, { status: 'Order Confirmed' }, { step11Undone: true, onlyIfStatusIn: ['Delivered'], logNote: STEP11_UNDO_LOG_NOTE });
 
   // "Order Pending for Dispatch" button in the Orders module: stamps
   // sent_to_dispatch_at on this ONE order, then assigns its SO number via
@@ -2437,6 +2455,7 @@ const mapEnquiryToDB = (e: any) => {
         updateOrder,
         markOrderDelivered,
         autoMarkOrderDeliveredFromDispatch,
+        revertOrderDeliveredAfterStep11Undo,
         deleteOrder,
         ensureSoNumbers,
         sendOrderToDispatch,
