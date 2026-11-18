@@ -696,10 +696,13 @@ export function NewDispatchEntry() {
   // After a save (or an email): completes Steps 8 → 9 → 10 → 11 whose
   // proof now exists, with the same row the board buttons write. Returns a
   // warning if a step couldn't be saved ('' = fine); the save itself stands.
+  // 2026-11-18: then the auto-Delivered check runs after EVERY save / email
+  // here, not only when Step 11 was just written — an entry whose qty is
+  // changed after all its steps are done can finish the order too (the
+  // check itself decides; it only reads unless the order is finished).
   const completeEntrySteps = async (saved: DispatchEntry, what = 'Saved', step10WithoutLr = false): Promise<string> => {
-    let written: number[];
     try {
-      written = await autoCompleteEntrySteps({
+      await autoCompleteEntrySteps({
         entry: saved, entries: data.dispatchEntries,
         doneBy: user?.email ?? null,
         orderLabel: selectedOrder?.soNumber || saved.orderId,
@@ -711,19 +714,21 @@ export function NewDispatchEntry() {
     } catch (err: any) {
       return `${what} — but ${err?.message || 'a Dispatch step was not marked done'}.`;
     }
-    return written.includes(11) ? autoDeliverOrder(saved.orderId, what) : '';
+    return autoDeliverOrder(saved.orderId, what);
   };
 
   // 2026-11-18: after this entry's Step 11 is done — if that finished the
   // whole order (every round sent + Step 11 done, nothing left), the order is
-  // marked Delivered in Orders, like COMPLETE. Returns a warning if that
+  // marked Delivered in Orders (markOrderDelivered). Returns a warning if that
   // write failed ('' = fine or not finished yet); Step 11 stands either way.
   const autoDeliverOrder = async (orderId: string, what: string): Promise<string> => {
+    // Not from the read-only login (same as the Dispatch safety check).
+    if (isReadOnlyUser) return '';
     try {
       await autoMarkOrderDeliveredFromDispatch(orderId);
       return '';
     } catch (err: any) {
-      return `${what} — but the order could not be marked Delivered in Orders (${err?.message || 'check your connection'}). Use Complete in Orders.`;
+      return `${what} — but the order could not be marked Delivered in Orders (${err?.message || 'check your connection'}). It will be retried when Dispatch is opened again.`;
     }
   };
 

@@ -5,7 +5,7 @@ import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { customerOfDoc, formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canCompleteOrder, canSendToDispatch, isOrderStatusLocked, ORDER_LOCKED_MSG, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
+import { customerOfDoc, formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canSendToDispatch, isOrderStatusLocked, ORDER_LOCKED_MSG, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -27,10 +27,9 @@ function dlvDateClass(dlvDate: string, status: string): { text: string; title?: 
 export function Orders() {
   const store = useAppStore();
   const { canSeeEnqQuote } = store;
-  const { data, user, updateOrder, markOrderDelivered, deleteOrder, openAttachmentModal, sendOrderToDispatch, isAdmin, isReadOnlyUser } = store;
+  const { data, user, updateOrder, deleteOrder, openAttachmentModal, sendOrderToDispatch, isAdmin, isReadOnlyUser } = store;
   const canDelete = canDeleteRecords(user?.email);
   const canConfirmPmt = canConfirmPayment(user?.email);
-  const canComplete = canCompleteOrder(user?.email);
   const canSendDispatch = canSendToDispatch(user?.email);
   const { globalSearchQuery } = store as any;
   const navigate = useNavigate();
@@ -106,8 +105,7 @@ export function Orders() {
 
   // Row-button status changes. A locked order (sent to Dispatch / has a
   // dispatch entry) only gets here for an admin — non-admins don't see those
-  // buttons — or for Complete after dispatch (allowed without override).
-  // Admins confirm first; the store's updateOrder enforces the lock too.
+  // buttons. Admins confirm first; the store's updateOrder enforces the lock too.
   const changeStatus = async (o: Order, status: Order['status']) => {
     const fullyDispatched = isFullyDispatched(o, data.dispatchEntries);
     const needsOverride = isOrderStatusLocked(o, data.dispatchEntries)
@@ -117,11 +115,7 @@ export function Orders() {
       if (!confirm(`This order is in Dispatch${o.soNumber ? ` (${o.soNumber})` : ''}. Change status anyway?`)) return;
     }
     try {
-      const opts = needsOverride ? { adminOverride: true } : undefined;
-      // Complete → Delivered: the store's markOrderDelivered, the same one
-      // Dispatch uses to auto-mark a fully dispatched order (2026-11-18).
-      if (status === 'Delivered') await markOrderDelivered(o.id, opts);
-      else await updateOrder(o.id, { status }, opts);
+      await updateOrder(o.id, { status }, needsOverride ? { adminOverride: true } : undefined);
     } catch (err) {
       showToast('err', (err as Error)?.message || 'Could not change status');
     }
@@ -336,7 +330,6 @@ export function Orders() {
                   const isExpanded = expandedRow === o.id;
                   const hasDispatchEntry = data.dispatchEntries.some(e => e.orderId === o.id);
                   const statusLocked = isOrderStatusLocked(o, data.dispatchEntries);
-                  const fullyDispatched = isFullyDispatched(o, data.dispatchEntries);
 
                   return (
                     <React.Fragment key={o.id}>
@@ -394,26 +387,9 @@ export function Orders() {
                         <td className="px-[13px] py-[10px] align-top"><Badge status={o.status} /></td>
                         <td className="px-[13px] py-[10px] align-top" onClick={ev => ev.stopPropagation()}>
                           <div className="flex gap-1.5 flex-wrap">
-                            {/* Complete (→ Delivered): hidden for a locked order that's
-                                sent but not yet fully dispatched (every line must
-                                go through Dispatch first) — unless admin. Once
-                                nothing remains to dispatch it's allowed again. */}
-                            {o.status !== 'Delivered' && (!statusLocked || fullyDispatched || isAdmin) && (
-                              <Button
-                                size="sm"
-                                variant="dark"
-                                disabled={!canComplete}
-                                className={!canComplete ? 'cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
-                                title={!canComplete ? 'Only Accounts can mark orders as Delivered' : undefined}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!canComplete) return;
-                                  changeStatus(o, 'Delivered');
-                                }}
-                              >
-                                Complete
-                              </Button>
-                            )}
+                            {/* 2026-11-18: no Complete button — an order becomes Delivered
+                                by itself once its whole dispatch is finished
+                                (store's autoMarkOrderDeliveredFromDispatch). */}
                             {/* Detail lock: an order in Dispatch can't be edited by anyone. */}
                             <Button
                               size="sm"

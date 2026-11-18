@@ -135,8 +135,8 @@ interface AppContextType {
   // Resolves true if the order was written (false only for a conditional
   // write — opts.onlyIfStatusIn — that matched no row).
   updateOrder: (id: string, updates: Partial<Order>, opts?: UpdateOrderOpts) => Promise<boolean>;
-  // 2026-11-18: COMPLETE (Orders) — status → Delivered. One function for the
-  // button and the automatic mark from Dispatch.
+  // 2026-11-18: status → Delivered (what the removed COMPLETE button did).
+  // Used by the automatic mark from Dispatch.
   markOrderDelivered: (id: string, opts?: { adminOverride?: boolean }) => Promise<boolean>;
   // 2026-11-18: after a Step 11 completes, and the Dispatch page's safety
   // check — marks the order Delivered if its whole dispatch is finished
@@ -1111,9 +1111,9 @@ const mapEnquiryToDB = (e: any) => {
     return true;
   };
 
-  // 2026-11-18: what the Orders COMPLETE button does — status → Delivered,
-  // nothing else (updateOrder: status lock + History Log). Shared with the
-  // automatic mark from Dispatch below.
+  // 2026-11-18: status → Delivered, nothing else (updateOrder: status lock +
+  // History Log) — what the Orders COMPLETE button did (removed 2026-11-18).
+  // Used by the automatic mark from Dispatch below.
   const markOrderDelivered = (id: string, opts?: UpdateOrderOpts) =>
     updateOrder(id, { status: 'Delivered' }, opts);
 

@@ -166,6 +166,21 @@ export function Dispatch() {
     }
   };
 
+  // 2026-11-18: the auto-Delivered check after a change that can finish an
+  // order's whole dispatch (Step 11 on the board, the ✎ step editor, an entry
+  // deleted). Marks it Delivered in Orders if finished — the store re-checks
+  // in the database and writes only while still Order Confirmed. A failure
+  // never undoes the change; the Dispatch safety check retries on the next
+  // page load. Not for the read-only login.
+  const checkAutoDelivered = async (orderId: string, what: string) => {
+    if (isReadOnlyUser) return;
+    try {
+      if (await autoMarkOrderDeliveredFromDispatch(orderId)) showToast('ok', 'Order fully dispatched — marked Delivered in Orders.');
+    } catch (err: any) {
+      showToast('err', `${what}, but the order could not be marked Delivered in Orders (${err?.message || 'check your connection'}). It will be retried when Dispatch is opened again.`);
+    }
+  };
+
   // 2026-10-22: Steps 8–11 of ONE dispatch entry are manual — "Invoice done"
   // / "Bhiwandi informed" / "LR received" / "Documents sent" save a
   // dispatch_steps row with entry_id. Steps 8, 9 and 10 need the entry's
@@ -191,14 +206,8 @@ export function Dispatch() {
       if (!inserted.length) { await stepAlreadyDone(alreadyDone); return; }
       setStepRecords(prev => [...prev, ...inserted.map(mapStepFromDB)]);
       // 2026-11-18: Step 11 done — if that finished the whole order, it is
-      // marked Delivered in Orders (same as COMPLETE). The step itself stands.
-      if (inserted.some(r => r.step_no === 11)) {
-        try {
-          if (await autoMarkOrderDeliveredFromDispatch(e.orderId)) showToast('ok', 'Order fully dispatched — marked Delivered in Orders.');
-        } catch (err: any) {
-          showToast('err', `Step 11 saved, but the order could not be marked Delivered in Orders (${err?.message || 'check your connection'}) — use Complete in Orders.`);
-        }
-      }
+      // marked Delivered in Orders. The step itself stands.
+      if (inserted.some(r => r.step_no === 11)) await checkAutoDelivered(e.orderId, 'Step 11 saved');
     } catch (err: any) {
       // The database's own refusal ("Add invoice no. and attach Invoice /
       // Eway Bill first" / "Send email to Bhiwandi first" / "Upload LR
@@ -529,6 +538,8 @@ export function Dispatch() {
       after: row,
     });
     showToast('ok', `Step ${rec.stepNo} updated.`);
+    // 2026-11-18: an edited step can finish the order's whole dispatch.
+    await checkAutoDelivered(order.id, `Step ${rec.stepNo} updated`);
   };
 
   // DELETE (admins only — same canDeleteRecords as Enquiries / Quotes /
@@ -590,6 +601,9 @@ export function Dispatch() {
         const e = deleteCard.entry;
         const { deletedSteps, restartStep, deletedDoIds } = await deleteDispatchEntry(e.id);
         showToast('ok', `Dispatch entry ${e.invoiceNumber || e.id} deleted.${afterEntryDeleted(deletedSteps, restartStep, deletedDoIds)}`);
+        // 2026-11-18: rare (an over-dispatched order), but deleting the last
+        // round can leave the rest of the order finished.
+        await checkAutoDelivered(e.orderId, 'Entry deleted');
       }
       setDeleteCard(null);
       setDrawerCard(null);
@@ -608,6 +622,7 @@ export function Dispatch() {
     try {
       const { deletedSteps, restartStep, deletedDoIds } = await deleteDispatchEntry(entry.id);
       afterEntryDeleted(deletedSteps, restartStep, deletedDoIds);
+      await checkAutoDelivered(entry.orderId, 'Entry deleted');
     } catch (err: any) {
       alert(`Delete failed: ${err?.message || JSON.stringify(err)}`);
     }
