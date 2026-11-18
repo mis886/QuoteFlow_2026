@@ -199,8 +199,16 @@
 // order line and the order rules still apply (wadaRowInfo / onBillingChange).
 // Saving / deleting never touches stock_lots (20261103170000 migration). A
 // saved DO can't be switched between Wada and a stock warehouse.
+// 2026-11-18: stock warehouses — a row's lot can be picked by PRODUCT NAME:
+// Product Name (now first) searches the products with barrels > 0 at the
+// header warehouse; Lot No then lists that product's lots (oldest first,
+// barrels after this DO's other rows, total). Picking a lot = typing its Lot
+// No (same lookup / fill / checks). From the Board the search box starts with
+// the order line's product name. Typing a Lot No still works. Wada unchanged.
+// Helpers: src/lib/doLotPicker.ts.
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { supabase } from '../lib/supabase';
@@ -214,6 +222,7 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
+import { StockLotOption, productMatches, dedupeLots, byLotAge, fmtLotDate } from '../lib/doLotPicker';
 import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
 import { Loader2, Plus, X, ImageIcon } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
@@ -466,6 +475,15 @@ type Line = {
   // product" (Board / linked DO). Wins over the matcher whenever the row's lot
   // (or, for Wada, its Billing Name) matches it, and survives a lot clear.
   pin: { seq: number; desc: string } | null;
+  // 2026-11-18: pick a lot by PRODUCT NAME (stock warehouses only).
+  // productQuery = the text in the Product Name search box (null = show the
+  // row's productName); pickedProduct = the product whose lots the Lot No
+  // list shows; productSeed = what the search box starts with (the order
+  // line's product name from the Board / "+ Add product"), put back when the
+  // Warehouse changes.
+  productQuery: string | null;
+  pickedProduct: string | null;
+  productSeed: string | null;
 };
 let lineCounter = 0;
 const newLine = (p: Partial<Line> = {}): Line => ({
@@ -474,8 +492,129 @@ const newLine = (p: Partial<Line> = {}): Line => ({
   numArticles: '', packing: '', packagingType: '', weightType: '',
   orderLineSeq: null, billingTyped: false, userBarrelsKey: null, autoBarrels: null,
   lotTouched: true, lotFilled: false, pin: null,
+  productQuery: null, pickedProduct: null, productSeed: null,
   ...p,
 });
+// A row prefilled with an order line's product name: the search box starts with it.
+const seededLine = (p: Partial<Line> & { billingName: string }): Line =>
+  newLine({ ...p, productQuery: p.billingName || null, productSeed: p.billingName || null });
+
+// ── Product / lot pickers (2026-11-18) ───────────────────────────────────────
+
+// A dropdown in a portal under its input (the products table scrolls
+// sideways, which would clip an absolute one) — same approach as
+// SearchableCombobox. Closes on a click outside, page scroll or resize.
+function useCellPopover() {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const show = () => {
+    const r = anchorRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 2, left: r.left, width: r.width });
+    setOpen(true);
+  };
+  useEffect(() => {
+    if (!open) return;
+    const inside = (t: EventTarget | null) => !!t && (anchorRef.current?.contains(t as Node) || popRef.current?.contains(t as Node));
+    const outside = (e: MouseEvent) => { if (!inside(e.target)) setOpen(false); };
+    const scroll = (e: Event) => { if (!inside(e.target)) setOpen(false); };
+    const resize = () => setOpen(false);
+    document.addEventListener('mousedown', outside);
+    window.addEventListener('scroll', scroll, true);
+    window.addEventListener('resize', resize);
+    return () => {
+      document.removeEventListener('mousedown', outside);
+      window.removeEventListener('scroll', scroll, true);
+      window.removeEventListener('resize', resize);
+    };
+  }, [open]);
+  return { open, setOpen, show, pos, anchorRef, popRef };
+}
+
+type ProductOption = { name: string; code: string; barrels: number; lots: number };
+function ProductPickerCell({ value, options, warehouse, loading, className, title, onType, onPick, onLeave }: {
+  value: string; options: ProductOption[]; warehouse: string; loading: boolean; className: string; title?: string;
+  onType: (v: string) => void; onPick: (name: string) => void; onLeave: () => void;
+}) {
+  const p = useCellPopover();
+  return (
+    <div ref={p.anchorRef} className="relative">
+      <input className={className} value={value} title={title} placeholder="Search product…" autoComplete="off"
+        onFocus={p.show} onBlur={onLeave}
+        onChange={e => { onType(e.target.value); if (!p.open) p.show(); }}
+        onKeyDown={e => { if (e.key === 'Escape') p.setOpen(false); }} />
+      {p.open && p.pos && ReactDOM.createPortal(
+        <div ref={p.popRef} style={{ position: 'fixed', top: p.pos.top, left: p.pos.left, minWidth: Math.max(p.pos.width, 300), zIndex: 9999 }}
+          className="bg-white border border-g200 rounded-[3px] shadow-lg max-h-[260px] overflow-y-auto">
+          {options.length === 0
+            ? <div className="px-2.5 py-2 text-[12px] text-g500">
+                {!warehouse ? 'Select a Warehouse first.' : loading ? 'Loading stock…' : `No product with stock at ${warehouse} matches “${value.trim()}”.`}
+              </div>
+            : options.map(o => (
+              <div key={o.name} onMouseDown={e => { e.preventDefault(); onPick(o.name); p.setOpen(false); }}
+                className="px-2.5 py-1.5 cursor-pointer text-[12px] text-blk hover:bg-g100 flex items-baseline gap-3">
+                <span className="flex-1">{o.name}{o.code && <span className="ml-1.5 font-mono text-[10.5px] text-g500">{o.code}</span>}</span>
+                <span className="text-[11px] text-g600 whitespace-nowrap">{o.barrels} brl · {o.lots} lot{o.lots === 1 ? '' : 's'}</span>
+              </div>
+            ))}
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+type LotPickRow = StockLotOption & { left: number; usedRows: number[]; usedBarrels: number };
+function LotPickerCell({ id, value, lots, warehouse, className, title, onType, onPick }: {
+  id: string; value: string; lots: LotPickRow[]; warehouse: string; className: string; title?: string;
+  onType: (v: string) => void; onPick: (lotNo: string) => void;
+}) {
+  const p = useCellPopover();
+  const manyProducts = new Set(lots.map(l => l.productName.trim().toLowerCase())).size > 1;
+  const total = lots.reduce((s, l) => s + l.left, 0);
+  return (
+    <div ref={p.anchorRef} className="relative">
+      <input id={id} className={className} value={value} title={title} autoComplete="off"
+        placeholder={lots.length ? 'Pick or type…' : undefined}
+        onFocus={() => { if (lots.length) p.show(); }}
+        onChange={e => { onType(e.target.value); }}
+        onKeyDown={e => { if (e.key === 'Escape') p.setOpen(false); }} />
+      {p.open && p.pos && lots.length > 0 && ReactDOM.createPortal(
+        <div ref={p.popRef} style={{ position: 'fixed', top: p.pos.top, left: p.pos.left, minWidth: manyProducts ? 380 : 300, zIndex: 9999 }}
+          className="bg-white border border-g200 rounded-[3px] shadow-lg">
+          <div className="grid grid-cols-[1fr_88px_74px] gap-2 px-2.5 py-1 border-b border-g200 font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g500">
+            <span>Lot No</span><span>Lot Date</span><span className="text-right">Barrels</span>
+          </div>
+          <div className="max-h-[240px] overflow-y-auto">
+            {lots.map(o => {
+              const usedTip = o.usedRows.length ? `Row ${o.usedRows.join(' + ')} of this DO uses ${o.usedBarrels} — ${o.left} left` : undefined;
+              const blocked = o.usedRows.length > 0;
+              return (
+                <div key={o.lotNo} title={blocked ? `${usedTip}. A lot can be on one row only — change that row's barrels instead.` : undefined}
+                  onMouseDown={e => { e.preventDefault(); if (blocked) return; onPick(o.lotNo); p.setOpen(false); }}
+                  className={`grid grid-cols-[1fr_88px_74px] gap-2 px-2.5 py-1.5 text-[12px] ${blocked ? 'text-g400 cursor-not-allowed' : 'text-blk cursor-pointer hover:bg-g100'} ${sameLot(o.lotNo, value) ?'bg-red-lt/40' : ''}`}>
+                  <span className="font-mono">
+                    {o.lotNo}
+                    {manyProducts && <span className="block font-sans text-[10.5px] text-g500">{o.productName}</span>}
+                  </span>
+                  <span>{fmtLotDate(o.lotDate)}</span>
+                  <span className="text-right">
+                    {blocked ? <><s className="text-g400">{o.barrels}</s> {o.left} left</> : o.left}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="px-2.5 py-1.5 border-t border-g200 text-[11.5px] text-g600">
+            Total in {warehouse}: <strong className="text-blk">{total} barrel{total === 1 ? '' : 's'}</strong>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
 // b14a218 for one row: every lot field emptied (Lot No itself stays). A row
 // pinned to an order line goes back to that line.
 const clearedLine = (l: Line): Line => ({
@@ -521,7 +660,7 @@ type Lookup = { key: string; lot: LotDetails | null };
 function dispatchRowsFor(o: Order, entries: DispatchEntry[], seqs: number[] | null): Line[] {
   const remaining = remainingByLine(o, entries);
   const items = seqs ? o.items.filter(i => seqs.includes(i.seq)) : o.items.filter(i => (remaining.get(i.seq) ?? 0) > 0);
-  const rows = items.map(i => newLine({ billingName: (i.desc || '').trim(), orderLineSeq: i.seq }));
+  const rows = items.map(i => seededLine({ billingName: (i.desc || '').trim(), orderLineSeq: i.seq }));
   return rows.length ? rows : [newLine()];
 }
 
@@ -943,9 +1082,12 @@ function OutwardForm() {
       return;
     }
     setHeader(h => ({ ...h, warehouse }));
-    setLines(ls => ls.map(l => crossesWada
+    // 2026-11-18: the product / lot pickers start again too (search box back
+    // to the order line's product name, if the row has one).
+    const resetPickers = (l: Line): Line => ({ ...l, pickedProduct: null, productQuery: l.productSeed });
+    setLines(ls => ls.map(l => resetPickers(crossesWada
       ? { ...clearedLine(l), billingName: l.billingName, billingTyped: l.billingTyped, orderLineSeq: l.orderLineSeq, lotTouched: true }
-      : (l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true })));
+      : (l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true }))));
     setLookups({});
   };
 
@@ -1035,8 +1177,88 @@ function OutwardForm() {
       packing: lot.packing, packagingType: lot.packagingType, weightType: lot.weightType,
       lotDate: lot.inwardDate || l.lotDate,
       billingName, orderLineSeq, numArticles, autoBarrels, lotFilled: true,
+      // 2026-11-18: the Product Name box now shows the lot's product, and the
+      // Lot No list shows that product's other lots.
+      productQuery: null, pickedProduct: lot.productName,
     };
   };
+
+  // ── Stock at the header warehouse, for the product / lot pickers ─────────
+  // 2026-11-18: every stock_lots row once per warehouse (a small table), in
+  // findOutwardLot's order so dedupeLots keeps the row a typed Lot No finds.
+  const [stockLots, setStockLots] = useState<{ warehouse: string; lots: StockLotOption[] } | null>(null);
+  useEffect(() => {
+    const warehouse = header.warehouse;
+    const partyCol = PARTY_COLUMN[warehouse];
+    if (!partyCol || isNoStockWarehouse(warehouse)) { setStockLots(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data: rows, error: lotsErr } = await fetchAllRows(() => supabase.from('stock_lots')
+        .select(`wh_lot_no, product_name, product_code, inward_date, ${partyCol}`)
+        .order('serial_no', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true }));
+      if (cancelled || lotsErr) return;
+      const lots = dedupeLots(((rows ?? []) as any[]).map(r => ({ ...r, qty: r[partyCol] })), codeForProductName);
+      setStockLots({ warehouse, lots });
+    })();
+    return () => { cancelled = true; };
+  }, [header.warehouse]);
+
+  // Barrels of `lotNo` a row can take: its stock here + (edit) what this DO
+  // already took from it (that lot's figure is after this DO).
+  const lotStockFor = (o: StockLotOption) => o.barrels + (isEditing ? (originalBarrelsFor(header.warehouse, o.lotNo) ?? 0) : 0);
+  const pickerReady = !!stockLots && stockLots.warehouse === header.warehouse;
+  const pickerLots = pickerReady ? stockLots!.lots.filter(o => lotStockFor(o) > 0) : [];
+  const productOptions = (query: string): ProductOption[] => {
+    const by = new Map<string, ProductOption>();
+    for (const o of pickerLots) {
+      const name = o.productName.trim();
+      if (!name || !productMatches(query, name, o.productCode, billingNameForProductName(name))) continue;
+      const cur = by.get(name.toLowerCase()) ?? { name, code: o.productCode, barrels: 0, lots: 0 };
+      cur.barrels += lotStockFor(o); cur.lots += 1;
+      by.set(name.toLowerCase(), cur);
+    }
+    return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
+  };
+  // The Lot No list for a row: the picked product's lots, else (search box
+  // still holding the order line's name, e.g. "Beta Pinene") the lots of every
+  // product that matches it. Oldest first; barrels after other rows of this DO.
+  const lotOptionsFor = (l: Line): LotPickRow[] => {
+    // Text being typed in the search box wins; else the picked product, else
+    // (a saved row) the row's own product.
+    const query = (l.productQuery || '').trim();
+    const product = query ? '' : (l.pickedProduct || (l.lotFilled ? l.productName : '')).trim().toLowerCase();
+    if (!product && !query) return [];
+    return pickerLots
+      .filter(o => product
+        ? o.productName.trim().toLowerCase() === product
+        : productMatches(query, o.productName, o.productCode, billingNameForProductName(o.productName.trim())))
+      .map(o => {
+        const usedRows: number[] = [];
+        let usedBarrels = 0;
+        lines.forEach((x, i) => {
+          if (x.key === l.key || !sameLot(x.lotNo, o.lotNo)) return;
+          usedRows.push(i + 1);
+          usedBarrels += parseNum(x.numArticles) ?? 0;
+        });
+        const stock = lotStockFor(o);
+        return { ...o, barrels: stock, usedRows, usedBarrels, left: Math.max(0, stock - usedBarrels) };
+      })
+      .sort(byLotAge);
+  };
+  // Picking a product: a lot of another product on this row is taken off
+  // (empty Lot No → the lookup clears the row, as typing would).
+  const onPickProduct = (l: Line, name: string) => {
+    const keepLot = !!l.lotNo.trim() && l.productName.trim().toLowerCase() === name.trim().toLowerCase();
+    updateLine(l.key, keepLot
+      ? { pickedProduct: name, productQuery: null }
+      : { pickedProduct: name, productQuery: null, lotNo: '', lotTouched: true, userBarrelsKey: null });
+    // Straight on to its lots.
+    setTimeout(() => document.getElementById(`lot-${l.key}`)?.focus(), 0);
+  };
+  // Picking a lot = typing that Lot No (same lookup + fill path).
+  const onLotNoChange = (l: Line, lotNo: string) => updateLine(l.key, { lotNo, lotTouched: true, userBarrelsKey: null });
 
   const lookupSig = `${header.warehouse}#${lines.map(l => `${l.key}=${l.lotNo.trim().toLowerCase()}`).join(',')}`;
   useEffect(() => {
@@ -1112,7 +1334,7 @@ function OutwardForm() {
     const item = rowsOrder && addForSeq ? rowsOrder.items.find(i => String(i.seq) === addForSeq) : undefined;
     const desc = (item?.desc || '').trim();
     setLines(ls => [...ls, item
-      ? newLine({ billingName: desc, orderLineSeq: item.seq, pin: { seq: item.seq, desc } })
+      ? seededLine({ billingName: desc, orderLineSeq: item.seq, pin: { seq: item.seq, desc } })
       : newLine()]);
   };
   const removeLine = (key: string) => setLines(ls => ls.length > 1 ? ls.filter(l => l.key !== key) : ls);
@@ -1580,9 +1802,13 @@ function OutwardForm() {
                 <thead>
                   <tr>
                     <th className={thCls}>#</th>
+                    {/* 2026-11-18: stock warehouses — Product Name (search)
+                        first, then Lot No (pick from its lots, or type). Wada
+                        keeps the old order (every field typed). */}
+                    {!isWada && <th className={thCls}>Product Name</th>}
                     <th className={thCls}>Lot No *</th>
                     <th className={thCls}>Lot Date</th>
-                    <th className={thCls}>Product Name{isWada && ' *'}</th>
+                    {isWada && <th className={thCls}>Product Name *</th>}
                     <th className={thCls}>Product Code</th>
                     <th className={thCls}>Billing Name{isWada && ' *'}</th>
                     <th className={thCls}>No of Barrels *</th>
@@ -1623,21 +1849,41 @@ function OutwardForm() {
                     return (
                       <tr key={l.key} className="align-top border-b border-g100">
                         <td className="px-[5px] py-[11px] font-mono text-[11px] text-g500">{idx + 1}</td>
-                        <td className="px-[5px] py-[5px] w-[110px]">
-                          <input className={`${cellInput} ${bad('lot') ? redCls : ''}`} value={l.lotNo} title={tip('lot', fromLot)}
-                            onChange={e => updateLine(l.key, { lotNo: e.target.value, lotTouched: true, userBarrelsKey: null })} />
+                        {!isWada && (
+                          <td className="px-[5px] py-[5px] min-w-[190px]">
+                            {/* 2026-11-18: search the products in stock at the
+                                warehouse. The row's Product Name still comes
+                                from the lot (save is unchanged). */}
+                            <ProductPickerCell
+                              className={cellInput}
+                              value={l.productQuery ?? (l.productName || l.pickedProduct || '')}
+                              options={pickerReady ? productOptions(l.productQuery ?? '') : []}
+                              warehouse={header.warehouse}
+                              loading={!pickerReady && !!header.warehouse}
+                              title={!header.warehouse ? 'Select a Warehouse first' : fromLot}
+                              onType={v => updateLine(l.key, { productQuery: v })}
+                              onPick={name => onPickProduct(l, name)}
+                              onLeave={() => { if (l.lotFilled && l.productQuery !== null) updateLine(l.key, { productQuery: null }); }} />
+                          </td>
+                        )}
+                        <td className="px-[5px] py-[5px] w-[120px]">
+                          {isWada
+                            ? <input className={`${cellInput} ${bad('lot') ? redCls : ''}`} value={l.lotNo} title={tip('lot', fromLot)}
+                                onChange={e => onLotNoChange(l, e.target.value)} />
+                            : <LotPickerCell id={`lot-${l.key}`} className={`${cellInput} ${bad('lot') ? redCls : ''}`} value={l.lotNo}
+                                title={tip('lot', fromLot)} lots={pickerReady ? lotOptionsFor(l) : []} warehouse={header.warehouse}
+                                onType={v => onLotNoChange(l, v)} onPick={v => onLotNoChange(l, v)} />}
                         </td>
                         <td className="px-[5px] py-[5px] w-[130px]">
                           <input type="date" className={cellInput} value={l.lotDate} onChange={e => updateLine(l.key, { lotDate: e.target.value })} />
                         </td>
-                        <td className="px-[5px] py-[5px] min-w-[170px]">
-                          {/* 2026-10-16: Product Name / Code always come from the lot.
-                              2026-11-03: Wada (no lot) — every field is typed. */}
-                          {isWada
-                            ? <input className={`${cellInput} ${bad('product') ? redCls : ''}`} value={l.productName} title={tip('product')}
-                                onChange={e => updateLine(l.key, { productName: e.target.value })} />
-                            : <input className={cellLocked} value={l.productName} readOnly title={fromLot} />}
-                        </td>
+                        {isWada && (
+                          <td className="px-[5px] py-[5px] min-w-[170px]">
+                            {/* 2026-11-03: Wada (no lot) — every field is typed. */}
+                            <input className={`${cellInput} ${bad('product') ? redCls : ''}`} value={l.productName} title={tip('product')}
+                              onChange={e => updateLine(l.key, { productName: e.target.value })} />
+                          </td>
+                        )}
                         <td className="px-[5px] py-[5px] w-[100px]">
                           {isWada
                             ? <input className={cellInput} value={l.productCode} onChange={e => updateLine(l.key, { productCode: e.target.value })} />
