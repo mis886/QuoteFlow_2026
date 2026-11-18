@@ -145,7 +145,7 @@ export function NewDispatchEntry() {
   // return to that pill.
   const boardPill = searchParams.get('pill');
   const dispatchHome = `/dispatch${boardPill && /^[a-z]+$/.test(boardPill) ? `?pill=${boardPill}` : ''}`;
-  const { data, user, loading, addDispatchEntry, updateDispatchEntry, saveDispatchFormDetails, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp, canSeeEnqQuote } = useAppStore();
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, saveDispatchFormDetails, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp, autoMarkOrderDeliveredFromDispatch, canSeeEnqQuote } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canEditTier = canDeleteRecords(user?.email);
@@ -697,8 +697,9 @@ export function NewDispatchEntry() {
   // proof now exists, with the same row the board buttons write. Returns a
   // warning if a step couldn't be saved ('' = fine); the save itself stands.
   const completeEntrySteps = async (saved: DispatchEntry, what = 'Saved', step10WithoutLr = false): Promise<string> => {
+    let written: number[];
     try {
-      await autoCompleteEntrySteps({
+      written = await autoCompleteEntrySteps({
         entry: saved, entries: data.dispatchEntries,
         doneBy: user?.email ?? null,
         orderLabel: selectedOrder?.soNumber || saved.orderId,
@@ -707,9 +708,22 @@ export function NewDispatchEntry() {
         // 2026-11-13: Direct Delivery entry saved AT Step 10 without an LR.
         step10WithoutLr,
       });
-      return '';
     } catch (err: any) {
       return `${what} — but ${err?.message || 'a Dispatch step was not marked done'}.`;
+    }
+    return written.includes(11) ? autoDeliverOrder(saved.orderId, what) : '';
+  };
+
+  // 2026-11-18: after this entry's Step 11 is done — if that finished the
+  // whole order (every round sent + Step 11 done, nothing left), the order is
+  // marked Delivered in Orders, like COMPLETE. Returns a warning if that
+  // write failed ('' = fine or not finished yet); Step 11 stands either way.
+  const autoDeliverOrder = async (orderId: string, what: string): Promise<string> => {
+    try {
+      await autoMarkOrderDeliveredFromDispatch(orderId);
+      return '';
+    } catch (err: any) {
+      return `${what} — but the order could not be marked Delivered in Orders (${err?.message || 'check your connection'}). Use Complete in Orders.`;
     }
   };
 
@@ -769,7 +783,9 @@ export function NewDispatchEntry() {
         markSent: markDispatchDocsSentWhatsApp, clearMark: clearDispatchDocsSentWhatsApp,
       });
       setSentOnWhatsApp(true);
-      showToast('ok', 'Documents marked as sent on WhatsApp');
+      const deliverWarning = await autoDeliverOrder(currentEntry.orderId, 'Documents marked as sent on WhatsApp');
+      if (deliverWarning) showToast('err', deliverWarning);
+      else showToast('ok', 'Documents marked as sent on WhatsApp');
     } catch (err: any) {
       showToast('err', err?.message || `Could not save: ${JSON.stringify(err)}`);
     } finally {

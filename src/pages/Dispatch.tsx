@@ -27,7 +27,7 @@ type BoardPill = typeof BOARD_PILLS[number];
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, activeDoer, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp } = useAppStore();
+  const { data, user, activeDoer, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp, autoMarkOrderDeliveredFromDispatch } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canDelete = canDeleteRecords(user?.email);
@@ -160,6 +160,15 @@ export function Dispatch() {
       });
       if (!inserted.length) { await stepAlreadyDone(alreadyDone); return; }
       setStepRecords(prev => [...prev, ...inserted.map(mapStepFromDB)]);
+      // 2026-11-18: Step 11 done — if that finished the whole order, it is
+      // marked Delivered in Orders (same as COMPLETE). The step itself stands.
+      if (inserted.some(r => r.step_no === 11)) {
+        try {
+          if (await autoMarkOrderDeliveredFromDispatch(e.orderId)) showToast('ok', 'Order fully dispatched — marked Delivered in Orders.');
+        } catch (err: any) {
+          showToast('err', `Step 11 saved, but the order could not be marked Delivered in Orders (${err?.message || 'check your connection'}) — use Complete in Orders.`);
+        }
+      }
     } catch (err: any) {
       // The database's own refusal ("Add invoice no. and attach Invoice /
       // Eway Bill first" / "Send email to Bhiwandi first" / "Upload LR

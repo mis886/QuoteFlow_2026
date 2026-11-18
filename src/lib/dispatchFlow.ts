@@ -10,7 +10,8 @@
 //     2026-10-22 these move only by button clicks saved in dispatch_steps
 //     (entry_id = the entry) — see entryPosition. Until then they moved by
 //     themselves from the entry's invoice no. / LR files / email.
-// Nothing here ever changes an order's status.
+// Nothing here ever changes an order's status (orderDispatchComplete only
+// decides WHEN the store may auto-mark one Delivered — 2026-11-18).
 import type { Customer, DispatchEntry, DispatchFulfillmentType, Order } from './types';
 import { remainingByLine, totalRemaining, BOARD_GO_LIVE_AT, dispatchOrderView } from './utils';
 import { coaNotRequiredForItems } from './coaAge';
@@ -101,6 +102,28 @@ export interface DispatchStepRecord {
 // Entries bulk-imported from old "Delivered" orders (before the Dispatch
 // module existed) — hidden from the board and never counted as a round.
 export const isImportedEntry = (e: DispatchEntry) => e.createdBy === 'system-import';
+
+// 2026-11-18: auto "Delivered" in Orders. An order is auto-marked Delivered
+// (store's autoMarkOrderDeliveredFromDispatch) only when its WHOLE dispatch is
+// finished: still Order Confirmed (or legacy Order Pending for Dispatch),
+// nothing left to dispatch (totalRemaining = 0 on the Dispatch snapshot), and
+// EVERY dispatch entry (round) has its documents sent (email_sent_at, the
+// Delivered pill's rule) AND its Step 11 row finished. Imported entries have
+// no steps and are only counted for qty. A partial order stays as it is.
+// The backfill query (docs/sql/auto_delivered_backfill.sql) is the same rule.
+export const AUTO_DELIVERED_FROM_STATUSES: readonly string[] = ['Order Confirmed', 'Order Pending for Dispatch'];
+export function orderDispatchComplete(
+  order: { id: string; status: string; items: { seq: number; qty: number }[]; dispatchSnapshot?: Partial<Order> | null },
+  entries: Pick<DispatchEntry, 'id' | 'orderId' | 'items' | 'createdBy' | 'emailSentAt'>[],
+  step11DoneEntryIds: ReadonlySet<string>,
+): boolean {
+  if (!AUTO_DELIVERED_FROM_STATUSES.includes(order.status)) return false;
+  const own = entries.filter(e => e.orderId === order.id);
+  const tracked = own.filter(e => !isImportedEntry(e as DispatchEntry));
+  if (!tracked.length) return false;
+  if (totalRemaining(order, own) > 0) return false;
+  return tracked.every(e => !!e.emailSentAt && step11DoneEntryIds.has(e.id));
+}
 
 /** Advance payment terms need the step 1 payment-receipt check. */
 export const needsPaymentCheck = (pay: string | undefined) => /advance/i.test(pay || '');

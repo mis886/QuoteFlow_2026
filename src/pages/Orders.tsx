@@ -27,7 +27,7 @@ function dlvDateClass(dlvDate: string, status: string): { text: string; title?: 
 export function Orders() {
   const store = useAppStore();
   const { canSeeEnqQuote } = store;
-  const { data, user, updateOrder, deleteOrder, openAttachmentModal, sendOrderToDispatch, isAdmin, isReadOnlyUser } = store;
+  const { data, user, updateOrder, markOrderDelivered, deleteOrder, openAttachmentModal, sendOrderToDispatch, isAdmin, isReadOnlyUser } = store;
   const canDelete = canDeleteRecords(user?.email);
   const canConfirmPmt = canConfirmPayment(user?.email);
   const canComplete = canCompleteOrder(user?.email);
@@ -117,7 +117,11 @@ export function Orders() {
       if (!confirm(`This order is in Dispatch${o.soNumber ? ` (${o.soNumber})` : ''}. Change status anyway?`)) return;
     }
     try {
-      await updateOrder(o.id, { status }, needsOverride ? { adminOverride: true } : undefined);
+      const opts = needsOverride ? { adminOverride: true } : undefined;
+      // Complete → Delivered: the store's markOrderDelivered, the same one
+      // Dispatch uses to auto-mark a fully dispatched order (2026-11-18).
+      if (status === 'Delivered') await markOrderDelivered(o.id, opts);
+      else await updateOrder(o.id, { status }, opts);
     } catch (err) {
       showToast('err', (err as Error)?.message || 'Could not change status');
     }

@@ -7,7 +7,30 @@
 import { supabase } from './supabase';
 import { logActivity } from './activityLog';
 import type { DispatchEntry } from './types';
-import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef, entryHasLr, roundIsDirectDelivery, DIRECT_DELIVERY_NO_LR_REMARK, entryRoundOf, isWadaDispatch } from './dispatchFlow';
+import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef, entryHasLr, roundIsDirectDelivery, DIRECT_DELIVERY_NO_LR_REMARK, entryRoundOf, isWadaDispatch, orderDispatchComplete } from './dispatchFlow';
+
+/**
+ * 2026-11-18: is this order's whole dispatch finished (orderDispatchComplete),
+ * read from the database right now — never from a screen that may be out of
+ * date. Reads only; the store's autoMarkOrderDeliveredFromDispatch writes.
+ */
+export async function orderDispatchCompleteInDb(orderId: string): Promise<boolean> {
+  const [o, en, st] = await Promise.all([
+    supabase.from('orders').select('id, status, items, dispatch_snapshot').eq('id', orderId).maybeSingle(),
+    supabase.from('dispatch_entries').select('id, order_id, items, created_by, email_sent_at').eq('order_id', orderId),
+    supabase.from('dispatch_steps').select('entry_id').eq('order_id', orderId).eq('step_no', 11)
+      .in('status', ['done', 'skipped']).not('entry_id', 'is', null),
+  ]);
+  if (o.error) throw o.error;
+  if (en.error) throw en.error;
+  if (st.error) throw st.error;
+  if (!o.data) return false;
+  return orderDispatchComplete(
+    { id: o.data.id, status: o.data.status, items: o.data.items || [], dispatchSnapshot: o.data.dispatch_snapshot },
+    (en.data || []).map(e => ({ id: e.id, orderId: e.order_id, items: e.items || [], createdBy: e.created_by || undefined, emailSentAt: e.email_sent_at || undefined })),
+    new Set((st.data || []).map(r => r.entry_id as string)),
+  );
+}
 
 /** The entry as saved in the database right now — the fields the Step 8–11 rules read. */
 async function freshEntry(entry: DispatchEntry): Promise<DispatchEntry> {
