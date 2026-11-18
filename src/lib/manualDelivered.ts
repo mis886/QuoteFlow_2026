@@ -1,19 +1,26 @@
 // 2026-11-18: picking "Delivered" BY HAND in an order status dropdown (order
 // detail panel, order form). Orders normally become Delivered by themselves
 // once their whole dispatch is finished (store's
-// autoMarkOrderDeliveredFromDispatch). By hand: admins only (the store's
-// isAdmin / ADMIN_EMAILS), after a confirmation, logged as
+// autoMarkOrderDeliveredFromDispatch). By hand: only the logins in
+// MANUAL_DELIVERED_EMAILS, after a confirmation, logged as
 // "Manually marked Delivered by <user>" (store's manualDeliveredLogNote).
 import { orderDispatchCompleteInDb } from './dispatchEntrySteps';
 
-/** Is the "Delivered" option in the dropdown? Admins always; anyone else only
- *  when the order already IS Delivered, so it still displays — never pickable. */
-export const showDeliveredOption = (isAdmin: boolean, currentStatus: string | undefined) =>
-  isAdmin || currentStatus === 'Delivered';
+// 2026-11-18 (user decision): its own small list — NOT ADMIN_EMAILS (which
+// also has anil@) and not the Delete list. Change it here only.
+export const MANUAL_DELIVERED_EMAILS = ['mis@himalayaterpene.com', 'shishir@himalayaterpene.com'];
+export const canMarkDeliveredManually = (email: string | null | undefined): boolean =>
+  MANUAL_DELIVERED_EMAILS.includes((email ?? '').toLowerCase());
+
+/** Is the "Delivered" option in the dropdown? For an allowed login always;
+ *  anyone else only when the order already IS Delivered, so it still
+ *  displays — never pickable. `allowed` = canMarkDeliveredManually(email). */
+export const showDeliveredOption = (allowed: boolean, currentStatus: string | undefined) =>
+  allowed || currentStatus === 'Delivered';
 
 /** May this login switch the order TO Delivered by hand? */
-export const canPickDelivered = (isAdmin: boolean, currentStatus: string | undefined) =>
-  isAdmin && currentStatus !== 'Delivered';
+export const canPickDelivered = (allowed: boolean, currentStatus: string | undefined) =>
+  allowed && currentStatus !== 'Delivered';
 
 /** The confirmation before an admin marks Delivered by hand. The question
  *  depends on whether the order's dispatch is actually finished (database

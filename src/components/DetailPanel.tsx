@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useAppStore, manualDeliveredLogNote } from '../store';
-import { showDeliveredOption, canPickDelivered, confirmManualDelivered } from '../lib/manualDelivered';
+import { showDeliveredOption, canPickDelivered, confirmManualDelivered, canMarkDeliveredManually } from '../lib/manualDelivered';
 import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, ORDER_LOCKED_MSG } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
@@ -38,6 +38,7 @@ const isImageFileName = (name?: string | null): boolean => !!name && /\.(png|jpe
 export function DetailPanel() {
   const { detailPanel, closeDetailPanel, openDetailPanel, data, user, updateEnquiry, updateQuote, updateOrder, markOrderDelivered, deleteEnquiry, closeFollowUp, updateTicket, stampName, isAdmin, canSeeEnqQuote } = useAppStore();
   const navigate = useNavigate();
+  const canManualDelivered = canMarkDeliveredManually(user?.email);
   const [downloadingItemId, setDownloadingItemId] = React.useState<string | null>(null);
   const [showLineItems, setShowLineItems] = React.useState(false);
   const [ticketNoteDraft, setTicketNoteDraft] = React.useState<string | null>(null);
@@ -687,11 +688,11 @@ export function DetailPanel() {
               onChange={async (e) => {
                 const next = e.target.value as any;
                 const needsOverride = locked && next !== o.status && !isLockedStatusChangeAllowed(o.status, next, fullyDispatched);
-                // 2026-11-18: Delivered by hand — admins only, one
+                // 2026-11-18: Delivered by hand — mis@ / shishir@ only, one
                 // confirmation (it also stands for the lock override), and
                 // a "Manually marked Delivered by …" History Log line.
                 if (next === 'Delivered') {
-                  if (!canPickDelivered(isAdmin, o.status)) return;
+                  if (!canPickDelivered(canManualDelivered, o.status)) return;
                   if (!(await confirmManualDelivered(o.id))) return;
                   try {
                     await markOrderDelivered(o.id, { adminOverride: needsOverride, logNote: manualDeliveredLogNote(stampName()) });
@@ -710,8 +711,9 @@ export function DetailPanel() {
               className="font-sans text-[12px] text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none hover:border-g400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <option value="Processing">Order Pending for Payment</option>
-              {/* 2026-11-18: hidden from non-admins unless the order already is Delivered. */}
-              {showDeliveredOption(isAdmin, o.status) && <option value="Delivered">Delivered</option>}
+              {/* 2026-11-18: only mis@ / shishir@ (MANUAL_DELIVERED_EMAILS); hidden from
+                  everyone else unless the order already is Delivered. */}
+              {showDeliveredOption(canManualDelivered, o.status) && <option value="Delivered">Delivered</option>}
             </select>
               );
             })()}
