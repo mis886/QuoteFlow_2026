@@ -19,6 +19,8 @@ function flashErrorToast(msg: string) {
 }
 import { logActivity } from '../lib/activityLog';
 import { orderDispatchCompleteInDb } from '../lib/dispatchEntrySteps';
+import { AUTO_DELIVERED_FROM_STATUSES } from '../lib/dispatchFlow';
+import { writeOrderUpdate } from '../lib/orderStatusWrite';
 import { User } from '@supabase/supabase-js';
 
 // opts.adminOverride: set by the UI after an admin confirms changing the
@@ -27,8 +29,12 @@ import { User } from '@supabase/supabase-js';
 // checked in the database that nothing is left to dispatch — used for the
 // status lock instead of this screen's copy, which may not have the newest
 // entry yet. opts.logNote: added to the History Log label.
-type UpdateOrderOpts = { adminOverride?: boolean; fullyDispatchedInDb?: boolean; logNote?: string };
+// opts.onlyIfStatusIn (2026-11-18, auto Delivered only): write only while the
+// order's status is still one of these (writeOrderUpdate) — otherwise nothing
+// is changed or logged and updateOrder returns false.
+type UpdateOrderOpts = { adminOverride?: boolean; fullyDispatchedInDb?: boolean; logNote?: string; onlyIfStatusIn?: readonly string[] };
 export const AUTO_DELIVERED_LOG_NOTE = 'Auto-marked Delivered from Dispatch (fully dispatched, Step 11 done for every round)';
+export const AUTO_DELIVERED_SAFETY_LOG_NOTE = 'Auto-marked Delivered from Dispatch (safety check)';
 
 // Separate, purpose-specific mapping for the Authorized Signatory panel
 // (NewEnquiry/NewQuote/NewOrder) — deliberately NOT reused from/merged into
@@ -126,13 +132,16 @@ interface AppContextType {
   addOrder: (order: Order) => Promise<void>;
   // opts.adminOverride: set by the UI after an admin confirms changing the
   // status of a locked (sent-to-Dispatch) order; ignored for non-admins.
-  updateOrder: (id: string, updates: Partial<Order>, opts?: UpdateOrderOpts) => Promise<void>;
+  // Resolves true if the order was written (false only for a conditional
+  // write — opts.onlyIfStatusIn — that matched no row).
+  updateOrder: (id: string, updates: Partial<Order>, opts?: UpdateOrderOpts) => Promise<boolean>;
   // 2026-11-18: COMPLETE (Orders) — status → Delivered. One function for the
   // button and the automatic mark from Dispatch.
-  markOrderDelivered: (id: string, opts?: { adminOverride?: boolean }) => Promise<void>;
-  // 2026-11-18: after a Step 11 completes — marks the order Delivered if its
-  // whole dispatch is finished (orderDispatchCompleteInDb). true = marked.
-  autoMarkOrderDeliveredFromDispatch: (orderId: string) => Promise<boolean>;
+  markOrderDelivered: (id: string, opts?: { adminOverride?: boolean }) => Promise<boolean>;
+  // 2026-11-18: after a Step 11 completes, and the Dispatch page's safety
+  // check — marks the order Delivered if its whole dispatch is finished
+  // (orderDispatchCompleteInDb). true = this call marked it.
+  autoMarkOrderDeliveredFromDispatch: (orderId: string, logNote?: string) => Promise<boolean>;
   deleteOrder: (id: string) => Promise<void>;
   ensureSoNumbers: (orderIds: string[]) => Promise<void>;
   sendOrderToDispatch: (orderId: string) => Promise<string | null>;
@@ -1080,20 +1089,26 @@ const mapEnquiryToDB = (e: any) => {
       dbUpdates.dispatch_snapshot = null;
     }
     const localUpdates: Partial<Order> = leavesDispatch ? { ...updates, sentToDispatchAt: undefined, dispatchSnapshot: undefined } : updates;
-    const { error } = await supabase.from('orders').update(dbUpdates).eq('id', id);
-    if (!error) {
-      setData(prev => ({
-        ...prev,
-        orders: prev.orders.map(o => o.id === id ? { ...o, ...localUpdates } : o)
-      }));
-      const after = before ? { ...before, ...localUpdates } : localUpdates;
-      const orderCust = (after as Order).cust;
-      const label = orderCust || id;
-      logActivity({ module: 'orders', recordId: id, recordLabel: opts?.logNote ? `${label} · ${opts.logNote}` : label, action: 'update', before, after });
-    } else {
+    let changed: boolean;
+    try {
+      changed = await writeOrderUpdate(supabase, id, dbUpdates, opts?.onlyIfStatusIn);
+    } catch (error) {
       console.error('Error updating order:', error);
       throw error;
     }
+    // 2026-11-18: a conditional write (onlyIfStatusIn) that matched no row —
+    // someone else already moved the order on. Nothing changed: no local
+    // update and, above all, no second History Log line.
+    if (!changed) return false;
+    setData(prev => ({
+      ...prev,
+      orders: prev.orders.map(o => o.id === id ? { ...o, ...localUpdates } : o)
+    }));
+    const after = before ? { ...before, ...localUpdates } : localUpdates;
+    const orderCust = (after as Order).cust;
+    const label = orderCust || id;
+    logActivity({ module: 'orders', recordId: id, recordLabel: opts?.logNote ? `${label} · ${opts.logNote}` : label, action: 'update', before, after });
+    return true;
   };
 
   // 2026-11-18: what the Orders COMPLETE button does — status → Delivered,
@@ -1103,15 +1118,18 @@ const mapEnquiryToDB = (e: any) => {
     updateOrder(id, { status: 'Delivered' }, opts);
 
   // 2026-11-18: called after a dispatch entry's Step 11 is completed (Email to
-  // Client / Send through WhatsApp / "Documents sent" on the board). Marks the
-  // order Delivered — exactly like COMPLETE — only if its WHOLE dispatch is
-  // finished, checked in the database (orderDispatchCompleteInDb: still Order
-  // Confirmed, nothing left to dispatch, every round's documents sent + Step 11
-  // done). Writes only the status. Returns true if it marked the order.
-  const autoMarkOrderDeliveredFromDispatch = async (orderId: string): Promise<boolean> => {
+  // Client / Send through WhatsApp / "Documents sent" on the board), and by
+  // the Dispatch page's safety check (logNote = AUTO_DELIVERED_SAFETY_LOG_NOTE).
+  // Marks the order Delivered — exactly like COMPLETE — only if its WHOLE
+  // dispatch is finished, checked in the database (orderDispatchCompleteInDb:
+  // still Order Confirmed, nothing left to dispatch, every round's documents
+  // sent + Step 11 done). Writes only the status, and only WHERE the status is
+  // still Order Confirmed / Order Pending for Dispatch — so when several open
+  // tabs try at once, one wins and only that one writes a History Log line.
+  // Returns true if THIS call marked the order.
+  const autoMarkOrderDeliveredFromDispatch = async (orderId: string, logNote: string = AUTO_DELIVERED_LOG_NOTE): Promise<boolean> => {
     if (!(await orderDispatchCompleteInDb(orderId))) return false;
-    await markOrderDelivered(orderId, { fullyDispatchedInDb: true, logNote: AUTO_DELIVERED_LOG_NOTE });
-    return true;
+    return markOrderDelivered(orderId, { fullyDispatchedInDb: true, logNote, onlyIfStatusIn: AUTO_DELIVERED_FROM_STATUSES });
   };
 
   // "Order Pending for Dispatch" button in the Orders module: stamps

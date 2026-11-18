@@ -34,6 +34,7 @@ import { NewStockOutward } from './pages/NewStockOutward';
 import { useAppStore } from './store';
 import { Loader2 } from 'lucide-react';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
+import { NewVersionBar } from './components/NewVersionBar';
 // 2026-11-02: the Production workspace (unused, 0 jobs) was replaced by the FMS workspace.
 import { FmsLayout } from './fms/components/FmsLayout';
 import { DashboardPage as FmsDashboard } from './fms/pages/Dashboard';
@@ -69,6 +70,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <AppProvider>
+      <NewVersionBar />
       <BrowserRouter>
         <Routes>
           {/* Public route — no auth required */}

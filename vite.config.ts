@@ -1,14 +1,27 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import {defineConfig, loadEnv, type Plugin} from 'vite';
+
+// 2026-11-18: one ID per build, baked into the app (__APP_BUILD_ID__) and
+// written to dist/version.json. An open tab compares the two every few
+// minutes (src/lib/appVersion.ts) and offers "New version available — Reload".
+const BUILD_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const versionJson = (): Plugin => ({
+  name: 'quoteflow-version-json',
+  apply: 'build',
+  generateBundle() {
+    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ buildId: BUILD_ID }) });
+  },
+});
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), versionJson()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      __APP_BUILD_ID__: JSON.stringify(BUILD_ID),
     },
     resolve: {
       alias: {

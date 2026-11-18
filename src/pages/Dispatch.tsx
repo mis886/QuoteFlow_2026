@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, CheckCircle2 } from 'lucide-react';
-import { useAppStore } from '../store';
+import { useAppStore, AUTO_DELIVERED_SAFETY_LOG_NOTE } from '../store';
 import { customerOfDoc, dispatchOrderView, canDeleteRecords, fmtIST, doerLabel, siteLabel, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, entryIsWadaDispatch, isImportedEntry, orderFulfillmentFor, unionBoardRows } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, entryIsWadaDispatch, isImportedEntry, orderFulfillmentFor, unionBoardRows, orderDispatchComplete } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
@@ -78,6 +78,36 @@ export function Dispatch() {
     reloadSteps();
     reloadLinkedDOs();
   }, [now]);
+
+  // 2026-11-18: auto-Delivered safety check. Each time the step rows are
+  // (re)loaded, any order that meets the auto-Delivered rule on this screen's
+  // data (orderDispatchComplete — still Order Confirmed, nothing left from
+  // the snapshot, every round sent + Step 11 done) but was never marked —
+  // Step 11 done from an outdated tab, or the write failed — is marked
+  // Delivered via the store (re-checked in the database first, then a
+  // conditional write: only one open tab can win and log it). Each order is
+  // tried at most ONCE per page load; a failure goes to the console only.
+  // Not for the read-only login.
+  const safetyTried = useRef(new Set<string>());
+  useEffect(() => {
+    if (isReadOnlyUser || !stepRecords.length) return;
+    const step11Done = new Set(stepRecords
+      .filter(r => r.stepNo === 11 && !!r.entryId && (r.status === 'done' || r.status === 'skipped'))
+      .map(r => r.entryId as string));
+    const due = data.orders.filter(o => !safetyTried.current.has(o.id)
+      && orderDispatchComplete(o, data.dispatchEntries, step11Done));
+    if (!due.length) return;
+    for (const o of due) safetyTried.current.add(o.id);
+    (async () => {
+      for (const o of due) {
+        try {
+          await autoMarkOrderDeliveredFromDispatch(o.id, AUTO_DELIVERED_SAFETY_LOG_NOTE);
+        } catch (err) {
+          console.error(`Auto-Delivered safety check failed for ${o.id}:`, err);
+        }
+      }
+    })();
+  }, [stepRecords, data.orders, data.dispatchEntries, isReadOnlyUser]);
 
   // Done / Hold / Resume on steps 1–7: Samata (mum@) + ADMIN_EMAILS only;
   // everyone else sees the board read-only. Never changes an order's status.
