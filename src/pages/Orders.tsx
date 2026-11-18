@@ -5,7 +5,7 @@ import { EntryDateFilter } from '../components/EntryDateFilter';
 import FloatingHorizontalScrollbar from '../components/FloatingHorizontalScrollbar';
 import { Search, Loader2, Mail, ChevronsUpDown, ChevronUp, ChevronDown, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { customerOfDoc, formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canSendToDispatch, isOrderStatusLocked, ORDER_LOCKED_MSG, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
+import { customerOfDoc, formatINR, fmtIST, isInDateRange, resolveAdjustments, maxItemGstRate, siteLabel, canDeleteRecords, canConfirmPayment, canSendToDispatch, isOrderStatusLocked, isOrderEditLocked, ORDER_LOCKED_MSG, isLockedStatusChangeAllowed, isFullyDispatched, nameTier, normalizeSearchText, ADVANCE_PAY } from '../lib/utils';
 import { generatePIPDF } from '../lib/pdfGenerator';
 import { exportOrderToSheets, buildSheetsPayload } from '../lib/sheets';
 import { getS3SignedUrl } from '../lib/s3';
@@ -330,6 +330,8 @@ export function Orders() {
                   const isExpanded = expandedRow === o.id;
                   const hasDispatchEntry = data.dispatchEntries.some(e => e.orderId === o.id);
                   const statusLocked = isOrderStatusLocked(o, data.dispatchEntries);
+                  // 2026-11-18: the Edit button only — mis@ may still edit (canEditOrderInDispatch).
+                  const editLocked = isOrderEditLocked(o, data.dispatchEntries, user?.email);
 
                   return (
                     <React.Fragment key={o.id}>
@@ -390,14 +392,15 @@ export function Orders() {
                             {/* 2026-11-18: no Complete button — an order becomes Delivered
                                 by itself once its whole dispatch is finished
                                 (store's autoMarkOrderDeliveredFromDispatch). */}
-                            {/* Detail lock: an order in Dispatch can't be edited by anyone. */}
+                            {/* Detail lock: an order in Dispatch can't be edited — except by
+                                ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), 2026-11-18. */}
                             <Button
                               size="sm"
                               variant="secondary"
-                              disabled={statusLocked}
-                              title={statusLocked ? ORDER_LOCKED_MSG : undefined}
-                              className={statusLocked ? 'bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
-                              onClick={(e) => { e.stopPropagation(); if (statusLocked) return; navigate(`/orders/new?orderId=${o.id}`); }}
+                              disabled={editLocked}
+                              title={editLocked ? ORDER_LOCKED_MSG : undefined}
+                              className={editLocked ? 'bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
+                              onClick={(e) => { e.stopPropagation(); if (editLocked) return; navigate(`/orders/new?orderId=${o.id}`); }}
                             >Edit</Button>
                             {(() => {
                               // Orders only reach Dispatch → Order Pending for Dispatch

@@ -4,7 +4,7 @@ import { supabase, signOut, getSettings } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS, ORDER_LOCKED_MSG, lockedOrderBlockedFields } from '../lib/utils';
+import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS, ORDER_LOCKED_MSG, lockedOrderBlockedFields, isOrderEditLocked, orderLeavesDispatch } from '../lib/utils';
 
 // Minimal self-contained error toast for store-level refusals, so a blocked
 // write is visible even from a caller that doesn't surface the error.
@@ -37,6 +37,10 @@ import { User } from '@supabase/supabase-js';
 type UpdateOrderOpts = { adminOverride?: boolean; fullyDispatchedInDb?: boolean; logNote?: string; onlyIfStatusIn?: readonly string[]; step11Undone?: boolean };
 export const AUTO_DELIVERED_LOG_NOTE = 'Auto-marked Delivered from Dispatch (fully dispatched, Step 11 done for every round)';
 export const AUTO_DELIVERED_SAFETY_LOG_NOTE = 'Auto-marked Delivered from Dispatch (safety check)';
+// 2026-11-18: the only ticket fields that can change after it is submitted
+// (admins resolving it). See updateTicket.
+export const TICKET_RESOLVER_FIELDS = ['status', 'resolutionNote', 'resolvedBy'] as const;
+export type TicketResolverUpdate = Partial<Pick<Ticket, (typeof TICKET_RESOLVER_FIELDS)[number]>>;
 export const STEP11_UNDO_LOG_NOTE = 'Moved back to Order Confirmed — Step 11 undone in Dispatch';
 // 2026-11-18: an admin picking "Delivered" by hand in a status dropdown.
 export const manualDeliveredLogNote = (who: string) => `Manually marked Delivered by ${who}`;
@@ -190,7 +194,8 @@ interface AppContextType {
   deleteTeamMember: (email: string, role: DoerRole, displayName: string) => Promise<void>;
   // Tickets (internal issue-tracking) — see src/pages/Tickets.tsx.
   addTicket: (t: Ticket) => Promise<void>;
-  updateTicket: (id: string, updates: Partial<Ticket>) => Promise<void>;
+  // 2026-11-18: resolver fields only — a ticket's content is never editable.
+  updateTicket: (id: string, updates: TicketResolverUpdate) => Promise<void>;
   // Whether the logged-in Supabase Auth email is one of ADMIN_EMAILS.
   isAdmin: boolean;
   // Whole-app view-only mode: true only for BHIWANDI_EMAIL. Layout.tsx and
@@ -1068,7 +1073,8 @@ const mapEnquiryToDB = (e: any) => {
     // Detail lock (everyone, admins too): an order in Dispatch can't have its
     // details changed from the Orders module. Only status (status lock below)
     // and the Dispatch / Sheets stamps may still be written.
-    if (before && isOrderStatusLocked(before, data.dispatchEntries) && lockedOrderBlockedFields(updatesIn).length > 0) {
+    // 2026-11-18: except ORDER_EDIT_IN_DISPATCH_EMAILS (mis@) — isOrderEditLocked.
+    if (before && isOrderEditLocked(before, data.dispatchEntries, user?.email) && lockedOrderBlockedFields(updatesIn).length > 0) {
       flashErrorToast(ORDER_LOCKED_MSG);
       throw new Error(ORDER_LOCKED_MSG);
     }
@@ -1090,10 +1096,10 @@ const mapEnquiryToDB = (e: any) => {
     // to Pending for Payment), leaves Dispatch — clear sent_to_dispatch_at so
     // it has to be sent again once re-confirmed. Its SO number is kept. The
     // Dispatch snapshot goes too, so the next send freezes the order as it is then.
-    const leavesDispatch = !!updates.status
-      && updates.status !== 'Order Confirmed' && updates.status !== 'Order Pending for Dispatch'
-      && !!before?.sentToDispatchAt
-      && !data.dispatchEntries.some(e => e.orderId === id);
+    // 2026-11-18: only when the status actually CHANGES — a full-form save
+    // (mis@ editing an order in Dispatch) re-sends the same status and must
+    // never clear the Dispatch stamp / snapshot.
+    const leavesDispatch = orderLeavesDispatch(before, updates.status, data.dispatchEntries.some(e => e.orderId === id));
     if (leavesDispatch) {
       dbUpdates.sent_to_dispatch_at = null;
       dbUpdates.dispatch_snapshot = null;
@@ -1487,7 +1493,15 @@ const mapEnquiryToDB = (e: any) => {
     }
   };
 
-  const updateTicket = async (id: string, updates: Partial<Ticket>) => {
+  // 2026-11-18: a submitted ticket's content (subject, description, module,
+  // priority, attachment, who raised it) is never editable — by anyone, admins
+  // included. Only the resolver fields can be written: status, resolution
+  // note, resolved by (the admin Resolution panel in DetailPanel.tsx). Any
+  // other key is dropped here, whatever a caller passes.
+  const updateTicket = async (id: string, updatesIn: TicketResolverUpdate) => {
+    const updates: TicketResolverUpdate = {};
+    for (const k of TICKET_RESOLVER_FIELDS) if (k in updatesIn) (updates as any)[k] = (updatesIn as any)[k];
+    if (Object.keys(updates).length === 0) return;
     const before = data.tickets.find(t => t.id === id);
     const dbUpdates = mapTicketToDB(updates);
     const { error } = await supabase.from('tickets').update(dbUpdates).eq('id', id);

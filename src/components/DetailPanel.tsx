@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useAppStore, manualDeliveredLogNote } from '../store';
 import { showDeliveredOption, canPickDelivered, confirmManualDelivered, canMarkDeliveredManually } from '../lib/manualDelivered';
-import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, ORDER_LOCKED_MSG } from '../lib/utils';
+import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, ORDER_LOCKED_MSG, isOrderEditLocked } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -720,8 +720,9 @@ export function DetailPanel() {
           </div>
           <div className="flex gap-2">
             {(() => {
-              // Detail lock: an order in Dispatch can't be edited by anyone.
-              const detailLocked = isOrderStatusLocked(o, data.dispatchEntries);
+              // Detail lock: an order in Dispatch can't be edited — except by
+              // ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), 2026-11-18.
+              const detailLocked = isOrderEditLocked(o, data.dispatchEntries, user?.email);
               return (
                 <Button
                   variant="primary"

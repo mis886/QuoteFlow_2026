@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore, manualDeliveredLogNote } from '../store';
 import { showDeliveredOption, canPickDelivered, confirmManualDelivered, canMarkDeliveredManually } from '../lib/manualDelivered';
-import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, ORDER_LOCKED_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, isOrderEditLocked, ORDER_LOCKED_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
@@ -67,7 +67,10 @@ export function NewOrder() {
   // Detail lock (2026-11-17): the same check makes the whole form read-only
   // for everyone, admins included. No Save; PDF / DOCX / Email use the saved
   // order. The store's updateOrder refuses the write too.
-  const orderLocked = statusLocked;
+  // 2026-11-18: except ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), who can edit and
+  // save it. That never changes Dispatch (no dispatch_snapshot write), and the
+  // status dropdown stays locked by the status lock (statusLocked).
+  const orderLocked = !!editingOrder && isOrderEditLocked(editingOrder, data.dispatchEntries, user?.email);
   // 2026-11-18: the order's status as saved (not the form's pick) — decides
   // whether "Delivered" shows in the dropdown and if a pick is a manual mark.
   const savedOrderStatus = editOrderId ? data.orders.find(o => o.id === editOrderId)?.status : undefined;
@@ -573,8 +576,10 @@ export function NewOrder() {
     }
     if (editOrderId) {
       // Only reached for an unlocked order (persistOrder returns early for a
-      // locked one), so the status lock never applies here — a locked order's
-      // status is changed from the Orders list / detail panel.
+      // locked one) — or mis@ editing an order in Dispatch, whose status
+      // dropdown is disabled here, so the same status is re-sent and the
+      // status lock never applies. A locked order's status is changed from
+      // the Orders list / detail panel.
       // 2026-11-18: an admin who picked Delivered here gets it logged as such.
       const manualDelivered = orderPayload.status === 'Delivered' && savedOrderStatus !== 'Delivered';
       await updateOrder(editOrderId, orderPayload, manualDelivered ? { logNote: manualDeliveredLogNote(stampName()) } : undefined);
@@ -730,8 +735,8 @@ export function NewOrder() {
             {editOrderId && (
               <div className="flex items-center gap-2">
                 <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
-                <select title={orderLocked ? ORDER_LOCKED_MSG : 'Order status'} value={orderStatus}
-                  disabled={orderLocked}
+                <select title={orderLocked ? ORDER_LOCKED_MSG : statusLocked ? "This order is in Dispatch — change its status from the Orders list or the order's detail panel" : 'Order status'} value={orderStatus}
+                  disabled={statusLocked}
                   onChange={async (e: React.ChangeEvent<HTMLSelectElement>) => {
                     const next = e.target.value as OrderStatus;
                     // 2026-11-18: Delivered by hand — mis@ / shishir@ only, after a
@@ -769,9 +774,11 @@ export function NewOrder() {
           // date, file upload and button inside it.
           <fieldset disabled={orderLocked} className="flex flex-col gap-[12px] min-w-0 border-0 p-0 m-0">
 
-            {orderLocked && (
+            {statusLocked && (
               <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_14px] text-[12px] font-semibold text-amber-700">
-                This order has been sent to Dispatch. It can no longer be edited.
+                {orderLocked
+                  ? 'This order has been sent to Dispatch. It can no longer be edited.'
+                  : 'This order is already in Dispatch. You can edit it here, but Dispatch keeps its own copy and will not change.'}
               </div>
             )}
 

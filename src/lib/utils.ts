@@ -548,6 +548,38 @@ const LOCKED_ORDER_WRITABLE_FIELDS: ReadonlySet<string> = new Set([
 export const lockedOrderBlockedFields = (updates: object): string[] =>
   Object.keys(updates).filter(k => !LOCKED_ORDER_WRITABLE_FIELDS.has(k));
 
+// 2026-11-18 (user decision): the ONE exception to the detail lock — these
+// logins may still open the order form and save an order that is in Dispatch
+// (Orders list Edit, detail panel Edit, NewOrder, store's updateOrder). Its
+// own list: not ADMIN_EMAILS, MANUAL_DELIVERED_EMAILS or the Delete list.
+// Dispatch is not affected: the edit never writes dispatch_snapshot
+// (mapOrderToDB), and the status lock still applies as before.
+export const ORDER_EDIT_IN_DISPATCH_EMAILS = ['mis@himalayaterpene.com'];
+export const canEditOrderInDispatch = (email: string | null | undefined): boolean =>
+  ORDER_EDIT_IN_DISPATCH_EMAILS.includes((email ?? '').toLowerCase());
+/**
+ * Does this write take the order out of Dispatch (store's updateOrder then
+ * clears sent_to_dispatch_at + dispatch_snapshot)? Only when its status really
+ * CHANGES to something other than Order Confirmed / Order Pending for
+ * Dispatch, it was sent to Dispatch, and it has no dispatch entry yet.
+ * 2026-11-18: "really changes" added — a full-form save by mis@ re-sends the
+ * same status and must never clear the Dispatch copy.
+ */
+export const orderLeavesDispatch = (
+  before: { status?: string; sentToDispatchAt?: string } | undefined,
+  newStatus: string | undefined,
+  hasDispatchEntry: boolean,
+): boolean => !!newStatus && newStatus !== before?.status
+  && newStatus !== 'Order Confirmed' && newStatus !== 'Order Pending for Dispatch'
+  && !!before?.sentToDispatchAt && !hasDispatchEntry;
+
+/** Is this order's detail edit blocked for this login? */
+export const isOrderEditLocked = (
+  o: { id: string; sentToDispatchAt?: string },
+  dispatchEntries: { orderId: string }[],
+  email: string | null | undefined,
+): boolean => isOrderStatusLocked(o, dispatchEntries) && !canEditOrderInDispatch(email);
+
 // Status moves still allowed on a locked order without an admin override:
 // → 'Delivered' once every line has been dispatched (totalRemaining = 0),
 // and the legacy 'Order Pending for Dispatch' → 'Order Confirmed' flip.
