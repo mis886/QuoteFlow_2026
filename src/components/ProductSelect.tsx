@@ -21,6 +21,14 @@
 // Before 2026-11-18 (from 2026-11-14) this box was STRICT: only list names could
 // be saved, typed text was thrown away on leaving the box with a "Select a product
 // from the list" warning, and old names showed in amber and blocked Save.
+//
+// 2026-11-19 (user rule): `strict` — Enquiry / Quotation / Order line items.
+// Typing still SEARCHES, but only a list name can be chosen: no `Use "<typed>"`
+// row, Enter picks the highlighted list name, and leaving the box with typed
+// text that isn't a list name CLEARS the box (an untouched old name stays —
+// focus alone changes nothing). Save then blocks with "Row N: pick a product
+// from the list" (lineItemProblem with `allowedName`). Dispatch entry and
+// Sampling don't pass `strict` and keep the typeable box.
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
@@ -34,7 +42,10 @@ interface Props {
   error?: boolean;
   placeholder?: string;
   className?: string;
+  strict?: boolean;                // 2026-11-19: list names only (see above)
 }
+
+export const PICK_FROM_LIST_MSG = (row: number) => `Row ${row}: pick a product from the list`;
 
 export const productHsn = (hsnMap: Record<string, string>, name: string) => hsnMap[name] ?? '';
 
@@ -47,19 +58,22 @@ export interface LineItemProblem {
 /** Save check shared by the 5 forms — the FIRST problem, or null.
  *  Per row, in order: no product name → "Row X: Enter a product name";
  *  with checkQty, quantity empty / 0 → "Row X: Enter a quantity greater than 0".
- *  Any typed name is allowed (the list is only suggestions). A blank HSN is
- *  never a problem. `include` limits the check to some rows (row numbers stay
- *  the on-screen ones). `names` is kept so the 5 forms don't need changing. */
+ *  A blank HSN is never a problem. `include` limits the check to some rows
+ *  (row numbers stay the on-screen ones). `names` is kept so the 5 forms don't
+ *  need changing.
+ *  2026-11-19: with `allowedName` (Enquiry / Quotation / Order — strict), an
+ *  empty name or one it rejects → "Row X: pick a product from the list". */
 export function lineItemProblem(
   rows: { desc?: string | null; qty?: number | string | null }[],
   names: string[],
-  opts: { checkQty?: boolean; include?: (row: { desc?: string | null; qty?: number | string | null }) => boolean } = {},
+  opts: { checkQty?: boolean; include?: (row: { desc?: string | null; qty?: number | string | null }) => boolean; allowedName?: (name: string) => boolean } = {},
 ): LineItemProblem | null {
   void names;
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (opts.include && !opts.include(r)) continue;
     const d = (r.desc || '').trim();
+    if (opts.allowedName && (!d || !opts.allowedName(d))) return { row: i, field: 'product', message: PICK_FROM_LIST_MSG(i + 1) };
     if (!d) return { row: i, field: 'product', message: `Row ${i + 1}: Enter a product name` };
     if (opts.checkQty && !(Number(r.qty) > 0)) return { row: i, field: 'qty', message: `Row ${i + 1}: Enter a quantity greater than 0` };
   }
@@ -84,7 +98,8 @@ export function BillingNameInput({ value, onChange }: { value: string | undefine
   );
 }
 
-export function ProductSelect({ value, onChange, names, hsnMap, error, placeholder = 'Type or search product…', className }: Props) {
+export function ProductSelect({ value, onChange, names, hsnMap, error, placeholder, className, strict = false }: Props) {
+  placeholder = placeholder ?? (strict ? 'Search product…' : 'Type or search product…');
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -112,8 +127,9 @@ export function ProductSelect({ value, onChange, names, hsnMap, error, placehold
     return [...hits.filter(starts), ...hits.filter(n => !starts(n))];
   }, [typed, typing, names]);
 
-  // Rows shown: an optional "Use <typed>" row first, then the list matches.
-  const showUseTyped = typing && !!typed && !exactName;
+  // Rows shown: an optional "Use <typed>" row first (never in strict mode),
+  // then the list matches.
+  const showUseTyped = !strict && typing && !!typed && !exactName;
   const options: { name: string; custom: boolean }[] = useMemo(
     () => [
       ...(showUseTyped ? [{ name: typed, custom: true }] : []),
@@ -133,17 +149,18 @@ export function ProductSelect({ value, onChange, names, hsnMap, error, placehold
   };
 
   // Save a name: a list name (any capitals) becomes that list name + its HSN;
-  // anything else is kept as typed with a blank HSN.
+  // anything else is kept as typed with a blank HSN — or, in strict mode,
+  // thrown away: the box is cleared (Save then asks for a list product).
   const commit = (raw: string) => {
     const text = raw.trim();
     const listName = names.find(n => normName(n) === normName(text));
-    const finalName = listName ?? text;
+    const finalName = listName ?? (strict ? '' : text);
     setQuery(finalName);
     setOpen(false);
     if (finalName !== value) onChange(finalName, listName ? productHsn(hsnMap, listName) : '');
   };
 
-  // Leaving the box keeps whatever was typed.
+  // Leaving the box keeps whatever was typed (strict: only a list name).
   const handleBlur = () => {
     setOpen(false);
     if (typing) commit(query);
@@ -152,7 +169,12 @@ export function ProductSelect({ value, onChange, names, hsnMap, error, placehold
   // Closing only — leaving the box (blur) is what saves.
   useEffect(() => {
     if (!open) return;
-    const close = (e: Event) => { if (!listRef.current?.contains(e.target as Node)) setOpen(false); };
+    // 2026-11-19: a text box scrolling its own text (a long name scrolling back
+    // when focus moves) is not a page scroll — it must not close the list.
+    const close = (e: Event) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (!listRef.current?.contains(e.target as Node)) setOpen(false);
+    };
     window.addEventListener('scroll', close, true);
     window.addEventListener('resize', close);
     return () => {
@@ -165,7 +187,7 @@ export function ProductSelect({ value, onChange, names, hsnMap, error, placehold
     if (e.key === 'Tab') return;  // blur follows and saves
     if (!open) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); calcPos(); setOpen(true); }
-      else if (e.key === 'Enter') { e.preventDefault(); if (typing) commit(query); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (typing && (!strict || exactName)) commit(query); }
       return;
     }
     if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, options.length - 1)); }
@@ -173,7 +195,7 @@ export function ProductSelect({ value, onChange, names, hsnMap, error, placehold
     else if (e.key === 'Enter') {
       e.preventDefault();
       if (options[activeIdx]) commit(options[activeIdx].name);
-      else commit(query);
+      else if (!strict) commit(query);   // strict: nothing to pick → keep typing
     }
     else if (e.key === 'Escape') { e.preventDefault(); setQuery(value); setOpen(false); }
   };

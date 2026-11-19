@@ -223,10 +223,18 @@ Each enquiry must have at least one line item.
 
 | Column | Required? | Notes |
 |--------|-----------|-------|
-| Description | Yes | Part or product name |
-| Material / Grade | No | e.g. SS316, PTFE |
-| Qty / UOM | Yes | Quantity and unit (Nos, MTR, KG, etc.) |
-| Dwg Ref | No | Drawing number if applicable |
+| Product Name | Yes | **Pick from the product list** (see below) |
+| Billing Name | No | Filled from the product list when you pick a product; you can correct it. Printed on the Quotation and PI |
+| HSN Code | — | Read-only, from the Billing Name; may be blank |
+| No of Barrels | Yes | Must be more than 0 |
+| Packing / Total Qty / Packing Type | No | Total Qty = No of Barrels × Packing |
+
+**Product Name rule (2026-11-19 — Enquiry, Quotation and Order, also when editing):**
+- Type to **search**, then **pick** a product from the list. Only a product-list name can be saved — there is no "use what I typed" option.
+- Picking a product fills **Billing Name** and **HSN Code**.
+- If you type something and leave the box without picking, the box is **cleared**. Save is then blocked with a red border on that box and the message **"Row N: pick a product from the list"**.
+- Old records whose name is not on the list are **not renamed**: an old line keeps its name as long as you don't change it. If you change it, you must pick from the list.
+- The same name is carried to the DO: a DO made from the Dispatch board shows the order line's Product Name exactly (read-only) and its Billing Name.
 
 - Click **Add Another Line Item** (dashed button) to add more rows.
 - Click the **red trash icon** on a row to remove it. The last row cannot be removed.
@@ -319,11 +327,13 @@ The form is a two-step process: **Form → Preview**.
 
 **Line Items**
 
+Product Name follows the same **pick-from-the-list rule** as the Enquiry (section above): search, pick, Billing Name + HSN fill in; typed text that isn't picked is cleared and blocks Save. The Order form works the same way.
+
 | Column | Notes |
 |--------|-------|
-| Description | Part name (pre-filled from enquiry) |
-| Material | MOC (pre-filled from enquiry) |
-| HSN Code | Harmonized tariff code |
+| Product Name | Pre-filled from the enquiry; pick from the product list |
+| Billing Name | Pre-filled from the enquiry; printed on the Quotation |
+| HSN Code | Read-only, from the Billing Name |
 | Qty | Pre-filled from enquiry |
 | Unit Price | Enter your selling price |
 | GST % | 5, 12, 18, or 28 |

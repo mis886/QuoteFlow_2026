@@ -11,6 +11,7 @@ import { ProductSelect, BillingNameInput, lineItemProblem } from '../components/
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useLineItemProducts } from '../hooks/useLineItemProducts';
+import { flashErrorToast } from '../lib/flashToast';
 import { generateOrderPDF } from '../lib/pdfGenerator';
 import { downloadPIDOCX } from '../lib/quoteDocx';
 import { uploadPublicFile } from '../lib/supabase';
@@ -88,7 +89,7 @@ export function NewOrder() {
   // Leave-Dispatch confirmation (persistOrder): resolved by the ConfirmDialog.
   const [leaveDispatchAsk, setLeaveDispatchAsk] = useState<{ status: OrderStatus; resolve: (ok: boolean) => void } | null>(null);
   const packingTypeOptions = usePackingTypes();
-  const { names: productNames, hintMap: productHintMap, withProduct, withBilling } = useLineItemProducts();
+  const { names: productNames, hintMap: productHintMap, withProduct, withBilling, allowedName } = useLineItemProducts();
 
   // Linked quote / enquiry references. Seeded from the URL when converting a
   // quote, and re-hydrated from the saved order when editing — so editing never
@@ -494,8 +495,12 @@ export function NewOrder() {
     if (!poTrimmed) e.poNo = 'PO Number is required';
     else if (poTrimmed.length < 3) e.poNo = 'PO Number looks too short — enter the customer PO reference';
     if (!custName) e.custName = 'Customer is required';
-    const itemProblem = lineItemProblem(items, productNames, { checkQty: true });
-    if (itemProblem) { e.items = itemProblem.message; e.itemsRow = String(itemProblem.row); e.itemsField = itemProblem.field; }
+    // 2026-11-19: Product Name must be a product-list name (or an old saved one).
+    const itemProblem = lineItemProblem(items, productNames, { checkQty: true, allowedName });
+    if (itemProblem) {
+      e.items = itemProblem.message; e.itemsRow = String(itemProblem.row); e.itemsField = itemProblem.field;
+      if (itemProblem.field === 'product') flashErrorToast(itemProblem.message);
+    }
     else {
       const below = items.find(i => Number(i.qty) < (dispatchedForLine.get(i.seq) || 0));
       if (below) e.items = `${below.desc || `Line ${below.seq}`}: already dispatched ${dispatchedForLine.get(below.seq)} — No of Barrels can't go below this`;
@@ -1148,6 +1153,7 @@ export function NewOrder() {
                               value={item.desc}
                               names={productNames}
                               hsnMap={productHintMap}
+                              strict
                               onChange={desc => {
                                 const ni = [...items];
                                 ni[idx] = withProduct(ni[idx], desc);

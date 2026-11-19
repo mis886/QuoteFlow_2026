@@ -96,7 +96,10 @@ Warehouse) is changed; only then are the order-line rules checked again.
   rules):** every row the board opens with (one per order line), and a
   "+ Add product" row for a chosen order line:
   - **Product Name** = the order line's Product Name EXACTLY as picked and
-    saved in Enquiry / Quotation / Order (e.g. "Pine Oil 211 (DD)").
+    saved in Enquiry / Quotation / Order (e.g. "Pine Oil 211 (DD)") — since
+    2026-11-19 always a product-list name there (old orders may still carry an
+    old free-text name, shown as saved). The box is READ-ONLY on these rows (no
+    typing over it); clicking it opens the lot list below.
   - **Billing Name** = the billing name the product list gave it in the order
     (the line's saved `billingName`); an old line without one → looked up by
     product name in the same product list the Enquiry form uses (PRODUCTS);
@@ -118,10 +121,10 @@ Warehouse) is changed; only then are the order-line rules checked again.
     picked (to switch lots).
   - No Warehouse yet → "Select a warehouse first". No matching lots →
     "No stock of <product name> in <warehouse>".
-  - Typing a Lot No by hand still works (for stock kept under another name),
-    and still doesn't change Product Name / Billing Name. Typing in the
-    Product Name box searches products as before (to find such lots); the
-    row's Product Name stays the order's.
+  - Typing a Lot No by hand in the Lot No box still works (for stock kept
+    under another name), and still doesn't change Product Name / Billing
+    Name. (The Product Name box is read-only here, so there is no product
+    search on these rows.)
   - Changing the Warehouse (between stock warehouses) keeps the names but
     clears the row's lot (Lot No + the fields it filled).
   - Unchanged: plain New Outward (a lot still fills Product Name / Billing

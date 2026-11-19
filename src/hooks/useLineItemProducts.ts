@@ -1,15 +1,35 @@
 import { useCallback, useMemo } from 'react';
 import { useProductCatalog } from './useProductCatalog';
+import { useAppStore } from '../store';
 import { LINE_ITEM_PRODUCT_NAMES, billingNameFor, buildBillingHsnMap, normName } from '../lib/lineItemProducts';
 
 // Line items of Enquiry / Quotation / Order / Dispatch entry (2026-11-19):
-// Product Name (typeable, suggestions from PRODUCTS) → Billing Name → HSN.
+// Product Name (suggestions from PRODUCTS) → Billing Name → HSN.
 // See src/lib/lineItemProducts.ts.
 export function useLineItemProducts() {
   const { entries } = useProductCatalog();
+  const { data } = useAppStore();
   const billingHsn = useMemo(() => buildBillingHsnMap(entries), [entries]);
 
   const names = LINE_ITEM_PRODUCT_NAMES as string[];
+
+  // 2026-11-19 (user rule — Enquiry / Quotation / Order are strict): a Product
+  // Name may be SAVED only if it is a product-list name, or it is already on a
+  // saved enquiry / quotation / order line (an old free-text name, kept as it
+  // is — also when carried forward Enquiry → Quote → Order). New free text
+  // (typed, or brought in by the RFQ import) is refused at Save.
+  const listNames = useMemo(() => new Set(names.map(normName)), [names]);
+  const savedNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const docs of [data.enquiries, data.quotes, data.orders] as { items?: { desc?: string }[] }[][]) {
+      for (const d of docs ?? []) for (const it of d.items ?? []) { const k = normName(it.desc); if (k) s.add(k); }
+    }
+    return s;
+  }, [data.enquiries, data.quotes, data.orders]);
+  const allowedName = useCallback(
+    (name: string) => { const k = normName(name); return !!k && (listNames.has(k) || savedNames.has(k)); },
+    [listNames, savedNames],
+  );
 
   const hsnForBilling = useCallback(
     (billingName: string | null | undefined) => billingHsn.get(normName(billingName)) ?? '',
@@ -33,5 +53,5 @@ export function useLineItemProducts() {
     { ...item, billingName, hsn: hsnForBilling(billingName) }
   ), [hsnForBilling]);
 
-  return { names, hintMap, withProduct, withBilling };
+  return { names, hintMap, withProduct, withBilling, allowedName };
 }

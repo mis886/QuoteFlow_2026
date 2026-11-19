@@ -561,18 +561,22 @@ type ProductOption = { name: string; code: string; barrels: number; lots: number
 // product's lots at the warehouse (lotsForOrderProduct), and picking one sets
 // the Lot No exactly like the Lot No list. `emptyMsg` when there are none.
 type OrderLotMode = { lots: LotPickRow[]; lotValue: string; emptyMsg: string; onPickLot: (lotNo: string) => void };
-function ProductPickerCell({ value, options, warehouse, loading, className, title, onType, onPick, onLeave, orderLots }: {
+function ProductPickerCell({ value, options, warehouse, loading, className, title, onType, onPick, onLeave, orderLots, readOnly = false }: {
   value: string; options: ProductOption[]; warehouse: string; loading: boolean; className: string; title?: string;
   onType: (v: string) => void; onPick: (name: string) => void; onLeave: () => void; orderLots?: OrderLotMode;
+  // 2026-11-19 (user rule): a Board row — the order line's Product Name can't
+  // be typed over; clicking still opens that product's lot list.
+  readOnly?: boolean;
 }) {
   const p = useCellPopover();
   return (
     <div ref={p.anchorRef} className="relative">
-      <input className={className} value={value} title={title} placeholder="Search product…" autoComplete="off"
+      <input className={`${className}${readOnly ? ' cursor-pointer' : ''}`} value={value} title={title} placeholder="Search product…" autoComplete="off"
+        readOnly={readOnly}
         onFocus={p.show} onBlur={onLeave}
         // 2026-11-19: a click opens it too — e.g. after Escape, the box still has focus.
         onClick={() => { if (!p.open) p.show(); }}
-        onChange={e => { onType(e.target.value); if (!p.open) p.show(); }}
+        onChange={e => { if (readOnly) return; onType(e.target.value); if (!p.open) p.show(); }}
         onKeyDown={e => { if (e.key === 'Escape') p.setOpen(false); }} />
       {p.open && p.pos && orderLots && ReactDOM.createPortal(
         orderLots.lots.length > 0
@@ -1939,9 +1943,12 @@ function OutwardForm() {
                                 from the lot (save is unchanged).
                                 2026-11-19: a Board row always shows the ORDER
                                 line's Product Name (productSeed) — a lot never
-                                changes it — and lists that product's lots. */}
+                                changes it — and lists that product's lots. It
+                                is READ-ONLY there (no typing over it); a lot of
+                                another name can still be typed in Lot No. */}
                             <ProductPickerCell
                               className={cellInput}
+                              readOnly={!!l.productSeed}
                               value={l.productQuery ?? (l.productSeed ? l.productSeed : (l.productName || l.pickedProduct || ''))}
                               orderLots={inOrderProductMode(l) ? {
                                 lots: pickerReady ? lotOptionsFor(l) : [],
@@ -1954,7 +1961,8 @@ function OutwardForm() {
                               options={pickerReady ? productOptions(l.productQuery ?? '') : []}
                               warehouse={header.warehouse}
                               loading={!pickerReady && !!header.warehouse}
-                              title={!header.warehouse ? 'Select a Warehouse first' : fromLot}
+                              title={l.productSeed ? 'Product Name from the order line — click to see its lots at this warehouse'
+                                : !header.warehouse ? 'Select a Warehouse first' : fromLot}
                               onType={v => updateLine(l.key, { productQuery: v })}
                               onPick={name => onPickProduct(l, name)}
                               onLeave={() => { if (l.lotFilled && l.productQuery !== null) updateLine(l.key, { productQuery: null }); }} />

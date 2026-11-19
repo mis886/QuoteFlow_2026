@@ -6,6 +6,7 @@ import { normalizeIndianPhone } from '../lib/phone';
 import { QuoteItem, Quote, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useLineItemProducts } from '../hooks/useLineItemProducts';
+import { flashErrorToast } from '../lib/flashToast';
 import { ProductSelect, BillingNameInput, lineItemProblem } from '../components/ProductSelect';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { Button } from '../components/ui';
@@ -135,7 +136,7 @@ export function NewQuote() {
   const navigate = useNavigate();
   const { data, user, addQuote, updateQuote, updateEnquiry, addCustomer, stampName, openAttachmentModal, resolvedSignatory } = useAppStore();
   const packingTypeOptions = usePackingTypes();
-  const { names: productNames, hintMap: productHintMap, withProduct, withBilling } = useLineItemProducts();
+  const { names: productNames, hintMap: productHintMap, withProduct, withBilling, allowedName } = useLineItemProducts();
 
   // Linked enquiry reference. Seeded from the URL when converting an enquiry,
   // and re-hydrated from the saved quote when editing — so editing never wipes
@@ -568,8 +569,12 @@ export function NewQuote() {
   const validateStep1 = () => {
     const e: Record<string, string> = {};
     if (!custName) e.custName = 'Customer is required';
-    const itemProblem = lineItemProblem(items, productNames, { checkQty: true });
-    if (itemProblem) { e.items = itemProblem.message; e.itemsRow = String(itemProblem.row); e.itemsField = itemProblem.field; }
+    // 2026-11-19: Product Name must be a product-list name (or an old saved one).
+    const itemProblem = lineItemProblem(items, productNames, { checkQty: true, allowedName });
+    if (itemProblem) {
+      e.items = itemProblem.message; e.itemsRow = String(itemProblem.row); e.itemsField = itemProblem.field;
+      if (itemProblem.field === 'product') flashErrorToast(itemProblem.message);
+    }
     // ENQ ref is compulsory when this quote was converted from an enquiry.
     // Without it the attachment chain (ENQ → Quote → Order) is broken.
     if (enqRef && !linkedEnqRef) e.enqRef = 'Enquiry reference is missing — cannot save without it';
@@ -1151,6 +1156,7 @@ export function NewQuote() {
                               value={item.desc}
                               names={productNames}
                               hsnMap={productHintMap}
+                              strict
                               onChange={desc => {
                                 const ni = [...items];
                                 ni[idx] = withProduct(ni[idx], desc);

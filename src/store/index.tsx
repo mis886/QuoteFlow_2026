@@ -8,15 +8,8 @@ import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, genera
 
 // Minimal self-contained error toast for store-level refusals, so a blocked
 // write is visible even from a caller that doesn't surface the error.
-function flashErrorToast(msg: string) {
-  if (typeof document === 'undefined') return;
-  const el = document.createElement('div');
-  el.textContent = msg;
-  el.setAttribute('role', 'alert');
-  el.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;background:#dc2626;color:#fff;padding:12px 16px;border-radius:4px;font-size:12.5px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.15);max-width:360px';
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 5000);
-}
+// (2026-11-19: moved to src/lib/flashToast.ts so pages can use it too.)
+import { flashErrorToast } from '../lib/flashToast';
 import { logActivity } from '../lib/activityLog';
 import { orderDispatchCompleteInDb } from '../lib/dispatchEntrySteps';
 import { canMarkDeliveredManually, MANUAL_DELIVERED_ONLY_MSG } from '../lib/manualDelivered';

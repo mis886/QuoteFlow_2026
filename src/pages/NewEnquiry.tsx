@@ -10,6 +10,7 @@ import { ProductSelect, BillingNameInput, lineItemProblem } from '../components/
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useLineItemProducts } from '../hooks/useLineItemProducts';
+import { flashErrorToast } from '../lib/flashToast';
 
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useContactSyncPrompt } from '../components/ContactSyncPrompt';
@@ -22,7 +23,7 @@ export function NewEnquiry() {
   const editId = searchParams.get('id');
   const { data, user, addEnquiry, updateEnquiry, addCustomer, stampName, refreshData, resolvedSignatory } = useAppStore();
   const packingTypeOptions = usePackingTypes();
-  const { names: productNames, hintMap: productHintMap, withProduct, withBilling } = useLineItemProducts();
+  const { names: productNames, hintMap: productHintMap, withProduct, withBilling, allowedName } = useLineItemProducts();
   const [isSaving, setIsSaving] = useState(false);
   const [contactSyncMsg, setContactSyncMsg] = useState<string | null>(null);
   const contactSync = useContactSyncPrompt();
@@ -237,11 +238,13 @@ export function NewEnquiry() {
     if (!custName) newErrors.custName = 'Customer is required';
     
     // Validate line items — first problem row: no / off-list product, or qty ≤ 0.
-    const itemProblem = lineItemProblem(items, productNames, { checkQty: true });
+    // 2026-11-19: Product Name must be a product-list name (or an old saved one).
+    const itemProblem = lineItemProblem(items, productNames, { checkQty: true, allowedName });
     if (itemProblem) {
       newErrors.items = itemProblem.message;
       newErrors.itemsRow = String(itemProblem.row);
       newErrors.itemsField = itemProblem.field;
+      if (itemProblem.field === 'product') flashErrorToast(itemProblem.message);
     }
 
     setErrors(newErrors);
@@ -532,6 +535,7 @@ export function NewEnquiry() {
                                 value={item.desc}
                                 names={productNames}
                                 hsnMap={productHintMap}
+                                strict
                                 onChange={desc => {
                                   const ni = [...items];
                                   ni[idx] = withProduct(ni[idx], desc);
