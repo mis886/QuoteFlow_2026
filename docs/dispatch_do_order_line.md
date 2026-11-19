@@ -91,6 +91,9 @@ Warehouse) is changed; only then are the order-line rules checked again.
 - New DO (`?fromDispatch=1&orderRef=…`): one row per order line that still
   has barrels left, Billing Name prefilled from the line, lot fields empty.
   The user fills the lots and removes rows for products not in this DO.
+  2026-11-19: the Product Name search box starts EMPTY (also for "+ Add
+  product" rows, and again after a Warehouse change) — the user searches and
+  picks the product; only Billing Name is prefilled.
 - "+ New DO (another warehouse)" — shown on a saved DO opened from the board
   and on the drawer's Step 6 when the order still has lines with barrels left
   that are on no DO of this round. Opens a NEW DO for the same order + round

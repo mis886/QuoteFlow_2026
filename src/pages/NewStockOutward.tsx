@@ -481,9 +481,10 @@ type Line = {
   // 2026-11-18: pick a lot by PRODUCT NAME (stock warehouses only).
   // productQuery = the text in the Product Name search box (null = show the
   // row's productName); pickedProduct = the product whose lots the Lot No
-  // list shows; productSeed = what the search box starts with (the order
-  // line's product name from the Board / "+ Add product"), put back when the
-  // Warehouse changes.
+  // list shows; productSeed = what the search box starts with, put back when
+  // the Warehouse changes. 2026-11-19 (user decision): always null — on a
+  // Board / "+ Add product" row the search box starts EMPTY and the user picks
+  // the product; only Billing Name is prefilled from the order line.
   productQuery: string | null;
   pickedProduct: string | null;
   productSeed: string | null;
@@ -502,10 +503,12 @@ const newLine = (p: Partial<Line> = {}): Line => ({
   productQuery: null, pickedProduct: null, productSeed: null, seed: null,
   ...p,
 });
-// A row prefilled with an order line's billing name: the search box starts with it.
+// A row prefilled with an order line's billing name (Board prefill / "+ Add
+// product"). 2026-11-19: the Product Name search box starts EMPTY (productQuery
+// / productSeed null) — only Billing Name, the order line and `seed` are set.
 const seededLine = (p: Partial<Line> & { billingName: string }): Line =>
   newLine({
-    ...p, productQuery: p.billingName || null, productSeed: p.billingName || null,
+    ...p, productQuery: null, productSeed: null,
     seed: p.orderLineSeq != null ? { seq: p.orderLineSeq, billingName: p.billingName } : null,
   });
 
@@ -1096,8 +1099,8 @@ function OutwardForm() {
       return;
     }
     setHeader(h => ({ ...h, warehouse }));
-    // 2026-11-18: the product / lot pickers start again too (search box back
-    // to the order line's product name, if the row has one).
+    // 2026-11-18: the product / lot pickers start again too (2026-11-19: the
+    // search box goes back to EMPTY — productSeed is always null).
     const resetPickers = (l: Line): Line => ({ ...l, pickedProduct: null, productQuery: l.productSeed });
     setLines(ls => ls.map(l => resetPickers(crossesWada
       ? { ...clearedLine(l), billingName: l.billingName, billingTyped: l.billingTyped, orderLineSeq: l.orderLineSeq, lotTouched: true }
@@ -1235,9 +1238,9 @@ function OutwardForm() {
     }
     return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
   };
-  // The Lot No list for a row: the picked product's lots, else (search box
-  // still holding the order line's name, e.g. "Beta Pinene") the lots of every
-  // product that matches it. Oldest first; barrels after other rows of this DO.
+  // The Lot No list for a row: the picked product's lots, else (text typed in
+  // the search box, e.g. "Beta Pinene") the lots of every product that matches
+  // it; nothing while both are empty. Oldest first; barrels after other rows of this DO.
   const lotOptionsFor = (l: Line): LotPickRow[] => {
     // Text being typed in the search box wins; else the picked product, else
     // (a saved row) the row's own product.
