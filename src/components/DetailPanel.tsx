@@ -10,6 +10,7 @@ import { FollowUpSummary } from './FollowUpSummary';
 import { NegotiationRounds } from './NegotiationRounds';
 import { generateQuotePDF, generatePIPDF } from '../lib/pdfGenerator';
 import { friendlyDeleteError } from '../lib/cascadeDelete';
+import { flashErrorToast, flashSuccessToast } from '../lib/flashToast';
 
 const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
   <section>
@@ -42,6 +43,7 @@ export function DetailPanel() {
   const [downloadingItemId, setDownloadingItemId] = React.useState<string | null>(null);
   const [showLineItems, setShowLineItems] = React.useState(false);
   const [ticketNoteDraft, setTicketNoteDraft] = React.useState<string | null>(null);
+  const [ticketSaving, setTicketSaving] = React.useState<string | null>(null);
   const [ticketImagePreviewUrl, setTicketImagePreviewUrl] = React.useState<string | null>(null);
 
   const handleDownload = async (path: string, id: string, name?: string) => {
@@ -765,6 +767,27 @@ export function DetailPanel() {
     );
   };
 
+  // One click = done: status (+ any typed note) saved straight away. Resolved /
+  // Closed also stamp who did it; Open / In Progress leave resolvedBy alone.
+  // updated_at is set by the store's mapTicketToDB (the table has no
+  // resolved_at / closed_at columns).
+  const setTicketStatus = async (t: { id: string }, to: 'Open' | 'In Progress' | 'Resolved' | 'Closed', note: string) => {
+    setTicketSaving(to);
+    try {
+      await updateTicket(t.id, {
+        status: to,
+        resolutionNote: note,
+        ...(to === 'Resolved' || to === 'Closed' ? { resolvedBy: stampName() } : {}),
+      });
+      setTicketNoteDraft(null);
+      flashSuccessToast(`Ticket marked ${to}`);
+    } catch {
+      flashErrorToast('Could not update the ticket status. Please try again.');
+    } finally {
+      setTicketSaving(null);
+    }
+  };
+
   const renderTicket = () => {
     const t = data.tickets.find(x => x.id === detailPanel.id);
     if (!t) return null;
@@ -840,16 +863,25 @@ export function DetailPanel() {
 
           <Section title="Resolution">
             <div className="space-y-3">
-              <select
-                value={t.status}
-                onChange={async (e) => { await updateTicket(t.id, { status: e.target.value as any }); }}
-                className="font-sans text-[12px] text-blk bg-white border border-g300 rounded-[3px] p-[6px_10px] outline-none hover:border-g400"
-              >
-                <option value="Open">Open</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Resolved">Resolved</option>
-                <option value="Closed">Closed</option>
-              </select>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { to: 'In Progress', label: 'In Progress', cls: 'border-amber-500 text-amber-700 bg-amber-50 hover:bg-amber-100', show: t.status !== 'In Progress' },
+                  { to: 'Resolved', label: 'Resolved', cls: 'border-green-600 text-green-700 bg-green-50 hover:bg-green-100', show: t.status !== 'Resolved' },
+                  { to: 'Closed', label: 'Closed', cls: 'border-g400 text-g600 bg-g100 hover:bg-g200', show: t.status !== 'Closed' },
+                  { to: 'Open', label: 'Reopen', cls: 'border-red-mrt text-red-mrt bg-red-lt hover:bg-red-lt/70', show: t.status === 'Resolved' || t.status === 'Closed' },
+                ] as const).filter(b => b.show).map(b => (
+                  <button
+                    key={b.to}
+                    type="button"
+                    disabled={ticketSaving !== null}
+                    onClick={() => setTicketStatus(t, b.to, noteValue)}
+                    className={`font-mono text-[10.5px] font-bold uppercase tracking-wide border rounded-[3px] px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5 ${b.cls}`}
+                  >
+                    {ticketSaving === b.to && <Loader2 size={12} className="animate-spin" />}
+                    {b.label}
+                  </button>
+                ))}
+              </div>
               <textarea
                 value={noteValue}
                 onChange={(e) => setTicketNoteDraft(e.target.value)}
@@ -864,14 +896,18 @@ export function DetailPanel() {
           </Section>
         </div>
         <div className="p-4 border-t border-g200 flex items-center justify-end gap-2 bg-g100/30">
-          <Button variant="secondary" onClick={async () => {
-            await updateTicket(t.id, { resolutionNote: noteValue });
-            setTicketNoteDraft(null);
+          <Button variant="secondary" disabled={ticketSaving !== null} onClick={async () => {
+            setTicketSaving('note');
+            try {
+              await updateTicket(t.id, { resolutionNote: noteValue });
+              setTicketNoteDraft(null);
+              flashSuccessToast('Note saved');
+            } catch {
+              flashErrorToast('Could not save the note. Please try again.');
+            } finally {
+              setTicketSaving(null);
+            }
           }}>Save Note</Button>
-          <Button variant="primary" onClick={async () => {
-            await updateTicket(t.id, { status: 'Resolved', resolutionNote: noteValue, resolvedBy: stampName() });
-            setTicketNoteDraft(null);
-          }}>Mark Resolved</Button>
         </div>
       </div>
     );
