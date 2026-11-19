@@ -720,9 +720,9 @@ export function DetailPanel() {
           </div>
           <div className="flex gap-2">
             {(() => {
-              // Detail lock: an order in Dispatch can't be edited — except by
-              // ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), 2026-11-18. Never for the
-              // view-only logins (mum@ / accounts@, ORDER_VIEW_ONLY_EMAILS).
+              // 2026-11-19 (user rule): Edit for every login, any status, in
+              // Dispatch or not — except the view-only logins (mum@ / accounts@,
+              // ORDER_VIEW_ONLY_EMAILS), who get VIEW.
               // 2026-11-19: the view-only logins get VIEW instead — the same
               // form, read-only (NewOrder's viewOnly mode; the store guards refuse writes).
               if (isOrderViewOnly(user?.email)) {

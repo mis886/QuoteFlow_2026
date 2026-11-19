@@ -4,7 +4,7 @@ import { supabase, signOut, getSettings } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { uploadToS3 } from '../lib/s3';
 import { fetchLabelledEmails, fetchEmailAttachments } from '../lib/gmail';
-import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS, ORDER_LOCKED_MSG, lockedOrderBlockedFields, isOrderEditLocked, orderLeavesDispatch, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, ADVANCE_PAY } from '../lib/utils';
+import { DispatchFormDetails, withDispatchFormDetails, calculateAgeHours, generateId, canSendToDispatch, canDeleteRecords, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, customerIdForSave, CONTACT_SLOTS, lockedOrderBlockedFields, orderLeavesDispatch, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, ADVANCE_PAY } from '../lib/utils';
 
 // Minimal self-contained error toast for store-level refusals, so a blocked
 // write is visible even from a caller that doesn't surface the error.
@@ -1090,14 +1090,12 @@ const mapEnquiryToDB = (e: any) => {
     if (isOrderViewOnly(user?.email) && before && updatesIn.status === 'Order Confirmed' && before.status !== 'Order Confirmed'
         && !(ADVANCE_PAY.has(before.pay ?? '') && before.status === 'Processing')
         && !opts?.step11Undone && before.status !== 'Order Pending for Dispatch') refuseOrderViewOnly();
-    // Detail lock (everyone, admins too): an order in Dispatch can't have its
-    // details changed from the Orders module. Only status (status lock below)
-    // and the Dispatch / Sheets stamps may still be written.
-    // 2026-11-18: except ORDER_EDIT_IN_DISPATCH_EMAILS (mis@) — isOrderEditLocked.
-    if (before && isOrderEditLocked(before, data.dispatchEntries, user?.email) && lockedOrderBlockedFields(updatesIn).length > 0) {
-      flashErrorToast(ORDER_LOCKED_MSG);
-      throw new Error(ORDER_LOCKED_MSG);
-    }
+    // 2026-11-19 (user rule): no detail lock any more — every login except the
+    // view-only ones (refused above) may save every field of any order, also
+    // one in Dispatch (the 2026-11-17 in-Dispatch lock is removed). Dispatch is
+    // unaffected: the order form never writes dispatch_snapshot /
+    // sent_to_dispatch_at, and orderLeavesDispatch below needs a real status
+    // change. The status lock below still applies.
     const updates = updatesWithCustomerId(before, updatesIn);
     // Status lock: once an order is sent to Dispatch (or has a dispatch
     // entry) its status can't change — except the moves in
@@ -1117,8 +1115,8 @@ const mapEnquiryToDB = (e: any) => {
     // it has to be sent again once re-confirmed. Its SO number is kept. The
     // Dispatch snapshot goes too, so the next send freezes the order as it is then.
     // 2026-11-18: only when the status actually CHANGES — a full-form save
-    // (mis@ editing an order in Dispatch) re-sends the same status and must
-    // never clear the Dispatch stamp / snapshot.
+    // (any login editing an order in Dispatch, 2026-11-19) re-sends the same
+    // status and must never clear the Dispatch stamp / snapshot.
     const leavesDispatch = orderLeavesDispatch(before, updates.status, data.dispatchEntries.some(e => e.orderId === id));
     if (leavesDispatch) {
       dbUpdates.sent_to_dispatch_at = null;

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore, manualDeliveredLogNote } from '../store';
 import { showDeliveredOption, canPickDelivered, confirmManualDelivered, canMarkDeliveredManually } from '../lib/manualDelivered';
-import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, isOrderEditLocked, ORDER_LOCKED_MSG, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
@@ -64,16 +64,15 @@ export function NewOrder() {
   // Status lock — see isOrderStatusLocked in utils.ts.
   const editingOrder = editOrderId ? data.orders.find(o => o.id === editOrderId) : undefined;
   const statusLocked = !!editingOrder && isOrderStatusLocked(editingOrder, data.dispatchEntries);
-  // Detail lock (2026-11-17): the same check makes the whole form read-only
-  // for everyone, admins included. No Save; PDF / DOCX / Email use the saved
-  // order. The store's updateOrder refuses the write too.
-  // 2026-11-18: except ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), who can edit and
-  // save it. That never changes Dispatch (no dispatch_snapshot write), and the
-  // status dropdown stays locked by the status lock (statusLocked).
-  // 2026-11-18: the view-only logins (mum@ / accounts@, ORDER_VIEW_ONLY_EMAILS)
-  // get the same read-only form for every order, and can't create one.
+  // 2026-11-19 (user rule): every order opens in normal edit mode, Save works,
+  // whatever its status and even in Dispatch — for every login except the
+  // view-only ones (mum@ / accounts@, ORDER_VIEW_ONLY_EMAILS), who get the
+  // read-only form for every order and can't create one. An edit never
+  // changes Dispatch (no dispatch_snapshot / sent_to_dispatch_at write), and
+  // the status dropdown stays locked by the status lock (statusLocked).
+  // (2026-11-17 → 11-18: an order in Dispatch was read-only except for mis@.)
   const viewOnly = isOrderViewOnly(user?.email);
-  const orderLocked = viewOnly || (!!editingOrder && isOrderEditLocked(editingOrder, data.dispatchEntries, user?.email));
+  const orderLocked = viewOnly;
   const blockNewOrder = viewOnly && !editOrderId;
   // 2026-11-18: the order's status as saved (not the form's pick) — decides
   // whether "Delivered" shows in the dropdown and if a pick is a manual mark.
@@ -547,7 +546,7 @@ export function NewOrder() {
   // Persist the order (with PO upload if any). Returns the orderPayload used,
   // so callers like Generate-PI can pass the same object straight to the PDF.
   const persistOrder = async (): Promise<Order | null> => {
-    // Detail lock: never write — PDF / DOCX get the order exactly as saved.
+    // View-only logins: never write — PDF / DOCX get the order exactly as saved.
     if (orderLocked) return editingOrder ?? null;
     if (!validateStep1()) { setStep(1); return null; }
     setErrors({});
@@ -579,11 +578,18 @@ export function NewOrder() {
       if (lead) orderPayload.customerId = (await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() })).id;
     }
     if (editOrderId) {
-      // Only reached for an unlocked order (persistOrder returns early for a
-      // locked one) — or mis@ editing an order in Dispatch, whose status
-      // dropdown is disabled here, so the same status is re-sent and the
-      // status lock never applies. A locked order's status is changed from
-      // the Orders list / detail panel.
+      // 2026-11-19: any login but the view-only ones saves here, also an order
+      // in Dispatch. Its status dropdown is disabled (status lock), so the same
+      // status is normally re-sent. If the form's status would still be a move
+      // the status lock forbids (e.g. the order was sent to Dispatch while the
+      // form was open), the saved status is kept and the other fields saved.
+      // A locked order's status is changed from the Orders list / detail panel.
+      const savedOrder = data.orders.find(o => o.id === editOrderId);
+      if (savedOrder && orderPayload.status !== savedOrder.status
+          && isOrderStatusLocked(savedOrder, data.dispatchEntries)
+          && !isLockedStatusChangeAllowed(savedOrder.status, orderPayload.status, isFullyDispatched(savedOrder, data.dispatchEntries))) {
+        orderPayload.status = savedOrder.status;
+      }
       // 2026-11-18: an admin who picked Delivered here gets it logged as such.
       const manualDelivered = orderPayload.status === 'Delivered' && savedOrderStatus !== 'Delivered';
       await updateOrder(editOrderId, orderPayload, manualDelivered ? { logNote: manualDeliveredLogNote(stampName()) } : undefined);
@@ -739,7 +745,7 @@ export function NewOrder() {
             {editOrderId && (
               <div className="flex items-center gap-2">
                 <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
-                <select title={viewOnly ? `${ORDER_VIEW_ONLY_MSG} — change its status from the Orders list or the order's detail panel` : orderLocked ? ORDER_LOCKED_MSG : statusLocked ? "This order is in Dispatch — change its status from the Orders list or the order's detail panel" : 'Order status'} value={orderStatus}
+                <select title={viewOnly ? `${ORDER_VIEW_ONLY_MSG} — change its status from the Orders list or the order's detail panel` : statusLocked ? "This order is in Dispatch — change its status from the Orders list or the order's detail panel" : 'Order status'} value={orderStatus}
                   disabled={statusLocked || viewOnly}
                   onChange={async (e: React.ChangeEvent<HTMLSelectElement>) => {
                     const next = e.target.value as OrderStatus;
@@ -774,7 +780,7 @@ export function NewOrder() {
 
         {/* ══ STEP 1: Form ══ */}
         {step === 1 && (
-          // Detail lock: a disabled fieldset disables every input, select,
+          // View-only logins: a disabled fieldset disables every input, select,
           // date, file upload and button inside it.
           <fieldset disabled={orderLocked} className="flex flex-col gap-[12px] min-w-0 border-0 p-0 m-0">
 
@@ -784,9 +790,7 @@ export function NewOrder() {
               </div>
             ) : statusLocked && (
               <div className="bg-amber-50 border border-amber-200 rounded-[3px] p-[9px_14px] text-[12px] font-semibold text-amber-700">
-                {orderLocked
-                  ? 'This order has been sent to Dispatch. It can no longer be edited.'
-                  : 'This order is already in Dispatch. You can edit it here, but Dispatch keeps its own copy and will not change.'}
+                This order is already in Dispatch. You can edit it here, but Dispatch keeps its own copy and will not change.
               </div>
             )}
 

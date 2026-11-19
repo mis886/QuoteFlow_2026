@@ -336,8 +336,9 @@ export function Orders() {
                   const isExpanded = expandedRow === o.id;
                   const hasDispatchEntry = data.dispatchEntries.some(e => e.orderId === o.id);
                   const statusLocked = isOrderStatusLocked(o, data.dispatchEntries);
-                  // 2026-11-18: the Edit button only — mis@ may still edit (canEditOrderInDispatch);
-                  // mum@ / accounts@ never (ORDER_VIEW_ONLY_EMAILS).
+                  // 2026-11-19 (user rule): Edit is always clickable for every login except
+                  // mum@ / accounts@ (ORDER_VIEW_ONLY_EMAILS, who get VIEW) — any status,
+                  // in Dispatch or not. editBlockedMsg is only ever set for them.
                   const editBlockedMsg = orderEditBlockedMsg(o, data.dispatchEntries, user?.email);
                   const editLocked = !!editBlockedMsg;
 
@@ -400,9 +401,8 @@ export function Orders() {
                             {/* 2026-11-18: no Complete button — an order becomes Delivered
                                 by itself once its whole dispatch is finished
                                 (store's autoMarkOrderDeliveredFromDispatch). */}
-                            {/* Detail lock: an order in Dispatch can't be edited — except by
-                                ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), 2026-11-18.
-                                2026-11-19: the view-only logins (mum@ / accounts@) get a
+                            {/* 2026-11-19: Edit for everyone (no Dispatch / status lock);
+                                the view-only logins (mum@ / accounts@) get a
                                 VIEW button instead — the same form, read-only (NewOrder's
                                 viewOnly mode: no Save, no Email; the store guards refuse writes). */}
                             {viewOnly ? (

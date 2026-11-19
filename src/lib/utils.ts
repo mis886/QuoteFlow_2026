@@ -537,24 +537,32 @@ export const isOrderStatusLocked = (
   dispatchEntries: { orderId: string }[],
 ): boolean => !!o.sentToDispatchAt || dispatchEntries.some(e => e.orderId === o.id);
 
-// 2026-11-17: the same check also locks every order DETAIL in the Orders
-// module (edit form, Edit buttons, Docs upload) — for everyone, admins too.
-// A locked order may only be written with the fields below: status (still
-// governed by the status lock) and what Dispatch / the Sheets export stamp.
-// Leaving Dispatch (sent_to_dispatch_at cleared, no entries) unlocks it.
+// ORDER EDIT RULE (user rule, 2026-11-19): the Orders module's Edit button,
+// the order form and its Save are open to EVERY login except the view-only
+// ones (ORDER_VIEW_ONLY_EMAILS: mum@ / accounts@) — whatever the order's
+// status (Delivered, Won, Lost, …) and whether or not it is in Dispatch or has
+// dispatch entries. The view-only logins get a VIEW button (read-only form).
+// An edit never touches Dispatch: the form never writes dispatch_snapshot /
+// sent_to_dispatch_at (mapOrderToDB), so the board / DO keep using the copy,
+// and a same-status save never leaves Dispatch (orderLeavesDispatch). The
+// STATUS lock above still applies to status moves (dropdown / buttons).
+//
+// Before 2026-11-19 (from 2026-11-17) an order in Dispatch was detail-locked
+// for everyone except ORDER_EDIT_IN_DISPATCH_EMAILS (mis@); that lock now only
+// governs Docs upload (orderDocsUploadBlockedMsg).
 export const ORDER_LOCKED_MSG = "Order is in Dispatch — it can't be edited";
+// The only fields the view-only logins may write (store's updateOrder):
+// status (Payment Received / status dropdown / Dispatch's auto-Delivered —
+// still governed by the status lock) and what Dispatch / the Sheets export stamp.
 const LOCKED_ORDER_WRITABLE_FIELDS: ReadonlySet<string> = new Set([
   'status', 'soNumber', 'sentToDispatchAt', 'dispatchSnapshot', 'dispatchFinalized', 'sheetsExportedAt',
 ]);
 export const lockedOrderBlockedFields = (updates: object): string[] =>
   Object.keys(updates).filter(k => !LOCKED_ORDER_WRITABLE_FIELDS.has(k));
 
-// 2026-11-18 (user decision): the ONE exception to the detail lock — these
-// logins may still open the order form and save an order that is in Dispatch
-// (Orders list Edit, detail panel Edit, NewOrder, store's updateOrder). Its
-// own list: not ADMIN_EMAILS, MANUAL_DELIVERED_EMAILS or the Delete list.
-// Dispatch is not affected: the edit never writes dispatch_snapshot
-// (mapOrderToDB), and the status lock still applies as before.
+// 2026-11-18 → 2026-11-19: these logins may add Docs to an order that is in
+// Dispatch (orderDocsUploadBlockedMsg). Since 2026-11-19 it no longer matters
+// for Edit / the order form / Save (everyone except view-only may edit).
 export const ORDER_EDIT_IN_DISPATCH_EMAILS = ['mis@himalayaterpene.com'];
 export const canEditOrderInDispatch = (email: string | null | undefined): boolean =>
   ORDER_EDIT_IN_DISPATCH_EMAILS.includes((email ?? '').toLowerCase());
@@ -563,8 +571,8 @@ export const canEditOrderInDispatch = (email: string | null | undefined): boolea
  * clears sent_to_dispatch_at + dispatch_snapshot)? Only when its status really
  * CHANGES to something other than Order Confirmed / Order Pending for
  * Dispatch, it was sent to Dispatch, and it has no dispatch entry yet.
- * 2026-11-18: "really changes" added — a full-form save by mis@ re-sends the
- * same status and must never clear the Dispatch copy.
+ * 2026-11-18: "really changes" added — a full-form save re-sends the same
+ * status and must never clear the Dispatch copy (2026-11-19: any login's save).
  */
 export const orderLeavesDispatch = (
   before: { status?: string; sentToDispatchAt?: string } | undefined,
@@ -574,35 +582,48 @@ export const orderLeavesDispatch = (
   && newStatus !== 'Order Confirmed' && newStatus !== 'Order Pending for Dispatch'
   && !!before?.sentToDispatchAt && !hasDispatchEntry;
 
-/** Is this order's detail edit blocked for this login? */
+/** Is this order's edit form read-only for this login? 2026-11-19: only for
+ *  the view-only logins — never because of status or Dispatch. */
 export const isOrderEditLocked = (
-  o: { id: string; sentToDispatchAt?: string },
-  dispatchEntries: { orderId: string }[],
+  _o: { id: string; sentToDispatchAt?: string },
+  _dispatchEntries: { orderId: string }[],
   email: string | null | undefined,
-): boolean => isOrderStatusLocked(o, dispatchEntries) && !canEditOrderInDispatch(email);
+): boolean => isOrderViewOnly(email);
 
 // 2026-11-18 (user decision): these logins only VIEW orders in the Orders
-// module — no order form save, no new order, no Docs upload, no delete. They
-// keep their status buttons (Payment Received, OC, the status dropdown) and
-// the Sheets export: the store's updateOrder lets them write only the fields
-// a locked order may still get (lockedOrderBlockedFields). Its own list: not
-// ADMIN_EMAILS, MANUAL_DELIVERED_EMAILS, ORDER_EDIT_IN_DISPATCH_EMAILS or the
-// Delete list. Everyone else (sales@ included) edits orders as before.
+// module — VIEW button (read-only form), no order form save, no new order, no
+// Docs upload, no delete. They keep their status buttons (Payment Received,
+// OC, the status dropdown), PI / Docs download and the Sheets export: the
+// store's updateOrder lets them write only lockedOrderBlockedFields' set. Its
+// own list: not ADMIN_EMAILS, MANUAL_DELIVERED_EMAILS, ORDER_EDIT_IN_DISPATCH_EMAILS
+// or the Delete list. 2026-11-19: everyone else edits every order (see the
+// ORDER EDIT RULE above).
 export const ORDER_VIEW_ONLY_EMAILS = ['mum@himalayaterpene.com', 'accounts@himalayaterpene.com'];
 export const ORDER_VIEW_ONLY_MSG = "View only — you can't edit orders";
 export const isOrderViewOnly = (email: string | null | undefined): boolean =>
   ORDER_VIEW_ONLY_EMAILS.includes((email ?? '').trim().toLowerCase());
 /**
- * Why this login can't edit this order (the Edit button's tooltip), or null
- * if it can. View-only wins over the Dispatch lock.
+ * Why this login can't edit this order, or null if it can. 2026-11-19: only
+ * the view-only logins are blocked (they get VIEW); no status / Dispatch lock.
  */
 export const orderEditBlockedMsg = (
+  _o: { id: string; sentToDispatchAt?: string },
+  _dispatchEntries: { orderId: string }[],
+  email: string | null | undefined,
+): string | null => (isOrderViewOnly(email) ? ORDER_VIEW_ONLY_MSG : null);
+
+/**
+ * Docs upload on an order (AttachmentModal) — UNCHANGED by the 2026-11-19 edit
+ * rule: view-only logins never; an order in Dispatch only for
+ * ORDER_EDIT_IN_DISPATCH_EMAILS (mis@). Returns why it is blocked, or null.
+ */
+export const orderDocsUploadBlockedMsg = (
   o: { id: string; sentToDispatchAt?: string },
   dispatchEntries: { orderId: string }[],
   email: string | null | undefined,
 ): string | null =>
   isOrderViewOnly(email) ? ORDER_VIEW_ONLY_MSG
-    : isOrderEditLocked(o, dispatchEntries, email) ? ORDER_LOCKED_MSG
+    : isOrderStatusLocked(o, dispatchEntries) && !canEditOrderInDispatch(email) ? ORDER_LOCKED_MSG
     : null;
 
 // Status moves still allowed on a locked order without an admin override:

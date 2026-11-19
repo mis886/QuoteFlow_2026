@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, CircleDashed, Pencil, Undo2, X } from 'lucide-react';
-import { fmtIST, doerLabel, formatINR, resolveAdjustments, maxItemGstRate, remainingByLine, punchedAtClass, ORDER_LOCKED_MSG } from '../lib/utils';
+import { fmtIST, doerLabel, formatINR, resolveAdjustments, maxItemGstRate, remainingByLine, punchedAtClass } from '../lib/utils';
 import type { DispatchEntry, Order, TeamMember } from '../lib/types';
 import {
   BoardCard, BoardEntryCard, BoardOrderCard, DispatchStepRecord, EntryColumn, LastStepClick, LinkedDO, OrderStepHistory, StepAction, StepRecordStatus,
@@ -218,9 +218,9 @@ export function DispatchDrawer({
     }
   };
 
-  // EDIT (all users): the order card opens the order (read-only — an order in
-  // Dispatch can't be edited, see ORDER_LOCKED_MSG), an entry card opens
-  // that dispatch entry — both come back to the board afterwards.
+  // EDIT (all users): the order card opens the order form (2026-11-19: editable
+  // for everyone except the view-only logins; Dispatch keeps its own copy), an
+  // entry card opens that dispatch entry — both come back to the board afterwards.
   const openEdit = () => {
     if (openedFrom.kind === 'entry') navigate(`/dispatch/new?entryId=${encodeURIComponent(openedFrom.entry.id)}`);
     else navigate(`/orders/new?orderId=${encodeURIComponent(order.id)}&from=board`);
@@ -346,7 +346,7 @@ export function DispatchDrawer({
                   </button>
                 )}
                 <Button size="sm" variant="secondary" className="h-[24px]" onClick={openEdit}
-                  title={openedFrom.kind === 'entry' ? 'Edit this dispatch entry' : `View this order — ${ORDER_LOCKED_MSG}`}>
+                  title={openedFrom.kind === 'entry' ? 'Edit this dispatch entry' : 'Open this order — edits there never change Dispatch\'s copy'}>
                   {openedFrom.kind === 'entry' ? 'Edit' : 'View'}
                 </Button>
                 {canDelete && (
