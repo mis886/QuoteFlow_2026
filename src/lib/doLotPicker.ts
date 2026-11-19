@@ -36,6 +36,21 @@ export const dedupeLots = (rows: { wh_lot_no: string | null; product_name: strin
   }
   return out;
 };
+/**
+ * 2026-11-19: the lots of the ORDER LINE's product (a DO opened from the
+ * Dispatch board — the Product Name box shows the order's product name).
+ * Names compared like doOrderLine.ts: letters and digits only, lowercase;
+ * exact matches first, else "one starts with the other" (an old order line
+ * "Beta Pinene" → every Beta Pinene grade). [] for an empty name.
+ */
+const squash = (s: string | null | undefined) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+export function lotsForOrderProduct<T extends { productName: string }>(lots: T[], orderProduct: string): T[] {
+  const want = squash(orderProduct);
+  if (!want) return [];
+  const exact = lots.filter(o => squash(o.productName) === want);
+  if (exact.length) return exact;
+  return lots.filter(o => { const have = squash(o.productName); return !!have && (have.startsWith(want) || want.startsWith(have)); });
+}
 /** Oldest lot first (no date last), then Lot No. */
 export const byLotAge = (a: { lotDate: string; lotNo: string }, b: { lotDate: string; lotNo: string }) =>
   (a.lotDate || '9999') < (b.lotDate || '9999') ? -1 : (a.lotDate || '9999') > (b.lotDate || '9999') ? 1

@@ -223,7 +223,7 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
 import { billingNameFor, orderLineBillingName } from '../lib/lineItemProducts';
-import { StockLotOption, productMatches, dedupeLots, byLotAge } from '../lib/doLotPicker';
+import { StockLotOption, productMatches, dedupeLots, byLotAge, lotsForOrderProduct } from '../lib/doLotPicker';
 import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
 import { Loader2, Plus, X, ImageIcon } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
@@ -481,10 +481,12 @@ type Line = {
   // 2026-11-18: pick a lot by PRODUCT NAME (stock warehouses only).
   // productQuery = the text in the Product Name search box (null = show the
   // row's productName); pickedProduct = the product whose lots the Lot No
-  // list shows; productSeed = what the search box starts with, put back when
-  // the Warehouse changes. 2026-11-19 (user decision): always null — on a
-  // Board / "+ Add product" row the search box starts EMPTY and the user picks
-  // the product; only Billing Name is prefilled from the order line.
+  // list shows; productSeed = the ORDER LINE's Product Name, exactly as saved
+  // in Orders (Board prefill / "+ Add product" for a line; null otherwise).
+  // 2026-11-19 (user rule, replaces "starts empty"): the Product Name box shows
+  // it while nothing is typed and no lot is picked, and clicking the box lists
+  // THAT product's lots at the warehouse (orderLotsFor). It survives a
+  // Warehouse change; typing replaces it with a normal product search.
   productQuery: string | null;
   pickedProduct: string | null;
   productSeed: string | null;
@@ -503,12 +505,13 @@ const newLine = (p: Partial<Line> = {}): Line => ({
   productQuery: null, pickedProduct: null, productSeed: null, seed: null,
   ...p,
 });
-// A row prefilled with an order line's billing name (Board prefill / "+ Add
-// product"). 2026-11-19: the Product Name search box starts EMPTY (productQuery
-// / productSeed null) — only Billing Name, the order line and `seed` are set.
-const seededLine = (p: Partial<Line> & { billingName: string }): Line =>
+// A row prefilled from an order line (Board prefill / "+ Add product"):
+// Billing Name = the line's billing name, productSeed = the line's Product Name
+// exactly as saved (2026-11-19 — the Product Name box shows it), the order line
+// and `seed`. productQuery stays null (nothing typed).
+const seededLine = (p: Partial<Line> & { billingName: string; productSeed: string }): Line =>
   newLine({
-    ...p, productQuery: null, productSeed: null,
+    ...p, productQuery: null,
     seed: p.orderLineSeq != null ? { seq: p.orderLineSeq, billingName: p.billingName } : null,
   });
 
@@ -531,7 +534,12 @@ function useCellPopover() {
     if (!open) return;
     const inside = (t: EventTarget | null) => !!t && (anchorRef.current?.contains(t as Node) || popRef.current?.contains(t as Node));
     const outside = (e: MouseEvent) => { if (!inside(e.target)) setOpen(false); };
-    const scroll = (e: Event) => { if (!inside(e.target)) setOpen(false); };
+    // 2026-11-19: a text box scrolling its OWN text (a long product name
+    // scrolls back to its start when another box takes focus) never moves the
+    // anchor — ignore it, or clicking from one row's box into another's
+    // closes the popup it just opened.
+    const isTextField = (t: EventTarget | null) => t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement;
+    const scroll = (e: Event) => { if (!inside(e.target) && !isTextField(e.target)) setOpen(false); };
     const resize = () => setOpen(false);
     document.addEventListener('mousedown', outside);
     window.addEventListener('scroll', scroll, true);
@@ -546,9 +554,14 @@ function useCellPopover() {
 }
 
 type ProductOption = { name: string; code: string; barrels: number; lots: number };
-function ProductPickerCell({ value, options, warehouse, loading, className, title, onType, onPick, onLeave }: {
+// 2026-11-19: a Board row whose Product Name box still shows the ORDER LINE's
+// product name (not typed into, no lot picked): clicking the box lists THAT
+// product's lots at the warehouse (lotsForOrderProduct), and picking one sets
+// the Lot No exactly like the Lot No list. `emptyMsg` when there are none.
+type OrderLotMode = { lots: LotPickRow[]; lotValue: string; emptyMsg: string; onPickLot: (lotNo: string) => void };
+function ProductPickerCell({ value, options, warehouse, loading, className, title, onType, onPick, onLeave, orderLots }: {
   value: string; options: ProductOption[]; warehouse: string; loading: boolean; className: string; title?: string;
-  onType: (v: string) => void; onPick: (name: string) => void; onLeave: () => void;
+  onType: (v: string) => void; onPick: (name: string) => void; onLeave: () => void; orderLots?: OrderLotMode;
 }) {
   const p = useCellPopover();
   return (
@@ -557,7 +570,17 @@ function ProductPickerCell({ value, options, warehouse, loading, className, titl
         onFocus={p.show} onBlur={onLeave}
         onChange={e => { onType(e.target.value); if (!p.open) p.show(); }}
         onKeyDown={e => { if (e.key === 'Escape') p.setOpen(false); }} />
-      {p.open && p.pos && ReactDOM.createPortal(
+      {p.open && p.pos && orderLots && ReactDOM.createPortal(
+        orderLots.lots.length > 0
+          ? <LotListPanel popRef={p.popRef} pos={p.pos} lots={orderLots.lots} value={orderLots.lotValue} warehouse={warehouse}
+              onPick={lotNo => { orderLots.onPickLot(lotNo); p.setOpen(false); }} />
+          : <div ref={p.popRef} style={{ position: 'fixed', top: p.pos.top, left: p.pos.left, minWidth: Math.max(p.pos.width, 300), zIndex: 9999 }}
+              className="bg-white border border-g200 rounded-[3px] shadow-lg px-2.5 py-2 text-[12px] text-g500">
+              {orderLots.emptyMsg}
+            </div>,
+        document.body,
+      )}
+      {p.open && p.pos && !orderLots && ReactDOM.createPortal(
         <div ref={p.popRef} style={{ position: 'fixed', top: p.pos.top, left: p.pos.left, minWidth: Math.max(p.pos.width, 300), zIndex: 9999 }}
           className="bg-white border border-g200 rounded-[3px] shadow-lg max-h-[260px] overflow-y-auto">
           {options.length === 0
@@ -579,13 +602,52 @@ function ProductPickerCell({ value, options, warehouse, loading, className, titl
 }
 
 type LotPickRow = StockLotOption & { left: number; usedRows: number[]; usedBarrels: number };
+// The lot list (Lot No — grade line when the list has 2+ products — | Barrels,
+// lots on another row greyed, "Total in <warehouse>") — shared by the Lot No
+// box and (2026-11-19) the Product Name box of a Board row.
+function LotListPanel({ popRef, pos, lots, value, warehouse, onPick }: {
+  popRef: React.RefObject<HTMLDivElement | null>; pos: { top: number; left: number; width: number };
+  lots: LotPickRow[]; value: string; warehouse: string; onPick: (lotNo: string) => void;
+}) {
+  const manyProducts = new Set(lots.map(l => l.productName.trim().toLowerCase())).size > 1;
+  const total = lots.reduce((s, l) => s + l.left, 0);
+  return (
+    <div ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: manyProducts ? 300 : 220, zIndex: 9999 }}
+      className="bg-white border border-g200 rounded-[3px] shadow-lg">
+      <div className="grid grid-cols-[1fr_90px] gap-2 px-2.5 py-1 border-b border-g200 font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g500">
+        <span>Lot No</span><span className="text-right">Barrels</span>
+      </div>
+      <div className="max-h-[240px] overflow-y-auto">
+        {lots.map(o => {
+          const usedTip = o.usedRows.length ? `Row ${o.usedRows.join(' + ')} of this DO uses ${o.usedBarrels} — ${o.left} left` : undefined;
+          const blocked = o.usedRows.length > 0;
+          return (
+            <div key={o.lotNo} title={blocked ? `${usedTip}. A lot can be on one row only — change that row's barrels instead.` : undefined}
+              onMouseDown={e => { e.preventDefault(); if (blocked) return; onPick(o.lotNo); }}
+              className={`grid grid-cols-[1fr_90px] gap-2 px-2.5 py-1.5 text-[12px] ${blocked ? 'text-g400 cursor-not-allowed' : 'text-blk cursor-pointer hover:bg-g100'} ${sameLot(o.lotNo, value) ?'bg-red-lt/40' : ''}`}>
+              <span className="font-mono">
+                {o.lotNo}
+                {manyProducts && <span className="block font-sans text-[10.5px] text-g500">{o.productName}</span>}
+              </span>
+              <span className="text-right">
+                {blocked ? <><s className="text-g400">{o.barrels}</s> {o.left} left</> : o.left}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="px-2.5 py-1.5 border-t border-g200 text-[11.5px] text-g600">
+        Total in {warehouse}: <strong className="text-blk">{total} barrel{total === 1 ? '' : 's'}</strong>
+      </div>
+    </div>
+  );
+}
+
 function LotPickerCell({ id, value, lots, warehouse, className, title, onType, onPick }: {
   id: string; value: string; lots: LotPickRow[]; warehouse: string; className: string; title?: string;
   onType: (v: string) => void; onPick: (lotNo: string) => void;
 }) {
   const p = useCellPopover();
-  const manyProducts = new Set(lots.map(l => l.productName.trim().toLowerCase())).size > 1;
-  const total = lots.reduce((s, l) => s + l.left, 0);
   return (
     <div ref={p.anchorRef} className="relative">
       <input id={id} className={className} value={value} title={title} autoComplete="off"
@@ -594,34 +656,8 @@ function LotPickerCell({ id, value, lots, warehouse, className, title, onType, o
         onChange={e => { onType(e.target.value); }}
         onKeyDown={e => { if (e.key === 'Escape') p.setOpen(false); }} />
       {p.open && p.pos && lots.length > 0 && ReactDOM.createPortal(
-        <div ref={p.popRef} style={{ position: 'fixed', top: p.pos.top, left: p.pos.left, minWidth: manyProducts ? 300 : 220, zIndex: 9999 }}
-          className="bg-white border border-g200 rounded-[3px] shadow-lg">
-          <div className="grid grid-cols-[1fr_90px] gap-2 px-2.5 py-1 border-b border-g200 font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g500">
-            <span>Lot No</span><span className="text-right">Barrels</span>
-          </div>
-          <div className="max-h-[240px] overflow-y-auto">
-            {lots.map(o => {
-              const usedTip = o.usedRows.length ? `Row ${o.usedRows.join(' + ')} of this DO uses ${o.usedBarrels} — ${o.left} left` : undefined;
-              const blocked = o.usedRows.length > 0;
-              return (
-                <div key={o.lotNo} title={blocked ? `${usedTip}. A lot can be on one row only — change that row's barrels instead.` : undefined}
-                  onMouseDown={e => { e.preventDefault(); if (blocked) return; onPick(o.lotNo); p.setOpen(false); }}
-                  className={`grid grid-cols-[1fr_90px] gap-2 px-2.5 py-1.5 text-[12px] ${blocked ? 'text-g400 cursor-not-allowed' : 'text-blk cursor-pointer hover:bg-g100'} ${sameLot(o.lotNo, value) ?'bg-red-lt/40' : ''}`}>
-                  <span className="font-mono">
-                    {o.lotNo}
-                    {manyProducts && <span className="block font-sans text-[10.5px] text-g500">{o.productName}</span>}
-                  </span>
-                  <span className="text-right">
-                    {blocked ? <><s className="text-g400">{o.barrels}</s> {o.left} left</> : o.left}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="px-2.5 py-1.5 border-t border-g200 text-[11.5px] text-g600">
-            Total in {warehouse}: <strong className="text-blk">{total} barrel{total === 1 ? '' : 's'}</strong>
-          </div>
-        </div>,
+        <LotListPanel popRef={p.popRef} pos={p.pos} lots={lots} value={value} warehouse={warehouse}
+          onPick={lotNo => { onPick(lotNo); p.setOpen(false); }} />,
         document.body,
       )}
     </div>
@@ -673,11 +709,12 @@ type Lookup = { key: string; lot: LotDetails | null };
 
 // Board prefill: one row per order line (the given seqs, else every line
 // with barrels left), Billing Name = the line's billing name (2026-11-19:
-// orderLineBillingName — never the full product name), lot fields empty.
+// orderLineBillingName — never the full product name), Product Name box = the
+// line's Product Name exactly as saved (productSeed), lot fields empty.
 function dispatchRowsFor(o: Order, entries: DispatchEntry[], seqs: number[] | null): Line[] {
   const remaining = remainingByLine(o, entries);
   const items = seqs ? o.items.filter(i => seqs.includes(i.seq)) : o.items.filter(i => (remaining.get(i.seq) ?? 0) > 0);
-  const rows = items.map(i => seededLine({ billingName: orderLineBillingName(i), orderLineSeq: i.seq }));
+  const rows = items.map(i => seededLine({ billingName: orderLineBillingName(i), productSeed: i.desc ?? '', orderLineSeq: i.seq }));
   return rows.length ? rows : [newLine()];
 }
 
@@ -1099,12 +1136,18 @@ function OutwardForm() {
       return;
     }
     setHeader(h => ({ ...h, warehouse }));
-    // 2026-11-18: the product / lot pickers start again too (2026-11-19: the
-    // search box goes back to EMPTY — productSeed is always null).
-    const resetPickers = (l: Line): Line => ({ ...l, pickedProduct: null, productQuery: l.productSeed });
+    // 2026-11-18: the product / lot pickers start again too: nothing typed, no
+    // picked product — so a Board row's box shows the order's Product Name
+    // (productSeed) again and lists the NEW warehouse's lots.
+    // 2026-11-19 (user rule): a Board row (productSeed) between stock
+    // warehouses also drops its picked lot (Lot No + the fields it filled), so
+    // the same Lot No is not looked up again at the new warehouse.
+    const resetPickers = (l: Line): Line => ({ ...l, pickedProduct: null, productQuery: null });
     setLines(ls => ls.map(l => resetPickers(crossesWada
       ? { ...clearedLine(l), billingName: l.billingName, billingTyped: l.billingTyped, orderLineSeq: l.orderLineSeq, lotTouched: true }
-      : (l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true }))));
+      : l.productSeed
+        ? { ...(l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true }), lotNo: '', userBarrelsKey: null }
+        : (l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true }))));
     setLookups({});
   };
 
@@ -1238,19 +1281,26 @@ function OutwardForm() {
     }
     return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
   };
+  // 2026-11-19: is the row's Product Name box showing the ORDER's product name
+  // (a Board row, nothing typed, no product / lot picked yet)?
+  const inOrderProductMode = (l: Line) =>
+    !!l.productSeed && l.productQuery === null && !l.pickedProduct && !l.lotFilled;
   // The Lot No list for a row: the picked product's lots, else (text typed in
   // the search box, e.g. "Beta Pinene") the lots of every product that matches
-  // it; nothing while both are empty. Oldest first; barrels after other rows of this DO.
+  // it, else (2026-11-19, a Board row) the ORDER line's product's lots
+  // (lotsForOrderProduct); nothing otherwise. Oldest first; barrels after
+  // other rows of this DO. Also what the Board row's Product Name box lists.
   const lotOptionsFor = (l: Line): LotPickRow[] => {
     // Text being typed in the search box wins; else the picked product, else
     // (a saved row) the row's own product.
     const query = (l.productQuery || '').trim();
     const product = query ? '' : (l.pickedProduct || (l.lotFilled ? l.productName : '')).trim().toLowerCase();
-    if (!product && !query) return [];
-    return pickerLots
-      .filter(o => product
-        ? o.productName.trim().toLowerCase() === product
-        : productMatches(query, o.productName, o.productCode, billingNameForProductName(o.productName.trim())))
+    const base = query
+      ? pickerLots.filter(o => productMatches(query, o.productName, o.productCode, billingNameForProductName(o.productName.trim())))
+      : product
+        ? pickerLots.filter(o => o.productName.trim().toLowerCase() === product)
+        : inOrderProductMode(l) ? lotsForOrderProduct(pickerLots, l.productSeed || '') : [];
+    return base
       .map(o => {
         const usedRows: number[] = [];
         let usedBarrels = 0;
@@ -1351,7 +1401,7 @@ function OutwardForm() {
     const item = rowsOrder && addForSeq ? rowsOrder.items.find(i => String(i.seq) === addForSeq) : undefined;
     const billingName = item ? orderLineBillingName(item) : '';
     setLines(ls => [...ls, item
-      ? seededLine({ billingName, orderLineSeq: item.seq, pin: { seq: item.seq, billingName } })
+      ? seededLine({ billingName, productSeed: item.desc ?? '', orderLineSeq: item.seq, pin: { seq: item.seq, billingName } })
       : newLine()]);
   };
   const removeLine = (key: string) => setLines(ls => ls.length > 1 ? ls.filter(l => l.key !== key) : ls);
@@ -1870,10 +1920,20 @@ function OutwardForm() {
                           <td className="px-[5px] py-[5px] min-w-[190px]">
                             {/* 2026-11-18: search the products in stock at the
                                 warehouse. The row's Product Name still comes
-                                from the lot (save is unchanged). */}
+                                from the lot (save is unchanged).
+                                2026-11-19: a Board row shows the ORDER line's
+                                Product Name (productSeed) and lists its lots. */}
                             <ProductPickerCell
                               className={cellInput}
-                              value={l.productQuery ?? (l.productName || l.pickedProduct || '')}
+                              value={l.productQuery ?? (l.productName || l.pickedProduct || l.productSeed || '')}
+                              orderLots={inOrderProductMode(l) ? {
+                                lots: pickerReady ? lotOptionsFor(l) : [],
+                                lotValue: l.lotNo,
+                                emptyMsg: !header.warehouse ? 'Select a warehouse first'
+                                  : !pickerReady ? 'Loading stock…'
+                                  : `No stock of ${(l.productSeed || '').trim()} in ${header.warehouse}`,
+                                onPickLot: lotNo => onLotNoChange(l, lotNo),
+                              } : undefined}
                               options={pickerReady ? productOptions(l.productQuery ?? '') : []}
                               warehouse={header.warehouse}
                               loading={!pickerReady && !!header.warehouse}

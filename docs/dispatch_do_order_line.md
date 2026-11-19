@@ -91,9 +91,33 @@ Warehouse) is changed; only then are the order-line rules checked again.
 - New DO (`?fromDispatch=1&orderRef=…`): one row per order line that still
   has barrels left, Billing Name prefilled from the line, lot fields empty.
   The user fills the lots and removes rows for products not in this DO.
-  2026-11-19: the Product Name search box starts EMPTY (also for "+ Add
-  product" rows, and again after a Warehouse change) — the user searches and
-  picks the product; only Billing Name is prefilled.
+- **Product Name on a Board row (2026-11-19, replaces the "starts empty"
+  rule of the same day):** every row the board opens with (one per order
+  line), and a "+ Add product" row for a chosen order line, shows the order
+  line's Product Name EXACTLY as saved in Orders (e.g. "Beta Pinene 98%").
+  Billing Name stays the line's short billing name ("Beta Pinene").
+  - Clicking the Product Name box lists THAT product's lots at the selected
+    Warehouse — the same list as the Lot No box: Lot No (grade line under it
+    when the list has 2+ products) | Barrels, oldest first, 0-barrel lots
+    hidden, lots on another row greyed, "Total in <warehouse>: N barrels".
+    The Lot No box lists the same lots.
+  - Matching the order's name to Stock Summary products (`lotsForOrderProduct`
+    in `src/lib/doLotPicker.ts`): letters and digits only, lowercase; exact
+    matches first, else "one starts with the other" (an old order line
+    "Beta Pinene" → every Beta Pinene grade).
+  - No Warehouse yet → "Select a warehouse first". No stock of it there →
+    "No stock of <product name> in <warehouse>".
+  - Picking a lot = typing its Lot No: same lookup, fill (Lot No, Lot Date,
+    Product Code, Barrels, Packing, Total Qty, Packing Type, MOU) and checks.
+    The box then shows the lot's product, as before.
+  - Clearing the box and typing searches products as before; typing a Lot No
+    directly still works.
+  - Changing the Warehouse (between stock warehouses) keeps the order's
+    Product Name but clears the row's picked lot (Lot No + the fields it
+    filled), and the list shows the new warehouse's lots.
+  - Unchanged: plain New Outward starts with an empty Product Name; Wada rows
+    are typed by hand (no pickers, Product Name not prefilled); editing a saved
+    DO keeps its saved values; Save / Stock Book / PDF / JPEG / email / Step 6.
 - "+ New DO (another warehouse)" — shown on a saved DO opened from the board
   and on the drawer's Step 6 when the order still has lines with barrels left
   that are on no DO of this round. Opens a NEW DO for the same order + round
