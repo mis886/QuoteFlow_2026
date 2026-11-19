@@ -4,7 +4,8 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { customerOfDoc, dispatchOrderView, DispatchFormDetails, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
-import { ProductSelect, BillingNameInput, lineItemProblem } from '../components/ProductSelect';
+import { lineItemProblem } from '../components/ProductSelect';
+import { orderLineBillingName } from '../lib/lineItemProducts';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
 import { useLineItemProducts } from '../hooks/useLineItemProducts';
@@ -163,7 +164,9 @@ export function NewDispatchEntry() {
   // canEditLr below.
   const canEditLr = isReadOnlyUser || isAdmin || (user?.email ?? '').toLowerCase() === 'mum@himalayaterpene.com';
   const packingTypeOptions = usePackingTypes();
-  const { names: productNames, hintMap: productHintMap, withProduct, withBilling } = useLineItemProducts();
+  // 2026-11-19: Product Name / Billing Name are read-only here (order line's);
+  // `names` only feeds the Save check (lineItemProblem).
+  const { names: productNames } = useLineItemProducts();
 
   const [type, setType] = useState<'' | DispatchFulfillmentType>('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -426,7 +429,9 @@ export function NewDispatchEntry() {
     // Order's own ship-to first; else the customer's Main Office dispatch address.
     setShipAddr(order.shipToAddress || mainOffice(customerOfDoc(order, data.customers))?.dispatchAddress || '');
     setCustEnquiryDocNo(order.custEnquiryDocNo || '');
-    setItems(order.items.map(i => ({ ...i })));
+    // 2026-11-19: Billing Name = the order line's (saved, else from the product
+    // list by product name, else the product name — orderLineBillingName).
+    setItems(order.items.map(i => ({ ...i, billingName: orderLineBillingName(i) })));
     setInsurance(order.insurance ?? 0);
     // Carried forward from the order (now fillable there at creation time) —
     // overridden below by the dispatch entry's own saved values, if one exists.
@@ -512,7 +517,7 @@ export function NewDispatchEntry() {
       const remaining = remainingByLine(order, data.dispatchEntries);
       setItems(order.items
         .filter(i => (remaining.get(i.seq) || 0) > 0)
-        .map(i => withQty({ ...i }, remaining.get(i.seq) || 0)));
+        .map(i => withQty({ ...i, billingName: orderLineBillingName(i) }, remaining.get(i.seq) || 0)));
       // Insurance is charged once, on the order's first dispatch — same as
       // the old leftover orders, which always carried insurance 0.
       if (data.dispatchEntries.some(e => e.orderId === order.id)) setInsurance(0);
@@ -1542,24 +1547,19 @@ export function NewDispatchEntry() {
                       return (
                         <tr key={i.seq} className="hover:bg-g50/50">
                           <td className="px-3 py-[5px] border border-g400 align-middle font-mono font-bold text-g400 text-[11px]">{i.seq}</td>
-                          <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <ProductSelect
-                              value={i.desc}
-                              names={productNames}
-                              hsnMap={productHintMap}
-                              onChange={desc => {
-                                const ni = [...items];
-                                ni[idx] = withProduct(ni[idx], desc);
-                                setItems(ni);
-                                if (productErrorRow === idx) { setProductErrorRow(null); setError(''); }
-                              }}
-                              error={productErrorRow === idx}
-                            />
+                          {/* 2026-11-19 (user rule): every line here comes from the order
+                              (this form never adds lines). Product Name and Billing Name are
+                              READ-ONLY — the order line's names exactly as saved (a saved
+                              entry: its own saved names, unchanged). */}
+                          <td className={`px-3 py-[5px] border border-g400 align-middle ${productErrorRow === idx ? 'ring-1 ring-red-mrt bg-red-lt/40' : ''}`}>
+                            <input type="text" value={i.desc || ''} readOnly tabIndex={-1} title="Product Name from the order line — can't be changed here"
+                              className="w-full bg-transparent outline-none text-[12px] font-sans text-blk cursor-default" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
-                            <BillingNameInput value={i.billingName} onChange={v => setItems(prev => prev.map((it, k) => k === idx ? withBilling(it, v) : it))} />
+                            <input type="text" value={i.billingName || ''} readOnly tabIndex={-1} placeholder="—" title="Billing Name from the order line — can't be changed here"
+                              className="w-full bg-transparent outline-none text-[12px] font-sans text-blk cursor-default placeholder:text-g300" />
                           </td>
-                          {/* HSN comes from the Billing Name (product_catalog) — read-only, blank when none. */}
+                          {/* HSN — from the order line (read-only), blank when none. */}
                           <td className="px-3 py-[5px] border border-g400 align-middle bg-g100">
                             <input type="text" title="HSN Code (from the Billing Name)" value={i.hsn || ''} readOnly tabIndex={-1}
                               className="w-full bg-transparent outline-none font-mono text-[11px] text-g500 cursor-default" />

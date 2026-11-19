@@ -235,6 +235,7 @@ Each enquiry must have at least one line item.
 - If you type something and leave the box without picking, the box is **cleared**. Save is then blocked with a red border on that box and the message **"Row N: pick a product from the list"**.
 - Old records whose name is not on the list are **not renamed**: an old line keeps its name as long as you don't change it. If you change it, you must pick from the list.
 - The same name is carried to the DO: a DO made from the Dispatch board shows the order line's Product Name exactly (read-only) and its Billing Name.
+- The **Dispatch entry** form shows each line's Product Name and Billing Name from the order line, **read-only** (every line there comes from the order; the form can't add lines). A saved dispatch entry shows and keeps its own saved names.
 
 - Click **Add Another Line Item** (dashed button) to add more rows.
 - Click the **red trash icon** on a row to remove it. The last row cannot be removed.

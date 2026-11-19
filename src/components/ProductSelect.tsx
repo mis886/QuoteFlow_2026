@@ -27,8 +27,10 @@
 // row, Enter picks the highlighted list name, and leaving the box with typed
 // text that isn't a list name CLEARS the box (an untouched old name stays —
 // focus alone changes nothing). Save then blocks with "Row N: pick a product
-// from the list" (lineItemProblem with `allowedName`). Dispatch entry and
-// Sampling don't pass `strict` and keep the typeable box.
+// from the list" (lineItemProblem with `allowedName`). Sampling doesn't pass
+// `strict` and keeps the typeable box. The Dispatch entry form no longer uses
+// this box at all (2026-11-19): its lines all come from the order, so Product
+// Name / Billing Name are read-only there.
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';

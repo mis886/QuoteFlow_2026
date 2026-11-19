@@ -99,7 +99,9 @@ Warehouse) is changed; only then are the order-line rules checked again.
     saved in Enquiry / Quotation / Order (e.g. "Pine Oil 211 (DD)") — since
     2026-11-19 always a product-list name there (old orders may still carry an
     old free-text name, shown as saved). The box is READ-ONLY on these rows (no
-    typing over it); clicking it opens the lot list below.
+    typing over it); clicking it opens the lot list below. (The Dispatch
+    entry form, NewDispatchEntry, shows the same order-line Product Name and
+    Billing Name read-only too.)
   - **Billing Name** = the billing name the product list gave it in the order
     (the line's saved `billingName`); an old line without one → looked up by
     product name in the same product list the Enquiry form uses (PRODUCTS);
