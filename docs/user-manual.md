@@ -427,7 +427,7 @@ After conversion, the **Order** button on the quote row is replaced with a disab
 
 **Create manually:** Click the green **→ ORDER** button in the Order Register.
 
-**Who can edit (2026-11-19):** the **EDIT** button (Orders list and the order's detail panel) is always clickable and **Save** always works for every login except **mum@** and **accounts@** — whatever the order's status (Delivered, Won, Lost, …) and even when the order is in Dispatch. Editing an order in Dispatch never changes Dispatch's own copy (the board and the DO keep using it). The status dropdown on the form stays locked for an order in Dispatch; change its status from the Orders list or the detail panel. mum@ and accounts@ get a **VIEW** button instead: the same form, read-only (no Save, no Email to Client; PI PDF / DOCX still download).
+**Who can edit (2026-11-19):** the **EDIT** button (Orders list and the order's detail panel) is always clickable and **Save** always works for every login except **mum@** and **accounts@** — whatever the order's status (Delivered, Won, Lost, …) and even when the order is in Dispatch. The same goes for **uploading files** in the order's **DOCS** window (Document Type + Choose File + Upload). Editing an order in Dispatch, or uploading a file to it, never changes Dispatch's own copy (the board and the DO keep using it). The status dropdown on the form stays locked for an order in Dispatch; change its status from the Orders list or the detail panel. mum@ and accounts@ get a **VIEW** button instead: the same form, read-only (no Save, no Email to Client; PI PDF / DOCX still download). In DOCS they can view and download files but get no upload box.
 
 **Key fields:**
 

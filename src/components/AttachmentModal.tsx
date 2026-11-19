@@ -134,13 +134,13 @@ export function AttachmentModal({ entityType, entityId, isOpen, onClose }: Attac
   const relatedEnq = entityType === 'enquiry' ? rootEnq : null;
   const relatedQuote = entityType === 'quote' ? data.quotes.find(q => q.id === entityId) as any : null;
   const relatedOrder = entityType === 'order' ? data.orders.find(o => o.id === entityId) as any : null;
-  // An order in Dispatch is locked: its files can be viewed, not added.
-  // 2026-11-18: except ORDER_EDIT_IN_DISPATCH_EMAILS (mis@).
-  // An upload writes only orders.attachments (updateOrder → mapOrderToDB);
-  // Dispatch reads its own frozen copy (dispatchOrderView), so it can't change.
-  // 2026-11-18: and never for the view-only logins (mum@ / accounts@).
-  // 2026-11-19: Edit is open to everyone else now, but this Docs rule is kept
-  // as it was (orderDocsUploadBlockedMsg).
+  // 2026-11-19 (user rule, same as Edit): every login except the view-only
+  // ones (mum@ / accounts@) gets the upload box on any order — any status, in
+  // Dispatch or not (orderDocsUploadBlockedMsg). The view-only logins can view
+  // and download files, not add them (the store refuses their write too).
+  // An upload writes only orders.attachments (updateOrder → mapOrderToDB),
+  // never dispatch_snapshot / sent_to_dispatch_at; Dispatch reads its own
+  // frozen copy (dispatchOrderView), so it can't change.
   const orderLockedMsg = relatedOrder ? orderDocsUploadBlockedMsg(relatedOrder, data.dispatchEntries, user?.email) : null;
   const orderLocked = !!orderLockedMsg;
 
