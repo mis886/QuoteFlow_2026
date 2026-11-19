@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useAppStore, manualDeliveredLogNote } from '../store';
 import { showDeliveredOption, canPickDelivered, confirmManualDelivered, canMarkDeliveredManually } from '../lib/manualDelivered';
-import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, orderEditBlockedMsg } from '../lib/utils';
+import { dispatchOrderView, customerOfDoc, mainOffice, fmtIST, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, orderEditBlockedMsg, isOrderViewOnly } from '../lib/utils';
 import { Button, Badge } from './ui';
 import { X, ArrowRight, Paperclip, Download, Loader2, Phone, MessageCircle, Mail, ChevronDown, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -723,6 +723,16 @@ export function DetailPanel() {
               // Detail lock: an order in Dispatch can't be edited — except by
               // ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), 2026-11-18. Never for the
               // view-only logins (mum@ / accounts@, ORDER_VIEW_ONLY_EMAILS).
+              // 2026-11-19: the view-only logins get VIEW instead — the same
+              // form, read-only (NewOrder's viewOnly mode; the store guards refuse writes).
+              if (isOrderViewOnly(user?.email)) {
+                return (
+                  <Button variant="primary" title="Open this order read-only" onClick={() => {
+                    closeDetailPanel();
+                    navigate(`/orders/new?orderId=${o.id}`);
+                  }}>View</Button>
+                );
+              }
               const editBlockedMsg = orderEditBlockedMsg(o, data.dispatchEntries, user?.email);
               const detailLocked = !!editBlockedMsg;
               return (

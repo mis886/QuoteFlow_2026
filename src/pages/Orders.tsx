@@ -401,7 +401,18 @@ export function Orders() {
                                 by itself once its whole dispatch is finished
                                 (store's autoMarkOrderDeliveredFromDispatch). */}
                             {/* Detail lock: an order in Dispatch can't be edited — except by
-                                ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), 2026-11-18. */}
+                                ORDER_EDIT_IN_DISPATCH_EMAILS (mis@), 2026-11-18.
+                                2026-11-19: the view-only logins (mum@ / accounts@) get a
+                                VIEW button instead — the same form, read-only (NewOrder's
+                                viewOnly mode: no Save, no Email; the store guards refuse writes). */}
+                            {viewOnly ? (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                title="Open this order read-only"
+                                onClick={(e) => { e.stopPropagation(); navigate(`/orders/new?orderId=${o.id}`); }}
+                              >View</Button>
+                            ) : (
                             <Button
                               size="sm"
                               variant="secondary"
@@ -410,6 +421,7 @@ export function Orders() {
                               className={editLocked ? 'bg-g100 text-g400 cursor-not-allowed disabled:pointer-events-auto disabled:opacity-100' : ''}
                               onClick={(e) => { e.stopPropagation(); if (editLocked) return; navigate(`/orders/new?orderId=${o.id}`); }}
                             >Edit</Button>
+                            )}
                             {(() => {
                               // Orders only reach Dispatch → Order Pending for Dispatch
                               // once sent from here (sentToDispatchAt). From there on,
