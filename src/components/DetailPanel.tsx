@@ -44,6 +44,7 @@ export function DetailPanel() {
   const [showLineItems, setShowLineItems] = React.useState(false);
   const [ticketNoteDraft, setTicketNoteDraft] = React.useState<string | null>(null);
   const [ticketSaving, setTicketSaving] = React.useState<string | null>(null);
+  const ticketNoteRef = React.useRef<HTMLTextAreaElement>(null);
   const [ticketImagePreviewUrl, setTicketImagePreviewUrl] = React.useState<string | null>(null);
 
   const handleDownload = async (path: string, id: string, name?: string) => {
@@ -771,7 +772,24 @@ export function DetailPanel() {
   // Closed also stamp who did it; Open / In Progress leave resolvedBy alone.
   // updated_at is set by the store's mapTicketToDB (the table has no
   // resolved_at / closed_at columns).
-  const setTicketStatus = async (t: { id: string }, to: 'Open' | 'In Progress' | 'Resolved' | 'Closed', note: string) => {
+  // Strict workflow Open → In Progress → Resolved → Closed; enforced here as
+  // well as in the UI. Reopen (Resolved / Closed) goes back to In Progress.
+  const TICKET_TRANSITIONS: Record<string, string[]> = {
+    'Open': ['In Progress'],
+    'In Progress': ['Resolved'],
+    'Resolved': ['Closed', 'In Progress'],
+    'Closed': ['In Progress'],
+  };
+  const setTicketStatus = async (t: { id: string; status: string }, to: 'In Progress' | 'Resolved' | 'Closed', note: string) => {
+    if (!(TICKET_TRANSITIONS[t.status] || []).includes(to)) {
+      flashErrorToast('Invalid status change');
+      return;
+    }
+    if (to === 'Resolved' && !note.trim()) {
+      flashErrorToast('Please add a resolution note before resolving');
+      ticketNoteRef.current?.focus();
+      return;
+    }
     setTicketSaving(to);
     try {
       await updateTicket(t.id, {
@@ -863,26 +881,58 @@ export function DetailPanel() {
 
           <Section title="Resolution">
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                {([
-                  { to: 'In Progress', label: 'In Progress', cls: 'border-amber-500 text-amber-700 bg-amber-50 hover:bg-amber-100', show: t.status !== 'In Progress' },
-                  { to: 'Resolved', label: 'Resolved', cls: 'border-green-600 text-green-700 bg-green-50 hover:bg-green-100', show: t.status !== 'Resolved' },
-                  { to: 'Closed', label: 'Closed', cls: 'border-g400 text-g600 bg-g100 hover:bg-g200', show: t.status !== 'Closed' },
-                  { to: 'Open', label: 'Reopen', cls: 'border-red-mrt text-red-mrt bg-red-lt hover:bg-red-lt/70', show: t.status === 'Resolved' || t.status === 'Closed' },
-                ] as const).filter(b => b.show).map(b => (
-                  <button
-                    key={b.to}
-                    type="button"
-                    disabled={ticketSaving !== null}
-                    onClick={() => setTicketStatus(t, b.to, noteValue)}
-                    className={`font-mono text-[10.5px] font-bold uppercase tracking-wide border rounded-[3px] px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5 ${b.cls}`}
-                  >
-                    {ticketSaving === b.to && <Loader2 size={12} className="animate-spin" />}
-                    {b.label}
-                  </button>
-                ))}
-              </div>
+              {(() => {
+                const steps = ['Open', 'In Progress', 'Resolved', 'Closed'];
+                const cur = Math.max(0, steps.indexOf(t.status));
+                const next = ({
+                  'Open': { to: 'In Progress', label: 'Start / In Progress', cls: 'border-amber-500 text-amber-700 bg-amber-50 hover:bg-amber-100' },
+                  'In Progress': { to: 'Resolved', label: 'Mark Resolved', cls: 'border-green-600 text-green-700 bg-green-50 hover:bg-green-100' },
+                  'Resolved': { to: 'Closed', label: 'Close Ticket', cls: 'border-g400 text-g600 bg-g100 hover:bg-g200' },
+                } as Record<string, { to: 'In Progress' | 'Resolved' | 'Closed'; label: string; cls: string }>)[t.status];
+                const canReopen = t.status === 'Resolved' || t.status === 'Closed';
+                return (
+                  <>
+                    <div className="flex items-center" aria-label={`Ticket progress: ${t.status}`}>
+                      {steps.map((s, i) => (
+                        <React.Fragment key={s}>
+                          {i > 0 && <div className={`h-px flex-1 ${i <= cur ? 'bg-red-mrt' : 'bg-g300'}`} />}
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-2.5 h-2.5 rounded-full border ${i < cur ? 'bg-red-mrt border-red-mrt' : i === cur ? 'bg-red-mrt border-red-mrt ring-[3px] ring-red-lt' : 'bg-white border-g300'}`} />
+                            <span className={`font-mono text-[9.5px] uppercase tracking-wide ${i === cur ? 'text-red-mrt font-bold' : i < cur ? 'text-g600' : 'text-g400'}`}>{s}</span>
+                          </div>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {next ? (
+                        <button
+                          type="button"
+                          disabled={ticketSaving !== null}
+                          onClick={() => setTicketStatus(t, next.to, noteValue)}
+                          className={`font-mono text-[10.5px] font-bold uppercase tracking-wide border rounded-[3px] px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5 ${next.cls}`}
+                        >
+                          {ticketSaving === next.to && <Loader2 size={12} className="animate-spin" />}
+                          {next.label}
+                        </button>
+                      ) : (
+                        <span className="font-mono text-[10.5px] uppercase tracking-wide text-g500">Ticket closed</span>
+                      )}
+                      {canReopen && (
+                        <button
+                          type="button"
+                          disabled={ticketSaving !== null}
+                          onClick={() => setTicketStatus(t, 'In Progress', noteValue)}
+                          className="font-mono text-[10px] uppercase tracking-wide text-g500 hover:text-red-mrt underline disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Reopen
+                        </button>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
               <textarea
+                ref={ticketNoteRef}
                 value={noteValue}
                 onChange={(e) => setTicketNoteDraft(e.target.value)}
                 rows={4}
