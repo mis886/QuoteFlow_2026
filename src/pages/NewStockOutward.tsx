@@ -222,6 +222,7 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 // Code was added.
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
+import { billingNameFor, orderLineBillingName } from '../lib/lineItemProducts';
 import { StockLotOption, productMatches, dedupeLots, byLotAge } from '../lib/doLotPicker';
 import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
 import { Loader2, Plus, X, ImageIcon } from 'lucide-react';
@@ -243,7 +244,8 @@ const PRODUCT_NAME_OPTIONS = PRODUCTS.map(p => p.name);
 // (2026-09-08: the Lot No auto-fill feature reuses this instead of matching
 // against PRODUCTS a second time).
 const codeForProductName = (name: string): string => PRODUCTS.find(p => p.name === name)?.code ?? '';
-const billingNameForProductName = (name: string): string => PRODUCTS.find(p => p.name === name)?.billingName ?? '';
+// 2026-11-19: ignores capitals / extra spaces and trims (lineItemProducts.ts).
+const billingNameForProductName = (name: string): string => billingNameFor(name);
 
 // MOU's own fixed option pair — pulled out to a const (was inline <option>s)
 // so the component below can widen it with an out-of-list auto-filled value
@@ -474,7 +476,8 @@ type Line = {
   // 2026-11-03: the order line the user picked for this row with "+ Add
   // product" (Board / linked DO). Wins over the matcher whenever the row's lot
   // (or, for Wada, its Billing Name) matches it, and survives a lot clear.
-  pin: { seq: number; desc: string } | null;
+  // billingName = the line's billing name (orderLineBillingName, 2026-11-19).
+  pin: { seq: number; billingName: string } | null;
   // 2026-11-18: pick a lot by PRODUCT NAME (stock warehouses only).
   // productQuery = the text in the Product Name search box (null = show the
   // row's productName); pickedProduct = the product whose lots the Lot No
@@ -484,6 +487,10 @@ type Line = {
   productQuery: string | null;
   pickedProduct: string | null;
   productSeed: string | null;
+  // 2026-11-19: the order line a Board-prefilled / "+ Add product" row started
+  // with (seededLine). Emptying the Lot No puts the row back to it (clearedLine)
+  // — its billing name, not blank. Unlike `pin` it never wins a match.
+  seed: { seq: number; billingName: string } | null;
 };
 let lineCounter = 0;
 const newLine = (p: Partial<Line> = {}): Line => ({
@@ -492,12 +499,15 @@ const newLine = (p: Partial<Line> = {}): Line => ({
   numArticles: '', packing: '', packagingType: '', weightType: '',
   orderLineSeq: null, billingTyped: false, userBarrelsKey: null, autoBarrels: null,
   lotTouched: true, lotFilled: false, pin: null,
-  productQuery: null, pickedProduct: null, productSeed: null,
+  productQuery: null, pickedProduct: null, productSeed: null, seed: null,
   ...p,
 });
-// A row prefilled with an order line's product name: the search box starts with it.
+// A row prefilled with an order line's billing name: the search box starts with it.
 const seededLine = (p: Partial<Line> & { billingName: string }): Line =>
-  newLine({ ...p, productQuery: p.billingName || null, productSeed: p.billingName || null });
+  newLine({
+    ...p, productQuery: p.billingName || null, productSeed: p.billingName || null,
+    seed: p.orderLineSeq != null ? { seq: p.orderLineSeq, billingName: p.billingName } : null,
+  });
 
 // ── Product / lot pickers (2026-11-18) ───────────────────────────────────────
 
@@ -615,12 +625,16 @@ function LotPickerCell({ id, value, lots, warehouse, className, title, onType, o
   );
 }
 // b14a218 for one row: every lot field emptied (Lot No itself stays). A row
-// pinned to an order line goes back to that line.
-const clearedLine = (l: Line): Line => ({
-  ...l, lotDate: '', productName: '', productCode: '', billingName: l.pin?.desc ?? '',
-  numArticles: '', packing: '', packagingType: '', weightType: '',
-  orderLineSeq: l.pin?.seq ?? null, billingTyped: false, userBarrelsKey: null, autoBarrels: null, lotFilled: false,
-});
+// pinned to an order line goes back to that line; 2026-11-19: so does a Board-
+// prefilled row (its seed) — with the line's BILLING name.
+const clearedLine = (l: Line): Line => {
+  const back = l.pin ?? l.seed;
+  return {
+    ...l, lotDate: '', productName: '', productCode: '', billingName: back?.billingName ?? '',
+    numArticles: '', packing: '', packagingType: '', weightType: '',
+    orderLineSeq: back?.seq ?? null, billingTyped: false, userBarrelsKey: null, autoBarrels: null, lotFilled: false,
+  };
+};
 
 // Returns a finite number, or null if v is empty/not a valid number (never NaN, never "" as 0).
 const parseNum = (v: string): number | null => {
@@ -655,11 +669,12 @@ type LotDetails = {
 type Lookup = { key: string; lot: LotDetails | null };
 
 // Board prefill: one row per order line (the given seqs, else every line
-// with barrels left), Billing Name = the line's product name, lot fields empty.
+// with barrels left), Billing Name = the line's billing name (2026-11-19:
+// orderLineBillingName — never the full product name), lot fields empty.
 function dispatchRowsFor(o: Order, entries: DispatchEntry[], seqs: number[] | null): Line[] {
   const remaining = remainingByLine(o, entries);
   const items = seqs ? o.items.filter(i => seqs.includes(i.seq)) : o.items.filter(i => (remaining.get(i.seq) ?? 0) > 0);
-  const rows = items.map(i => seededLine({ billingName: (i.desc || '').trim(), orderLineSeq: i.seq }));
+  const rows = items.map(i => seededLine({ billingName: orderLineBillingName(i), orderLineSeq: i.seq }));
   return rows.length ? rows : [newLine()];
 }
 
@@ -1331,9 +1346,9 @@ function OutwardForm() {
   const [addForSeq, setAddForSeq] = useState('');
   const addLine = () => {
     const item = rowsOrder && addForSeq ? rowsOrder.items.find(i => String(i.seq) === addForSeq) : undefined;
-    const desc = (item?.desc || '').trim();
+    const billingName = item ? orderLineBillingName(item) : '';
     setLines(ls => [...ls, item
-      ? seededLine({ billingName: desc, orderLineSeq: item.seq, pin: { seq: item.seq, desc } })
+      ? seededLine({ billingName, orderLineSeq: item.seq, pin: { seq: item.seq, billingName } })
       : newLine()]);
   };
   const removeLine = (key: string) => setLines(ls => ls.length > 1 ? ls.filter(l => l.key !== key) : ls);

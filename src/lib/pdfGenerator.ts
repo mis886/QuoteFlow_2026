@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Customer, Quote, Order, AppSettings, CompanyUnit, BankAccount, OutwardDO } from './types';
 import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate, getNegotiationExportTables, outwardDoLines, type ResolvedAdjustment } from './utils';
-import { lineItemPrintName } from './lineItemProducts';
+import { lineItemPrintName, doLinePrintName } from './lineItemProducts';
 import { supabase } from './supabase';
 
 export function getQuoteTotals(q: Quote) {
@@ -1077,7 +1077,7 @@ export async function generateOutwardPDF(
       : [['Product Name', 'Product Code', 'No of Barrels', 'Packing', 'Total Qty', 'Packing Type', 'MOU']];
     const tableBody = multi
       ? doLines.map(l => [
-        l.billingName || l.productName || '—',
+        doLinePrintName(l) || '—',  // 2026-11-19: Billing Name → PRODUCTS billing name → product name
         l.productCode || '—',
         l.whLotNo || '—',
         lotDateOf(l.inwardDate),
@@ -1088,7 +1088,7 @@ export async function generateOutwardPDF(
         l.weightType || '—',
       ])
       : [[
-        one.billingName || one.productName || '—',
+        doLinePrintName(one) || '—',
         productCode,
         one.numArticles || '—',
         one.packing != null ? String(one.packing) : '—',

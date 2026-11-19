@@ -35,6 +35,23 @@ export function billingNameFor(productName: string | null | undefined): string {
   return billingByName.get(normName(productName)) ?? '';
 }
 
+/** 2026-11-19: an ORDER LINE's billing name, for the DO / Outward form:
+ *  its saved billingName → else the PRODUCTS billing name of its Product Name
+ *  → else its Product Name (old orders, whose desc already was the billing name). */
+export function orderLineBillingName(item: { billingName?: string | null; desc?: string | null }): string {
+  return (typeof item.billingName === 'string' ? item.billingName.trim() : '')
+    || billingNameFor(item.desc)
+    || (typeof item.desc === 'string' ? item.desc.trim() : '');
+}
+
+/** 2026-11-19: the name printed in a DO line's product column: its Billing
+ *  Name → else the PRODUCTS billing name of its product → else the product name. */
+export function doLinePrintName(line: { billingName?: string | null; productName?: string | null }): string {
+  return (typeof line.billingName === 'string' ? line.billingName.trim() : '')
+    || billingNameFor(line.productName)
+    || (typeof line.productName === 'string' ? line.productName.trim() : '');
+}
+
 /** billing name (normalised) → HSN, from product_catalog rows. */
 export function buildBillingHsnMap(rows: { product_name: string; hsn_code: string | null }[]): Map<string, string> {
   const m = new Map<string, string>();

@@ -4,8 +4,12 @@
 // Pinene") and compared with each order line's product name.
 // 2026-11-04 (user decision): a product NOT in the order is allowed — the row
 // then keeps its picked / own line (orderLineForRow); nothing is blocked.
+// 2026-11-19: order lines now carry billingName (desc = the full product name,
+// e.g. "Beta Pinene 98%"), so a line matches on its desc OR its billing name
+// (orderLineBillingName), and a DO row falls back to the line's BILLING name.
 import type { DispatchEntry, Order } from './types';
 import { remainingByLine } from './utils';
+import { orderLineBillingName } from './lineItemProducts';
 
 const norm = (s: string | undefined | null) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -19,10 +23,12 @@ const prefixMatch = (desc: string | undefined, lotBilling: string) => {
   return !!a && !!b && (a.startsWith(b) || b.startsWith(a));
 };
 
-/** Order lines for the lot's product: exact name matches, else "one starts with the other" ones. */
+/** Order lines for the lot's product: exact name matches (the line's product
+ *  name or its billing name), else "one starts with the other" ones. */
 export function orderLinesForLot(o: Order, lotBilling: string) {
-  const exact = o.items.filter(i => exactMatch(i.desc, lotBilling));
-  return exact.length ? exact : o.items.filter(i => prefixMatch(i.desc, lotBilling));
+  const names = (i: Order['items'][number]) => [i.desc, orderLineBillingName(i)];
+  const exact = o.items.filter(i => names(i).some(n => exactMatch(n, lotBilling)));
+  return exact.length ? exact : o.items.filter(i => names(i).some(n => prefixMatch(n, lotBilling)));
 }
 
 /**
@@ -127,10 +133,12 @@ export function orderLineForRow(
 /**
  * 2026-11-04: a lot row's Billing Name on a DO linked to an order — the lot's
  * billing name (catalogue, else the lot's own product name) when its product
- * matched the row's line, else the ORDER LINE's product name. Never left empty
+ * matched the row's line, else the ORDER LINE's billing name (2026-11-19:
+ * orderLineBillingName, never its full product name). Never left empty
  * while one of them has a value (`current` is the last resort).
  */
 export function billingNameForRow(o: Order, pick: { seq: number | null; matched: boolean }, lotBilling: string, current: string): string {
-  const lineDesc = pick.seq !== null ? (o.items.find(i => i.seq === pick.seq)?.desc || '').trim() : '';
+  const item = pick.seq !== null ? o.items.find(i => i.seq === pick.seq) : undefined;
+  const lineDesc = item ? orderLineBillingName(item) : '';
   return (pick.matched ? lotBilling.trim() : lineDesc) || lineDesc || lotBilling.trim() || current;
 }
