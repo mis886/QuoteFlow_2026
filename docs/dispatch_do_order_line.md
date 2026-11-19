@@ -91,33 +91,42 @@ Warehouse) is changed; only then are the order-line rules checked again.
 - New DO (`?fromDispatch=1&orderRef=…`): one row per order line that still
   has barrels left, Billing Name prefilled from the line, lot fields empty.
   The user fills the lots and removes rows for products not in this DO.
-- **Product Name on a Board row (2026-11-19, replaces the "starts empty"
-  rule of the same day):** every row the board opens with (one per order
-  line), and a "+ Add product" row for a chosen order line, shows the order
-  line's Product Name EXACTLY as saved in Orders (e.g. "Beta Pinene 98%").
-  Billing Name stays the line's short billing name ("Beta Pinene").
-  - Clicking the Product Name box lists THAT product's lots at the selected
-    Warehouse — the same list as the Lot No box: Lot No (grade line under it
-    when the list has 2+ products) | Barrels, oldest first, 0-barrel lots
-    hidden, lots on another row greyed, "Total in <warehouse>: N barrels".
-    The Lot No box lists the same lots.
-  - Matching the order's name to Stock Summary products (`lotsForOrderProduct`
-    in `src/lib/doLotPicker.ts`): letters and digits only, lowercase; exact
-    matches first, else "one starts with the other" (an old order line
-    "Beta Pinene" → every Beta Pinene grade).
-  - No Warehouse yet → "Select a warehouse first". No stock of it there →
+- **Product Name / Billing Name on a Board row (user rules 2026-11-19 —
+  replace the "starts empty" rule and 12d44db's starts-with / lot-fills-names
+  rules):** every row the board opens with (one per order line), and a
+  "+ Add product" row for a chosen order line:
+  - **Product Name** = the order line's Product Name EXACTLY as picked and
+    saved in Enquiry / Quotation / Order (e.g. "Pine Oil 211 (DD)").
+  - **Billing Name** = the billing name the product list gave it in the order
+    (the line's saved `billingName`); an old line without one → looked up by
+    product name in the same product list the Enquiry form uses (PRODUCTS);
+    not found → the line's Product Name (`orderLineBillingName`).
+  - **A lot NEVER changes them.** Picking a lot, or typing a Lot No, fills only
+    Lot No, Lot Date, Product Code, No of Barrels, Packing, Total Qty, Packing
+    Type and MOU (same lookup and checks as before). The row keeps its order
+    line. E.g. ORD-2026-825 line "Pine Oil" + lot 24003 (stock name "Pine Oil
+    40 (ROB)") → Product Name "Pine Oil", Billing Name "Pine Oil". These order
+    names are what is saved, printed on the DO PDF / JPEG / email and shown in
+    the Stock Book; stock still moves by Lot No.
+  - Clicking the Product Name box lists the lots at the selected Warehouse
+    whose stock product is the SAME product (`lotsForOrderProduct` in
+    `src/lib/doLotPicker.ts`: names compared ignoring capitals and extra
+    spaces — no "starts with": "Pine Oil 211 (DD)" never lists "Pine Oil 211
+    (Limo)" or "Pine Oil 40 (ROB)" lots). Same list as the Lot No box: Lot No
+    | Barrels, oldest first, 0-barrel lots hidden, lots on another row greyed,
+    "Total in <warehouse>: N barrels", no date column. Also after a lot is
+    picked (to switch lots).
+  - No Warehouse yet → "Select a warehouse first". No matching lots →
     "No stock of <product name> in <warehouse>".
-  - Picking a lot = typing its Lot No: same lookup, fill (Lot No, Lot Date,
-    Product Code, Barrels, Packing, Total Qty, Packing Type, MOU) and checks.
-    The box then shows the lot's product, as before.
-  - Clearing the box and typing searches products as before; typing a Lot No
-    directly still works.
-  - Changing the Warehouse (between stock warehouses) keeps the order's
-    Product Name but clears the row's picked lot (Lot No + the fields it
-    filled), and the list shows the new warehouse's lots.
-  - Unchanged: plain New Outward starts with an empty Product Name; Wada rows
-    are typed by hand (no pickers, Product Name not prefilled); editing a saved
-    DO keeps its saved values; Save / Stock Book / PDF / JPEG / email / Step 6.
+  - Typing a Lot No by hand still works (for stock kept under another name),
+    and still doesn't change Product Name / Billing Name. Typing in the
+    Product Name box searches products as before (to find such lots); the
+    row's Product Name stays the order's.
+  - Changing the Warehouse (between stock warehouses) keeps the names but
+    clears the row's lot (Lot No + the fields it filled).
+  - Unchanged: plain New Outward (a lot still fills Product Name / Billing
+    Name there); Wada rows are typed by hand (no pickers, Product Name not
+    prefilled); editing a saved DO keeps its saved values; Save logic; Step 6.
 - "+ New DO (another warehouse)" — shown on a saved DO opened from the board
   and on the drawer's Step 6 when the order still has lines with barrels left
   that are on no DO of this round. Opens a NEW DO for the same order + round
@@ -178,6 +187,13 @@ of rule 3 over ALL lines — a row of a DO linked to an order always has a
 line (`orderLineForRow`). Every other check stays: the line's rows ≤ its
 remaining, barrels ≤ the lot's stock, Lot No in stock, required fields, same
 lot twice, Wada rules.
+
+**2026-11-19: rules 1–5 below apply only to rows NOT made from an order line**
+(a "+ Add product" row with no line chosen, a row of a saved DO being
+edited). A row the Board made from an order line (or "+ Add product" for a
+chosen line) keeps its line, its Product Name and its Billing Name whatever
+lot is picked or typed — see "Product Name / Billing Name on a Board row"
+above.
 
 1. When Warehouse + Lot No find the lot, the lot's product name is turned into
    its billing name (Stock Inward catalogue, e.g. "Beta Pinene 95%" →

@@ -483,10 +483,12 @@ type Line = {
   // row's productName); pickedProduct = the product whose lots the Lot No
   // list shows; productSeed = the ORDER LINE's Product Name, exactly as saved
   // in Orders (Board prefill / "+ Add product" for a line; null otherwise).
-  // 2026-11-19 (user rule, replaces "starts empty"): the Product Name box shows
-  // it while nothing is typed and no lot is picked, and clicking the box lists
-  // THAT product's lots at the warehouse (orderLotsFor). It survives a
-  // Warehouse change; typing replaces it with a normal product search.
+  // 2026-11-19 (user rule, replaces "starts empty"): the Product Name box
+  // always shows it (unless the user is typing a search), clicking the box
+  // lists the lots of exactly THAT product at the warehouse
+  // (lotsForOrderProduct), and a lot (picked or typed) NEVER changes the row's
+  // Product Name / Billing Name (fillFromLot) — the order's names are saved,
+  // printed and in the Stock Book. It survives a Warehouse change.
   productQuery: string | null;
   pickedProduct: string | null;
   productSeed: string | null;
@@ -568,6 +570,8 @@ function ProductPickerCell({ value, options, warehouse, loading, className, titl
     <div ref={p.anchorRef} className="relative">
       <input className={className} value={value} title={title} placeholder="Search product…" autoComplete="off"
         onFocus={p.show} onBlur={onLeave}
+        // 2026-11-19: a click opens it too — e.g. after Escape, the box still has focus.
+        onClick={() => { if (!p.open) p.show(); }}
         onChange={e => { onType(e.target.value); if (!p.open) p.show(); }}
         onKeyDown={e => { if (e.key === 'Escape') p.setOpen(false); }} />
       {p.open && p.pos && orderLots && ReactDOM.createPortal(
@@ -609,7 +613,8 @@ function LotListPanel({ popRef, pos, lots, value, warehouse, onPick }: {
   popRef: React.RefObject<HTMLDivElement | null>; pos: { top: number; left: number; width: number };
   lots: LotPickRow[]; value: string; warehouse: string; onPick: (lotNo: string) => void;
 }) {
-  const manyProducts = new Set(lots.map(l => l.productName.trim().toLowerCase())).size > 1;
+  // 2026-11-19: names that differ only in capitals / extra spaces are one product.
+  const manyProducts = new Set(lots.map(l => l.productName.trim().replace(/\s+/g, ' ').toLowerCase())).size > 1;
   const total = lots.reduce((s, l) => s + l.left, 0);
   return (
     <div ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: manyProducts ? 300 : 220, zIndex: 9999 }}
@@ -653,6 +658,7 @@ function LotPickerCell({ id, value, lots, warehouse, className, title, onType, o
       <input id={id} className={className} value={value} title={title} autoComplete="off"
         placeholder={lots.length ? 'Pick or type…' : undefined}
         onFocus={() => { if (lots.length) p.show(); }}
+        onClick={() => { if (lots.length && !p.open) p.show(); }}
         onChange={e => { onType(e.target.value); }}
         onKeyDown={e => { if (e.key === 'Escape') p.setOpen(false); }} />
       {p.open && p.pos && lots.length > 0 && ReactDOM.createPortal(
@@ -1213,7 +1219,15 @@ function OutwardForm() {
     if (!l.lotTouched) return l;
     let orderLineSeq = l.orderLineSeq;
     let billingName = l.billingName;
-    if (rowsOrder) {
+    // 2026-11-19 (user rule): a Board row (made from an order line —
+    // productSeed) keeps the ORDER's names. A lot (picked or typed) fills only
+    // Lot No, Lot Date, Product Code, No of Barrels, Packing, Total Qty,
+    // Packing Type, MOU. Product Name = the order line's Product Name exactly
+    // as saved, Billing Name and the row's order line stay as they are. These
+    // names are what is saved, printed (PDF / JPEG / email) and in the Stock
+    // Book; stock still moves by Lot No.
+    const fromOrderLine = !!l.productSeed;
+    if (rowsOrder && !fromOrderLine) {
       // 2026-11-04: Billing Name = the lot's catalogue billing name (a lot not
       // in the catalogue: its own product name) when the lot's product matches
       // the line, else the ORDER LINE's product name. Still editable.
@@ -1221,7 +1235,7 @@ function OutwardForm() {
       const pick = pickOrderLine(l, lotBilling, o => o.lotFilled);
       orderLineSeq = pick.seq;
       billingName = billingNameForRow(rowsOrder, pick, lotBilling, billingName);
-    } else if (!l.billingTyped) {
+    } else if (!rowsOrder && !l.billingTyped) {
       billingName = billingNameForProductName(lot.productName);
     }
     let numArticles = l.numArticles;
@@ -1233,13 +1247,14 @@ function OutwardForm() {
     }
     return {
       ...l,
-      productName: lot.productName, productCode: lot.productCode,
+      productName: fromOrderLine ? (l.productSeed as string) : lot.productName, productCode: lot.productCode,
       packing: lot.packing, packagingType: lot.packagingType, weightType: lot.weightType,
       lotDate: lot.inwardDate || l.lotDate,
       billingName, orderLineSeq, numArticles, autoBarrels, lotFilled: true,
       // 2026-11-18: the Product Name box now shows the lot's product, and the
-      // Lot No list shows that product's other lots.
-      productQuery: null, pickedProduct: lot.productName,
+      // Lot No list shows that product's other lots. (2026-11-19: not on a
+      // Board row — its box keeps the order's name and lists ITS lots.)
+      productQuery: null, pickedProduct: fromOrderLine ? l.pickedProduct : lot.productName,
     };
   };
 
@@ -1281,10 +1296,11 @@ function OutwardForm() {
     }
     return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
   };
-  // 2026-11-19: is the row's Product Name box showing the ORDER's product name
-  // (a Board row, nothing typed, no product / lot picked yet)?
+  // 2026-11-19: does the row's Product Name box list the ORDER line's product's
+  // lots (a Board row, nothing typed, no other product picked from the search)?
+  // Also after a lot is picked — a lot never changes a Board row's names.
   const inOrderProductMode = (l: Line) =>
-    !!l.productSeed && l.productQuery === null && !l.pickedProduct && !l.lotFilled;
+    !!l.productSeed && l.productQuery === null && !l.pickedProduct;
   // The Lot No list for a row: the picked product's lots, else (text typed in
   // the search box, e.g. "Beta Pinene") the lots of every product that matches
   // it, else (2026-11-19, a Board row) the ORDER line's product's lots
@@ -1297,9 +1313,9 @@ function OutwardForm() {
     const product = query ? '' : (l.pickedProduct || (l.lotFilled ? l.productName : '')).trim().toLowerCase();
     const base = query
       ? pickerLots.filter(o => productMatches(query, o.productName, o.productCode, billingNameForProductName(o.productName.trim())))
-      : product
-        ? pickerLots.filter(o => o.productName.trim().toLowerCase() === product)
-        : inOrderProductMode(l) ? lotsForOrderProduct(pickerLots, l.productSeed || '') : [];
+      : inOrderProductMode(l)
+        ? lotsForOrderProduct(pickerLots, l.productSeed || '')
+        : product ? pickerLots.filter(o => o.productName.trim().toLowerCase() === product) : [];
     return base
       .map(o => {
         const usedRows: number[] = [];
@@ -1921,11 +1937,12 @@ function OutwardForm() {
                             {/* 2026-11-18: search the products in stock at the
                                 warehouse. The row's Product Name still comes
                                 from the lot (save is unchanged).
-                                2026-11-19: a Board row shows the ORDER line's
-                                Product Name (productSeed) and lists its lots. */}
+                                2026-11-19: a Board row always shows the ORDER
+                                line's Product Name (productSeed) — a lot never
+                                changes it — and lists that product's lots. */}
                             <ProductPickerCell
                               className={cellInput}
-                              value={l.productQuery ?? (l.productName || l.pickedProduct || l.productSeed || '')}
+                              value={l.productQuery ?? (l.productSeed ? l.productSeed : (l.productName || l.pickedProduct || ''))}
                               orderLots={inOrderProductMode(l) ? {
                                 lots: pickerReady ? lotOptionsFor(l) : [],
                                 lotValue: l.lotNo,
@@ -1967,7 +1984,8 @@ function OutwardForm() {
                             : <input className={cellLocked} value={l.productCode} readOnly title={fromLot} />}
                         </td>
                         <td className="px-[5px] py-[5px] min-w-[150px]">
-                          {/* 2026-10-16: editable. From the Board it is the order line's product name. */}
+                          {/* 2026-10-16: editable. From the Board (2026-11-19): the order line's billing
+                              name (orderLineBillingName) — a lot never changes it. */}
                           <input className={`${cellInput} ${bad('billing') ? redCls : ''}`} value={l.billingName} title={tip('billing', lineTip)}
                             onChange={e => onBillingChange(l, e.target.value)} />
                         </td>
