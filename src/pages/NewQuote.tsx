@@ -5,8 +5,8 @@ import { generateId, customerOfDoc, isDocOfCustomer, findCustomerByName, mainOff
 import { normalizeIndianPhone } from '../lib/phone';
 import { QuoteItem, Quote, QuoteStatus, CustomerTier } from '../lib/types';
 import { usePackingTypes } from '../hooks/usePackingTypes';
-import { useProductCatalog } from '../hooks/useProductCatalog';
-import { ProductSelect, lineItemProblem } from '../components/ProductSelect';
+import { useLineItemProducts } from '../hooks/useLineItemProducts';
+import { ProductSelect, BillingNameInput, lineItemProblem } from '../components/ProductSelect';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
@@ -135,7 +135,7 @@ export function NewQuote() {
   const navigate = useNavigate();
   const { data, user, addQuote, updateQuote, updateEnquiry, addCustomer, stampName, openAttachmentModal, resolvedSignatory } = useAppStore();
   const packingTypeOptions = usePackingTypes();
-  const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
+  const { names: productNames, hintMap: productHintMap, withProduct, withBilling } = useLineItemProducts();
 
   // Linked enquiry reference. Seeded from the URL when converting an enquiry,
   // and re-hydrated from the saved quote when editing — so editing never wipes
@@ -1129,6 +1129,7 @@ export function NewQuote() {
                       <tr>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400">Product Name</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-44">Billing Name</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-32 whitespace-nowrap">No of Barrels *</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
@@ -1149,19 +1150,22 @@ export function NewQuote() {
                             <ProductSelect
                               value={item.desc}
                               names={productNames}
-                              hsnMap={productHsnMap}
-                              onChange={(desc, hsn) => {
+                              hsnMap={productHintMap}
+                              onChange={desc => {
                                 const ni = [...items];
-                                ni[idx] = { ...ni[idx], desc, hsn };
+                                ni[idx] = withProduct(ni[idx], desc);
                                 setItems(ni);
                                 setErrors({ ...errors, items: '', itemsRow: '', itemsField: '' });
                               }}
                               error={errors.itemsField === 'product' && errors.itemsRow === String(idx)}
                             />
                           </td>
-                          {/* 2026-11-14: HSN always comes from the product list — read-only, blank when the product has none. */}
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <BillingNameInput value={item.billingName} onChange={v => setItems(prev => prev.map((it, i) => i === idx ? withBilling(it, v) : it))} />
+                          </td>
+                          {/* HSN comes from the Billing Name (product_catalog) — read-only, blank when none. */}
                           <td className="px-3 py-[5px] border border-g400 align-middle bg-g100">
-                            <input type="text" title="HSN Code (from the product list)" value={item.hsn || ''} readOnly tabIndex={-1}
+                            <input type="text" title="HSN Code (from the Billing Name)" value={item.hsn || ''} readOnly tabIndex={-1}
                               className="w-full bg-transparent outline-none font-mono text-[11px] text-g500 cursor-default" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
@@ -1227,7 +1231,7 @@ export function NewQuote() {
                       ))}
                     </tbody>
                     <QuoteTotalsFooter
-                      colSpan={8}
+                      colSpan={curr === 'INR' ? 11 : 10}
                       curr={curr}
                       subTotal={subTotal}
                       gstTotal={gstTotal}

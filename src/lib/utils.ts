@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { OrderAdjustment, Customer, NegotiationRound, NegotiationRoundItem, Order, QuoteItem, Quote, TeamMember, OutwardDO, OutwardDoLine } from './types';
+import { lineItemPrintName } from './lineItemProducts';
 
 export const ALLOWED_DELETE_EMAILS = ['shishir@himalayaterpene.com', 'mis@himalayaterpene.com'];
 
@@ -924,7 +925,8 @@ export function getEffectiveTotals(quote: Pick<Quote, 'items' | 'negotiations' |
 // sections show) rather than the whole quote.
 export interface NegotiationExportItem {
   seq: number;
-  desc: string;
+  desc: string;          // 2026-11-19: the PRINTED name — Billing Name, else Product Name
+  billingName?: string;
   hsn: string;
   qty: number;
   packing: string;
@@ -945,18 +947,22 @@ export interface NegotiationExportTable {
 // One export-ready table per negotiation round, in round order — used by
 // both the PDF and DOCX generators to render a "Negotiation N — Revised
 // Pricing" table after the main item table, mirroring the same column set.
-export function getNegotiationExportTables(quote: Pick<Quote, 'negotiations' | 'curr' | 'insurance'>): NegotiationExportTable[] {
+export function getNegotiationExportTables(quote: Pick<Quote, 'negotiations' | 'curr' | 'insurance'> & { items?: Quote['items'] }): NegotiationExportTable[] {
   const rounds = quote.negotiations ?? [];
   const insurance = quote.insurance ?? 0;
+  // A round saved before 2026-11-19 has no billingName — use the quote line's.
+  const billingBySeq = new Map((quote.items ?? []).map(i => [i.seq, i.billingName] as const));
   return rounds.map(r => {
     const items: NegotiationExportItem[] = r.items.map(it => {
       const packingNum = parseFloat(it.packing || '') || 0;
       const totalQty = it.qty && packingNum ? String(it.qty * packingNum) : '';
       const pb = it.priceBasis?.trim();
       const perUnit = !pb ? 'kg' : pb.startsWith('Per ') ? pb.slice(4) : pb;
+      const billingName = it.billingName?.trim() || billingBySeq.get(it.seq)?.trim() || '';
       return {
         seq: it.seq,
-        desc: it.desc,
+        desc: lineItemPrintName({ billingName, desc: it.desc }),
+        billingName,
         hsn: it.hsn || '',
         qty: it.qty,
         packing: it.packing || '',

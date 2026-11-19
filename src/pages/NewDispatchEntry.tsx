@@ -4,10 +4,10 @@ import { useAppStore } from '../store';
 import { Button } from '../components/ui';
 import { customerOfDoc, dispatchOrderView, DispatchFormDetails, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
-import { ProductSelect, lineItemProblem } from '../components/ProductSelect';
+import { ProductSelect, BillingNameInput, lineItemProblem } from '../components/ProductSelect';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
-import { useProductCatalog } from '../hooks/useProductCatalog';
+import { useLineItemProducts } from '../hooks/useLineItemProducts';
 import { Upload, ExternalLink, Loader2, Search, X, Mail, MessageCircle } from 'lucide-react';
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
@@ -163,7 +163,7 @@ export function NewDispatchEntry() {
   // canEditLr below.
   const canEditLr = isReadOnlyUser || isAdmin || (user?.email ?? '').toLowerCase() === 'mum@himalayaterpene.com';
   const packingTypeOptions = usePackingTypes();
-  const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
+  const { names: productNames, hintMap: productHintMap, withProduct, withBilling } = useLineItemProducts();
 
   const [type, setType] = useState<'' | DispatchFulfillmentType>('');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -1522,6 +1522,7 @@ export function NewDispatchEntry() {
                     <tr>
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400">Product Name</th>
+                      <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-44">Billing Name</th>
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-32 whitespace-nowrap">No of Barrels</th>
                       <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
@@ -1545,19 +1546,22 @@ export function NewDispatchEntry() {
                             <ProductSelect
                               value={i.desc}
                               names={productNames}
-                              hsnMap={productHsnMap}
-                              onChange={(desc, hsn) => {
+                              hsnMap={productHintMap}
+                              onChange={desc => {
                                 const ni = [...items];
-                                ni[idx] = { ...ni[idx], desc, hsn };
+                                ni[idx] = withProduct(ni[idx], desc);
                                 setItems(ni);
                                 if (productErrorRow === idx) { setProductErrorRow(null); setError(''); }
                               }}
                               error={productErrorRow === idx}
                             />
                           </td>
-                          {/* 2026-11-14: HSN always comes from the product list — read-only, blank when the product has none. */}
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <BillingNameInput value={i.billingName} onChange={v => setItems(prev => prev.map((it, k) => k === idx ? withBilling(it, v) : it))} />
+                          </td>
+                          {/* HSN comes from the Billing Name (product_catalog) — read-only, blank when none. */}
                           <td className="px-3 py-[5px] border border-g400 align-middle bg-g100">
-                            <input type="text" title="HSN Code (from the product list)" value={i.hsn || ''} readOnly tabIndex={-1}
+                            <input type="text" title="HSN Code (from the Billing Name)" value={i.hsn || ''} readOnly tabIndex={-1}
                               className="w-full bg-transparent outline-none font-mono text-[11px] text-g500 cursor-default" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
@@ -1622,12 +1626,12 @@ export function NewDispatchEntry() {
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-g200 bg-g50/50">
-                      <td colSpan={orderTotals.isINR ? 11 : 10} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
+                      <td colSpan={orderTotals.isINR ? 12 : 11} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
                       <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(orderTotals.subTotal)}</td>
                     </tr>
                     {orderTotals.isINR && (
                       <tr className="border-b border-g200 bg-g50/50">
-                        <td colSpan={11} className="px-3 py-2 text-right">
+                        <td colSpan={12} className="px-3 py-2 text-right">
                           <span className="text-[11px] text-g500">Insurance</span>
                           <button
                             type="button"
@@ -1650,7 +1654,7 @@ export function NewDispatchEntry() {
                     )}
                     {orderTotals.adj.lines.filter(l => l.taxable).map(l => (
                       <tr key={l.id} className="bg-g50/50">
-                        <td colSpan={orderTotals.isINR ? 11 : 10} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
+                        <td colSpan={orderTotals.isINR ? 12 : 11} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
                           {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
                         </td>
                         <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
@@ -1660,19 +1664,19 @@ export function NewDispatchEntry() {
                     ))}
                     {orderTotals.isINR && (orderTotals.adj.preNet !== 0 || orderTotals.ins > 0) && (
                       <tr className="bg-g50/50">
-                        <td colSpan={11} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
+                        <td colSpan={12} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
                         <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk border-t border-g100">{formatINR(orderTotals.subTotal + orderTotals.ins + orderTotals.adj.preNet)}</td>
                       </tr>
                     )}
                     {orderTotals.isINR && (
                       <tr className="border-b border-g200 bg-g50/50">
-                        <td colSpan={11} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
+                        <td colSpan={12} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
                         <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(orderTotals.gstTotal)}</td>
                       </tr>
                     )}
                     {orderTotals.adj.lines.filter(l => !l.taxable).map(l => (
                       <tr key={l.id} className="bg-g50/50">
-                        <td colSpan={orderTotals.isINR ? 11 : 10} className="px-3 py-2 text-right text-[11px] text-g500">
+                        <td colSpan={orderTotals.isINR ? 12 : 11} className="px-3 py-2 text-right text-[11px] text-g500">
                           {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
                         </td>
                         <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
@@ -1681,7 +1685,7 @@ export function NewDispatchEntry() {
                       </tr>
                     ))}
                     <tr className="bg-[#1e293b]">
-                      <td colSpan={orderTotals.isINR ? 11 : 10} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
+                      <td colSpan={orderTotals.isINR ? 12 : 11} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Order Value</td>
                       <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{formatINR(orderTotals.grandTotal)}</td>
                     </tr>
                   </tfoot>

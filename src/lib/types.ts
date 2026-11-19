@@ -13,7 +13,11 @@ export type OrderStatus = 'Order Confirmed' | 'Processing' | 'Delivered' | 'Orde
 
 export interface LineItem {
   seq: number;
-  desc: string;   // Product Name — a master-list name (product_catalog) since 2026-11-14
+  desc: string;   // Product Name — typed, or picked from PRODUCTS (src/lib/lineItemProducts.ts)
+  // 2026-11-19: Billing Name — filled from PRODUCTS when the Product Name
+  // matches, else blank; editable. HSN comes from it. Printed on the Quotation
+  // and the Order PI instead of the Product Name. Old items have none.
+  billingName?: string;
   // (2026-11-14: the "Grade / Spec" field was removed from the app. Old items
   // may still carry a `grade` key in the saved JSON. It is kept as-is,
   // never shown or printed.)
@@ -194,6 +198,7 @@ export interface NegotiationRound {
 export interface NegotiationRoundItem {
   seq: number;
   desc: string;
+  billingName?: string;   // 2026-11-19 (rounds saved before have none)
   hsn: string;
   qty: number;
   packing?: string;

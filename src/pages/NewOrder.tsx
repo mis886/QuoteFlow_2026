@@ -7,10 +7,10 @@ import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
 import { CustomerSearch } from '../components/CustomerSearch';
-import { ProductSelect, lineItemProblem } from '../components/ProductSelect';
+import { ProductSelect, BillingNameInput, lineItemProblem } from '../components/ProductSelect';
 import { PackingTypeSelect } from '../components/PackingTypeSelect';
 import { usePackingTypes } from '../hooks/usePackingTypes';
-import { useProductCatalog } from '../hooks/useProductCatalog';
+import { useLineItemProducts } from '../hooks/useLineItemProducts';
 import { generateOrderPDF } from '../lib/pdfGenerator';
 import { downloadPIDOCX } from '../lib/quoteDocx';
 import { uploadPublicFile } from '../lib/supabase';
@@ -80,7 +80,7 @@ export function NewOrder() {
   const savedOrderStatus = editOrderId ? data.orders.find(o => o.id === editOrderId)?.status : undefined;
   const canManualDelivered = canMarkDeliveredManually(user?.email);
   const packingTypeOptions = usePackingTypes();
-  const { names: productNames, hsnMap: productHsnMap } = useProductCatalog();
+  const { names: productNames, hintMap: productHintMap, withProduct, withBilling } = useLineItemProducts();
 
   // Linked quote / enquiry references. Seeded from the URL when converting a
   // quote, and re-hydrated from the saved order when editing — so editing never
@@ -1098,6 +1098,7 @@ export function NewOrder() {
                       <tr>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-8">#</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-left border border-g400">Product Name *</th>
+                        <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-44">Billing Name</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-left border border-g400 w-24">HSN Code</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-red-mrt px-3 py-1.5 text-center border border-g400 w-32 whitespace-nowrap">No of Barrels *</th>
                         <th className="font-mono text-[8px] tracking-[1px] uppercase text-g500 px-3 py-1.5 text-center border border-g400 w-24">Packing</th>
@@ -1118,19 +1119,22 @@ export function NewOrder() {
                             <ProductSelect
                               value={item.desc}
                               names={productNames}
-                              hsnMap={productHsnMap}
-                              onChange={(desc, hsn) => {
+                              hsnMap={productHintMap}
+                              onChange={desc => {
                                 const ni = [...items];
-                                ni[idx] = { ...ni[idx], desc, hsn };
+                                ni[idx] = withProduct(ni[idx], desc);
                                 setItems(ni);
                                 setErrors({ ...errors, items: '', itemsRow: '', itemsField: '' });
                               }}
                               error={errors.itemsField === 'product' && errors.itemsRow === String(idx)}
                             />
                           </td>
-                          {/* 2026-11-14: HSN always comes from the product list — read-only, blank when the product has none. */}
+                          <td className="px-3 py-[5px] border border-g400 align-middle">
+                            <BillingNameInput value={item.billingName} onChange={v => setItems(prev => prev.map((it, i) => i === idx ? withBilling(it, v) : it))} />
+                          </td>
+                          {/* HSN comes from the Billing Name (product_catalog) — read-only, blank when none. */}
                           <td className="px-3 py-[5px] border border-g400 align-middle bg-g100">
-                            <input type="text" title="HSN Code (from the product list)" value={item.hsn || ''} readOnly tabIndex={-1}
+                            <input type="text" title="HSN Code (from the Billing Name)" value={item.hsn || ''} readOnly tabIndex={-1}
                               className="w-full bg-transparent outline-none font-mono text-[11px] text-g500 cursor-default" />
                           </td>
                           <td className="px-3 py-[5px] border border-g400 align-middle">
@@ -1203,13 +1207,13 @@ export function NewOrder() {
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-g200 bg-g50/50">
-                        <td colSpan={curr === 'INR' ? 9 : 8} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
+                        <td colSpan={curr === 'INR' ? 11 : 10} className="px-3 py-2 text-right text-[11px] text-g500">Subtotal (before tax)</td>
                         <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(subTotal)}</td>
                         <td></td>
                       </tr>
                       {curr === 'INR' && (
                         <tr className="border-b border-g200 bg-g50/50">
-                          <td colSpan={9} className="px-3 py-2 text-right">
+                          <td colSpan={11} className="px-3 py-2 text-right">
                             <span className="text-[11px] text-g500">Insurance</span>
                             <button
                               type="button"
@@ -1233,7 +1237,7 @@ export function NewOrder() {
                       )}
                       {adjLines.filter(l => l.taxable).map(l => (
                         <tr key={l.id} className="bg-g50/50">
-                          <td colSpan={curr === 'INR' ? 9 : 8} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
+                          <td colSpan={curr === 'INR' ? 11 : 10} className="px-3 py-2 text-right text-[11px] text-g500 truncate">
                             {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
                           </td>
                           <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
@@ -1244,21 +1248,21 @@ export function NewOrder() {
                       ))}
                       {curr === 'INR' && (adj.preNet !== 0 || insurance > 0) && (
                         <tr className="bg-g50/50">
-                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
+                          <td colSpan={11} className="px-3 py-2 text-right text-[11px] text-g600 border-t border-g100">Taxable Value</td>
                           <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk border-t border-g100">{formatINR(subTotal + insurance + adj.preNet)}</td>
                           <td></td>
                         </tr>
                       )}
                       {curr === 'INR' && (
                         <tr className="border-b border-g200 bg-g50/50">
-                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
+                          <td colSpan={11} className="px-3 py-2 text-right text-[11px] text-g500">GST Total</td>
                           <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(gstTotal)}</td>
                           <td></td>
                         </tr>
                       )}
                       {adjLines.filter(l => !l.taxable).map(l => (
                         <tr key={l.id} className="bg-g50/50">
-                          <td colSpan={curr === 'INR' ? 9 : 8} className="px-3 py-2 text-right text-[11px] text-g500">
+                          <td colSpan={curr === 'INR' ? 11 : 10} className="px-3 py-2 text-right text-[11px] text-g500">
                             {l.label || '(unnamed)'}{l.mode === 'percent' ? ` (${l.rate}%)` : ''}{l.direction === 'deduct' ? ' −' : ''}
                           </td>
                           <td className={`px-3 py-2 text-right font-mono text-[12px] font-bold ${l.amount < 0 ? 'text-red-mrt' : 'text-blk'}`}>
@@ -1269,14 +1273,14 @@ export function NewOrder() {
                       ))}
                       {curr === 'INR' && (
                         <tr className="border-b border-g200 bg-g100/60">
-                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g600 font-bold">Order Total (incl. GST)</td>
+                          <td colSpan={11} className="px-3 py-2 text-right text-[11px] text-g600 font-bold">Order Total (incl. GST)</td>
                           <td className="px-3 py-2 text-right font-mono text-[12px] font-bold text-blk">{formatINR(grandTotal)}</td>
                           <td></td>
                         </tr>
                       )}
                       {curr === 'INR' && (
                         <tr className="bg-g50/50">
-                          <td colSpan={9} className="px-3 py-2 text-right text-[11px] text-g500">Received Amount</td>
+                          <td colSpan={11} className="px-3 py-2 text-right text-[11px] text-g500">Received Amount</td>
                           <td className="px-3 py-1 text-right">
                             <input
                               type="number"
@@ -1292,7 +1296,7 @@ export function NewOrder() {
                         </tr>
                       )}
                       <tr className="bg-[#1e293b]">
-                        <td colSpan={curr === 'INR' ? 9 : 8} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Balance Due</td>
+                        <td colSpan={curr === 'INR' ? 11 : 10} className="px-3 py-2.5 text-right text-[12px] font-bold text-white">Balance Due</td>
                         <td className="px-3 py-2.5 text-right font-mono text-[13px] font-bold text-white">{formatINR(balanceDue)}</td>
                         <td className="bg-[#1e293b]"></td>
                       </tr>

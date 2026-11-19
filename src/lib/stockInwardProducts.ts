@@ -9,6 +9,12 @@
 // Single source of truth for both forms' Product Name combobox and the
 // Product Code auto-fill lookup, plus (Outward only) the Billing Name
 // auto-fill lookup.
+//
+// 2026-11-19: also the Product Name suggestions + Billing Name source for the
+// line items of Enquiry / Quotation / Order / Dispatch (src/lib/lineItemProducts.ts).
+// Synced with the user's master list docs/product_list_2026-11-19.tsv: added
+// HT00111, HT00203, HT00204, HT00301, HT00960, HT00970, HT01880, HT02226,
+// HT02252, HT02253, HT05000 (existing rows unchanged).
 export interface StockInwardProduct {
   code: string;
   name: string;
@@ -27,10 +33,14 @@ export const PRODUCTS: StockInwardProduct[] = [
   { code: 'HT00108', name: 'Alpha pinene 97% -ve 37 OR', billingName: 'Alpha Pinene' },
   { code: 'HT00109', name: 'Alpha Pinene 99 +ve 24-35 OR', billingName: 'Alpha Pinene' },
   { code: 'HT00110', name: 'Alpha Pinene 99 -ve 24-35 OR', billingName: 'Alpha Pinene' },
+  { code: 'HT00111', name: 'Alpha Pinene 92', billingName: 'Alpha Pinene' },
   { code: 'HT00200', name: 'Beta Pinene 95%', billingName: 'Beta Pinene' },
   { code: 'HT00201', name: 'Beta Pinene 98%', billingName: 'Beta Pinene' },
   { code: 'HT00202', name: 'Beta Pinene 99%', billingName: 'Beta Pinene' },
+  { code: 'HT00203', name: 'Beta Pinene CST 30ppm', billingName: 'Beta Pinene' },
+  { code: 'HT00204', name: 'Beta Pinene RM Redistilled', billingName: 'Beta Pinene' },
   { code: 'HT00300', name: 'Camphene 96', billingName: 'Camphene' },
+  { code: 'HT00301', name: 'Camphene 94', billingName: 'Camphene' },
   { code: 'HT00400', name: 'Camphor Oil PFG SCL', billingName: 'Camphor Oil' },
   { code: 'HT00401', name: 'Camphor Oil PFG KKL', billingName: 'Camphor Oil' },
   { code: 'HT00410', name: 'Camphor Oil Comm HTPL', billingName: 'Camphor Oil' },
@@ -81,6 +91,8 @@ export const PRODUCTS: StockInwardProduct[] = [
   { code: 'HT00930', name: 'Dipentene TP', billingName: 'Dipentene' },
   { code: 'HT00940', name: 'Dipentene Asian', billingName: 'Dipentene' },
   { code: 'HT00950', name: 'Dipentene TerpCP-RM', billingName: 'Dipentene' },
+  { code: 'HT00960', name: 'Dipentene PFG', billingName: 'Dipentene' },
+  { code: 'HT00970', name: 'Dipentene MDS ex CST', billingName: 'Dipentene' },
   { code: 'HT01000', name: 'Fenchone 98%', billingName: 'Fenchone' },
   { code: 'HT01100', name: 'Gamma Terpinene 90%', billingName: 'Gamma Terpinene' },
   { code: 'HT01101', name: 'Gamma Terpinene 95%', billingName: 'Gamma Terpinene' },
@@ -168,6 +180,7 @@ export const PRODUCTS: StockInwardProduct[] = [
   { code: 'HT01875', name: 'PINE OIL 85 (OTHPTM)', billingName: 'PINE OIL 85' },
   { code: 'HT01876', name: 'PINE OIL 85 (CST)', billingName: 'PINE OIL 85' },
   { code: 'HT01877', name: 'PINE OIL Super 85', billingName: 'PINE OIL 85' },
+  { code: 'HT01880', name: 'PINE OIL 80(OTHPTerpi)', billingName: 'PINE OIL 80' },
   { code: 'HT01899', name: 'Pine Oil Special', billingName: 'Pine Oil' },
   { code: 'HT01900', name: 'PINE OIL 90 (HP Terpi)', billingName: 'PINE OIL 90' },
   { code: 'HT01910', name: 'Pine Tar 100 (GTO)', billingName: 'Pine Tar' },
@@ -188,6 +201,8 @@ export const PRODUCTS: StockInwardProduct[] = [
   { code: 'HT02270', name: 'Terpineol DG', billingName: 'Terpineol' },
   { code: 'HT02250', name: 'Terpineol EP / Alpha Terpineol 92 % GPI', billingName: 'Terpineol' },
   { code: 'HT02251', name: 'Terpineol EP Super / Alpha Terpineol Super', billingName: 'Terpineol' },
+  { code: 'HT02252', name: 'Terpineol EP ex CST', billingName: 'Terpineol EP' },
+  { code: 'HT02253', name: 'Terpineol EP CST', billingName: 'Terpineol EP' },
   { code: 'HT02260', name: 'Terpineol CP GPI', billingName: 'Terpineol' },
   { code: 'HT02261', name: 'Terpineol CP Import', billingName: 'Terpineol' },
   { code: 'HT02280', name: 'Terpineol MG', billingName: 'Terpineol' },
@@ -199,6 +214,7 @@ export const PRODUCTS: StockInwardProduct[] = [
   { code: 'HT02223', name: 'Terpineol 70(OTHPTerpi)', billingName: 'Terpineol' },
   { code: 'HT02224', name: 'Terpineol 70(OTHPTM)', billingName: 'Terpineol' },
   { code: 'HT02225', name: 'Terpineol 70(CST)', billingName: 'Terpineol' },
+  { code: 'HT02226', name: 'Terpineol 70(OTHPSUPERGAMMA)', billingName: 'Terpineol 70' },
   { code: 'HT02230', name: 'Terpineol 85 (HP Terpi)', billingName: 'Terpineol' },
   { code: 'HT02231', name: 'Terpineol 85 (HP TM)', billingName: 'Terpineol' },
   { code: 'HT02232', name: 'Terpineol 85 (OTHPTerpi)', billingName: 'Terpineol' },
@@ -266,4 +282,5 @@ export const PRODUCTS: StockInwardProduct[] = [
   { code: 'HT04700', name: 'Timber Touch Tops', billingName: 'Timber Touch Tops' },
   { code: 'HT04800', name: 'Titanium Recycle', billingName: 'Titanium Recycle' },
   { code: 'HT04900', name: 'TMCM T & B Residue', billingName: 'TMCM T & B Residue' },
+  { code: 'HT05000', name: 'Crude Beta Pinene', billingName: 'Crude Beta Pinene' },
 ];

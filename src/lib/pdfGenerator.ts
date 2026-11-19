@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Customer, Quote, Order, AppSettings, CompanyUnit, BankAccount, OutwardDO } from './types';
 import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate, getNegotiationExportTables, outwardDoLines, type ResolvedAdjustment } from './utils';
+import { lineItemPrintName } from './lineItemProducts';
 import { supabase } from './supabase';
 
 export function getQuoteTotals(q: Quote) {
@@ -120,8 +121,9 @@ export function quoteItemRows(quote: Quote): (string | number)[][] {
     // Use TypeScript-typed fields (i.hsn, i.packing, i.packingType) — these are the actual
     // field names in QuoteItem. Fallback to snake_case variants in case items were stored via
     // older code paths.
-    // 2026-11-14: "Product – Grade" (just the product when there's no grade).
-    const productName = (i as any).product_name || i.desc || '';
+    // 2026-11-19: the Billing Name, else the Product Name (old records / unmatched
+    // names). Shared by the Quotation PDF and the quote email; quoteDocx.ts matches.
+    const productName = lineItemPrintName(i);
     const hsnCode = i.hsn || (i as any).hsn_code || '';  // blank stays blank
     const noOfBarrels = i.qty != null ? String(i.qty) : '';
     const packing = i.packing || '';
@@ -645,7 +647,7 @@ export function generatePIPDF(
       const perUnit = !_pb ? 'kg' : _pb.startsWith('Per ') ? _pb.slice(4) : _pb;
       return [
         idx + 1,
-        i.desc || '',
+        lineItemPrintName(i),  // 2026-11-19: Billing Name, else Product Name
         // 2026-11-14: no Order "Default HSN" fallback — blank prints blank.
         i.hsn || '',
         i.qty != null ? String(i.qty) : '',

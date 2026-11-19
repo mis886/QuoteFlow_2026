@@ -5,6 +5,7 @@ import {
 } from 'docx';
 import type { Quote, Order, Customer, AppSettings, CompanyUnit, BankAccount } from './types';
 import { formatINR, mainOffice, resolveAdjustments, maxItemGstRate, fmtDate as utilFmtDate, getNegotiationExportTables } from './utils';
+import { lineItemPrintName } from './lineItemProducts';
 
 // ── colour palette (mirrors PDF)
 const C_DARK    = '1E1E1E';
@@ -135,7 +136,7 @@ function negotiationTableNodes(quote: Quote): (Paragraph | Table)[] {
         ...round.items.map((i, idx) => new TableRow({
           children: [
             tdCell(String(idx + 1), wSno, AlignmentType.CENTER),
-            tdCell(i.desc, wProdName),  // already "Product – Grade" (getNegotiationExportTables)
+            tdCell(i.desc, wProdName),  // already the printed name — Billing Name, else Product Name (getNegotiationExportTables)
             tdCell(i.hsn || '', wHsn, AlignmentType.CENTER),
             tdCell(String(i.qty), wBarrels, AlignmentType.CENTER),
             tdCell(i.packing, wPacking, AlignmentType.CENTER),
@@ -198,7 +199,8 @@ export async function downloadQuoteDOCX(
     const isRegret = (i as any).rateOverride;
     const _pb = ((i as any).priceBasis as string | undefined)?.trim();
     const perUnit = !_pb ? 'kg' : _pb.startsWith('Per ') ? _pb.slice(4) : _pb;
-    const productName = (i as any).product_name || i.desc || '';
+    // 2026-11-19: Billing Name, else Product Name (same as the Quotation PDF).
+    const productName = lineItemPrintName(i);
 
     const hsnCode = i.hsn || (i as any).hsn_code || '';  // blank stays blank
     const noOfBarrels = i.qty != null ? String(i.qty) : '';
@@ -431,7 +433,7 @@ export async function downloadPIDOCX(
     return new TableRow({
       children: [
         tdCell(String(idx + 1), wSno, AlignmentType.CENTER),
-        tdCell(i.desc || '', wProdName),
+        tdCell(lineItemPrintName(i), wProdName),  // Billing Name, else Product Name
         // 2026-11-14: no Order "Default HSN" fallback — blank prints blank.
         tdCell(i.hsn || '', wHsn, AlignmentType.CENTER),
         tdCell(i.qty != null ? String(i.qty) : '', wBarrels, AlignmentType.CENTER),

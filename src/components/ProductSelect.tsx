@@ -1,24 +1,35 @@
-// 2026-11-14: the ONE Product Name picker for Enquiry / Quotation / Order /
-// Dispatch / Sampling. STRICT: only a product from the master list
-// (product_catalog, active rows) can be chosen. No free text, no "add new".
+// The ONE Product Name box for Enquiry / Quotation / Order / Dispatch / Sampling.
 //
-// - Typing filters the list live (case-insensitive, anywhere in the name;
-//   names starting with the text come first). Up / Down / Enter / Escape work.
-// - onChange fires ONLY on a real pick, with that product's HSN ('' when it
-//   has none). So the HSN can never be left over from the previous product.
-// - Leaving the box with text that isn't a list item puts back the last valid
-//   pick and shows "Select a product from the list". (Typing the exact name
-//   in any capitals counts as picking it.)
-// - An old record's name that isn't on the list still shows, flagged, until
-//   the user picks a list product for that row.
+// 2026-11-18: TYPEABLE again (user decision). The user can type any product
+// name, or pick one from the master list (product_catalog, active rows).
+//
+// - Typing filters the suggestion list live (case-insensitive; every typed word
+//   anywhere in the name; names starting with the text come first).
+//   Up / Down / Enter / Escape.
+// - When the typed text isn't exactly a list name, the first row is
+//   `Use "<typed text>"` so Enter keeps what was typed.
+// - Leaving the box keeps what was typed. If it matches a list name (any
+//   capitals) it becomes that list name and its HSN fills in; otherwise the
+//   typed name is kept and HSN is blank.
+// - onChange(name, hsn) — hsn is '' for names not on the list.
+//
+// 2026-11-19: Enquiry / Quotation / Order / Dispatch pass the PRODUCTS names
+// (src/lib/lineItemProducts.ts) as `names` and fill Billing Name + HSN
+// themselves; Sampling still passes the product_catalog names. Matching a
+// typed name to a list name ignores capitals AND extra spaces.
+//
+// Before 2026-11-18 (from 2026-11-14) this box was STRICT: only list names could
+// be saved, typed text was thrown away on leaving the box with a "Select a product
+// from the list" warning, and old names showed in amber and blocked Save.
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
+import { normName } from '../lib/lineItemProducts';
 
 interface Props {
   value: string;
   onChange: (name: string, hsn: string) => void;
-  names: string[];                 // active master-list names
+  names: string[];                 // active master-list names (suggestions)
   hsnMap: Record<string, string>;  // name → HSN ('' = none)
   error?: boolean;
   placeholder?: string;
@@ -34,49 +45,82 @@ export interface LineItemProblem {
 }
 
 /** Save check shared by the 5 forms — the FIRST problem, or null.
- *  Per row, in order: no product → "Row X: Select a product from the list";
- *  a product not on the active master list (an old record's name) → re-pick;
+ *  Per row, in order: no product name → "Row X: Enter a product name";
  *  with checkQty, quantity empty / 0 → "Row X: Enter a quantity greater than 0".
- *  A blank HSN is never a problem. `include` limits the check to some rows
- *  (row numbers stay the on-screen ones). */
+ *  Any typed name is allowed (the list is only suggestions). A blank HSN is
+ *  never a problem. `include` limits the check to some rows (row numbers stay
+ *  the on-screen ones). `names` is kept so the 5 forms don't need changing. */
 export function lineItemProblem(
   rows: { desc?: string | null; qty?: number | string | null }[],
   names: string[],
   opts: { checkQty?: boolean; include?: (row: { desc?: string | null; qty?: number | string | null }) => boolean } = {},
 ): LineItemProblem | null {
-  if (!names.length) return { row: -1, field: 'product', message: 'The product list is still loading — try Save again in a moment.' };
-  const valid = new Set(names);
+  void names;
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (opts.include && !opts.include(r)) continue;
     const d = (r.desc || '').trim();
-    if (!d) return { row: i, field: 'product', message: `Row ${i + 1}: Select a product from the list` };
-    if (!valid.has(d)) return { row: i, field: 'product', message: `Row ${i + 1}: "${d}" is not in the product list — select a product from the list` };
+    if (!d) return { row: i, field: 'product', message: `Row ${i + 1}: Enter a product name` };
     if (opts.checkQty && !(Number(r.qty) > 0)) return { row: i, field: 'qty', message: `Row ${i + 1}: Enter a quantity greater than 0` };
   }
   return null;
 }
 
-export function ProductSelect({ value, onChange, names, hsnMap, error, placeholder = 'Search product…', className }: Props) {
+/** 2026-11-19: Billing Name cell of the Enquiry / Quotation / Order / Dispatch
+ *  line items. Filled from the Product Name by the form; the user may type or
+ *  correct it. Spaces at the ends are dropped on leaving the box. */
+export function BillingNameInput({ value, onChange }: { value: string | undefined; onChange: (v: string) => void }) {
+  const v = value || '';
+  return (
+    <input
+      type="text"
+      value={v}
+      title="Billing Name — printed on the Quotation and PI. Filled from the Product Name; you can type or correct it."
+      placeholder="—"
+      onChange={e => onChange(e.target.value)}
+      onBlur={() => { if (v.trim() !== v) onChange(v.trim()); }}
+      className="w-full bg-transparent outline-none text-[12px] font-sans text-blk placeholder:text-g300"
+    />
+  );
+}
+
+export function ProductSelect({ value, onChange, names, hsnMap, error, placeholder = 'Type or search product…', className }: Props) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
-  const [warn, setWarn] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const warnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { setQuery(value); }, [value]);
-  useEffect(() => () => { if (warnTimer.current) clearTimeout(warnTimer.current); }, []);
 
   const typing = query !== value;
+  const typed = query.trim();
+  const exactName = useMemo(
+    () => names.find(n => normName(n) === normName(typed)),
+    [names, typed],
+  );
+
+  // Every typed word must appear somewhere in the name ("beta 98" finds
+  // "Beta Pinene 98%"); names starting with the typed text come first.
   const filtered = useMemo(() => {
-    const q = (typing ? query : '').trim().toLowerCase();
+    const q = typing ? normName(typed) : '';
     if (!q) return names;
-    const hits = names.filter(n => n.toLowerCase().includes(q));
-    return [...hits.filter(n => n.toLowerCase().startsWith(q)), ...hits.filter(n => !n.toLowerCase().startsWith(q))];
-  }, [query, typing, names]);
+    const words = q.split(' ');
+    const hits = names.filter(n => { const ln = normName(n); return words.every(w => ln.includes(w)); });
+    const starts = (n: string) => normName(n).startsWith(q);
+    return [...hits.filter(starts), ...hits.filter(n => !starts(n))];
+  }, [typed, typing, names]);
+
+  // Rows shown: an optional "Use <typed>" row first, then the list matches.
+  const showUseTyped = typing && !!typed && !exactName;
+  const options: { name: string; custom: boolean }[] = useMemo(
+    () => [
+      ...(showUseTyped ? [{ name: typed, custom: true }] : []),
+      ...filtered.map(n => ({ name: n, custom: false })),
+    ],
+    [showUseTyped, typed, filtered],
+  );
 
   useEffect(() => { setActiveIdx(0); }, [query]);
   useEffect(() => {
@@ -88,31 +132,24 @@ export function ProductSelect({ value, onChange, names, hsnMap, error, placehold
     if (r) setPos({ top: r.bottom + 2, left: r.left, width: Math.max(r.width, 240) });
   };
 
-  const showWarn = () => {
-    setWarn(true);
-    if (warnTimer.current) clearTimeout(warnTimer.current);
-    warnTimer.current = setTimeout(() => setWarn(false), 4000);
-  };
-
-  const pick = (name: string) => {
-    setWarn(false);
-    setQuery(name);
+  // Save a name: a list name (any capitals) becomes that list name + its HSN;
+  // anything else is kept as typed with a blank HSN.
+  const commit = (raw: string) => {
+    const text = raw.trim();
+    const listName = names.find(n => normName(n) === normName(text));
+    const finalName = listName ?? text;
+    setQuery(finalName);
     setOpen(false);
-    if (name !== value) onChange(name, productHsn(hsnMap, name));
+    if (finalName !== value) onChange(finalName, listName ? productHsn(hsnMap, listName) : '');
   };
 
-  // Leaving the box: an exact name (any capitals) is a pick; anything else
-  // goes back to the last valid pick.
-  const commitOrRevert = () => {
+  // Leaving the box keeps whatever was typed.
+  const handleBlur = () => {
     setOpen(false);
-    if (!typing) return;
-    const exact = names.find(n => n.toLowerCase() === query.trim().toLowerCase());
-    if (exact) { pick(exact); return; }
-    setQuery(value);
-    if (query.trim()) showWarn();
+    if (typing) commit(query);
   };
 
-  // Closing only — leaving the box (blur) is what commits or reverts.
+  // Closing only — leaving the box (blur) is what saves.
   useEffect(() => {
     if (!open) return;
     const close = (e: Event) => { if (!listRef.current?.contains(e.target as Node)) setOpen(false); };
@@ -125,18 +162,21 @@ export function ProductSelect({ value, onChange, names, hsnMap, error, placehold
   }, [open]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Tab') return;  // blur follows
+    if (e.key === 'Tab') return;  // blur follows and saves
     if (!open) {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') { e.preventDefault(); calcPos(); setOpen(true); }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); calcPos(); setOpen(true); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (typing) commit(query); }
       return;
     }
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, filtered.length - 1)); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, options.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (filtered[activeIdx]) pick(filtered[activeIdx]); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (options[activeIdx]) commit(options[activeIdx].name);
+      else commit(query);
+    }
     else if (e.key === 'Escape') { e.preventDefault(); setQuery(value); setOpen(false); }
   };
-
-  const notOnList = !!value && !typing && !names.includes(value);
 
   return (
     <div ref={containerRef} className={`${className || ''} ${error ? 'rounded-[2px] ring-1 ring-red-mrt bg-red-lt/40 px-1 -mx-1' : ''}`}>
@@ -146,17 +186,14 @@ export function ProductSelect({ value, onChange, names, hsnMap, error, placehold
         placeholder={placeholder}
         role="combobox"
         aria-expanded={open}
-        aria-invalid={error || notOnList || undefined}
-        title={notOnList ? `"${value}" is not in the product list — pick a product from the list` : undefined}
-        onChange={e => { setQuery(e.target.value); setWarn(false); if (!open) calcPos(); setOpen(true); }}
+        aria-invalid={error || undefined}
+        onChange={e => { setQuery(e.target.value); if (!open) calcPos(); setOpen(true); }}
         onFocus={e => { e.target.select(); calcPos(); setOpen(true); }}
-        onBlur={commitOrRevert}
+        onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        className={`w-full bg-transparent outline-none text-[12px] font-sans ${notOnList ? 'text-amber-700' : 'text-blk'} ${error ? 'placeholder:text-red-300' : 'placeholder:text-g300'}`}
+        className={`w-full bg-transparent outline-none text-[12px] font-sans text-blk ${error ? 'placeholder:text-red-300' : 'placeholder:text-g300'}`}
       />
-      {warn && <div className="text-[10px] text-red-mrt mt-[2px] leading-tight">Select a product from the list</div>}
-      {notOnList && !warn && <div className="text-[10px] text-amber-700 mt-[2px] leading-tight">Old name — pick from the list</div>}
-      {open && pos && ReactDOM.createPortal(
+      {open && pos && options.length > 0 && ReactDOM.createPortal(
         <div
           ref={listRef}
           role="listbox"
@@ -164,19 +201,20 @@ export function ProductSelect({ value, onChange, names, hsnMap, error, placehold
           style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
           className="bg-white border border-g200 rounded-[3px] shadow-lg max-h-52 overflow-y-auto"
         >
-          {filtered.length === 0 && <div className="px-3 py-1.5 text-[12px] text-g400">No product matches — select from the list</div>}
-          {filtered.map((name, i) => (
+          {options.map((opt, i) => (
             <div
-              key={name}
+              key={(opt.custom ? 'typed:' : '') + opt.name}
               data-idx={i}
               role="option"
               aria-selected={i === activeIdx}
-              onMouseDown={e => { e.preventDefault(); e.stopPropagation(); pick(name); }}
+              onMouseDown={e => { e.preventDefault(); e.stopPropagation(); commit(opt.name); }}
               onMouseEnter={() => setActiveIdx(i)}
-              className={`px-3 py-1.5 cursor-pointer text-[12px] flex items-center justify-between gap-2 ${i === activeIdx ? 'bg-red-lt/40' : 'hover:bg-g50'}`}
+              className={`px-3 py-1.5 cursor-pointer text-[12px] flex items-center justify-between gap-2 ${i === activeIdx ? 'bg-red-lt/40' : 'hover:bg-g50'} ${opt.custom ? 'border-b border-g100' : ''}`}
             >
-              <span className="text-blk truncate">{name}</span>
-              <span className="font-mono text-[10px] text-g400 shrink-0">{hsnMap[name] || ''}</span>
+              {opt.custom
+                ? <span className="text-blk truncate">Use “<span className="font-semibold">{opt.name}</span>”</span>
+                : <span className="text-blk truncate">{opt.name}</span>}
+              <span className="font-mono text-[10px] text-g400 shrink-0">{opt.custom ? 'new name' : (hsnMap[opt.name] || '')}</span>
             </div>
           ))}
         </div>,

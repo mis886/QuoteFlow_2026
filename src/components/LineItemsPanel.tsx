@@ -20,11 +20,12 @@ export function LineItemsPanel({ title, items, grand, remaining, scroll = false 
   const subTotal = items.reduce((s, i) => s + i.total, 0);
   const itemGst = items.reduce((s, i) => s + (i.total * i.gst / 100), 0);
   const table = (
-    <table className={`w-full border-collapse text-[11.5px] m-0 mb-2 ${scroll ? 'min-w-[760px]' : ''}`}>
+    <table className={`w-full border-collapse text-[11.5px] m-0 mb-2 ${scroll ? 'min-w-[880px]' : ''}`}>
       <thead className="bg-g100">
         <tr>
           <th className={`${thCls} text-left`}>#</th>
           <th className={`${thCls} text-left`}>Product Name</th>
+          <th className={`${thCls} text-left`}>Billing Name</th>
           <th className={`${thCls} text-left`}>HSN Code</th>
           <th className={`${thCls} text-right`}>No of Barrels</th>
           {remaining && <th className={`${thCls} text-right`}>Remaining</th>}
@@ -45,6 +46,7 @@ export function LineItemsPanel({ title, items, grand, remaining, scroll = false 
             <tr key={i.seq}>
               <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px] text-g400 w-6">{i.seq}</td>
               <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-medium">{i.desc}</td>
+              <td className="px-2.5 py-1.5 border-b border-g100 text-blk">{i.billingName?.trim() || '—'}</td>
               <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[10px]">{i.hsn || '—'}</td>
               <td className="px-2.5 py-1.5 border-b border-g100 text-blk font-mono text-[11.5px] font-bold text-right">{i.qty}</td>
               {remaining && (
