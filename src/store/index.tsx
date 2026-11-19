@@ -19,6 +19,7 @@ function flashErrorToast(msg: string) {
 }
 import { logActivity } from '../lib/activityLog';
 import { orderDispatchCompleteInDb } from '../lib/dispatchEntrySteps';
+import { canMarkDeliveredManually, MANUAL_DELIVERED_ONLY_MSG } from '../lib/manualDelivered';
 import { AUTO_DELIVERED_FROM_STATUSES } from '../lib/dispatchFlow';
 import { writeOrderUpdate } from '../lib/orderStatusWrite';
 import { User } from '@supabase/supabase-js';
@@ -36,7 +37,10 @@ import { User } from '@supabase/supabase-js';
 // lets Delivered → Order Confirmed through the status lock.
 // fromOrderForm (2026-11-19): a save from the order form (NewOrder) — its status
 // change passes the status lock for every login except the view-only ones.
-type UpdateOrderOpts = { adminOverride?: boolean; fullyDispatchedInDb?: boolean; logNote?: string; onlyIfStatusIn?: readonly string[]; step11Undone?: boolean; fromOrderForm?: boolean };
+// autoDelivered (2026-11-19): set ONLY by autoMarkOrderDeliveredFromDispatch —
+// the automatic Delivered from Dispatch, which the manual-Delivered guard in
+// updateOrder must never block.
+type UpdateOrderOpts = { adminOverride?: boolean; fullyDispatchedInDb?: boolean; logNote?: string; onlyIfStatusIn?: readonly string[]; step11Undone?: boolean; fromOrderForm?: boolean; autoDelivered?: boolean };
 export const AUTO_DELIVERED_LOG_NOTE = 'Auto-marked Delivered from Dispatch (fully dispatched, Step 11 done for every round)';
 export const AUTO_DELIVERED_SAFETY_LOG_NOTE = 'Auto-marked Delivered from Dispatch (safety check)';
 // 2026-11-18: the only ticket fields that can change after it is submitted
@@ -1092,6 +1096,17 @@ const mapEnquiryToDB = (e: any) => {
     if (isOrderViewOnly(user?.email) && before && updatesIn.status === 'Order Confirmed' && before.status !== 'Order Confirmed'
         && !(ADVANCE_PAY.has(before.pay ?? '') && before.status === 'Processing')
         && !opts?.step11Undone && before.status !== 'Order Pending for Dispatch') refuseOrderViewOnly();
+    // 2026-11-19 (user rule): an order becomes Delivered ONLY automatically
+    // from Dispatch (autoMarkOrderDeliveredFromDispatch → opts.autoDelivered)
+    // or by hand by MANUAL_DELIVERED_EMAILS (mis@ / shishir@ — NOT
+    // ADMIN_EMAILS, which has anil@). Any other change TO Delivered (order
+    // form, detail panel, anything else) is refused. Keeping an already
+    // Delivered order Delivered (same status) and moving it away are not affected.
+    if (before && updatesIn.status === 'Delivered' && before.status !== 'Delivered'
+        && !opts?.autoDelivered && !canMarkDeliveredManually(user?.email)) {
+      flashErrorToast(MANUAL_DELIVERED_ONLY_MSG);
+      throw new Error(MANUAL_DELIVERED_ONLY_MSG);
+    }
     // 2026-11-19 (user rule): no detail lock any more — every login except the
     // view-only ones (refused above) may save every field of any order, also
     // one in Dispatch (the 2026-11-17 in-Dispatch lock is removed). Dispatch is
@@ -1170,7 +1185,7 @@ const mapEnquiryToDB = (e: any) => {
   // Returns true if THIS call marked the order.
   const autoMarkOrderDeliveredFromDispatch = async (orderId: string, logNote: string = AUTO_DELIVERED_LOG_NOTE): Promise<boolean> => {
     if (!(await orderDispatchCompleteInDb(orderId))) return false;
-    return markOrderDelivered(orderId, { fullyDispatchedInDb: true, logNote, onlyIfStatusIn: AUTO_DELIVERED_FROM_STATUSES });
+    return markOrderDelivered(orderId, { fullyDispatchedInDb: true, logNote, onlyIfStatusIn: AUTO_DELIVERED_FROM_STATUSES, autoDelivered: true });
   };
 
   // 2026-11-18: a round's Step 11 was undone on the board — an order that is

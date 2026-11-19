@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore, manualDeliveredLogNote } from '../store';
-import { showDeliveredOption, canPickDelivered, confirmManualDelivered } from '../lib/manualDelivered';
+import { showDeliveredOption, canPickDelivered, confirmManualDelivered, canMarkDeliveredManually } from '../lib/manualDelivered';
 import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, orderLeavesDispatch, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
@@ -79,10 +79,12 @@ export function NewOrder() {
   // 2026-11-18: the order's status as saved (not the form's pick) — decides
   // whether "Delivered" shows in the dropdown and if a pick is a manual mark.
   const savedOrderStatus = editOrderId ? data.orders.find(o => o.id === editOrderId)?.status : undefined;
-  // 2026-11-19 (user rule): in the ORDER FORM every login except the view-only
-  // ones may pick Delivered (saved through the manual-Delivered path). The
-  // detail panel still uses MANUAL_DELIVERED_EMAILS (canMarkDeliveredManually).
-  const formCanDeliver = !viewOnly;
+  // 2026-11-19 (user rule, later the same day — undoes 5ba62d7's "everyone"):
+  // Delivered by hand ONLY for MANUAL_DELIVERED_EMAILS (mis@ / shishir@), same
+  // as the detail panel; otherwise an order is Delivered only automatically
+  // from Dispatch. An already-Delivered order still shows Delivered for
+  // everyone (showDeliveredOption). The store's updateOrder enforces it too.
+  const formCanDeliver = canMarkDeliveredManually(user?.email);
   // Leave-Dispatch confirmation (persistOrder): resolved by the ConfirmDialog.
   const [leaveDispatchAsk, setLeaveDispatchAsk] = useState<{ status: OrderStatus; resolve: (ok: boolean) => void } | null>(null);
   const packingTypeOptions = usePackingTypes();
@@ -599,8 +601,9 @@ export function NewOrder() {
       // dispatch entries (fromOrderForm lets the store's status lock through;
       // the store still refuses the view-only logins). Leaving Dispatch was
       // confirmed above; the store clears the Dispatch stamp / copy as before.
-      // Delivered: the manual-Delivered path — "Manually marked Delivered by …"
-      // in the History Log, same write as the detail panel's markOrderDelivered.
+      // Delivered: the manual-Delivered path (mis@ / shishir@ only — the store
+      // refuses anyone else) — "Manually marked Delivered by …" in the History
+      // Log, same write as the detail panel's markOrderDelivered.
       const manualDelivered = orderPayload.status === 'Delivered' && savedOrderStatus !== 'Delivered';
       await updateOrder(editOrderId, orderPayload, {
         fromOrderForm: true,
@@ -768,8 +771,9 @@ export function NewOrder() {
                     const next = e.target.value as OrderStatus;
                     // Delivered by hand: the existing manual-Delivered path — its
                     // confirmation here, and "Manually marked Delivered by …" in
-                    // the History Log on Save (persistOrder). 2026-11-19: from the
-                    // form, every login but the view-only ones (formCanDeliver).
+                    // the History Log on Save (persistOrder). Only mis@ / shishir@
+                    // (formCanDeliver = MANUAL_DELIVERED_EMAILS, 2026-11-19). Going
+                    // back to an already-Delivered order's own status is not a mark.
                     if (next === 'Delivered' && savedOrderStatus !== 'Delivered') {
                       if (!canPickDelivered(formCanDeliver, orderStatus)) return;
                       if (editOrderId && !(await confirmManualDelivered(editOrderId))) return;
@@ -780,8 +784,9 @@ export function NewOrder() {
                   <option value="Order Confirmed">Order Confirmed</option>
                   <option value="Processing">Order Pending for Payment</option>
                   <option value="Order Pending for Dispatch">Order Pending for Dispatch</option>
-                  {/* 2026-11-19: in the form, every login but the view-only ones
-                      (the detail panel keeps MANUAL_DELIVERED_EMAILS). */}
+                  {/* 2026-11-19: only mis@ / shishir@ (MANUAL_DELIVERED_EMAILS), same as
+                      the detail panel; for everyone else only when the order already IS
+                      Delivered, so it still displays. */}
                   {showDeliveredOption(formCanDeliver, savedOrderStatus) && <option value="Delivered">Delivered</option>}
                   {/* 2026-09-19: Won/Lost — user can move an order into either from here, same as the other statuses */}
                   <option value="Won">Won</option>
