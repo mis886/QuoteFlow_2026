@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore, manualDeliveredLogNote } from '../store';
-import { showDeliveredOption, canPickDelivered, confirmManualDelivered, canMarkDeliveredManually } from '../lib/manualDelivered';
-import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, isLockedStatusChangeAllowed, isFullyDispatched, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { showDeliveredOption, canPickDelivered, confirmManualDelivered } from '../lib/manualDelivered';
+import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, orderLeavesDispatch, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
@@ -17,6 +17,7 @@ import { uploadPublicFile } from '../lib/supabase';
 import { Upload, ExternalLink } from 'lucide-react';
 import { SendEmailModal } from '../components/SendEmailModal';
 import { useContactSyncPrompt } from '../components/ContactSyncPrompt';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 const STEPS = ['Form', 'Preview'];
 
@@ -61,15 +62,16 @@ export function NewOrder() {
   const custParam = searchParams.get('cust');
   const navigate = useNavigate();
   const { data, user, addOrder, updateOrder, updateQuote, addCustomer, closeFollowUp, stampName, resolvedSignatory, canSeeEnqQuote } = useAppStore();
-  // Status lock — see isOrderStatusLocked in utils.ts.
+  // In Dispatch (sent, or has a dispatch entry) — only for the info banner now.
   const editingOrder = editOrderId ? data.orders.find(o => o.id === editOrderId) : undefined;
   const statusLocked = !!editingOrder && isOrderStatusLocked(editingOrder, data.dispatchEntries);
   // 2026-11-19 (user rule): every order opens in normal edit mode, Save works,
   // whatever its status and even in Dispatch — for every login except the
   // view-only ones (mum@ / accounts@, ORDER_VIEW_ONLY_EMAILS), who get the
   // read-only form for every order and can't create one. An edit never
-  // changes Dispatch (no dispatch_snapshot / sent_to_dispatch_at write), and
-  // the status dropdown stays locked by the status lock (statusLocked).
+  // changes Dispatch's copy (no dispatch_snapshot write). 2026-11-19 (later):
+  // the STATUS dropdown is open too (any status, any order); a change that
+  // takes the order out of Dispatch asks first (persistOrder).
   // (2026-11-17 → 11-18: an order in Dispatch was read-only except for mis@.)
   const viewOnly = isOrderViewOnly(user?.email);
   const orderLocked = viewOnly;
@@ -77,7 +79,12 @@ export function NewOrder() {
   // 2026-11-18: the order's status as saved (not the form's pick) — decides
   // whether "Delivered" shows in the dropdown and if a pick is a manual mark.
   const savedOrderStatus = editOrderId ? data.orders.find(o => o.id === editOrderId)?.status : undefined;
-  const canManualDelivered = canMarkDeliveredManually(user?.email);
+  // 2026-11-19 (user rule): in the ORDER FORM every login except the view-only
+  // ones may pick Delivered (saved through the manual-Delivered path). The
+  // detail panel still uses MANUAL_DELIVERED_EMAILS (canMarkDeliveredManually).
+  const formCanDeliver = !viewOnly;
+  // Leave-Dispatch confirmation (persistOrder): resolved by the ConfirmDialog.
+  const [leaveDispatchAsk, setLeaveDispatchAsk] = useState<{ status: OrderStatus; resolve: (ok: boolean) => void } | null>(null);
   const packingTypeOptions = usePackingTypes();
   const { names: productNames, hintMap: productHintMap, withProduct, withBilling } = useLineItemProducts();
 
@@ -549,6 +556,15 @@ export function NewOrder() {
     // View-only logins: never write — PDF / DOCX get the order exactly as saved.
     if (orderLocked) return editingOrder ?? null;
     if (!validateStep1()) { setStep(1); return null; }
+    // 2026-11-19: a status change that takes the order out of Dispatch (sent to
+    // Dispatch, no dispatch entry yet, status really changes to something other
+    // than Order Confirmed / Order Pending for Dispatch — orderLeavesDispatch)
+    // asks first. No → nothing is saved and the form stays open. An order with
+    // dispatch entries never asks: it stays on the Dispatch board.
+    if (editingOrder && orderLeavesDispatch(editingOrder, orderStatus, data.dispatchEntries.some(e => e.orderId === editingOrder.id))) {
+      const ok = await new Promise<boolean>(resolve => setLeaveDispatchAsk({ status: orderStatus, resolve }));
+      if (!ok) return null;
+    }
     setErrors({});
     let finalPoFileName = poFile ? poFile.name : existingPoFileName || undefined;
     if (poFile) {
@@ -578,21 +594,18 @@ export function NewOrder() {
       if (lead) orderPayload.customerId = (await addCustomer({ ...lead, createdBy: user?.email ?? undefined, createdDate: new Date().toISOString() })).id;
     }
     if (editOrderId) {
-      // 2026-11-19: any login but the view-only ones saves here, also an order
-      // in Dispatch. Its status dropdown is disabled (status lock), so the same
-      // status is normally re-sent. If the form's status would still be a move
-      // the status lock forbids (e.g. the order was sent to Dispatch while the
-      // form was open), the saved status is kept and the other fields saved.
-      // A locked order's status is changed from the Orders list / detail panel.
-      const savedOrder = data.orders.find(o => o.id === editOrderId);
-      if (savedOrder && orderPayload.status !== savedOrder.status
-          && isOrderStatusLocked(savedOrder, data.dispatchEntries)
-          && !isLockedStatusChangeAllowed(savedOrder.status, orderPayload.status, isFullyDispatched(savedOrder, data.dispatchEntries))) {
-        orderPayload.status = savedOrder.status;
-      }
-      // 2026-11-18: an admin who picked Delivered here gets it logged as such.
+      // 2026-11-19 (user rule): any login but the view-only ones saves here, on
+      // any order — and its status too, even on an order in Dispatch / with
+      // dispatch entries (fromOrderForm lets the store's status lock through;
+      // the store still refuses the view-only logins). Leaving Dispatch was
+      // confirmed above; the store clears the Dispatch stamp / copy as before.
+      // Delivered: the manual-Delivered path — "Manually marked Delivered by …"
+      // in the History Log, same write as the detail panel's markOrderDelivered.
       const manualDelivered = orderPayload.status === 'Delivered' && savedOrderStatus !== 'Delivered';
-      await updateOrder(editOrderId, orderPayload, manualDelivered ? { logNote: manualDeliveredLogNote(stampName()) } : undefined);
+      await updateOrder(editOrderId, orderPayload, {
+        fromOrderForm: true,
+        ...(manualDelivered ? { logNote: manualDeliveredLogNote(stampName()) } : {}),
+      });
     } else {
       await addOrder(orderPayload);
       if (quoteRef) {
@@ -745,15 +758,20 @@ export function NewOrder() {
             {editOrderId && (
               <div className="flex items-center gap-2">
                 <label className="text-[10px] font-bold text-g500 uppercase tracking-wide">Status</label>
-                <select title={viewOnly ? `${ORDER_VIEW_ONLY_MSG} — change its status from the Orders list or the order's detail panel` : statusLocked ? "This order is in Dispatch — change its status from the Orders list or the order's detail panel" : 'Order status'} value={orderStatus}
-                  disabled={statusLocked || viewOnly}
+                {/* 2026-11-19 (user rule): changeable by every login except the
+                    view-only ones (mum@ / accounts@), on ANY order — also one in
+                    Dispatch or with dispatch entries; any status. A change that
+                    takes the order out of Dispatch asks first (persistOrder). */}
+                <select title={viewOnly ? `${ORDER_VIEW_ONLY_MSG} — change its status from the Orders list or the order's detail panel` : 'Order status'} value={orderStatus}
+                  disabled={viewOnly}
                   onChange={async (e: React.ChangeEvent<HTMLSelectElement>) => {
                     const next = e.target.value as OrderStatus;
-                    // 2026-11-18: Delivered by hand — mis@ / shishir@ only, after a
-                    // confirmation (not asked again when switching back to an
-                    // already-Delivered order's own status).
+                    // Delivered by hand: the existing manual-Delivered path — its
+                    // confirmation here, and "Manually marked Delivered by …" in
+                    // the History Log on Save (persistOrder). 2026-11-19: from the
+                    // form, every login but the view-only ones (formCanDeliver).
                     if (next === 'Delivered' && savedOrderStatus !== 'Delivered') {
-                      if (!canPickDelivered(canManualDelivered, orderStatus)) return;
+                      if (!canPickDelivered(formCanDeliver, orderStatus)) return;
                       if (editOrderId && !(await confirmManualDelivered(editOrderId))) return;
                     }
                     setOrderStatus(next);
@@ -761,9 +779,10 @@ export function NewOrder() {
                   className="font-mono text-[11px] font-bold border border-g300 rounded-[3px] p-[5px_10px] outline-none focus:border-red-mrt bg-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-60">
                   <option value="Order Confirmed">Order Confirmed</option>
                   <option value="Processing">Order Pending for Payment</option>
-                  {/* 2026-11-18: only mis@ / shishir@ (MANUAL_DELIVERED_EMAILS); hidden from
-                      everyone else unless the order already is Delivered. */}
-                  {showDeliveredOption(canManualDelivered, savedOrderStatus) && <option value="Delivered">Delivered</option>}
+                  <option value="Order Pending for Dispatch">Order Pending for Dispatch</option>
+                  {/* 2026-11-19: in the form, every login but the view-only ones
+                      (the detail panel keeps MANUAL_DELIVERED_EMAILS). */}
+                  {showDeliveredOption(formCanDeliver, savedOrderStatus) && <option value="Delivered">Delivered</option>}
                   {/* 2026-09-19: Won/Lost — user can move an order into either from here, same as the other statuses */}
                   <option value="Won">Won</option>
                   <option value="Lost">Lost</option>
@@ -1670,6 +1689,18 @@ export function NewOrder() {
           {errors.global && <span className="text-red-mrt text-[11px] font-bold">{errors.global}</span>}
         </div>
       </div>
+
+      {/* 2026-11-19: confirm before a status change takes the order out of Dispatch. */}
+      {leaveDispatchAsk && (
+        <ConfirmDialog
+          title="Remove from Dispatch?"
+          confirmLabel="Continue"
+          onConfirm={() => { leaveDispatchAsk.resolve(true); setLeaveDispatchAsk(null); }}
+          onCancel={() => { leaveDispatchAsk.resolve(false); setLeaveDispatchAsk(null); }}
+        >
+          This order is in Dispatch. Changing the status to <strong>{leaveDispatchAsk.status === 'Processing' ? 'Order Pending for Payment' : leaveDispatchAsk.status}</strong> will remove it from the Dispatch board. Continue?
+        </ConfirmDialog>
+      )}
 
       {/* Email modal */}
       {showEmailModal && !viewOnly && (

@@ -34,7 +34,9 @@ import { User } from '@supabase/supabase-js';
 // is changed or logged and updateOrder returns false.
 // opts.step11Undone (2026-11-18, revertOrderDeliveredAfterStep11Undo only):
 // lets Delivered → Order Confirmed through the status lock.
-type UpdateOrderOpts = { adminOverride?: boolean; fullyDispatchedInDb?: boolean; logNote?: string; onlyIfStatusIn?: readonly string[]; step11Undone?: boolean };
+// fromOrderForm (2026-11-19): a save from the order form (NewOrder) — its status
+// change passes the status lock for every login except the view-only ones.
+type UpdateOrderOpts = { adminOverride?: boolean; fullyDispatchedInDb?: boolean; logNote?: string; onlyIfStatusIn?: readonly string[]; step11Undone?: boolean; fromOrderForm?: boolean };
 export const AUTO_DELIVERED_LOG_NOTE = 'Auto-marked Delivered from Dispatch (fully dispatched, Step 11 done for every round)';
 export const AUTO_DELIVERED_SAFETY_LOG_NOTE = 'Auto-marked Delivered from Dispatch (safety check)';
 // 2026-11-18: the only ticket fields that can change after it is submitted
@@ -1095,17 +1097,22 @@ const mapEnquiryToDB = (e: any) => {
     // one in Dispatch (the 2026-11-17 in-Dispatch lock is removed). Dispatch is
     // unaffected: the order form never writes dispatch_snapshot /
     // sent_to_dispatch_at, and orderLeavesDispatch below needs a real status
-    // change. The status lock below still applies.
+    // change. The status lock below still applies (except from the order form).
     const updates = updatesWithCustomerId(before, updatesIn);
     // Status lock: once an order is sent to Dispatch (or has a dispatch
     // entry) its status can't change — except the moves in
     // isLockedStatusChangeAllowed, or an admin who confirmed the override.
+    // 2026-11-19 (user rule): or a change from the ORDER FORM (fromOrderForm)
+    // by any login but the view-only ones (they are refused above anyway) —
+    // any status, any order. The form confirms first when it leaves Dispatch.
+    // The detail panel / list buttons / Dispatch keep the lock as before.
     if (before && updates.status && updates.status !== before.status
         && isOrderStatusLocked(before, data.dispatchEntries)) {
       const fullyDispatched = !!opts?.fullyDispatchedInDb || isFullyDispatched(before, data.dispatchEntries);
       const allowed = isLockedStatusChangeAllowed(before.status, updates.status, fullyDispatched)
         || (isAdmin && !!opts?.adminOverride)
-        || (!!opts?.step11Undone && before.status === 'Delivered' && updates.status === 'Order Confirmed');
+        || (!!opts?.step11Undone && before.status === 'Delivered' && updates.status === 'Order Confirmed')
+        || (!!opts?.fromOrderForm && !isOrderViewOnly(user?.email));
       if (!allowed) throw new Error("This order was sent to Dispatch — status can't be changed.");
     }
     const dbUpdates = mapOrderToDB(updates);

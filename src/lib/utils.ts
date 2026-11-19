@@ -532,6 +532,11 @@ export const BOARD_GO_LIVE_AT ='2026-09-30T06:00:00Z';
 // (sentToDispatchAt) or has any dispatch entry. Non-admins can't change the
 // status of a locked order (store's updateOrder enforces it too); admins can,
 // after a confirm. See isLockedStatusChangeAllowed for the exceptions.
+// 2026-11-19 (user rule): this lock applies to the detail panel / list buttons
+// / Dispatch only — NOT to the ORDER FORM (NewOrder), where every login except
+// the view-only ones may pick any status on any order (store: fromOrderForm).
+// The form asks first when the change takes the order out of Dispatch
+// (orderLeavesDispatch).
 export const isOrderStatusLocked = (
   o: { id: string; sentToDispatchAt?: string },
   dispatchEntries: { orderId: string }[],
