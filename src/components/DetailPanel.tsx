@@ -44,7 +44,6 @@ export function DetailPanel() {
   const [showLineItems, setShowLineItems] = React.useState(false);
   const [ticketNoteDraft, setTicketNoteDraft] = React.useState<string | null>(null);
   const [ticketSaving, setTicketSaving] = React.useState<string | null>(null);
-  const ticketNoteRef = React.useRef<HTMLTextAreaElement>(null);
   const [ticketImagePreviewUrl, setTicketImagePreviewUrl] = React.useState<string | null>(null);
 
   const handleDownload = async (path: string, id: string, name?: string) => {
@@ -785,16 +784,12 @@ export function DetailPanel() {
       flashErrorToast('Invalid status change');
       return;
     }
-    if (to === 'Resolved' && !note.trim()) {
-      flashErrorToast('Please add a resolution note before resolving');
-      ticketNoteRef.current?.focus();
-      return;
-    }
     setTicketSaving(to);
     try {
       await updateTicket(t.id, {
         status: to,
-        resolutionNote: note,
+        // Empty note: leave the stored note untouched (don't overwrite with '').
+        ...(note.trim() ? { resolutionNote: note } : {}),
         ...(to === 'Resolved' || to === 'Closed' ? { resolvedBy: stampName() } : {}),
       });
       setTicketNoteDraft(null);
@@ -932,7 +927,6 @@ export function DetailPanel() {
                 );
               })()}
               <textarea
-                ref={ticketNoteRef}
                 value={noteValue}
                 onChange={(e) => setTicketNoteDraft(e.target.value)}
                 rows={4}
