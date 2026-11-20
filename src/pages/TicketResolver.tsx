@@ -7,17 +7,27 @@ import { TicketStatus } from '../lib/types';
 
 export function TicketResolver() {
   const { data, openDetailPanel } = useAppStore();
-  const [tab, setTab] = useState<'All' | TicketStatus>('All');
+  // No "All" tab: every ticket lives only in its own status tab. Opens on Open.
+  const [tab, setTab] = useState<TicketStatus>('Open');
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string>('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  // "In Progress" / "in_progress" / " in  progress " all compare equal.
+  const normStatus = (s: string | undefined | null) => (s || '').toLowerCase().replace(/[\s_-]+/g, ' ').trim();
+  const inTab = (t: { status: string }, tabStatus: TicketStatus) => normStatus(t.status) === normStatus(tabStatus);
+
   const statusCounts = {
-    All: data.tickets.length,
-    Open: data.tickets.filter(t => t.status === 'Open').length,
-    'In Progress': data.tickets.filter(t => t.status === 'In Progress').length,
-    Resolved: data.tickets.filter(t => t.status === 'Resolved').length,
-    Closed: data.tickets.filter(t => t.status === 'Closed').length,
+    Open: data.tickets.filter(t => inTab(t, 'Open')).length,
+    'In Progress': data.tickets.filter(t => inTab(t, 'In Progress')).length,
+    Resolved: data.tickets.filter(t => inTab(t, 'Resolved')).length,
+    Closed: data.tickets.filter(t => inTab(t, 'Closed')).length,
+  };
+  const emptyText: Record<TicketStatus, string> = {
+    'Open': 'No open tickets',
+    'In Progress': 'No tickets in progress',
+    'Resolved': 'No resolved tickets',
+    'Closed': 'No closed tickets',
   };
 
   const toggleSort = (col: string) => {
@@ -28,7 +38,7 @@ export function TicketResolver() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = data.tickets.filter(t => {
-      if (tab !== 'All' && t.status !== tab) return false;
+      if (!inTab(t, tab)) return false;
       if (q) {
         const hay = `${t.id} ${t.raisedByName} ${t.raisedByEmail} ${t.subject} ${t.module}`.toLowerCase();
         if (!normalizeSearchText(hay).includes(normalizeSearchText(q))) return false;
@@ -61,7 +71,7 @@ export function TicketResolver() {
     </th>
   );
 
-  const TabSelect = ({ current, label, count }: { current: 'All' | TicketStatus, label: string, count: number }) => (
+  const TabSelect = ({ current, label, count }: { current: TicketStatus, label: string, count: number }) => (
     <div
       onClick={() => setTab(current)}
       className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${tab === current ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
@@ -82,7 +92,6 @@ export function TicketResolver() {
 
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
-          <TabSelect current="All" label="All" count={statusCounts.All} />
           <TabSelect current="Open" label="Open" count={statusCounts.Open} />
           <TabSelect current="In Progress" label="In Progress" count={statusCounts['In Progress']} />
           <TabSelect current="Resolved" label="Resolved" count={statusCounts.Resolved} />
@@ -121,7 +130,7 @@ export function TicketResolver() {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={7} className="text-center p-8 text-g400 text-[13px]">No tickets match this filter</td></tr>
+                <tr><td colSpan={7} className="text-center p-8 text-g400 text-[13px]">{search.trim() ? `${emptyText[tab]} match this search` : emptyText[tab]}</td></tr>
               ) : (
                 filtered.map(t => (
                   <tr key={t.id} onClick={() => openDetailPanel('ticket', t.id)}
