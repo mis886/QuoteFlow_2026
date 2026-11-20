@@ -7,8 +7,8 @@ import { TicketStatus } from '../lib/types';
 
 export function TicketResolver() {
   const { data, openDetailPanel } = useAppStore();
-  // No "All" tab: every ticket lives only in its own status tab. Opens on Open.
-  const [tab, setTab] = useState<TicketStatus>('Open');
+  // Status tabs show only that status; "All" shows every ticket. Opens on Open.
+  const [tab, setTab] = useState<'All' | TicketStatus>('Open');
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string>('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -18,12 +18,14 @@ export function TicketResolver() {
   const inTab = (t: { status: string }, tabStatus: TicketStatus) => normStatus(t.status) === normStatus(tabStatus);
 
   const statusCounts = {
+    All: data.tickets.length,
     Open: data.tickets.filter(t => inTab(t, 'Open')).length,
     'In Progress': data.tickets.filter(t => inTab(t, 'In Progress')).length,
     Resolved: data.tickets.filter(t => inTab(t, 'Resolved')).length,
     Closed: data.tickets.filter(t => inTab(t, 'Closed')).length,
   };
-  const emptyText: Record<TicketStatus, string> = {
+  const emptyText: Record<'All' | TicketStatus, string> = {
+    'All': 'No tickets',
     'Open': 'No open tickets',
     'In Progress': 'No tickets in progress',
     'Resolved': 'No resolved tickets',
@@ -38,7 +40,7 @@ export function TicketResolver() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = data.tickets.filter(t => {
-      if (!inTab(t, tab)) return false;
+      if (tab !== 'All' && !inTab(t, tab)) return false;
       if (q) {
         const hay = `${t.id} ${t.raisedByName} ${t.raisedByEmail} ${t.subject} ${t.module}`.toLowerCase();
         if (!normalizeSearchText(hay).includes(normalizeSearchText(q))) return false;
@@ -71,7 +73,7 @@ export function TicketResolver() {
     </th>
   );
 
-  const TabSelect = ({ current, label, count }: { current: TicketStatus, label: string, count: number }) => (
+  const TabSelect = ({ current, label, count }: { current: 'All' | TicketStatus, label: string, count: number }) => (
     <div
       onClick={() => setTab(current)}
       className={`px-[11px] py-1 rounded-[3px] text-[11.5px] font-medium cursor-pointer transition-colors whitespace-nowrap select-none ${tab === current ? 'bg-white text-blk font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]' : 'text-g600 hover:text-blk'}`}
@@ -96,6 +98,7 @@ export function TicketResolver() {
           <TabSelect current="In Progress" label="In Progress" count={statusCounts['In Progress']} />
           <TabSelect current="Resolved" label="Resolved" count={statusCounts.Resolved} />
           <TabSelect current="Closed" label="Closed" count={statusCounts.Closed} />
+          <TabSelect current="All" label="All" count={statusCounts.All} />
         </div>
 
         <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
