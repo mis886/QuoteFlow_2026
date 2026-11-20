@@ -94,11 +94,11 @@ export function TicketResolver() {
 
       <div className="flex items-center gap-2 px-6 py-2.5 bg-white border-b border-g200 flex-wrap mt-4">
         <div className="flex gap-[1px] bg-g100 border border-g200 rounded p-[2px]">
+          <TabSelect current="All" label="All" count={statusCounts.All} />
           <TabSelect current="Open" label="Open" count={statusCounts.Open} />
           <TabSelect current="In Progress" label="In Progress" count={statusCounts['In Progress']} />
           <TabSelect current="Resolved" label="Resolved" count={statusCounts.Resolved} />
           <TabSelect current="Closed" label="Closed" count={statusCounts.Closed} />
-          <TabSelect current="All" label="All" count={statusCounts.All} />
         </div>
 
         <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>
