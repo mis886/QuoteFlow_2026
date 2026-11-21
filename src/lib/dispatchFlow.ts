@@ -247,22 +247,35 @@ export function groupLinkedDOs(rows: any[]): LinkedDO[] {
 const normName = (s?: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /**
- * Order lines that still have barrels left AND are not on any of the given
- * DOs — what "+ New DO (another warehouse)" opens rows for. A DO line saved
- * before order_line_seq existed is matched by its billing name.
+ * 2026-11-21: barrels per order line on the given DO lines — the SUM of every
+ * row of that line (one row per lot; several lots of one line is normal). A
+ * DO line saved before order_line_seq existed is matched by its billing name.
+ */
+export function doBarrelsByLine(liveOrder: Order, lines: Pick<LinkedDOLine, 'orderLineSeq' | 'billingName' | 'articles'>[]): Map<number, number> {
+  const order = dispatchOrderView(liveOrder);
+  const out = new Map<number, number>();
+  for (const l of lines) {
+    const seq = l.orderLineSeq ?? order.items.find(i => !!normName(i.desc) && normName(i.desc) === normName(l.billingName))?.seq;
+    if (seq == null) continue;
+    out.set(seq, (out.get(seq) ?? 0) + (Number(l.articles) || 0));
+  }
+  return out;
+}
+
+/**
+ * Order lines that still have barrels left AFTER the given DOs — what
+ * "+ New DO (another warehouse)" opens rows for. 2026-11-21: per line, the
+ * barrels of ALL its DO rows are summed (doBarrelsByLine) — a line partly on
+ * a DO (4 of 10) is offered again with the rest (6); before, any DO row made
+ * the whole line count as covered. `left` = remaining minus those barrels.
  */
 export function orderLinesWithoutDo(liveOrder: Order, entries: DispatchEntry[], dos: { lines: LinkedDOLine[] }[]) {
   const order = dispatchOrderView(liveOrder);
-  const covered = new Set<number>();
-  for (const l of dos.flatMap(d => d.lines)) {
-    if (l.orderLineSeq != null) { covered.add(l.orderLineSeq); continue; }
-    const item = order.items.find(i => !!normName(i.desc) && normName(i.desc) === normName(l.billingName));
-    if (item) covered.add(item.seq);
-  }
+  const onDo = doBarrelsByLine(order, dos.flatMap(d => d.lines));
   const remaining = remainingByLine(order, entries);
   return order.items
-    .map(i => ({ seq: i.seq, desc: (i.desc || '').trim(), left: remaining.get(i.seq) ?? 0 }))
-    .filter(l => l.left > 0 && !covered.has(l.seq));
+    .map(i => ({ seq: i.seq, desc: (i.desc || '').trim(), left: Math.max(0, (remaining.get(i.seq) ?? 0) - (onDo.get(i.seq) ?? 0)) }))
+    .filter(l => l.left > 0);
 }
 
 export interface DoPending {

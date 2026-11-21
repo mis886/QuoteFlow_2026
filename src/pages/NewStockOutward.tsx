@@ -224,7 +224,7 @@ import { PRODUCTS } from '../lib/stockInwardProducts';
 import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
 import { billingNameFor, orderLineBillingName } from '../lib/lineItemProducts';
 import { StockLotOption, productMatches, dedupeLots, lotsContaining, groupLotsByProduct, sameName } from '../lib/doLotPicker';
-import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
+import { isImportedEntry, orderLinesWithoutDo, doBarrelsByLine, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
 import { Loader2, Plus, X, ImageIcon } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
 import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse, DIRECT_TRANSPORTER, WAREHOUSE_TRANSFER, OUTWARD_FULFILMENT_TYPES, TRANSFER_PARTIES, isTransferParty, isOutwardDeliveryType, fulfillmentLabel } from '../lib/utils';
@@ -804,7 +804,35 @@ function OutwardForm() {
     const later = new Set(real.slice(linkedOrder.round - 1).map(e => e.id));
     return all.filter(e => !later.has(e.id));
   }, [rowsOrder, linkedOrder, data.dispatchEntries]);
-  const orderRemaining = useMemo(() => rowsOrder ? remainingByLine(rowsOrder, orderEntries) : new Map<number, number>(), [rowsOrder, orderEntries]);
+  // Every DO row of this order + round (saved), for "+ New DO for the rest"
+  // and (2026-11-21) the barrels OTHER DOs of the round already put on each
+  // order line.
+  const [roundDoLines, setRoundDoLines] = useState<{ doNumber: string; orderLineSeq?: number; billingName?: string; articles: number }[] | null>(null);
+  useEffect(() => {
+    if (!linkedOrder) return;
+    let cancelled = false;
+    supabase.from('stock_movements').select('do_number, order_line_seq, billing_name, num_articles')
+      .eq('type', 'outward').eq('order_id', linkedOrder.orderId).eq('dispatch_round', linkedOrder.round)
+      .then(({ data: rows, error: e }) => {
+        if (cancelled || e) return;
+        setRoundDoLines((rows || []).map(r => ({ doNumber: r.do_number || '', orderLineSeq: r.order_line_seq ?? undefined,
+          billingName: r.billing_name ?? undefined, articles: Number(r.num_articles) || 0 })));
+      });
+    return () => { cancelled = true; };
+  }, [linkedOrder]);
+  // 2026-11-21: what each order line still needs for THIS DO = remaining at
+  // the start of the round (orderEntries) minus the barrels the round's OTHER
+  // DOs (not this DO number) have on it — summed over all their lot rows. So
+  // after a 4-barrel DO on a 10-barrel line, a second DO may take 6.
+  const orderRemaining = useMemo(() => {
+    if (!rowsOrder) return new Map<number, number>();
+    const rem = remainingByLine(rowsOrder, orderEntries);
+    const ownDo = header.doNumber.trim().toLowerCase();
+    const others = (roundDoLines ?? []).filter(l => !ownDo || l.doNumber.trim().toLowerCase() !== ownDo);
+    const onOtherDos = doBarrelsByLine(rowsOrder, others);
+    for (const [seq, left] of rem) rem.set(seq, Math.max(0, left - (onOtherDos.get(seq) ?? 0)));
+    return rem;
+  }, [rowsOrder, orderEntries, roundDoLines, header.doNumber]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -1400,6 +1428,16 @@ function OutwardForm() {
       ? seededLine({ billingName, productSeed: item.desc ?? '', orderLineSeq: item.seq, pin: { seq: item.seq, billingName } })
       : newLine()]);
   };
+  // 2026-11-21: "+ Lot" on a row linked to an order line — a new row right
+  // under it for the SAME line (pinned to it), Product Name = the line's name,
+  // Billing Name = the line's billing name. Its own lot / stock_movements row.
+  const addLotRowAfter = (l: Line) => {
+    const item = rowsOrder && l.orderLineSeq != null ? rowsOrder.items.find(i => i.seq === l.orderLineSeq) : undefined;
+    if (!item) return;
+    const billingName = orderLineBillingName(item);
+    const row = seededLine({ billingName, productSeed: item.desc ?? '', orderLineSeq: item.seq, pin: { seq: item.seq, billingName } });
+    setLines(ls => { const i = ls.findIndex(x => x.key === l.key); return [...ls.slice(0, i + 1), row, ...ls.slice(i + 1)]; });
+  };
   const removeLine = (key: string) => setLines(ls => ls.length > 1 ? ls.filter(l => l.key !== key) : ls);
 
   // ── Per-row checks ────────────────────────────────────────────────────────
@@ -1512,20 +1550,9 @@ function OutwardForm() {
   const isValid = !!(header.warehouse && (!isOtherWarehouse || header.otherWarehouse.trim()) && header.doNumber.trim());
 
   // "+ New DO (another warehouse)" (a saved DO opened from the Board): order
-  // lines with barrels left that are on no DO of this round yet.
-  const [roundDoLines, setRoundDoLines] = useState<{ orderLineSeq?: number; billingName?: string }[] | null>(null);
-  useEffect(() => {
-    if (!isEditing || !boardLink || !linkedOrder) return;
-    let cancelled = false;
-    supabase.from('stock_movements').select('order_line_seq, billing_name')
-      .eq('type', 'outward').eq('order_id', linkedOrder.orderId).eq('dispatch_round', linkedOrder.round)
-      .then(({ data: rows, error: e }) => {
-        if (cancelled || e) return;
-        setRoundDoLines((rows || []).map(r => ({ orderLineSeq: r.order_line_seq ?? undefined, billingName: r.billing_name ?? undefined })));
-      });
-    return () => { cancelled = true; };
-  }, [isEditing, boardLink, linkedOrder]);
-  const linesWithoutDo = rowsOrder && roundDoLines
+  // lines with barrels left after every DO of this round (2026-11-21: summed
+  // per line — see orderLinesWithoutDo). roundDoLines is loaded above.
+  const linesWithoutDo = isEditing && boardLink && rowsOrder && roundDoLines
     ? orderLinesWithoutDo(rowsOrder, orderEntries, [{ lines: roundDoLines.map((l, i) => ({ id: String(i), ...l })) }])
     : [];
   const openNewDoForRest = () => {
@@ -1991,7 +2018,15 @@ function OutwardForm() {
                               </select>
                             : <input className={cellLocked} value={l.weightType} readOnly />}
                         </td>
-                        <td className="px-[5px] py-[9px] w-[28px]">
+                        <td className="px-[5px] py-[9px] w-[28px] whitespace-nowrap">
+                          {/* 2026-11-21: another lot for the SAME order line, in a new row right under this one. */}
+                          {rowsOrder && l.orderLineSeq != null && rowsOrder.items.some(i => i.seq === l.orderLineSeq) && (
+                            <button type="button" onClick={() => addLotRowAfter(l)}
+                              title={`Add another lot for ${orderLineLabel(rowsOrder, l.orderLineSeq)}`}
+                              className="mr-1 px-1.5 py-[1px] rounded-[3px] border border-g200 text-[10.5px] font-semibold text-g600 hover:text-blk hover:border-g400">
+                              + Lot
+                            </button>
+                          )}
                           <button type="button" onClick={() => removeLine(l.key)} disabled={lines.length <= 1}
                             title={lines.length <= 1 ? 'A DO needs at least one product' : 'Remove this product'}
                             className="p-1 text-g400 hover:text-red-mrt disabled:opacity-30 disabled:cursor-not-allowed">

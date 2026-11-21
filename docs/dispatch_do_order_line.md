@@ -120,6 +120,22 @@ Warehouse) is changed; only then are the order-line rules checked again.
     save_outward_do does not compare product_name with the order.
   - Changing the Warehouse keeps the Product Name text; a Board row also
     drops its lot (Lot No + the fields it filled).
+- **Several lots for one order line (2026-11-21, on top of 48862ba):** a row
+  linked to an order line has a "+ Lot" button — a new row right under it for
+  the SAME line (pinned, Product Name = the line's name, Billing Name = the
+  line's billing name); "+ Add product … for <line>" does the same at the end.
+  Each row is its own lot and stock_movements row (own do_line_no, same
+  order_line_seq). Same lot twice is still blocked. The line's barrels =
+  SUM of its rows, checked against what the line still needs — 2026-11-21:
+  remaining at the start of the round MINUS the round's OTHER DOs on that
+  line (`doBarrelsByLine` in dispatchFlow.ts), so a 2nd DO of the round can
+  only take the rest. "+ New DO (another warehouse)" (drawer + saved DO)
+  offers each line's rest after ALL the round's DOs (`orderLinesWithoutDo`,
+  summed — before, any DO row made the whole line "covered"). A new Dispatch
+  entry starts each line at the round's DO barrels (summed over its lots,
+  capped at remaining; a line on no DO at 0); no DO yet → remaining.
+  save_outward_do already allows one line on several rows (migration
+  20261103190000) and has no remaining check — no DB change.
 - "+ New DO (another warehouse)" — shown on a saved DO opened from the board
   and on the drawer's Step 6 when the order still has lines with barrels left
   that are on no DO of this round. Opens a NEW DO for the same order + round

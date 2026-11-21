@@ -13,7 +13,7 @@ import { Upload, ExternalLink, Loader2, Search, X, Mail, MessageCircle } from 'l
 import { supabase, uploadPublicFile, resolveCoaStorageUrl } from '../lib/supabase';
 import { SendEmailModal, DispatchEmailAttachment } from '../components/SendEmailModal';
 import { DocFileActions } from '../components/DocFileActions';
-import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry, needsBhiwandiEmail, orderFulfillmentFor, readyForNewEntry, STEP11_WHATSAPP_LABEL, showStep11WhatsApp, step11WhatsAppBlock, entryIsDirectDelivery, entryRoundOf } from '../lib/dispatchFlow';
+import { DispatchStepRecord, FINISH_STEPS_FIRST, entryPosition, isImportedEntry, needsBhiwandiEmail, orderFulfillmentFor, readyForNewEntry, STEP11_WHATSAPP_LABEL, showStep11WhatsApp, step11WhatsAppBlock, entryIsDirectDelivery, entryRoundOf, doBarrelsByLine } from '../lib/dispatchFlow';
 import { autoCompleteEntrySteps, loadEntryStepRecords, loadOrderStepRecords, markEntryDocsSentWhatsApp, roundIsDirectDeliveryInDb, roundIsWadaInDb } from '../lib/dispatchEntrySteps';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { searchCoaDocuments, uploadCoaDocument } from '../lib/coaDocuments';
@@ -444,7 +444,10 @@ export function NewDispatchEntry() {
 
   // Mirrors NewOrder.tsx's updateItem — recomputes an item's Amount whenever
   // qty, rate, or packing (which feeds Total Qty) changes.
+  // 2026-11-21: set once the user changes a line (the DO prefill below never overwrites them).
+  const itemsTouched = useRef(false);
   const updateItem = (idx: number, field: keyof OrderItem, value: any) => {
+    itemsTouched.current = true;
     const ni = [...items];
     const updated = { ...ni[idx], [field]: value };
     if (field === 'qty' || field === 'agreedRate' || field === 'priceBasisConv' || field === 'packing') {
@@ -463,7 +466,7 @@ export function NewDispatchEntry() {
   // match on. This form (unlike NewOrder.tsx) never adds new lines, only
   // removes existing ones; renumbering would shift a later item onto an
   // earlier line's seq and misattribute quantities.
-  const removeItem = (idx: number) => { if (items.length === 1) return; setItems(items.filter((_, i) => i !== idx)); };
+  const removeItem = (idx: number) => { if (items.length === 1) return; itemsTouched.current = true; setItems(items.filter((_, i) => i !== idx)); };
 
   // Preload from ?entryId= (edit that exact entry) or ?orderRef= (new entry
   // for that order). Waits for the store to load so remaining quantities are
@@ -518,6 +521,19 @@ export function NewDispatchEntry() {
       setItems(order.items
         .filter(i => (remaining.get(i.seq) || 0) > 0)
         .map(i => withQty({ ...i, billingName: orderLineBillingName(i) }, remaining.get(i.seq) || 0)));
+      // 2026-11-21: when this round already has DO(s), each line starts at the
+      // barrels on them — the SUM of every DO row (one per lot) of that line,
+      // capped at what's left; a line on no DO starts at 0 (not saved unless
+      // filled in). No DO yet → the remaining, as above. Still editable.
+      const round = data.dispatchEntries.filter(e => e.orderId === order.id && !isImportedEntry(e)).length + 1;
+      supabase.from('stock_movements').select('order_line_seq, billing_name, num_articles')
+        .eq('type', 'outward').eq('order_id', order.id).eq('dispatch_round', round)
+        .then(({ data: rows, error: doErr }) => {
+          if (doErr || !rows?.length || itemsTouched.current) return;
+          const onDo = doBarrelsByLine(order, rows.map(r => ({
+            orderLineSeq: r.order_line_seq ?? undefined, billingName: r.billing_name ?? undefined, articles: Number(r.num_articles) || 0 })));
+          setItems(prev => prev.map(i => withQty(i, Math.min(remaining.get(i.seq) || 0, onDo.get(i.seq) ?? 0))));
+        });
       // Insurance is charged once, on the order's first dispatch — same as
       // the old leftover orders, which always carried insurance 0.
       if (data.dispatchEntries.some(e => e.orderId === order.id)) setInsurance(0);
