@@ -131,7 +131,7 @@ export const needsPaymentCheck = (pay: string | undefined) => /advance/i.test(pa
 /** An order's Delivery / Self Pickup / Direct Transporter: its own type first,
  *  then the customer's usual one (customers only have Delivery / Self Pickup). */
 export function orderFulfillmentFor(o: Pick<Order, 'fulfillmentType'>, customerType?: string): DispatchFulfillmentType | 'not_set' {
-  if (o.fulfillmentType === 'delivery' || o.fulfillmentType === 'self_pickup' || o.fulfillmentType === 'direct_transporter') return o.fulfillmentType;
+  if (o.fulfillmentType === 'delivery' || o.fulfillmentType === 'self_pickup' || o.fulfillmentType === 'direct_transporter' || o.fulfillmentType === 'warehouse_transfer') return o.fulfillmentType;
   if (customerType === 'Delivery') return 'delivery';
   if (customerType === 'Self Pickup') return 'self_pickup';
   return 'not_set';

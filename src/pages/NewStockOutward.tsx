@@ -227,7 +227,7 @@ import { StockLotOption, productMatches, dedupeLots, byLotAge, lotsForOrderProdu
 import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
 import { Loader2, Plus, X, ImageIcon } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
-import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse, DIRECT_TRANSPORTER, isOutwardDeliveryType, fulfillmentLabel } from '../lib/utils';
+import { fmtIST, canActOnDispatchBoard, dispatchOrderView, remainingByLine, outwardTransporterName, friendlyStockError, isNoStockWarehouse, DIRECT_TRANSPORTER, WAREHOUSE_TRANSFER, OUTWARD_FULFILMENT_TYPES, TRANSFER_PARTIES, isTransferParty, isOutwardDeliveryType, fulfillmentLabel } from '../lib/utils';
 import { logActivity } from '../lib/activityLog';
 import { generateOutwardPDF } from '../lib/pdfGenerator';
 import { downloadOutwardJPEG } from '../lib/outwardJpeg';
@@ -423,7 +423,9 @@ const sameLot = (a: string, b: string) => !!a.trim() && a.trim().toLowerCase() =
 // ("Both" is a customer-level value, not something one Outward entry can be).
 // 2026-11-14: + "Direct Transporter" — works exactly like Delivery (see
 // isOutwardDeliveryType in utils.ts).
-const FULFILMENT_TYPES = ['Delivery', 'Self Pickup', DIRECT_TRANSPORTER];
+// 2026-11-21: + "Warehouse Transfer" — works like Delivery for now. The list
+// lives in utils.ts (OUTWARD_FULFILMENT_TYPES).
+const FULFILMENT_TYPES = OUTWARD_FULFILMENT_TYPES;
 
 // The Outward list view (StockMovements.tsx) an entry belongs in — Saved or
 // Email Sent sub-tab, Delivery / Self Pickup / Direct Transporter pill. Same
@@ -432,6 +434,7 @@ const outwardListPath = (emailSent: boolean, fulfilmentType?: string | null) => 
   const type = fulfilmentType === 'Self Pickup' ? 'self_pickup'
     : fulfilmentType === 'Delivery' ? 'delivery'
     : fulfilmentType === DIRECT_TRANSPORTER ? 'direct_transporter'
+    : fulfilmentType === WAREHOUSE_TRANSFER ? 'warehouse_transfer'
     : 'not_set';
   return `/stock-movements?tab=outward&sub=${emailSent ? 'emailSent' : 'saved'}&type=${type}`;
 };
@@ -770,7 +773,8 @@ function OutwardForm() {
   // Direct Transporter DO (that link always sets fromDispatch=1 + orderRef).
   const fulfilmentParam = fromDispatch ? searchParams.get('fulfilment') : null;
   const dispatchFulfilment = fulfilmentParam === 'self_pickup' ? 'Self Pickup'
-    : fulfilmentParam === 'direct_transporter' ? DIRECT_TRANSPORTER : '';
+    : fulfilmentParam === 'direct_transporter' ? DIRECT_TRANSPORTER
+    : fulfilmentParam === 'warehouse_transfer' ? WAREHOUSE_TRANSFER : '';
 
   const [header, setHeader] = useState<Header>(emptyHeader);
   const [lines, setLines] = useState<Line[]>(() => [newLine()]);
@@ -915,6 +919,10 @@ function OutwardForm() {
   const [transporterOptions, setTransporterOptions] = useState<string[]>([]);
   const [transporterByParty, setTransporterByParty] = useState<Record<string, string>>({});
   const [fulfilmentTypeByParty, setFulfilmentTypeByParty] = useState<Record<string, string>>({});
+  // 2026-11-21: the fixed Transfer parties always come first (not customers).
+  const partyOptionsWithTransfers = useMemo(
+    () => [...TRANSFER_PARTIES, ...partyNameOptions.filter(n => !TRANSFER_PARTIES.includes(n))],
+    [partyNameOptions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -981,7 +989,7 @@ function OutwardForm() {
       // then whatever is already in. Still editable.
       // 2026-11-14: except Direct Transporter from the URL, which beats the
       // order ("Open new DO for the rest" on a Direct Transporter DO).
-      fulfilmentType: (dispatchFulfilment === DIRECT_TRANSPORTER ? DIRECT_TRANSPORTER : '')
+      fulfilmentType: (dispatchFulfilment === DIRECT_TRANSPORTER || dispatchFulfilment === WAREHOUSE_TRANSFER ? dispatchFulfilment : '')
         || orderFulfilment || dispatchFulfilment || h.fulfilmentType || fulfilmentTypeByParty[party] || '',
     }));
   }, [rowsOrder]);
@@ -1557,6 +1565,7 @@ function OutwardForm() {
     if (dispatchRemark.trim()) p.set('remark', dispatchRemark.trim());
     if (header.fulfilmentType === 'Self Pickup') p.set('fulfilment', 'self_pickup');
     else if (header.fulfilmentType === DIRECT_TRANSPORTER) p.set('fulfilment', 'direct_transporter');
+    else if (header.fulfilmentType === WAREHOUSE_TRANSFER) p.set('fulfilment', 'warehouse_transfer');
     p.set('lines', linesWithoutDo.map(l => l.seq).join(','));
     navigate(`/stock-movements/new-outward?${p.toString()}`);
   };
@@ -1600,7 +1609,8 @@ function OutwardForm() {
 
   // Cheap customer resolution for the Email modal — a Party Name that isn't
   // a customer just leaves the To field blank (expected fallback).
-  const customer = data.customers.find(c => c.name === header.partyName);
+  // 2026-11-21: a Transfer party (TRANSFER_PARTIES) is never a customer.
+  const customer = isTransferParty(header.partyName) ? undefined : data.customers.find(c => c.name === header.partyName);
 
   const handleGeneratePDF = async () => {
     const unit = data.units.find(u => u.is_default);
@@ -1699,7 +1709,7 @@ function OutwardForm() {
     if (saveBlock) { setError(''); showToast('err', saveBlock); return; }
     if (!FULFILMENT_TYPES.includes(header.fulfilmentType)) {
       setFulfilmentError(true);
-      setError('Please select Fulfilment Type (Delivery, Self Pickup or Direct Transporter).');
+      setError('Please select a Fulfilment Type.');
       return;
     }
     if (isOutwardDeliveryType(header.fulfilmentType)
@@ -2072,9 +2082,11 @@ function OutwardForm() {
                 <label className={labelCls}>Party Name</label>
                 <SearchableCombobox
                   className={inputCls}
-                  options={partyNameOptions}
+                  options={partyOptionsWithTransfers}
                   value={header.partyName}
-                  onChange={v => setHeader(h => ({ ...h, partyName: v, transporter: transporterByParty[v] || h.transporter, fulfilmentType: fulfilmentTypeByParty[v] || h.fulfilmentType }))}
+                  // 2026-11-21: a Transfer party with no Fulfilment Type yet → Warehouse Transfer (still changeable).
+                  onChange={v => setHeader(h => ({ ...h, partyName: v, transporter: transporterByParty[v] || h.transporter,
+                    fulfilmentType: fulfilmentTypeByParty[v] || h.fulfilmentType || (isTransferParty(v) ? WAREHOUSE_TRANSFER : '') }))}
                 />
               </div>
               {isOtherParty && (
@@ -2112,7 +2124,7 @@ function OutwardForm() {
                     <option value={header.fulfilmentType}>{header.fulfilmentType}</option>
                   )}
                 </select>
-                {fulfilmentError && <p className="text-red-mrt text-[11px] mt-1">Please select Delivery, Self Pickup or Direct Transporter.</p>}
+                {fulfilmentError && <p className="text-red-mrt text-[11px] mt-1">Please select a Fulfilment Type.</p>}
               </div>
             </div>
             <div className="mt-3">

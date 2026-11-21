@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore, manualDeliveredLogNote } from '../store';
 import { showDeliveredOption, canPickDelivered, confirmManualDelivered, canMarkDeliveredManually } from '../lib/manualDelivered';
-import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, orderLeavesDispatch, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, customerIdForSave, sameCompanyName } from '../lib/utils';
+import { dispatchedByLine, generateId, customerOfDoc, findCustomerByName, mainOffice, MAIN_OFFICE_ID, leadForUnknownCompany, LEAD_SOURCES_AUTO, formatINR, parseQuoteTerms, localDateStr, resolveAdjustments, maxItemGstRate, PAY_OPTIONS, normalizePayTerms, getCurrentQuoteItems, isOrderStatusLocked, orderLeavesDispatch, isOrderViewOnly, ORDER_VIEW_ONLY_MSG, customerIdForSave, sameCompanyName, DISPATCH_FULFILLMENT_TYPES, fulfillmentLabel } from '../lib/utils';
 import { normalizeIndianPhone } from '../lib/phone';
 import { OrderItem, Order, OrderStatus, OrderAdjustment, OrderAdjustmentKind, CustomerTier, DispatchFulfillmentType } from '../lib/types';
 import { Button } from '../components/ui';
@@ -1049,9 +1049,7 @@ export function NewOrder() {
                       <label className="block text-[10px] font-bold text-g600 tracking-[0.5px] uppercase mb-[4px]">Fulfillment Type</label>
                       <select value={fulfillmentType} onChange={e => setFulfillmentType(e.target.value as '' | DispatchFulfillmentType)} className={selectCls}>
                         <option value="">— Select —</option>
-                        <option value="delivery">Delivery</option>
-                        <option value="self_pickup">Self Pickup</option>
-                        <option value="direct_transporter">Direct Transporter</option>
+                        {DISPATCH_FULFILLMENT_TYPES.map(t => <option key={t} value={t}>{fulfillmentLabel(t)}</option>)}
                       </select>
                     </div>
                     <div>

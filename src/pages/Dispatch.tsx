@@ -46,7 +46,7 @@ export function Dispatch() {
   });
   const [boardType, setBoardType] = useState<'both' | DispatchFulfillmentType>(() => {
     const t = searchParams.get('type');
-    return t === 'delivery' || t === 'self_pickup' || t === 'direct_transporter' ? t : 'both';
+    return t === 'delivery' || t === 'self_pickup' || t === 'direct_transporter' || t === 'warehouse_transfer' ? t : 'both';
   });
   // The URL keeps only the pill, so an old ?tab= can't come back on a refresh.
   useEffect(() => { setSearchParams(boardFilter === 'all' ? {} : { pill: boardFilter }, { replace: true }); }, []);
@@ -318,7 +318,7 @@ export function Dispatch() {
       // 2026-10-12: Step 6 now runs for Self Pickup too — the form opens with
       // Fulfilment Type already set to Self Pickup.
       // 2026-11-14: Direct Transporter likewise.
-      if (card.fulfillment === 'self_pickup' || card.fulfillment === 'direct_transporter') params.set('fulfilment', card.fulfillment);
+      if (card.fulfillment === 'self_pickup' || card.fulfillment === 'direct_transporter' || card.fulfillment === 'warehouse_transfer') params.set('fulfilment', card.fulfillment);
       navigate(`/stock-movements/new-outward?${params.toString()}`);
       return;
     }
@@ -339,7 +339,7 @@ export function Dispatch() {
       lines: seqs.join(','),
     });
     if (remark?.trim()) params.set('remark', remark.trim());
-    if (card.fulfillment === 'self_pickup' || card.fulfillment === 'direct_transporter') params.set('fulfilment', card.fulfillment);
+    if (card.fulfillment === 'self_pickup' || card.fulfillment === 'direct_transporter' || card.fulfillment === 'warehouse_transfer') params.set('fulfilment', card.fulfillment);
     navigate(`/stock-movements/new-outward?${params.toString()}`);
   };
 
@@ -866,6 +866,9 @@ export function Dispatch() {
           </div>
           <div onClick={() => setBoardType('direct_transporter')} className={`flex items-center gap-1.5 ${pillCls(boardType === 'direct_transporter')}`}>
             <span className="w-[7px] h-[7px] rounded-full bg-[#0E7490] shrink-0" /> Direct Transporter
+          </div>
+          <div onClick={() => setBoardType('warehouse_transfer')} className={`flex items-center gap-1.5 ${pillCls(boardType === 'warehouse_transfer')}`}>
+            <span className="w-[7px] h-[7px] rounded-full bg-[#B45309] shrink-0" /> Warehouse Transfer
           </div>
         </div>
         <div className="w-px h-[18px] bg-g200 shrink-0 mx-1"></div>

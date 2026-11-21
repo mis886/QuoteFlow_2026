@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store';
 import { Button } from '../components/ui';
-import { customerOfDoc, dispatchOrderView, DispatchFormDetails, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
+import { customerOfDoc, dispatchOrderView, DispatchFormDetails, mainOffice, formatINR, siteLabel, PAY_OPTIONS, canDeleteRecords, resolveAdjustments, maxItemGstRate, fmtDate, fmtIST, remainingByLine, totalRemaining, canActOnDispatchBoard, DISPATCH_FULFILLMENT_TYPES, fulfillmentLabel } from '../lib/utils';
 import { DispatchFulfillmentType, DispatchEntry, Order, OrderItem, CustomerTier } from '../lib/types';
 import { lineItemProblem } from '../components/ProductSelect';
 import { orderLineBillingName } from '../lib/lineItemProducts';
@@ -820,7 +820,7 @@ export function NewDispatchEntry() {
       const reason = newDispatchBlockReason(dispatchOrders.find(o => o.id === selectedOrderId), selectedOrderId, data.dispatchEntries);
       if (reason) { setError(reason); return; }
     }
-    if (!type) { setError('Please select Delivery, Self Pickup or Direct Transporter'); return; }
+    if (!type) { setError('Please select a Fulfillment Type'); return; }
     // 2026-11-14: every row being dispatched (No of Barrels > 0 — rows with 0
     // aren't saved) needs a master-list product. Quantity per row isn't
     // required here: 0 = that line isn't in this dispatch.
@@ -1216,9 +1216,7 @@ export function NewDispatchEntry() {
                       <label className={labelCls}>Fulfillment Type</label>
                       <select value={type} onChange={e => setType(e.target.value as '' | DispatchFulfillmentType)} className={selectCls}>
                         <option value="">Select...</option>
-                        <option value="delivery">Delivery</option>
-                        <option value="self_pickup">Self Pickup</option>
-                        <option value="direct_transporter">Direct Transporter</option>
+                        {DISPATCH_FULFILLMENT_TYPES.map(t => <option key={t} value={t}>{fulfillmentLabel(t)}</option>)}
                       </select>
                     </div>
                     <div>

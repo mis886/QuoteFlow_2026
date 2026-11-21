@@ -62,20 +62,35 @@ export function doEmailSubject(doNumber: string, party: string, fulfilmentType?:
 // decision) — transporter required, Bhiwandi email — until told otherwise.
 // Not the Order / Dispatch 'delivery' | 'self_pickup' type, nor the customer's.
 export const DIRECT_TRANSPORTER = 'Direct Transporter';
+// 2026-11-21: "Warehouse Transfer" (stock moved between our own warehouses).
+// For now it works like Delivery (transporter required, Bhiwandi To/CC) and
+// still deducts stock from the DO's warehouse — no transfer-in yet. Only the
+// email body differs (neutral "transfer" wording, SendEmailModal).
+export const WAREHOUSE_TRANSFER = 'Warehouse Transfer';
+// The DO form's Fulfilment Type options, in order.
+export const OUTWARD_FULFILMENT_TYPES = ['Delivery', 'Self Pickup', DIRECT_TRANSPORTER, WAREHOUSE_TRANSFER];
+// 2026-11-21: fixed DO Party Names for an internal transfer — NOT customers
+// (never in the customers table, no address/GST/email lookup). Listed first
+// in the DO form's Party Name box; saved as plain text in party_name.
+export const TRANSFER_PARTIES = ['Transfer Bhiwandi', 'Transfer Wada Factory'];
+export const isTransferParty = (p?: string | null): boolean => TRANSFER_PARTIES.includes((p || '').trim());
 export const isOutwardDeliveryType = (t?: string | null): boolean =>
-  t === 'Delivery' || t === DIRECT_TRANSPORTER;
+  t === 'Delivery' || t === DIRECT_TRANSPORTER || t === WAREHOUSE_TRANSFER;
 
 // 2026-11-14: the same for Order / Dispatch entry fulfillment_type
 // ('self_pickup' | 'delivery' | 'direct_transporter'). direct_transporter
 // behaves EXACTLY like delivery (Step 10 LR, TATs, required docs, emails).
 // Checks written as `!== 'self_pickup'` already treat it as delivery.
 export const isDeliveryLike = (t?: string | null): boolean =>
-  t === 'delivery' || t === 'direct_transporter';
+  t === 'delivery' || t === 'direct_transporter' || t === 'warehouse_transfer';
 export const fulfillmentLabel = (t?: string | null): string =>
   t === 'delivery' ? 'Delivery'
     : t === 'self_pickup' ? 'Self Pickup'
     : t === 'direct_transporter' ? DIRECT_TRANSPORTER
+    : t === 'warehouse_transfer' ? WAREHOUSE_TRANSFER
     : '';  // also the DO form's text value for the same type
+// Order / Dispatch entry Fulfillment Type options, in order (label = fulfillmentLabel).
+export const DISPATCH_FULFILLMENT_TYPES = ['delivery', 'self_pickup', 'direct_transporter', 'warehouse_transfer'] as const;
 
 export const outwardTransporterName =(m: { transporter?: string | null; otherTransporter?: string | null }): string =>
   ((m.transporter === 'Other' ? m.otherTransporter : m.transporter) || '').trim();

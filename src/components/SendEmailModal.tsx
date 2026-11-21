@@ -7,7 +7,7 @@ import { buildOutwardJPEG, outwardJpegFileName, blobToBase64 } from '../lib/outw
 import { sendViaGmailAsUser, preloadGoogleSignIn } from '../lib/gmail';
 import { resolveCoaStorageUrl } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { outwardTransporterName, fmtDate, isOutwardDeliveryType, doEmailSubject } from '../lib/utils';
+import { outwardTransporterName, fmtDate, isOutwardDeliveryType, doEmailSubject, WAREHOUSE_TRANSFER } from '../lib/utils';
 import { buildQuoteEmailHtml } from '../lib/quoteEmailHtml';
 import { isValidEmail } from '../lib/emailValidation';
 import { CoaDocRow, coaDocumentsForProduct, searchCoaDocuments, uploadCoaDocument } from '../lib/coaDocuments';
@@ -290,6 +290,10 @@ export function SendEmailModal(props: Props) {
 
   const defaultBody = isQuote
     ? `${greeting}\n\nThank you for your enquiry. Please find attached our quotation ${docId} for your requirements.\n\nWe hope this offer is in line with your expectations and look forward to receiving your valued order.\n\nFor any clarifications, please feel free to contact us.\n\nWarm regards,\n\n${sigBlock}`
+    : isOutward && outwardFulfilmentType === WAREHOUSE_TRANSFER
+    // 2026-11-21: Warehouse Transfer — same To/CC as Delivery (Bhiwandi team)
+    // but neutral wording: no Self Pickup contacts, no "to your location".
+    ? `Dear Bhiwandi Team,\n\nPlease find the attached DO copy for a warehouse transfer${outwardParty ? ` (${outwardParty})` : ''}.${outwardTransporterName(props.doc as StockMovement) ? ` Kindly arrange the material through ${outwardTransporterName(props.doc as StockMovement)}.` : ''}\n\nThank you.\n\n${DISPATCH_EMAIL_SIGNATURE}`
     : isOutwardDelivery
     // 2026-10-26: Delivery DOs go to the Bhiwandi team, naming the
     // transporter saved on the DO (NewStockOutward.tsx won't open this

@@ -556,7 +556,8 @@ export interface DataStore {
 // 2026-11-14: + 'direct_transporter' — behaves exactly like 'delivery'
 // (isDeliveryLike in utils.ts). DB CHECK widened in
 // 20261114120000_fulfillment_type_direct_transporter.sql.
-export type DispatchFulfillmentType = 'self_pickup' | 'delivery' | 'direct_transporter';
+// 2026-11-21: + 'warehouse_transfer' — behaves like 'delivery' for now.
+export type DispatchFulfillmentType = 'self_pickup' | 'delivery' | 'direct_transporter' | 'warehouse_transfer';
 
 export interface DispatchEntry {
   id: string;
