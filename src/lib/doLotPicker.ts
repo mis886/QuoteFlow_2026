@@ -36,21 +36,36 @@ export const dedupeLots = (rows: { wh_lot_no: string | null; product_name: strin
   }
   return out;
 };
+/** Upper / lower case and extra spaces ignored, trimmed. */
+export const sameName = (s: string | null | undefined) => (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
 /**
- * 2026-11-19 (user rule): the lots of the ORDER LINE's product (a DO opened
- * from the Dispatch board — the Product Name box shows the order's product
- * name). ONLY the same product: names compared ignoring upper / lower case
- * and extra spaces — no "starts with" ("Pine Oil 211 (DD)" never lists
- * "Pine Oil 211 (Limo)" or "Pine Oil 40 (ROB)" lots). [] for an empty name.
+ * 2026-11-21 (user rule — replaces the 2026-11-19 exact-name match): the lots
+ * whose stock product name CONTAINS the row's Product Name text ("Beta Pinene"
+ * → "Beta Pinene 95%", "Beta Pinene 98%", "Beta Pinene 98% -ve (rob)").
+ * Empty text → every lot.
  */
-const sameName = (s: string | null | undefined) => (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
-export function lotsForOrderProduct<T extends { productName: string }>(lots: T[], orderProduct: string): T[] {
-  const want = sameName(orderProduct);
-  if (!want) return [];
-  return lots.filter(o => sameName(o.productName) === want);
+export function lotsContaining<T extends { productName: string }>(lots: T[], productText: string): T[] {
+  const want = sameName(productText);
+  return want ? lots.filter(o => sameName(o.productName).includes(want)) : lots;
 }
 /** Oldest lot first (no date last), then Lot No. */
 export const byLotAge = (a: { lotDate: string; lotNo: string }, b: { lotDate: string; lotNo: string }) =>
   (a.lotDate || '9999') < (b.lotDate || '9999') ? -1 : (a.lotDate || '9999') > (b.lotDate || '9999') ? 1
     : a.lotNo.localeCompare(b.lotNo, undefined, { numeric: true });
+/**
+ * The Lot No list's groups: one per stock product name (names differing only
+ * in case / spaces are one group, shown as first seen), A→Z; lots oldest first.
+ */
+export function groupLotsByProduct<T extends { productName: string; lotDate: string; lotNo: string }>(lots: T[]): { name: string; lots: T[] }[] {
+  const by = new Map<string, { name: string; lots: T[] }>();
+  for (const o of lots) {
+    const k = sameName(o.productName);
+    const g = by.get(k) ?? { name: o.productName.trim() || '(no product name)', lots: [] };
+    g.lots.push(o);
+    by.set(k, g);
+  }
+  return [...by.values()]
+    .map(g => ({ ...g, lots: [...g.lots].sort(byLotAge) }))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+}
 

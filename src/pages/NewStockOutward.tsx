@@ -223,7 +223,7 @@ import { SearchableCombobox } from '../components/SearchableCombobox';
 import { PRODUCTS } from '../lib/stockInwardProducts';
 import { lotBillingName, orderLineForRow, billingNameForRow, barrelsByOrderLine, orderOverMessage, orderLineLabel } from '../lib/doOrderLine';
 import { billingNameFor, orderLineBillingName } from '../lib/lineItemProducts';
-import { StockLotOption, productMatches, dedupeLots, byLotAge, lotsForOrderProduct } from '../lib/doLotPicker';
+import { StockLotOption, productMatches, dedupeLots, lotsContaining, groupLotsByProduct, sameName } from '../lib/doLotPicker';
 import { isImportedEntry, orderLinesWithoutDo, DIRECT_DELIVERY, DIRECT_DELIVERY_STEP7_REMARK, isDirectDeliveryRemark } from '../lib/dispatchFlow';
 import { Loader2, Plus, X, ImageIcon } from 'lucide-react';
 import { Order, DispatchEntry, OutwardDO, OutwardDoLine } from '../lib/types';
@@ -481,19 +481,14 @@ type Line = {
   // (or, for Wada, its Billing Name) matches it, and survives a lot clear.
   // billingName = the line's billing name (orderLineBillingName, 2026-11-19).
   pin: { seq: number; billingName: string } | null;
-  // 2026-11-18: pick a lot by PRODUCT NAME (stock warehouses only).
-  // productQuery = the text in the Product Name search box (null = show the
-  // row's productName); pickedProduct = the product whose lots the Lot No
-  // list shows; productSeed = the ORDER LINE's Product Name, exactly as saved
-  // in Orders (Board prefill / "+ Add product" for a line; null otherwise).
-  // 2026-11-19 (user rule, replaces "starts empty"): the Product Name box
-  // always shows it (unless the user is typing a search), clicking the box
-  // lists the lots of exactly THAT product at the warehouse
-  // (lotsForOrderProduct), and a lot (picked or typed) NEVER changes the row's
-  // Product Name / Billing Name (fillFromLot) — the order's names are saved,
-  // printed and in the Stock Book. It survives a Warehouse change.
-  productQuery: string | null;
-  pickedProduct: string | null;
+  // 2026-11-21 (user rule — replaces the 2026-11-19 read-only order name):
+  // productName is the Product Name box's own text — typeable on every row,
+  // the Lot No list shows the lots whose stock product name CONTAINS it
+  // (lotsContaining, grouped by product), and a lot (picked or typed) sets it
+  // to the lot's exact stock product name. Saved as typed / picked.
+  // productSeed = the ORDER LINE's Product Name the row was prefilled with
+  // (Board prefill / "+ Add product" for a line; null otherwise) — such a row
+  // keeps its Billing Name and order line when a lot is picked.
   productSeed: string | null;
   // 2026-11-19: the order line a Board-prefilled / "+ Add product" row started
   // with (seededLine). Emptying the Lot No puts the row back to it (clearedLine)
@@ -507,16 +502,15 @@ const newLine = (p: Partial<Line> = {}): Line => ({
   numArticles: '', packing: '', packagingType: '', weightType: '',
   orderLineSeq: null, billingTyped: false, userBarrelsKey: null, autoBarrels: null,
   lotTouched: true, lotFilled: false, pin: null,
-  productQuery: null, pickedProduct: null, productSeed: null, seed: null,
+  productSeed: null, seed: null,
   ...p,
 });
 // A row prefilled from an order line (Board prefill / "+ Add product"):
-// Billing Name = the line's billing name, productSeed = the line's Product Name
-// exactly as saved (2026-11-19 — the Product Name box shows it), the order line
-// and `seed`. productQuery stays null (nothing typed).
+// Billing Name = the line's billing name, Product Name = the line's Product
+// Name exactly as saved (editable, 2026-11-21), the order line and `seed`.
 const seededLine = (p: Partial<Line> & { billingName: string; productSeed: string }): Line =>
   newLine({
-    ...p, productQuery: null,
+    ...p, productName: p.productSeed,
     seed: p.orderLineSeq != null ? { seq: p.orderLineSeq, billingName: p.billingName } : null,
   });
 
@@ -559,39 +553,23 @@ function useCellPopover() {
 }
 
 type ProductOption = { name: string; code: string; barrels: number; lots: number };
-// 2026-11-19: a Board row whose Product Name box still shows the ORDER LINE's
-// product name (not typed into, no lot picked): clicking the box lists THAT
-// product's lots at the warehouse (lotsForOrderProduct), and picking one sets
-// the Lot No exactly like the Lot No list. `emptyMsg` when there are none.
-type OrderLotMode = { lots: LotPickRow[]; lotValue: string; emptyMsg: string; onPickLot: (lotNo: string) => void };
-function ProductPickerCell({ value, options, warehouse, loading, className, title, onType, onPick, onLeave, orderLots, readOnly = false }: {
+// 2026-11-21: the Product Name box is plain text the user can type (every row,
+// Board rows too); while typing it suggests the products in stock at the
+// warehouse that match. Its text is what the Lot No list filters on.
+function ProductPickerCell({ value, options, warehouse, loading, className, title, onType, onPick }: {
   value: string; options: ProductOption[]; warehouse: string; loading: boolean; className: string; title?: string;
-  onType: (v: string) => void; onPick: (name: string) => void; onLeave: () => void; orderLots?: OrderLotMode;
-  // 2026-11-19 (user rule): a Board row — the order line's Product Name can't
-  // be typed over; clicking still opens that product's lot list.
-  readOnly?: boolean;
+  onType: (v: string) => void; onPick: (name: string) => void;
 }) {
   const p = useCellPopover();
   return (
     <div ref={p.anchorRef} className="relative">
-      <input className={`${className}${readOnly ? ' cursor-pointer' : ''}`} value={value} title={title} placeholder="Search product…" autoComplete="off"
-        readOnly={readOnly}
-        onFocus={p.show} onBlur={onLeave}
+      <input className={className} value={value} title={title} placeholder="Type product…" autoComplete="off"
+        onFocus={p.show}
         // 2026-11-19: a click opens it too — e.g. after Escape, the box still has focus.
         onClick={() => { if (!p.open) p.show(); }}
-        onChange={e => { if (readOnly) return; onType(e.target.value); if (!p.open) p.show(); }}
+        onChange={e => { onType(e.target.value); if (!p.open) p.show(); }}
         onKeyDown={e => { if (e.key === 'Escape') p.setOpen(false); }} />
-      {p.open && p.pos && orderLots && ReactDOM.createPortal(
-        orderLots.lots.length > 0
-          ? <LotListPanel popRef={p.popRef} pos={p.pos} lots={orderLots.lots} value={orderLots.lotValue} warehouse={warehouse}
-              onPick={lotNo => { orderLots.onPickLot(lotNo); p.setOpen(false); }} />
-          : <div ref={p.popRef} style={{ position: 'fixed', top: p.pos.top, left: p.pos.left, minWidth: Math.max(p.pos.width, 300), zIndex: 9999 }}
-              className="bg-white border border-g200 rounded-[3px] shadow-lg px-2.5 py-2 text-[12px] text-g500">
-              {orderLots.emptyMsg}
-            </div>,
-        document.body,
-      )}
-      {p.open && p.pos && !orderLots && ReactDOM.createPortal(
+      {p.open && p.pos && ReactDOM.createPortal(
         <div ref={p.popRef} style={{ position: 'fixed', top: p.pos.top, left: p.pos.left, minWidth: Math.max(p.pos.width, 300), zIndex: 9999 }}
           className="bg-white border border-g200 rounded-[3px] shadow-lg max-h-[260px] overflow-y-auto">
           {options.length === 0
@@ -613,40 +591,39 @@ function ProductPickerCell({ value, options, warehouse, loading, className, titl
 }
 
 type LotPickRow = StockLotOption & { left: number; usedRows: number[]; usedBarrels: number };
-// The lot list (Lot No — grade line when the list has 2+ products — | Barrels,
-// lots on another row greyed, "Total in <warehouse>") — shared by the Lot No
-// box and (2026-11-19) the Product Name box of a Board row.
+// The Lot No list: 2026-11-21 grouped by stock product name (a header row
+// with the full name, then its lots: Lot No | Barrels, oldest first), lots on
+// another row greyed, "Total in <warehouse>".
 function LotListPanel({ popRef, pos, lots, value, warehouse, onPick }: {
   popRef: React.RefObject<HTMLDivElement | null>; pos: { top: number; left: number; width: number };
   lots: LotPickRow[]; value: string; warehouse: string; onPick: (lotNo: string) => void;
 }) {
-  // 2026-11-19: names that differ only in capitals / extra spaces are one product.
-  const manyProducts = new Set(lots.map(l => l.productName.trim().replace(/\s+/g, ' ').toLowerCase())).size > 1;
+  const groups = groupLotsByProduct(lots);
   const total = lots.reduce((s, l) => s + l.left, 0);
   return (
-    <div ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: manyProducts ? 300 : 220, zIndex: 9999 }}
+    <div ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: Math.max(pos.width, 280), zIndex: 9999 }}
       className="bg-white border border-g200 rounded-[3px] shadow-lg">
       <div className="grid grid-cols-[1fr_90px] gap-2 px-2.5 py-1 border-b border-g200 font-mono text-[8.5px] font-bold tracking-[1px] uppercase text-g500">
         <span>Lot No</span><span className="text-right">Barrels</span>
       </div>
-      <div className="max-h-[240px] overflow-y-auto">
-        {lots.map(o => {
+      <div className="max-h-[300px] overflow-y-auto">
+        {groups.map(g => <React.Fragment key={g.name}>
+        <div data-lot-group className="px-2.5 pt-1.5 pb-1 bg-g100 border-y border-g200 text-[11px] font-semibold text-blk">{g.name}</div>
+        {g.lots.map(o => {
           const usedTip = o.usedRows.length ? `Row ${o.usedRows.join(' + ')} of this DO uses ${o.usedBarrels} — ${o.left} left` : undefined;
           const blocked = o.usedRows.length > 0;
           return (
             <div key={o.lotNo} title={blocked ? `${usedTip}. A lot can be on one row only — change that row's barrels instead.` : undefined}
               onMouseDown={e => { e.preventDefault(); if (blocked) return; onPick(o.lotNo); }}
               className={`grid grid-cols-[1fr_90px] gap-2 px-2.5 py-1.5 text-[12px] ${blocked ? 'text-g400 cursor-not-allowed' : 'text-blk cursor-pointer hover:bg-g100'} ${sameLot(o.lotNo, value) ?'bg-red-lt/40' : ''}`}>
-              <span className="font-mono">
-                {o.lotNo}
-                {manyProducts && <span className="block font-sans text-[10.5px] text-g500">{o.productName}</span>}
-              </span>
+              <span className="font-mono pl-2">{o.lotNo}</span>
               <span className="text-right">
                 {blocked ? <><s className="text-g400">{o.barrels}</s> {o.left} left</> : o.left}
               </span>
             </div>
           );
         })}
+        </React.Fragment>)}
       </div>
       <div className="px-2.5 py-1.5 border-t border-g200 text-[11.5px] text-g600">
         Total in {warehouse}: <strong className="text-blk">{total} barrel{total === 1 ? '' : 's'}</strong>
@@ -655,22 +632,30 @@ function LotListPanel({ popRef, pos, lots, value, warehouse, onPick }: {
   );
 }
 
-function LotPickerCell({ id, value, lots, warehouse, className, title, onType, onPick }: {
-  id: string; value: string; lots: LotPickRow[]; warehouse: string; className: string; title?: string;
+// 2026-11-21: opens on focus / click even when there is nothing to list, to
+// say why (`emptyMsg`: no warehouse, loading, no stock matching the name).
+// Typing a Lot No by hand still works.
+function LotPickerCell({ id, value, lots, emptyMsg, warehouse, className, title, onType, onPick }: {
+  id: string; value: string; lots: LotPickRow[]; emptyMsg: string; warehouse: string; className: string; title?: string;
   onType: (v: string) => void; onPick: (lotNo: string) => void;
 }) {
   const p = useCellPopover();
   return (
     <div ref={p.anchorRef} className="relative">
       <input id={id} className={className} value={value} title={title} autoComplete="off"
-        placeholder={lots.length ? 'Pick or type…' : undefined}
-        onFocus={() => { if (lots.length) p.show(); }}
-        onClick={() => { if (lots.length && !p.open) p.show(); }}
+        placeholder="Pick or type…"
+        onFocus={p.show}
+        onClick={() => { if (!p.open) p.show(); }}
         onChange={e => { onType(e.target.value); }}
         onKeyDown={e => { if (e.key === 'Escape') p.setOpen(false); }} />
-      {p.open && p.pos && lots.length > 0 && ReactDOM.createPortal(
-        <LotListPanel popRef={p.popRef} pos={p.pos} lots={lots} value={value} warehouse={warehouse}
-          onPick={lotNo => { onPick(lotNo); p.setOpen(false); }} />,
+      {p.open && p.pos && ReactDOM.createPortal(
+        lots.length > 0
+          ? <LotListPanel popRef={p.popRef} pos={p.pos} lots={lots} value={value} warehouse={warehouse}
+              onPick={lotNo => { onPick(lotNo); p.setOpen(false); }} />
+          : <div ref={p.popRef} style={{ position: 'fixed', top: p.pos.top, left: p.pos.left, minWidth: Math.max(p.pos.width, 260), zIndex: 9999 }}
+              className="bg-white border border-g200 rounded-[3px] shadow-lg px-2.5 py-2 text-[12px] text-g500">
+              {emptyMsg}
+            </div>,
         document.body,
       )}
     </div>
@@ -679,10 +664,12 @@ function LotPickerCell({ id, value, lots, warehouse, className, title, onType, o
 // b14a218 for one row: every lot field emptied (Lot No itself stays). A row
 // pinned to an order line goes back to that line; 2026-11-19: so does a Board-
 // prefilled row (its seed) — with the line's BILLING name.
+// 2026-11-21: the Product Name text stays (it is the user's own text now, and
+// what the Lot No list filters on).
 const clearedLine = (l: Line): Line => {
   const back = l.pin ?? l.seed;
   return {
-    ...l, lotDate: '', productName: '', productCode: '', billingName: back?.billingName ?? '',
+    ...l, lotDate: '', productCode: '', billingName: back?.billingName ?? '',
     numArticles: '', packing: '', packagingType: '', weightType: '',
     orderLineSeq: back?.seq ?? null, billingTyped: false, userBarrelsKey: null, autoBarrels: null, lotFilled: false,
   };
@@ -1154,18 +1141,15 @@ function OutwardForm() {
       return;
     }
     setHeader(h => ({ ...h, warehouse }));
-    // 2026-11-18: the product / lot pickers start again too: nothing typed, no
-    // picked product — so a Board row's box shows the order's Product Name
-    // (productSeed) again and lists the NEW warehouse's lots.
     // 2026-11-19 (user rule): a Board row (productSeed) between stock
     // warehouses also drops its picked lot (Lot No + the fields it filled), so
     // the same Lot No is not looked up again at the new warehouse.
-    const resetPickers = (l: Line): Line => ({ ...l, pickedProduct: null, productQuery: null });
-    setLines(ls => ls.map(l => resetPickers(crossesWada
+    // 2026-11-21: the Product Name text is kept on every row (clearedLine).
+    setLines(ls => ls.map(l => crossesWada
       ? { ...clearedLine(l), billingName: l.billingName, billingTyped: l.billingTyped, orderLineSeq: l.orderLineSeq, lotTouched: true }
       : l.productSeed
         ? { ...(l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true }), lotNo: '', userBarrelsKey: null }
-        : (l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true }))));
+        : (l.lotFilled ? clearedLine({ ...l, lotTouched: true }) : { ...l, lotTouched: true })));
     setLookups({});
   };
 
@@ -1231,14 +1215,13 @@ function OutwardForm() {
     if (!l.lotTouched) return l;
     let orderLineSeq = l.orderLineSeq;
     let billingName = l.billingName;
-    // 2026-11-19 (user rule): a Board row (made from an order line —
-    // productSeed) keeps the ORDER's names. A lot (picked or typed) fills only
-    // Lot No, Lot Date, Product Code, No of Barrels, Packing, Total Qty,
-    // Packing Type, MOU. Product Name = the order line's Product Name exactly
-    // as saved, Billing Name and the row's order line stay as they are. These
-    // names are what is saved, printed (PDF / JPEG / email) and in the Stock
-    // Book; stock still moves by Lot No.
-    const fromOrderLine = !!l.productSeed;
+    // 2026-11-21 (user rule — replaces 2026-11-19): a lot (picked or typed)
+    // sets Product Name to the lot's exact stock product name on EVERY row.
+    // A Board row (made from an order line — productSeed) keeps its Billing
+    // Name and its own order line (never moved to another line); so does a
+    // saved row of a DO linked to an order (edit), which is a Board row too.
+    // Stock still moves by Lot No.
+    const fromOrderLine = !!l.productSeed || (isEditing && !!rowsOrder && l.orderLineSeq != null);
     if (rowsOrder && !fromOrderLine) {
       // 2026-11-04: Billing Name = the lot's catalogue billing name (a lot not
       // in the catalogue: its own product name) when the lot's product matches
@@ -1259,14 +1242,10 @@ function OutwardForm() {
     }
     return {
       ...l,
-      productName: fromOrderLine ? (l.productSeed as string) : lot.productName, productCode: lot.productCode,
+      productName: lot.productName, productCode: lot.productCode,
       packing: lot.packing, packagingType: lot.packagingType, weightType: lot.weightType,
       lotDate: lot.inwardDate || l.lotDate,
       billingName, orderLineSeq, numArticles, autoBarrels, lotFilled: true,
-      // 2026-11-18: the Product Name box now shows the lot's product, and the
-      // Lot No list shows that product's other lots. (2026-11-19: not on a
-      // Board row — its box keeps the order's name and lists ITS lots.)
-      productQuery: null, pickedProduct: fromOrderLine ? l.pickedProduct : lot.productName,
     };
   };
 
@@ -1308,27 +1287,12 @@ function OutwardForm() {
     }
     return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
   };
-  // 2026-11-19: does the row's Product Name box list the ORDER line's product's
-  // lots (a Board row, nothing typed, no other product picked from the search)?
-  // Also after a lot is picked — a lot never changes a Board row's names.
-  const inOrderProductMode = (l: Line) =>
-    !!l.productSeed && l.productQuery === null && !l.pickedProduct;
-  // The Lot No list for a row: the picked product's lots, else (text typed in
-  // the search box, e.g. "Beta Pinene") the lots of every product that matches
-  // it, else (2026-11-19, a Board row) the ORDER line's product's lots
-  // (lotsForOrderProduct); nothing otherwise. Oldest first; barrels after
-  // other rows of this DO. Also what the Board row's Product Name box lists.
+  // The Lot No list for a row (2026-11-21): every lot at the warehouse whose
+  // stock product name CONTAINS the row's Product Name text (lotsContaining —
+  // empty text = all), lots with 0 barrels left out (pickerLots). Grouped by
+  // product in LotListPanel; barrels after other rows of this DO.
   const lotOptionsFor = (l: Line): LotPickRow[] => {
-    // Text being typed in the search box wins; else the picked product, else
-    // (a saved row) the row's own product.
-    const query = (l.productQuery || '').trim();
-    const product = query ? '' : (l.pickedProduct || (l.lotFilled ? l.productName : '')).trim().toLowerCase();
-    const base = query
-      ? pickerLots.filter(o => productMatches(query, o.productName, o.productCode, billingNameForProductName(o.productName.trim())))
-      : inOrderProductMode(l)
-        ? lotsForOrderProduct(pickerLots, l.productSeed || '')
-        : product ? pickerLots.filter(o => o.productName.trim().toLowerCase() === product) : [];
-    return base
+    return lotsContaining(pickerLots, l.productName)
       .map(o => {
         const usedRows: number[] = [];
         let usedBarrels = 0;
@@ -1339,16 +1303,20 @@ function OutwardForm() {
         });
         const stock = lotStockFor(o);
         return { ...o, barrels: stock, usedRows, usedBarrels, left: Math.max(0, stock - usedBarrels) };
-      })
-      .sort(byLotAge);
+      });
   };
-  // Picking a product: a lot of another product on this row is taken off
-  // (empty Lot No → the lookup clears the row, as typing would).
+  const lotEmptyMsg = (l: Line) => !header.warehouse ? 'Select a warehouse first'
+    : !pickerReady ? 'Loading stock…'
+    : l.productName.trim() ? `No stock of ${l.productName.trim()} in ${header.warehouse}`
+    : `No stock in ${header.warehouse}`;
+  // Picking a product from the suggestions: a lot of another product on this
+  // row is taken off (empty Lot No → the lookup clears the row, as typing would).
   const onPickProduct = (l: Line, name: string) => {
-    const keepLot = !!l.lotNo.trim() && l.productName.trim().toLowerCase() === name.trim().toLowerCase();
+    const lotProduct = lookups[l.key]?.lot?.productName ?? (l.lotFilled ? l.productName : '');
+    const keepLot = !!l.lotNo.trim() && sameName(lotProduct) === sameName(name);
     updateLine(l.key, keepLot
-      ? { pickedProduct: name, productQuery: null }
-      : { pickedProduct: name, productQuery: null, lotNo: '', lotTouched: true, userBarrelsKey: null });
+      ? { productName: name }
+      : { productName: name, lotNo: '', lotTouched: true, userBarrelsKey: null });
     // Straight on to its lots.
     setTimeout(() => document.getElementById(`lot-${l.key}`)?.focus(), 0);
   };
@@ -1518,6 +1486,8 @@ function OutwardForm() {
       problem = !l.lotNo.trim() ? 'Enter a Lot No.' : !lookedUp ? 'Looking up lot…' : `Lot ${l.lotNo.trim()} is not in Stock Summary.`;
     }
     else if (dupLot) { problem = `Lot ${lot.lotNo} is on another row of this DO — use one row per lot.`; problemField = 'lot'; }
+    // 2026-11-21: Product Name is typeable now — it can't be left empty.
+    else if (!l.productName.trim()) { problem = 'Enter a Product Name.'; problemField = 'product'; }
     else if (parseNum(l.packing) === null) { problem = `Packing missing for lot ${lot.lotNo} — update the lot's packing in Stock Summary first.`; problemField = 'packing'; }
     else if (maxBarrels !== null && maxBarrels <= 0) { problem = `No stock found for this lot at ${header.warehouse}.`; problemField = 'lot'; }
     else if (barrels === null || barrels <= 0) { problem = 'Enter No of Barrels.'; problemSoft = true; problemField = 'barrels'; }
@@ -1948,34 +1918,21 @@ function OutwardForm() {
                         <td className="px-[5px] py-[11px] font-mono text-[11px] text-g500">{idx + 1}</td>
                         {!isWada && (
                           <td className="px-[5px] py-[5px] min-w-[190px]">
-                            {/* 2026-11-18: search the products in stock at the
-                                warehouse. The row's Product Name still comes
-                                from the lot (save is unchanged).
-                                2026-11-19: a Board row always shows the ORDER
-                                line's Product Name (productSeed) — a lot never
-                                changes it — and lists that product's lots. It
-                                is READ-ONLY there (no typing over it); a lot of
-                                another name can still be typed in Lot No. */}
+                            {/* 2026-11-21 (user rule): typeable on every row
+                                (Board rows start with the order line's name).
+                                The Lot No list shows the lots whose product
+                                name contains this text; picking a lot sets it
+                                to the lot's full stock product name. Saved as is. */}
                             <ProductPickerCell
-                              className={cellInput}
-                              readOnly={!!l.productSeed}
-                              value={l.productQuery ?? (l.productSeed ? l.productSeed : (l.productName || l.pickedProduct || ''))}
-                              orderLots={inOrderProductMode(l) ? {
-                                lots: pickerReady ? lotOptionsFor(l) : [],
-                                lotValue: l.lotNo,
-                                emptyMsg: !header.warehouse ? 'Select a warehouse first'
-                                  : !pickerReady ? 'Loading stock…'
-                                  : `No stock of ${(l.productSeed || '').trim()} in ${header.warehouse}`,
-                                onPickLot: lotNo => onLotNoChange(l, lotNo),
-                              } : undefined}
-                              options={pickerReady ? productOptions(l.productQuery ?? '') : []}
+                              className={`${cellInput} ${bad('product') ? redCls : ''}`}
+                              value={l.productName}
+                              options={pickerReady ? productOptions(l.productName) : []}
                               warehouse={header.warehouse}
                               loading={!pickerReady && !!header.warehouse}
-                              title={l.productSeed ? 'Product Name from the order line — click to see its lots at this warehouse'
-                                : !header.warehouse ? 'Select a Warehouse first' : fromLot}
-                              onType={v => updateLine(l.key, { productQuery: v })}
-                              onPick={name => onPickProduct(l, name)}
-                              onLeave={() => { if (l.lotFilled && l.productQuery !== null) updateLine(l.key, { productQuery: null }); }} />
+                              title={tip('product', !header.warehouse ? 'Select a Warehouse first'
+                                : 'Type a product name — the Lot No list shows the lots whose product contains it')}
+                              onType={v => updateLine(l.key, { productName: v })}
+                              onPick={name => onPickProduct(l, name)} />
                           </td>
                         )}
                         <td className="px-[5px] py-[5px] w-[120px]">
@@ -1983,7 +1940,7 @@ function OutwardForm() {
                             ? <input className={`${cellInput} ${bad('lot') ? redCls : ''}`} value={l.lotNo} title={tip('lot', fromLot)}
                                 onChange={e => onLotNoChange(l, e.target.value)} />
                             : <LotPickerCell id={`lot-${l.key}`} className={`${cellInput} ${bad('lot') ? redCls : ''}`} value={l.lotNo}
-                                title={tip('lot', fromLot)} lots={pickerReady ? lotOptionsFor(l) : []} warehouse={header.warehouse}
+                                title={tip('lot', fromLot)} lots={pickerReady ? lotOptionsFor(l) : []} emptyMsg={lotEmptyMsg(l)} warehouse={header.warehouse}
                                 onType={v => onLotNoChange(l, v)} onPick={v => onLotNoChange(l, v)} />}
                         </td>
                         <td className="px-[5px] py-[5px] w-[130px]">
