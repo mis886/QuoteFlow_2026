@@ -146,7 +146,7 @@ export function NewDispatchEntry() {
   // return to that pill.
   const boardPill = searchParams.get('pill');
   const dispatchHome = `/dispatch${boardPill && /^[a-z]+$/.test(boardPill) ? `?pill=${boardPill}` : ''}`;
-  const { data, user, loading, addDispatchEntry, updateDispatchEntry, saveDispatchFormDetails, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp, autoMarkOrderDeliveredFromDispatch, canSeeEnqQuote } = useAppStore();
+  const { data, user, loading, addDispatchEntry, updateDispatchEntry, saveDispatchFormDetails, isReadOnlyUser, isAdmin, markDispatchEmailSent, markDispatchBhiwandiEmailSent, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp, autoMarkOrderDeliveredFromDispatch, revertOrderDeliveredIfPendingAgain, canSeeEnqQuote } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canEditTier = canDeleteRecords(user?.email);
@@ -721,7 +721,12 @@ export function NewDispatchEntry() {
   // here, not only when Step 11 was just written — an entry whose qty is
   // changed after all its steps are done can finish the order too (the
   // check itself decides; it only reads unless the order is finished).
+  // 2026-11-23: and first the opposite check — an auto-Delivered order whose
+  // barrels are pending again (this entry's qty lowered) goes back to Order
+  // Confirmed. It runs even when a step write failed: the qty change stands.
   const completeEntrySteps = async (saved: DispatchEntry, what = 'Saved', step10WithoutLr = false): Promise<string> => {
+    // Its failure is only a warning: the steps below still run as before.
+    const pendingWarning = await revertIfPendingAgain(saved.orderId, what);
     try {
       await autoCompleteEntrySteps({
         entry: saved, entries: data.dispatchEntries,
@@ -733,9 +738,9 @@ export function NewDispatchEntry() {
         step10WithoutLr,
       });
     } catch (err: any) {
-      return `${what} — but ${err?.message || 'a Dispatch step was not marked done'}.`;
+      return [pendingWarning, `${what} — but ${err?.message || 'a Dispatch step was not marked done'}.`].filter(Boolean).join(' ');
     }
-    return autoDeliverOrder(saved.orderId, what);
+    return pendingWarning || autoDeliverOrder(saved.orderId, what);
   };
 
   // 2026-11-18: after this entry's Step 11 is done — if that finished the
@@ -750,6 +755,20 @@ export function NewDispatchEntry() {
       return '';
     } catch (err: any) {
       return `${what} — but the order could not be marked Delivered in Orders (${err?.message || 'check your connection'}). It will be retried when Dispatch is opened again.`;
+    }
+  };
+
+  // 2026-11-23: Delivered → Order Confirmed when barrels are pending again
+  // (store's revertOrderDeliveredIfPendingAgain re-checks everything in the
+  // database). Returns a warning if that failed ('' = fine / nothing to do);
+  // the save stands either way and the Dispatch safety check retries.
+  const revertIfPendingAgain = async (orderId: string, what: string): Promise<string> => {
+    if (isReadOnlyUser) return '';
+    try {
+      await revertOrderDeliveredIfPendingAgain(orderId);
+      return '';
+    } catch (err: any) {
+      return `${what} — but the order could not be moved back to Order Confirmed in Orders (${err?.message || 'check your connection'}). It will be retried when Dispatch is opened again.`;
     }
   };
 

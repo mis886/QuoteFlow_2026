@@ -7,7 +7,7 @@
 import { supabase } from './supabase';
 import { logActivity } from './activityLog';
 import type { DispatchEntry } from './types';
-import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef, entryHasLr, roundIsDirectDelivery, DIRECT_DELIVERY_NO_LR_REMARK, entryRoundOf, isWadaDispatch, orderDispatchComplete } from './dispatchFlow';
+import { DispatchStepRecord, STEP_ACTIONS, STEP9_MANUAL_REMARK, STEP11_WHATSAPP_REMARK, StepAction, StepNo, entryPosition, entryStepBlock, isImportedEntry, mapStepFromDB, openStepWrites, showStep11WhatsApp, step11WhatsAppBlock, stepDef, entryHasLr, roundIsDirectDelivery, DIRECT_DELIVERY_NO_LR_REMARK, entryRoundOf, isWadaDispatch, orderDispatchComplete, orderDeliveredButPending, deliveredMarkWasAuto } from './dispatchFlow';
 
 /**
  * 2026-11-18: is this order's whole dispatch finished (orderDispatchComplete),
@@ -30,6 +30,34 @@ export async function orderDispatchCompleteInDb(orderId: string): Promise<boolea
     (en.data || []).map(e => ({ id: e.id, orderId: e.order_id, items: e.items || [], createdBy: e.created_by || undefined, emailSentAt: e.email_sent_at || undefined })),
     new Set((st.data || []).map(r => r.entry_id as string)),
   );
+}
+
+/**
+ * 2026-11-23: should this order go back from Delivered to Order Confirmed —
+ * read from the database right now: still Delivered, barrels left again on
+ * the Dispatch snapshot (orderDeliveredButPending), AND its last move to
+ * Delivered in the History Log was the automatic one (deliveredMarkWasAuto —
+ * a manual Delivered by mis@ / shishir@ is never moved back). Reads only; the
+ * store's revertOrderDeliveredIfPendingAgain writes.
+ */
+export async function orderDeliveredButPendingInDb(orderId: string): Promise<boolean> {
+  const [o, en] = await Promise.all([
+    supabase.from('orders').select('id, status, items, dispatch_snapshot').eq('id', orderId).maybeSingle(),
+    supabase.from('dispatch_entries').select('order_id, items').eq('order_id', orderId),
+  ]);
+  if (o.error) throw o.error;
+  if (en.error) throw en.error;
+  if (!o.data) return false;
+  const pending = orderDeliveredButPending(
+    { id: o.data.id, status: o.data.status, items: o.data.items || [], dispatchSnapshot: o.data.dispatch_snapshot },
+    (en.data || []).map(e => ({ orderId: e.order_id, items: e.items || [] })),
+  );
+  if (!pending) return false;
+  const { data: log, error } = await supabase.from('activity_log').select('record_label')
+    .eq('module', 'orders').eq('record_id', orderId).eq('changes->status->>new', 'Delivered')
+    .order('created_at', { ascending: false }).limit(1);
+  if (error) throw error;
+  return deliveredMarkWasAuto(log?.[0]?.record_label);
 }
 
 /** The entry as saved in the database right now — the fields the Step 8–11 rules read. */

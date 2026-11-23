@@ -4,7 +4,7 @@ import { Search, CheckCircle2 } from 'lucide-react';
 import { useAppStore, AUTO_DELIVERED_SAFETY_LOG_NOTE } from '../store';
 import { customerOfDoc, dispatchOrderView, canDeleteRecords, fmtIST, doerLabel, siteLabel, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, entryIsWadaDispatch, isImportedEntry, orderFulfillmentFor, unionBoardRows, orderDispatchComplete } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, entryIsWadaDispatch, isImportedEntry, orderFulfillmentFor, unionBoardRows, orderDispatchComplete, orderDeliveredButPending } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
@@ -28,7 +28,7 @@ type BoardPill = typeof BOARD_PILLS[number];
 
 export function Dispatch() {
   const navigate = useNavigate();
-  const { data, user, activeDoer, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp, autoMarkOrderDeliveredFromDispatch, revertOrderDeliveredAfterStep11Undo } = useAppStore();
+  const { data, user, activeDoer, deleteDispatchEntry, ensureSoNumbers, isReadOnlyUser, removeOrderFromDispatch, openDetailPanel, markDispatchDocsSentWhatsApp, clearDispatchDocsSentWhatsApp, autoMarkOrderDeliveredFromDispatch, revertOrderDeliveredAfterStep11Undo, revertOrderDeliveredIfPendingAgain } = useAppStore();
   // Dispatch never reads the live order: see dispatchOrderView.
   const dispatchOrders = useMemo(() => data.orders.map(dispatchOrderView), [data.orders]);
   const canDelete = canDeleteRecords(user?.email);
@@ -110,6 +110,32 @@ export function Dispatch() {
     })();
   }, [stepRecords, data.orders, data.dispatchEntries, isReadOnlyUser]);
 
+  // 2026-11-23: the opposite safety check, same timing and rules (once per
+  // order per page load, console-only failures, not for the read-only
+  // login). A Delivered order with barrels left on this screen's data
+  // (orderDeliveredButPending) that went through the board (has step rows —
+  // old / imported Delivered orders have none, so they never cost a query)
+  // is handed to the store, which re-checks in the database — including
+  // that it was AUTO-marked Delivered — before moving it back.
+  const pendingAgainTried = useRef(new Set<string>());
+  useEffect(() => {
+    if (isReadOnlyUser || !stepRecords.length) return;
+    const onBoard = new Set(stepRecords.map(r => r.orderId));
+    const due = data.orders.filter(o => !pendingAgainTried.current.has(o.id)
+      && onBoard.has(o.id) && orderDeliveredButPending(o, data.dispatchEntries));
+    if (!due.length) return;
+    for (const o of due) pendingAgainTried.current.add(o.id);
+    (async () => {
+      for (const o of due) {
+        try {
+          await revertOrderDeliveredIfPendingAgain(o.id);
+        } catch (err) {
+          console.error(`Pending-again safety check failed for ${o.id}:`, err);
+        }
+      }
+    })();
+  }, [stepRecords, data.orders, data.dispatchEntries, isReadOnlyUser]);
+
   // Done / Hold / Resume on steps 1–7: Samata (mum@) + ADMIN_EMAILS only;
   // everyone else sees the board read-only. Never changes an order's status.
   const canActOnBoard = canActOnDispatchBoard(user?.email) && !isReadOnlyUser;
@@ -173,8 +199,16 @@ export function Dispatch() {
   // in the database and writes only while still Order Confirmed. A failure
   // never undoes the change; the Dispatch safety check retries on the next
   // page load. Not for the read-only login.
+  // 2026-11-23: first the opposite check — an auto-Delivered order with
+  // barrels left again (an entry deleted) goes back to Order Confirmed.
   const checkAutoDelivered = async (orderId: string, what: string) => {
     if (isReadOnlyUser) return;
+    try {
+      if (await revertOrderDeliveredIfPendingAgain(orderId)) { showToast('ok', 'Barrels pending again — order moved back to Order Confirmed in Orders.'); return; }
+    } catch (err: any) {
+      // Only a warning — the auto-Delivered check below still runs as before.
+      showToast('err', `${what}, but the order could not be moved back to Order Confirmed in Orders (${err?.message || 'check your connection'}). It will be retried when Dispatch is opened again.`);
+    }
     try {
       if (await autoMarkOrderDeliveredFromDispatch(orderId)) showToast('ok', 'Order fully dispatched — marked Delivered in Orders.');
     } catch (err: any) {

@@ -125,6 +125,27 @@ export function orderDispatchComplete(
   return tracked.every(e => !!e.emailSentAt && step11DoneEntryIds.has(e.id));
 }
 
+// 2026-11-23: the opposite of auto-Delivered. A "Delivered" order whose
+// dispatch is no longer complete — barrels left again on the Dispatch snapshot
+// (totalRemaining, same count as isFullyDispatched), e.g. an entry's qty was
+// lowered or an entry deleted — goes back to Order Confirmed (store's
+// revertOrderDeliveredIfPendingAgain), so the pending barrels show on the
+// board again. Only when it was AUTO-marked Delivered (deliveredMarkWasAuto):
+// a manual Delivered (mis@ / shishir@) and old orders stay as they are.
+export function orderDeliveredButPending(
+  order: { id: string; status: string; items: { seq: number; qty: number }[]; dispatchSnapshot?: Partial<Order> | null },
+  entries: Pick<DispatchEntry, 'orderId' | 'items'>[],
+): boolean {
+  if (order.status !== 'Delivered') return false;
+  return totalRemaining(order, entries.filter(e => e.orderId === order.id)) > 0;
+}
+// Every automatic mark's History Log label has this (AUTO_DELIVERED_LOG_NOTE,
+// AUTO_DELIVERED_SAFETY_LOG_NOTE, the 2026-11-18 backfill).
+export const AUTO_DELIVERED_LABEL_MARK = 'Auto-marked Delivered from Dispatch';
+/** Was the order's LAST move to Delivered the automatic one? Pass that History Log line's label. */
+export const deliveredMarkWasAuto = (lastDeliveredLabel: string | null | undefined): boolean =>
+  !!lastDeliveredLabel && lastDeliveredLabel.includes(AUTO_DELIVERED_LABEL_MARK);
+
 /** Advance payment terms need the step 1 payment-receipt check. */
 export const needsPaymentCheck = (pay: string | undefined) => /advance/i.test(pay || '');
 
