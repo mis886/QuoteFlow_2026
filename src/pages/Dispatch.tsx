@@ -4,7 +4,7 @@ import { Search, CheckCircle2 } from 'lucide-react';
 import { useAppStore, AUTO_DELIVERED_SAFETY_LOG_NOTE } from '../store';
 import { customerOfDoc, dispatchOrderView, canDeleteRecords, fmtIST, doerLabel, siteLabel, normalizeSearchText, totalRemaining, canActOnDispatchBoard } from '../lib/utils';
 import { Order, DispatchEntry, DispatchFulfillmentType } from '../lib/types';
-import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, entryIsWadaDispatch, isImportedEntry, orderFulfillmentFor, unionBoardRows, orderDispatchComplete, orderDeliveredButPending } from '../lib/dispatchFlow';
+import { buildBoard, mapStepFromDB, groupLinkedDOs, linkedDoSummary, LinkedDO, step6AlreadyEmailed, stepDef, lastOpenRoundClick, describeStepClick, openStepWrites, BoardCard, BoardOrderCard, BoardEntryCard, DispatchStepRecord, LastStepClick, StepAction, StepNo, DONE_COLUMN, STEP9_MANUAL_ACTION, entryPosition, entryIsWadaDispatch, isImportedEntry, orderFulfillmentFor, unionBoardRows, orderDispatchComplete, orderDeliveredButPending, orderBelongsInDispatch } from '../lib/dispatchFlow';
 import { saveEntryStepRows } from '../lib/dispatchEntrySteps';
 import { DispatchBoard, DeliveredOrderRow, StepActionButtons, UndoLink } from '../components/DispatchBoard';
 import { DispatchLineItemsPanel } from '../components/DispatchLineItemsPanel';
@@ -794,10 +794,13 @@ export function Dispatch() {
   // Entry ids in the Delivered list (all of it, before type/search) — a Done
   // row in any other List tab whose entry is here reads "Delivered".
   const deliveredEntryIds = useMemo(() => new Set(deliveredCards.map(c => c.entry.id)), [deliveredCards]);
+  // 2026-11-23: only orders that were sent to Dispatch (orderBelongsInDispatch)
+  // — a Delivered order marked by hand that never went through Dispatch is
+  // not listed (nor counted, nor found by the search, which all use this list).
   const deliveredOrderRows = useMemo<DeliveredOrderRow[]>(() => {
     const withEntry = new Set(data.dispatchEntries.map(e => e.orderId));
     return dispatchOrders
-      .filter(o => o.status === 'Delivered' && !withEntry.has(o.id))
+      .filter(o => o.status === 'Delivered' && !withEntry.has(o.id) && orderBelongsInDispatch(o, false))
       .map(o => ({ order: o, fulfillment: orderFulfillment(o) }));
   }, [dispatchOrders, data.dispatchEntries, data.customers]);
 

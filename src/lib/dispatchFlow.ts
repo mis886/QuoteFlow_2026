@@ -146,6 +146,16 @@ export const AUTO_DELIVERED_LABEL_MARK = 'Auto-marked Delivered from Dispatch';
 export const deliveredMarkWasAuto = (lastDeliveredLabel: string | null | undefined): boolean =>
   !!lastDeliveredLabel && lastDeliveredLabel.includes(AUTO_DELIVERED_LABEL_MARK);
 
+// 2026-11-23 (user rule): an order belongs in Dispatch (any tab, the search,
+// the counts) only if it has at least one dispatch entry OR was sent to
+// Dispatch (sent_to_dispatch_at / SO No.). A Delivered order marked by hand in
+// Orders that never went through Dispatch (ORD-2026-743, ORD-2026-817) stays
+// out — it is still Delivered in Orders.
+export const orderBelongsInDispatch = (
+  o: Pick<Order, 'sentToDispatchAt' | 'soNumber'>,
+  hasDispatchEntry: boolean,
+): boolean => hasDispatchEntry || !!o.sentToDispatchAt || !!o.soNumber;
+
 /** Advance payment terms need the step 1 payment-receipt check. */
 export const needsPaymentCheck = (pay: string | undefined) => /advance/i.test(pay || '');
 
