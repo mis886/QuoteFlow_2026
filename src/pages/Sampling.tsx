@@ -323,11 +323,9 @@ export function Sampling() {
 
   const filtered = useMemo(() => {
     let list = samples;
-    if (!search.trim()) {
-      if (tabFilter === 'pending') list = list.filter(s => s.status === 'pending' || s.status === 'dispatched');
-      else if (tabFilter === 'delivered') list = list.filter(s => s.status === 'delivered' || s.status === 'approved' || s.status === 'rejected');
-      else if (tabFilter !== 'all') list = list.filter(s => s.status === tabFilter);
-    }
+    // 2026-11-24: each status tab shows only its own status — a sample is in
+    // exactly one tab (plus All). Approved / Rejected leave Delivered.
+    if (!search.trim() && tabFilter !== 'all') list = list.filter(s => s.status === tabFilter);
     list = list.filter(s => isInDateRange(s.created_at, entryDate ? { startDate: entryDate, endDate: entryDate } : null));
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -346,9 +344,9 @@ export function Sampling() {
 
   const tabCounts = useMemo(() => ({
     all:        samples.length,
-    pending:    samples.filter(s => s.status === 'pending' || s.status === 'dispatched').length,
+    pending:    samples.filter(s => s.status === 'pending').length,
     dispatched: samples.filter(s => s.status === 'dispatched').length,
-    delivered:  samples.filter(s => s.status === 'delivered' || s.status === 'approved' || s.status === 'rejected').length,
+    delivered:  samples.filter(s => s.status === 'delivered').length,
     approved:   samples.filter(s => s.status === 'approved').length,
     rejected:   samples.filter(s => s.status === 'rejected').length,
   }), [samples]);
