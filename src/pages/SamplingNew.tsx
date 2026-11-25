@@ -738,7 +738,7 @@ export function SamplingNew() {
               <div className="bg-amber-50 border border-amber-200 p-[16px_18px] rounded-[3px]">
                 <div className="font-mono text-[8.5px] font-bold tracking-[2.5px] uppercase text-amber-700 mb-2">Editing Record</div>
                 <div className="text-[11px] text-amber-800 leading-relaxed">
-                  Sample status and feedback are managed separately via the tracker — editing here only updates the dispatch details, product info, and files.
+                  Change the sample status using the Status dropdown at the top. Use Record Feedback on the Sampling tracker to log the customer's outcome.
                 </div>
               </div>
             )}
