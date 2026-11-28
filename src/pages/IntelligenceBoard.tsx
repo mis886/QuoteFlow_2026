@@ -867,8 +867,8 @@ function ByProductView() {
 
   const fyHeads = rows[0]?.fyVolumes ?? data.fyLabels.map((fy, i) => ({ fy, isCurrent: i === data.fyLabels.length - 1 }));
   const growthHeads = rows[0]?.growth.map(g => g.label) ?? [];
-  const th = 'px-2.5 py-2 text-[9px] font-bold tracking-[1px] uppercase text-g400 whitespace-nowrap';
-  const td = 'px-2.5 py-2 whitespace-nowrap';
+  const th = 'px-[9px] py-[9px] text-[9px] font-bold tracking-[1px] uppercase text-g400 whitespace-nowrap';
+  const td = 'px-[9px] py-[10px] whitespace-nowrap align-middle';
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col bg-cream">
@@ -916,7 +916,7 @@ function ByProductView() {
         ) : (
           <div className="bg-white border border-g200 rounded-[4px] overflow-auto pattern-scroll max-h-[calc(100vh-300px)] min-h-[260px]">
             {/* Own scroll box: vertical + horizontal bars (pattern-scroll in index.css); header stays on top while scrolling */}
-            <table className="min-w-full text-[11.5px] text-blk">
+            <table className="min-w-full text-[12.5px] text-blk">
               <thead className="bg-g50 border-b border-g200 sticky top-0 z-20">
                 <tr>
                   <th rowSpan={2} className={cn(th, 'text-left sticky left-0 bg-g50 z-30')}>Customer</th>
@@ -951,10 +951,10 @@ function ByProductView() {
               <tbody>
                 {rows.map(r => (
                   <tr key={r.customerKey} className="border-b border-g100 hover:bg-g50 group">
-                    <td className={cn(td, 'sticky left-0 z-10 bg-white group-hover:bg-g50 font-semibold max-w-[220px] truncate')} title={r.customerName}>
+                    <td className={cn(td, 'sticky left-0 z-10 bg-white group-hover:bg-g50 font-semibold max-w-[260px] truncate')} title={r.customerName}>
                       {r.customerName}
                     </td>
-                    <td className={cn(td, 'text-center font-mono text-[11px]')}>{fmtDMY(r.lastOrderDate)}</td>
+                    <td className={cn(td, 'text-center font-mono')}>{fmtDMY(r.lastOrderDate)}</td>
                     <td className={cn(td, 'text-center font-mono')}>{r.avgGapDays ?? <span className="text-g300">—</span>}</td>
                     <td className={cn(td, 'text-center font-mono')}>{r.orders}</td>
                     {r.fyVolumes.map(v => (
@@ -969,10 +969,10 @@ function ByProductView() {
                       </td>
                     ))}
                     <td className={cn(td, 'text-center font-mono border-l border-g100')}><GrowthCell g={r.currentYtdVsLastYear} /></td>
-                    <td className={cn(td, 'text-center font-mono text-[11px]')}>{fmtDMY(r.predictedOrderDate)}</td>
-                    <td className={cn(td, 'text-center font-mono text-[11px] font-semibold')}>{fmtDMY(r.callDate)}</td>
+                    <td className={cn(td, 'text-center font-mono')}>{fmtDMY(r.predictedOrderDate)}</td>
+                    <td className={cn(td, 'text-center font-mono font-semibold')}>{fmtDMY(r.callDate)}</td>
                     <td className={cn(td, 'text-center')}>
-                      <span className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full border ${PATTERN_BADGE[r.status]}`}>
+                      <span className={`text-[10.5px] font-bold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${PATTERN_BADGE[r.status]}`}>
                         {r.status}
                       </span>
                     </td>
