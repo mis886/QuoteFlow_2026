@@ -946,14 +946,14 @@ function ByProductView() {
                   <th className={cn(th, 'text-center')}>Last order</th>
                   <th className={cn(th, 'text-center')}>Avg gap (days)</th>
                   <th className={cn(th, 'text-center')}>Orders</th>
-                  {fyHeads.map((f, i) => (
-                    <th key={f.fy} className={cn(th, 'text-center', i === 0 && 'border-l border-g200')}>
+                  {fyHeads.map(f => (
+                    <th key={f.fy} className={cn(th, 'text-center')}>
                       FY {f.fy}{f.isCurrent ? ' YTD' : ''} {hasLts ? 'kg / lts' : 'kg'}
                     </th>
                   ))}
-                  <th className={cn(th, 'text-center border-l border-g200')}>Growth<br />{growthHead}</th>
+                  <th className={cn(th, 'text-center')}>Growth<br />{growthHead}</th>
                   <th className={cn(th, 'text-center')}>This FY vs<br />same period LY</th>
-                  <th className={cn(th, 'text-center border-l border-g200')}>Next order<br />(predicted)</th>
+                  <th className={cn(th, 'text-center')}>Next order<br />(predicted)</th>
                   <th className={cn(th, 'text-center')}>Call on</th>
                   <th className={cn(th, 'text-center')}>Status</th>
                 </tr>
@@ -970,17 +970,17 @@ function ByProductView() {
                       <td className={cn(td, 'text-center font-mono')}>{fmtDMY(r.lastOrderDate)}</td>
                       <td className={cn(td, 'text-center font-mono')}>{r.avgGapDays ?? <span className="text-g300">—</span>}</td>
                       <td className={cn(td, 'text-center font-mono')}>{r.orders}</td>
-                      {vols.map((v, i) => (
-                        <td key={v.fy} className={cn(td, 'text-center font-mono', i === 0 && 'border-l border-g100')}>
+                      {vols.map(v => (
+                        <td key={v.fy} className={cn(td, 'text-center font-mono')}>
                           <QtyCell n={v.kg} />
                           {hasLts && v.lts > 0 && (
                             <div className="text-[10.5px] text-g400 leading-tight">{fmtQty(v.lts)} lts</div>
                           )}
                         </td>
                       ))}
-                      <td className={cn(td, 'text-center font-mono border-l border-g100')}><GrowthCell g={lastGrowth} /></td>
+                      <td className={cn(td, 'text-center font-mono')}><GrowthCell g={lastGrowth} /></td>
                       <td className={cn(td, 'text-center font-mono')}><GrowthCell g={r.currentYtdVsLastYear} /></td>
-                      <td className={cn(td, 'text-center font-mono border-l border-g100')}>{fmtDMY(r.predictedOrderDate)}</td>
+                      <td className={cn(td, 'text-center font-mono')}>{fmtDMY(r.predictedOrderDate)}</td>
                       <td className={cn(td, 'text-center font-mono font-semibold')}>{fmtDMY(r.callDate)}</td>
                       <td className={cn(td, 'text-center')}>
                         <span className={`text-[10.5px] font-bold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${PATTERN_BADGE[r.status]}`}>
