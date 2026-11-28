@@ -914,14 +914,15 @@ function ByProductView() {
             {product ? 'No customer has bought this product yet.' : 'Pick a product to see its buyers.'}
           </div>
         ) : (
-          <div className="bg-white border border-g200 rounded-[4px] overflow-x-auto">
+          <div className="bg-white border border-g200 rounded-[4px] overflow-auto pattern-scroll max-h-[calc(100vh-300px)] min-h-[260px]">
+            {/* Own scroll box: vertical + horizontal bars (pattern-scroll in index.css); header stays on top while scrolling */}
             <table className="min-w-full text-[11.5px] text-blk">
-              <thead className="bg-g50 border-b border-g200">
+              <thead className="bg-g50 border-b border-g200 sticky top-0 z-20">
                 <tr>
-                  <th rowSpan={2} className={cn(th, 'text-left sticky left-0 bg-g50 z-10')}>Customer</th>
-                  <th rowSpan={2} className={cn(th, 'text-left')}>Last Order</th>
-                  <th rowSpan={2} className={cn(th, 'text-right')}>Avg Gap (days)</th>
-                  <th rowSpan={2} className={cn(th, 'text-right')}>Orders</th>
+                  <th rowSpan={2} className={cn(th, 'text-left sticky left-0 bg-g50 z-30')}>Customer</th>
+                  <th rowSpan={2} className={cn(th, 'text-center')}>Last Order</th>
+                  <th rowSpan={2} className={cn(th, 'text-center')}>Avg Gap (days)</th>
+                  <th rowSpan={2} className={cn(th, 'text-center')}>Orders</th>
                   {fyHeads.map(f => (
                     <th key={f.fy} colSpan={2} className={cn(th, 'text-center border-l border-g200')}>
                       FY {f.fy}{f.isCurrent ? ' (YTD)' : ''}
@@ -930,47 +931,47 @@ function ByProductView() {
                   {growthHeads.length > 0 && (
                     <th colSpan={growthHeads.length} className={cn(th, 'text-center border-l border-g200')}>Growth %</th>
                   )}
-                  <th rowSpan={2} className={cn(th, 'text-right border-l border-g200')}>This FY vs<br />same period LY</th>
-                  <th rowSpan={2} className={cn(th, 'text-left')}>Predicted Order</th>
-                  <th rowSpan={2} className={cn(th, 'text-left')}>Call On</th>
-                  <th rowSpan={2} className={cn(th, 'text-left')}>Status</th>
+                  <th rowSpan={2} className={cn(th, 'text-center border-l border-g200')}>This FY vs<br />same period LY</th>
+                  <th rowSpan={2} className={cn(th, 'text-center')}>Predicted Order</th>
+                  <th rowSpan={2} className={cn(th, 'text-center')}>Call On</th>
+                  <th rowSpan={2} className={cn(th, 'text-center')}>Status</th>
                 </tr>
                 <tr>
                   {fyHeads.map(f => (
                     <React.Fragment key={f.fy}>
-                      <th className={cn(th, 'text-right border-l border-g200')}>kg</th>
-                      <th className={cn(th, 'text-right')}>lts</th>
+                      <th className={cn(th, 'text-center border-l border-g200')}>kg</th>
+                      <th className={cn(th, 'text-center')}>lts</th>
                     </React.Fragment>
                   ))}
                   {growthHeads.map((g, i) => (
-                    <th key={g} className={cn(th, 'text-right', i === 0 && 'border-l border-g200')}>{g}</th>
+                    <th key={g} className={cn(th, 'text-center', i === 0 && 'border-l border-g200')}>{g}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map(r => (
                   <tr key={r.customerKey} className="border-b border-g100 hover:bg-g50 group">
-                    <td className={cn(td, 'sticky left-0 bg-white group-hover:bg-g50 font-semibold max-w-[220px] truncate')} title={r.customerName}>
+                    <td className={cn(td, 'sticky left-0 z-10 bg-white group-hover:bg-g50 font-semibold max-w-[220px] truncate')} title={r.customerName}>
                       {r.customerName}
                     </td>
-                    <td className={cn(td, 'font-mono text-[11px]')}>{fmtDMY(r.lastOrderDate)}</td>
-                    <td className={cn(td, 'text-right font-mono')}>{r.avgGapDays ?? <span className="text-g300">—</span>}</td>
-                    <td className={cn(td, 'text-right font-mono')}>{r.orders}</td>
+                    <td className={cn(td, 'text-center font-mono text-[11px]')}>{fmtDMY(r.lastOrderDate)}</td>
+                    <td className={cn(td, 'text-center font-mono')}>{r.avgGapDays ?? <span className="text-g300">—</span>}</td>
+                    <td className={cn(td, 'text-center font-mono')}>{r.orders}</td>
                     {r.fyVolumes.map(v => (
                       <React.Fragment key={v.fy}>
-                        <td className={cn(td, 'text-right font-mono border-l border-g100')}><QtyCell n={v.kg} /></td>
-                        <td className={cn(td, 'text-right font-mono')}><QtyCell n={v.lts} /></td>
+                        <td className={cn(td, 'text-center font-mono border-l border-g100')}><QtyCell n={v.kg} /></td>
+                        <td className={cn(td, 'text-center font-mono')}><QtyCell n={v.lts} /></td>
                       </React.Fragment>
                     ))}
                     {r.growth.map((g, i) => (
-                      <td key={g.label} className={cn(td, 'text-right font-mono', i === 0 && 'border-l border-g100')}>
+                      <td key={g.label} className={cn(td, 'text-center font-mono', i === 0 && 'border-l border-g100')}>
                         <GrowthCell g={g.value} />
                       </td>
                     ))}
-                    <td className={cn(td, 'text-right font-mono border-l border-g100')}><GrowthCell g={r.currentYtdVsLastYear} /></td>
-                    <td className={cn(td, 'font-mono text-[11px]')}>{fmtDMY(r.predictedOrderDate)}</td>
-                    <td className={cn(td, 'font-mono text-[11px] font-semibold')}>{fmtDMY(r.callDate)}</td>
-                    <td className={td}>
+                    <td className={cn(td, 'text-center font-mono border-l border-g100')}><GrowthCell g={r.currentYtdVsLastYear} /></td>
+                    <td className={cn(td, 'text-center font-mono text-[11px]')}>{fmtDMY(r.predictedOrderDate)}</td>
+                    <td className={cn(td, 'text-center font-mono text-[11px] font-semibold')}>{fmtDMY(r.callDate)}</td>
+                    <td className={cn(td, 'text-center')}>
                       <span className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full border ${PATTERN_BADGE[r.status]}`}>
                         {r.status}
                       </span>
