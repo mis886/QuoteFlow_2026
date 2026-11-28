@@ -86,7 +86,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, PackageCheck, Pencil, X, AlertTriangle } from 'lucide-react';
+import { Search, ChevronsUpDown, ChevronUp, ChevronDown, RefreshCw, PackageCheck, Pencil, X, AlertTriangle, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAll';
 import { useAppStore } from '../store';
@@ -316,6 +316,45 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, wh]);
 
+  // 2026-11-28: Download CSV — exports exactly the rows on screen (search,
+  // warehouse pill, COA card filter and sort all applied), same columns as
+  // the table. UTF-8 BOM in front so Excel opens it with the right characters.
+  const downloadCsv = () => {
+    const blank = (v?: number | null) => (v === undefined || v === null || v === 0 ? '' : v);
+    const coaText = (l: StockLot) => {
+      if (isCoaNotRequired(l.productName)) return 'N/A';
+      if (isCoaMissing(l)) { const d = coaAgeDays(l); return d === null ? 'MISSING' : `MISSING (${d} days)`; }
+      return l.coaFile || (l.coaUrl ? 'PDF' : '');
+    };
+    const header = [
+      'S.No.', 'Lot No', 'Factory Lot Number', 'Product Code', 'Product Name', 'Inward Date',
+      'Sample Off', 'COA', 'Opening Stock', ...WAREHOUSES.map(w => w.key),
+      'Packing', 'MOU', 'Packing Type', wh ? `Total Quantity (${wh})` : 'Total Quantity', 'Make', 'Remark',
+    ];
+    const rows = filtered.map((l, i) => [
+      i + 1, l.whLotNo || '', l.factLotNo || '', l.productCode || '', l.productName || '',
+      l.inwardDate ? fmtDate(l.inwardDate) : '', l.sampleOff ? 'Yes' : 'No', coaText(l),
+      l.noOfBarrels && l.noOfBarrels !== '0' ? l.noOfBarrels : '',
+      ...WAREHOUSES.map(w => blank(l[w.field] as number | undefined)),
+      l.packing != null ? blank(l.packing as number) : (l.packingDetail || ''),
+      l.mou || '', l.packingType || '', blank(rowQty(l)), l.make || '', l.remark || '',
+    ]);
+    const cell = (v: unknown) => {
+      const t = String(v ?? '');
+      return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const csv = '\uFEFF' + [header, ...rows].map(r => r.map(cell).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stock_summary${wh ? '_' + wh : ''}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   // sticky top-0 + z-10 + an explicit (non-transparent) background pins
   // these header cells to the top of the table's own scroll container as
   // the body scrolls past underneath — see the merged single-scroll-axis
@@ -403,6 +442,16 @@ export function StockSummary({ tabs, onOpenLot, onLotsChanged }: {
           className="inline-flex items-center justify-center h-7 w-7 rounded-[3px] text-g500 hover:bg-g100 hover:text-blk transition-colors"
         >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+        </button>
+
+        <button
+          type="button"
+          onClick={downloadCsv}
+          disabled={loading || filtered.length === 0}
+          title="Download the rows on screen as a CSV (opens in Excel)"
+          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-[3px] border border-g200 text-[11px] font-semibold text-g600 hover:bg-g100 hover:text-blk transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Download size={12} /> Download CSV
         </button>
 
         <div className="ml-auto font-mono text-[10px] text-g500">{filtered.length} lots</div>
