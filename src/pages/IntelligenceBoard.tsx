@@ -10,7 +10,7 @@ import { generateQuotePDF } from '../lib/pdfGenerator';
 import { PinGate } from '../components/PinGate';
 import { BulkFollowUpForm } from '../components/BulkFollowUpForm';
 import { SearchableCombobox } from '../components/SearchableCombobox';
-import { loadBuyingPatterns, BuyingPatternData, BuyingPatternRow, PatternStatus, Growth } from '../lib/buyingPattern';
+import { loadBuyingPatterns, todayIso, BuyingPatternData, BuyingPatternRow, PatternStatus, Growth } from '../lib/buyingPattern';
 
 // ── shared helpers (mirrors Customers.tsx) ────────────────────────────────────
 
@@ -786,6 +786,19 @@ function QtyCell({ n }: { n: number }) {
   return n ? <>{fmtQty(n)}</> : <span className="text-g300">—</span>;
 }
 
+// Whole days from date `a` to date `b` (both "YYYY-MM-DD").
+function daysBetween(a: string, b: string): number {
+  const toUtc = (s: string) => { const [y, m, d] = s.slice(0, 10).split('-').map(Number); return Date.UTC(y, m - 1, d); };
+  return Math.round((toUtc(b) - toUtc(a)) / 86_400_000);
+}
+
+// Status text with day count: "Overdue 12d" (since Call on), "Lost? 240d" (since Last order).
+function statusText(r: BuyingPatternRow, today: string): string {
+  if (r.status === 'Overdue' && r.callDate) return `Overdue ${daysBetween(r.callDate, today)}d`;
+  if (r.status === 'Lost?') return `Lost? ${daysBetween(r.lastOrderDate, today)}d`;
+  return r.status;
+}
+
 function ByProductView() {
   const [data, setData] = useState<BuyingPatternData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -865,119 +878,118 @@ function ByProductView() {
     );
   }
 
-  const fyHeads = rows[0]?.fyVolumes ?? data.fyLabels.map((fy, i) => ({ fy, isCurrent: i === data.fyLabels.length - 1 }));
-  const growthHeads = rows[0]?.growth.map(g => g.label) ?? [];
+  const today = todayIso();
+  // Volume columns: last 3 completed FYs + current FY (YTD).
+  const fyHeads = (rows[0]?.fyVolumes ?? []).slice(-4);
+  // Show lts only if this product has any lts at all.
+  const hasLts = rows.some(r => r.fyVolumes.some(v => v.lts > 0));
+  // Growth: only the latest completed FY vs the one before.
+  const growthHead = rows[0]?.growth[rows[0].growth.length - 1]?.label ?? '';
+  const curFy = fyHeads[fyHeads.length - 1]?.fy ?? '';
   const th = 'px-[9px] py-[9px] text-[9px] font-bold tracking-[1px] uppercase text-g400 whitespace-nowrap';
   const td = 'px-[9px] py-[10px] whitespace-nowrap align-middle';
 
+  const stats = [
+    { label: 'Customers buying', value: rows.length.toLocaleString('en-IN'), sub: product, color: 'text-blk' },
+    { label: `Current FY total${curFy ? ` (${curFy})` : ''}`, value: `${fmtQty(totals.kg)} kg`,
+      sub: totals.lts ? `${fmtQty(totals.lts)} lts` : 'year to date', color: 'text-blk' },
+    { label: 'Overdue calls', value: totals.overdue.toLocaleString('en-IN'), sub: 'call date passed', color: 'text-red-600' },
+    { label: 'Likely lost', value: totals.lost.toLocaleString('en-IN'), sub: 'no order for 3× usual gap', color: 'text-amber-700' },
+  ];
+
   return (
-    <div className="flex-1 overflow-hidden flex flex-col bg-cream">
-      {/* Toolbar: product picker + data date */}
-      <div className="bg-white border-b border-g200 px-4 sm:px-5 py-2.5 shrink-0">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <div className="w-full sm:w-80">
-            <SearchableCombobox
-              value={typed}
-              options={data.productList}
-              placeholder="Search product…"
-              onChange={v => { setTyped(v); if (productSet.has(v)) setProduct(v); }}
-              className="w-full text-[11.5px] bg-g50 border border-g200 rounded-[3px] px-2.5 py-1.5 outline-none focus:border-g400 placeholder:text-g400"
-            />
-          </div>
-          <div className="text-[10.5px] text-g400">
+    <div className="flex-1 overflow-y-auto bg-cream p-4 space-y-4">
+      {/* Top card: product picker (left) + 4 stats (right) */}
+      <div className="bg-white border border-g200 rounded-[4px] p-4 flex flex-col lg:flex-row lg:items-center gap-4">
+        <div className="w-full lg:w-80 shrink-0">
+          <div className="text-[9px] font-bold tracking-[1.5px] uppercase text-g400 mb-1.5">Product</div>
+          <SearchableCombobox
+            value={typed}
+            options={data.productList}
+            placeholder="Search product…"
+            onChange={v => { setTyped(v); if (productSet.has(v)) setProduct(v); }}
+            className="w-full text-[12.5px] bg-g50 border border-g200 rounded-[3px] px-2.5 py-1.5 outline-none focus:border-g400 placeholder:text-g400"
+          />
+          <div className="text-[10.5px] text-g400 mt-1.5">
             Sales data updated till <span className="font-semibold text-g600">{fmtDMY(data.dataUpdatedTill)}</span>
           </div>
         </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: 'Customers buying', value: rows.length.toLocaleString('en-IN'), sub: product },
-            { label: `Current FY total (${fyHeads[fyHeads.length - 1]?.fy ?? ''})`,
-              value: `${fmtQty(totals.kg)} kg`, sub: totals.lts ? `${fmtQty(totals.lts)} lts` : 'year to date' },
-            { label: 'Overdue', value: totals.overdue.toLocaleString('en-IN'), sub: 'call date passed', color: 'text-red-600' },
-            { label: 'Lost?', value: totals.lost.toLocaleString('en-IN'), sub: 'no order for 3× usual gap', color: 'text-amber-700' },
-          ].map(k => (
-            <div key={k.label} className="bg-white border border-g200 rounded-[4px] px-4 py-3 min-w-0">
+        <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 lg:border-l lg:border-g200 lg:pl-4">
+          {stats.map(k => (
+            <div key={k.label} className="min-w-0">
               <div className="text-[9px] text-g400 tracking-wide uppercase mb-1 truncate">{k.label}</div>
-              <div className={cn('text-[16px] font-semibold leading-none truncate', k.color ?? 'text-blk')}>{k.value}</div>
+              <div className={cn('text-[18px] font-semibold leading-none truncate', k.color)}>{k.value}</div>
               <div className="text-[9.5px] text-g400 mt-1 truncate">{k.sub}</div>
             </div>
           ))}
         </div>
+      </div>
 
-        {/* Table */}
+      {/* Table card */}
+      <div className="bg-white border border-g200 rounded-[4px] overflow-hidden">
+        <div className="px-4 py-3 border-b border-g200">
+          <div className="text-[10px] font-bold tracking-[1.5px] uppercase text-blk truncate">Who buys {product || '…'}</div>
+          <div className="text-[10.5px] text-g400 mt-0.5">From Tally sales · overdue first</div>
+        </div>
+
         {rows.length === 0 ? (
-          <div className="bg-white border border-g200 rounded-[4px] px-4 py-8 text-center text-[12px] text-g400 italic">
+          <div className="px-4 py-8 text-center text-[12px] text-g400 italic">
             {product ? 'No customer has bought this product yet.' : 'Pick a product to see its buyers.'}
           </div>
         ) : (
-          <div className="bg-white border border-g200 rounded-[4px] overflow-auto pattern-scroll max-h-[calc(100vh-300px)] min-h-[260px]">
+          <div className="overflow-auto pattern-scroll max-h-[calc(100vh-330px)] min-h-[260px]">
             {/* Own scroll box: vertical + horizontal bars (pattern-scroll in index.css); header stays on top while scrolling */}
             <table className="min-w-full text-[12.5px] text-blk">
               <thead className="bg-g50 border-b border-g200 sticky top-0 z-20">
                 <tr>
-                  <th rowSpan={2} className={cn(th, 'text-left sticky left-0 bg-g50 z-30')}>Customer</th>
-                  <th rowSpan={2} className={cn(th, 'text-center')}>Last Order</th>
-                  <th rowSpan={2} className={cn(th, 'text-center')}>Avg Gap (days)</th>
-                  <th rowSpan={2} className={cn(th, 'text-center')}>Orders</th>
-                  {fyHeads.map(f => (
-                    <th key={f.fy} colSpan={2} className={cn(th, 'text-center border-l border-g200')}>
-                      FY {f.fy}{f.isCurrent ? ' (YTD)' : ''}
+                  <th className={cn(th, 'text-left sticky left-0 bg-g50 z-30')}>Customer</th>
+                  <th className={cn(th, 'text-center')}>Last order</th>
+                  <th className={cn(th, 'text-center')}>Avg gap (days)</th>
+                  <th className={cn(th, 'text-center')}>Orders</th>
+                  {fyHeads.map((f, i) => (
+                    <th key={f.fy} className={cn(th, 'text-center', i === 0 && 'border-l border-g200')}>
+                      FY {f.fy}{f.isCurrent ? ' YTD' : ''} {hasLts ? 'kg / lts' : 'kg'}
                     </th>
                   ))}
-                  {growthHeads.length > 0 && (
-                    <th colSpan={growthHeads.length} className={cn(th, 'text-center border-l border-g200')}>Growth %</th>
-                  )}
-                  <th rowSpan={2} className={cn(th, 'text-center border-l border-g200')}>This FY vs<br />same period LY</th>
-                  <th rowSpan={2} className={cn(th, 'text-center')}>Predicted Order</th>
-                  <th rowSpan={2} className={cn(th, 'text-center')}>Call On</th>
-                  <th rowSpan={2} className={cn(th, 'text-center')}>Status</th>
-                </tr>
-                <tr>
-                  {fyHeads.map(f => (
-                    <React.Fragment key={f.fy}>
-                      <th className={cn(th, 'text-center border-l border-g200')}>kg</th>
-                      <th className={cn(th, 'text-center')}>lts</th>
-                    </React.Fragment>
-                  ))}
-                  {growthHeads.map((g, i) => (
-                    <th key={g} className={cn(th, 'text-center', i === 0 && 'border-l border-g200')}>{g}</th>
-                  ))}
+                  <th className={cn(th, 'text-center border-l border-g200')}>Growth<br />{growthHead}</th>
+                  <th className={cn(th, 'text-center')}>This FY vs<br />same period LY</th>
+                  <th className={cn(th, 'text-center border-l border-g200')}>Next order<br />(predicted)</th>
+                  <th className={cn(th, 'text-center')}>Call on</th>
+                  <th className={cn(th, 'text-center')}>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(r => (
-                  <tr key={r.customerKey} className="border-b border-g100 hover:bg-g50 group">
-                    <td className={cn(td, 'sticky left-0 z-10 bg-white group-hover:bg-g50 font-semibold max-w-[260px] truncate')} title={r.customerName}>
-                      {r.customerName}
-                    </td>
-                    <td className={cn(td, 'text-center font-mono')}>{fmtDMY(r.lastOrderDate)}</td>
-                    <td className={cn(td, 'text-center font-mono')}>{r.avgGapDays ?? <span className="text-g300">—</span>}</td>
-                    <td className={cn(td, 'text-center font-mono')}>{r.orders}</td>
-                    {r.fyVolumes.map(v => (
-                      <React.Fragment key={v.fy}>
-                        <td className={cn(td, 'text-center font-mono border-l border-g100')}><QtyCell n={v.kg} /></td>
-                        <td className={cn(td, 'text-center font-mono')}><QtyCell n={v.lts} /></td>
-                      </React.Fragment>
-                    ))}
-                    {r.growth.map((g, i) => (
-                      <td key={g.label} className={cn(td, 'text-center font-mono', i === 0 && 'border-l border-g100')}>
-                        <GrowthCell g={g.value} />
+                {rows.map(r => {
+                  const vols = r.fyVolumes.slice(-4);
+                  const lastGrowth = r.growth[r.growth.length - 1]?.value ?? '—';
+                  return (
+                    <tr key={r.customerKey} className="border-b border-g100 hover:bg-g50 group">
+                      <td className={cn(td, 'sticky left-0 z-10 bg-white group-hover:bg-g50 font-semibold max-w-[260px] truncate')} title={r.customerName}>
+                        {r.customerName}
                       </td>
-                    ))}
-                    <td className={cn(td, 'text-center font-mono border-l border-g100')}><GrowthCell g={r.currentYtdVsLastYear} /></td>
-                    <td className={cn(td, 'text-center font-mono')}>{fmtDMY(r.predictedOrderDate)}</td>
-                    <td className={cn(td, 'text-center font-mono font-semibold')}>{fmtDMY(r.callDate)}</td>
-                    <td className={cn(td, 'text-center')}>
-                      <span className={`text-[10.5px] font-bold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${PATTERN_BADGE[r.status]}`}>
-                        {r.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                      <td className={cn(td, 'text-center font-mono')}>{fmtDMY(r.lastOrderDate)}</td>
+                      <td className={cn(td, 'text-center font-mono')}>{r.avgGapDays ?? <span className="text-g300">—</span>}</td>
+                      <td className={cn(td, 'text-center font-mono')}>{r.orders}</td>
+                      {vols.map((v, i) => (
+                        <td key={v.fy} className={cn(td, 'text-center font-mono', i === 0 && 'border-l border-g100')}>
+                          <QtyCell n={v.kg} />
+                          {hasLts && v.lts > 0 && (
+                            <div className="text-[10.5px] text-g400 leading-tight">{fmtQty(v.lts)} lts</div>
+                          )}
+                        </td>
+                      ))}
+                      <td className={cn(td, 'text-center font-mono border-l border-g100')}><GrowthCell g={lastGrowth} /></td>
+                      <td className={cn(td, 'text-center font-mono')}><GrowthCell g={r.currentYtdVsLastYear} /></td>
+                      <td className={cn(td, 'text-center font-mono border-l border-g100')}>{fmtDMY(r.predictedOrderDate)}</td>
+                      <td className={cn(td, 'text-center font-mono font-semibold')}>{fmtDMY(r.callDate)}</td>
+                      <td className={cn(td, 'text-center')}>
+                        <span className={`text-[10.5px] font-bold px-2.5 py-0.5 rounded-full border whitespace-nowrap ${PATTERN_BADGE[r.status]}`}>
+                          {statusText(r, today)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
