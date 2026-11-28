@@ -9,6 +9,8 @@ import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { generateQuotePDF } from '../lib/pdfGenerator';
 import { PinGate } from '../components/PinGate';
 import { BulkFollowUpForm } from '../components/BulkFollowUpForm';
+import { SearchableCombobox } from '../components/SearchableCombobox';
+import { loadBuyingPatterns, BuyingPatternData, BuyingPatternRow, PatternStatus, Growth } from '../lib/buyingPattern';
 
 // ── shared helpers (mirrors Customers.tsx) ────────────────────────────────────
 
@@ -533,7 +535,7 @@ function CustomerDetail({ stats, allFollowups }: {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 type SortKey = 'pipeline' | 'winrate' | 'enqs';
-type BoardView = 'customers' | 'quotations';
+type BoardView = 'customers' | 'products' | 'quotations';
 
 export function IntelligenceBoard() {
   const { canSeeEnqQuote } = useAppStore();
@@ -616,7 +618,7 @@ export function IntelligenceBoard() {
 {canSeeEnqQuote && (<>
         {/* View toggle */}
         <div className="flex gap-0.5 bg-g100 rounded-[3px] p-0.5 mb-0.5">
-          {([['customers', 'By Customer'], ['quotations', 'All Quotations']] as [BoardView, string][]).map(([v, label]) => (
+          {([['customers', 'By Customer'], ['products', 'By Product'], ['quotations', 'All Quotations']] as [BoardView, string][]).map(([v, label]) => (
             <button
               key={v}
               type="button"
@@ -637,6 +639,9 @@ export function IntelligenceBoard() {
       {canSeeEnqQuote && boardView === 'quotations' && (
         <AllQuotationsView quotes={data.quotes} customers={data.customers} initialSearch={quotationSearch} />
       )}
+
+      {/* By Product view (Tally sales buying pattern) */}
+      {canSeeEnqQuote && boardView === 'products' && <ByProductView />}
 
       {/* Two-panel board — Customer view */}
       {(!canSeeEnqQuote || boardView === 'customers') && <div className="flex flex-1 overflow-hidden">
@@ -730,6 +735,253 @@ export function IntelligenceBoard() {
           </div>
         )}
       </div>}
+    </div>
+  );
+}
+
+// ── By Product view ───────────────────────────────────────────────────────────
+// Buying pattern per customer for one product, from Tally sales (src/lib/buyingPattern.ts).
+
+// Loaded once per page visit and kept, so switching tabs doesn't refetch ~12k rows.
+let buyingPatternCache: Promise<BuyingPatternData> | null = null;
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// "2026-11-19" → "19-Nov-2026"
+function fmtDMY(iso: string | null): string {
+  if (!iso) return '—';
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return `${d}-${MONTHS[Number(m) - 1]}-${y}`;
+}
+
+// Indian digit grouping: 123456 → "1,23,456"
+function fmtQty(n: number): string {
+  return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+const PATTERN_ORDER: Record<PatternStatus, number> = {
+  'Overdue': 0, 'Due soon': 1, 'On track': 2, 'Lost?': 3, 'Not enough history': 4,
+};
+
+const PATTERN_BADGE: Record<PatternStatus, string> = {
+  'Overdue':            'bg-red-50 text-red-700 border-red-200',
+  'Due soon':           'bg-amber-50 text-amber-700 border-amber-200',
+  'On track':           'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Lost?':              'bg-g100 text-amber-700 border-amber-300',
+  'Not enough history': 'bg-g100 text-g500 border-g200',
+};
+
+function GrowthCell({ g }: { g: Growth }) {
+  if (g === '—') return <span className="text-g300">—</span>;
+  if (g === 'New') return <span className="text-emerald-600 font-semibold">New</span>;
+  const r = Math.round(g);
+  return (
+    <span className={r > 0 ? 'text-emerald-600' : r < 0 ? 'text-red-500' : 'text-g500'}>
+      {r > 0 ? '+' : ''}{r.toLocaleString('en-IN')}%
+    </span>
+  );
+}
+
+function QtyCell({ n }: { n: number }) {
+  return n ? <>{fmtQty(n)}</> : <span className="text-g300">—</span>;
+}
+
+function ByProductView() {
+  const [data, setData] = useState<BuyingPatternData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [product, setProduct] = useState('');
+  const [typed, setTyped] = useState('');
+
+  // Load the Tally data (once; later visits reuse the cached result).
+  useEffect(() => {
+    let cancelled = false;
+    if (!buyingPatternCache) buyingPatternCache = loadBuyingPatterns();
+    buyingPatternCache
+      .then(d => { if (!cancelled) setData(d); })
+      .catch(e => {
+        buyingPatternCache = null; // allow a retry next time
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Default product = the one with the most kg in the current FY.
+  useEffect(() => {
+    if (!data || product || !data.rows.length) return;
+    const kgByProduct = new Map<string, number>();
+    for (const r of data.rows) {
+      const cur = r.fyVolumes.find(v => v.isCurrent)?.kg ?? 0;
+      kgByProduct.set(r.product, (kgByProduct.get(r.product) ?? 0) + cur);
+    }
+    let best = data.productList[0] ?? '';
+    for (const [p, kg] of kgByProduct) if (kg > (kgByProduct.get(best) ?? 0)) best = p;
+    setProduct(best);
+    setTyped(best);
+  }, [data, product]);
+
+  const productSet = useMemo(() => new Set(data?.productList ?? []), [data]);
+
+  // Rows for the chosen product, sorted by status then newest last order.
+  const rows: BuyingPatternRow[] = useMemo(() => {
+    if (!data || !product) return [];
+    return data.rows
+      .filter(r => r.product === product)
+      .sort((a, b) =>
+        PATTERN_ORDER[a.status] - PATTERN_ORDER[b.status] ||
+        b.lastOrderDate.localeCompare(a.lastOrderDate));
+  }, [data, product]);
+
+  const totals = useMemo(() => {
+    let kg = 0, lts = 0, overdue = 0, lost = 0;
+    for (const r of rows) {
+      const cur = r.fyVolumes.find(v => v.isCurrent);
+      kg += cur?.kg ?? 0;
+      lts += cur?.lts ?? 0;
+      if (r.status === 'Overdue') overdue++;
+      if (r.status === 'Lost?') lost++;
+    }
+    return { kg, lts, overdue, lost };
+  }, [rows]);
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-cream p-6 text-center text-[12.5px] text-red-600">
+        Could not load Tally sales data: {error}
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-cream text-[12.5px] text-g400">
+        Loading Tally sales data…
+      </div>
+    );
+  }
+  if (!data.rows.length) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-cream p-6 text-center text-[12.5px] text-g400 italic">
+        No Tally sales data found yet. Once sales are uploaded, the buying pattern will show here.
+      </div>
+    );
+  }
+
+  const fyHeads = rows[0]?.fyVolumes ?? data.fyLabels.map((fy, i) => ({ fy, isCurrent: i === data.fyLabels.length - 1 }));
+  const growthHeads = rows[0]?.growth.map(g => g.label) ?? [];
+  const th = 'px-2.5 py-2 text-[9px] font-bold tracking-[1px] uppercase text-g400 whitespace-nowrap';
+  const td = 'px-2.5 py-2 whitespace-nowrap';
+
+  return (
+    <div className="flex-1 overflow-hidden flex flex-col bg-cream">
+      {/* Toolbar: product picker + data date */}
+      <div className="bg-white border-b border-g200 px-4 sm:px-5 py-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <div className="w-full sm:w-80">
+            <SearchableCombobox
+              value={typed}
+              options={data.productList}
+              placeholder="Search product…"
+              onChange={v => { setTyped(v); if (productSet.has(v)) setProduct(v); }}
+              className="w-full text-[11.5px] bg-g50 border border-g200 rounded-[3px] px-2.5 py-1.5 outline-none focus:border-g400 placeholder:text-g400"
+            />
+          </div>
+          <div className="text-[10.5px] text-g400">
+            Sales data updated till <span className="font-semibold text-g600">{fmtDMY(data.dataUpdatedTill)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Summary cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            { label: 'Customers buying', value: rows.length.toLocaleString('en-IN'), sub: product },
+            { label: `Current FY total (${fyHeads[fyHeads.length - 1]?.fy ?? ''})`,
+              value: `${fmtQty(totals.kg)} kg`, sub: totals.lts ? `${fmtQty(totals.lts)} lts` : 'year to date' },
+            { label: 'Overdue', value: totals.overdue.toLocaleString('en-IN'), sub: 'call date passed', color: 'text-red-600' },
+            { label: 'Lost?', value: totals.lost.toLocaleString('en-IN'), sub: 'no order for 3× usual gap', color: 'text-amber-700' },
+          ].map(k => (
+            <div key={k.label} className="bg-white border border-g200 rounded-[4px] px-4 py-3 min-w-0">
+              <div className="text-[9px] text-g400 tracking-wide uppercase mb-1 truncate">{k.label}</div>
+              <div className={cn('text-[16px] font-semibold leading-none truncate', k.color ?? 'text-blk')}>{k.value}</div>
+              <div className="text-[9.5px] text-g400 mt-1 truncate">{k.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Table */}
+        {rows.length === 0 ? (
+          <div className="bg-white border border-g200 rounded-[4px] px-4 py-8 text-center text-[12px] text-g400 italic">
+            {product ? 'No customer has bought this product yet.' : 'Pick a product to see its buyers.'}
+          </div>
+        ) : (
+          <div className="bg-white border border-g200 rounded-[4px] overflow-x-auto">
+            <table className="min-w-full text-[11.5px] text-blk">
+              <thead className="bg-g50 border-b border-g200">
+                <tr>
+                  <th rowSpan={2} className={cn(th, 'text-left sticky left-0 bg-g50 z-10')}>Customer</th>
+                  <th rowSpan={2} className={cn(th, 'text-left')}>Last Order</th>
+                  <th rowSpan={2} className={cn(th, 'text-right')}>Avg Gap (days)</th>
+                  <th rowSpan={2} className={cn(th, 'text-right')}>Orders</th>
+                  {fyHeads.map(f => (
+                    <th key={f.fy} colSpan={2} className={cn(th, 'text-center border-l border-g200')}>
+                      FY {f.fy}{f.isCurrent ? ' (YTD)' : ''}
+                    </th>
+                  ))}
+                  {growthHeads.length > 0 && (
+                    <th colSpan={growthHeads.length} className={cn(th, 'text-center border-l border-g200')}>Growth %</th>
+                  )}
+                  <th rowSpan={2} className={cn(th, 'text-right border-l border-g200')}>This FY vs<br />same period LY</th>
+                  <th rowSpan={2} className={cn(th, 'text-left')}>Predicted Order</th>
+                  <th rowSpan={2} className={cn(th, 'text-left')}>Call On</th>
+                  <th rowSpan={2} className={cn(th, 'text-left')}>Status</th>
+                </tr>
+                <tr>
+                  {fyHeads.map(f => (
+                    <React.Fragment key={f.fy}>
+                      <th className={cn(th, 'text-right border-l border-g200')}>kg</th>
+                      <th className={cn(th, 'text-right')}>lts</th>
+                    </React.Fragment>
+                  ))}
+                  {growthHeads.map((g, i) => (
+                    <th key={g} className={cn(th, 'text-right', i === 0 && 'border-l border-g200')}>{g}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.customerKey} className="border-b border-g100 hover:bg-g50 group">
+                    <td className={cn(td, 'sticky left-0 bg-white group-hover:bg-g50 font-semibold max-w-[220px] truncate')} title={r.customerName}>
+                      {r.customerName}
+                    </td>
+                    <td className={cn(td, 'font-mono text-[11px]')}>{fmtDMY(r.lastOrderDate)}</td>
+                    <td className={cn(td, 'text-right font-mono')}>{r.avgGapDays ?? <span className="text-g300">—</span>}</td>
+                    <td className={cn(td, 'text-right font-mono')}>{r.orders}</td>
+                    {r.fyVolumes.map(v => (
+                      <React.Fragment key={v.fy}>
+                        <td className={cn(td, 'text-right font-mono border-l border-g100')}><QtyCell n={v.kg} /></td>
+                        <td className={cn(td, 'text-right font-mono')}><QtyCell n={v.lts} /></td>
+                      </React.Fragment>
+                    ))}
+                    {r.growth.map((g, i) => (
+                      <td key={g.label} className={cn(td, 'text-right font-mono', i === 0 && 'border-l border-g100')}>
+                        <GrowthCell g={g.value} />
+                      </td>
+                    ))}
+                    <td className={cn(td, 'text-right font-mono border-l border-g100')}><GrowthCell g={r.currentYtdVsLastYear} /></td>
+                    <td className={cn(td, 'font-mono text-[11px]')}>{fmtDMY(r.predictedOrderDate)}</td>
+                    <td className={cn(td, 'font-mono text-[11px] font-semibold')}>{fmtDMY(r.callDate)}</td>
+                    <td className={td}>
+                      <span className={`text-[9.5px] font-bold px-2 py-0.5 rounded-full border ${PATTERN_BADGE[r.status]}`}>
+                        {r.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
